@@ -1,8 +1,32 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
 import { StudentTable } from '@/types/student-table-types';
-import { getFieldsForLocation, FieldForLocation } from '@/lib/custom-fields/utils';
 import { useClickHandlers } from './table-column-data';
 import { convertToUpperCase } from '@/utils/customFields';
+import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
+
+// Live list of every custom field defined for the institute. The Learner's List
+// table includes columns for ALL of them; per-role visibility is the single
+// source of truth and is handled via display-settings (LearnerListColumnsCard).
+// The institute-wide `visibility.learnersList` flag on each custom field is
+// intentionally ignored here.
+type LearnerListCustomField = { id: string; name: string; type?: string };
+
+const getAllCustomFieldsForLearnerList = (): LearnerListCustomField[] => {
+    const cache = getCustomFieldSettingsFromCache();
+    if (!cache) return [];
+    const all = [
+        ...cache.instituteFields,
+        ...cache.customFields,
+        ...cache.fieldGroups.flatMap((g) => g.fields),
+    ];
+    // Deduplicate by id in case the same field appears in multiple buckets.
+    const byId = new Map<string, LearnerListCustomField>();
+    for (const f of all) {
+        if (!f.id) continue;
+        if (!byId.has(f.id)) byId.set(f.id, { id: f.id, name: f.name, type: f.type });
+    }
+    return Array.from(byId.values());
+};
 
 /**
  * Component to render custom field cell value
@@ -81,29 +105,28 @@ const CustomFieldCell = ({
  */
 export const generateCustomFieldColumns = (): ColumnDef<StudentTable>[] => {
     try {
-        // Get all fields that should be visible in Learner's List
-        const customFields = getFieldsForLocation("Learner's List");
+        // Include ALL institute custom fields — per-role visibility is enforced via
+        // display-settings (LearnerListColumnsCard) which feeds the columnVisibility
+        // map. The legacy institute-wide `visibility.learnersList` flag is ignored here.
+        const customFields = getAllCustomFieldsForLearnerList();
 
-        if (!customFields || customFields.length === 0) {
-            console.warn("No custom fields configured for Learner's List");
+        if (customFields.length === 0) {
             return [];
         }
 
-        // Create a column definition for each custom field
         return customFields
-            .filter((field) => field.id && field.name) // Only include fields with valid id and name
-            .map((field: FieldForLocation) => ({
+            .filter((field) => field.id && field.name)
+            .map((field) => ({
                 accessorKey: field.id,
                 id: field.id,
                 size: 180,
                 minSize: 120,
                 maxSize: 300,
-                header: convertToUpperCase(field.name), // Use the field name from settings as the column header
+                header: convertToUpperCase(field.name),
                 cell: ({ row }: { row: Row<StudentTable> }) => (
                     <CustomFieldCell row={row} customFieldId={field.id} fieldType={field.type} />
                 ),
                 enableHiding: true,
-                // Add metadata to help identify custom field columns
                 meta: {
                     isCustomField: true,
                     customFieldId: field.id,
@@ -123,19 +146,13 @@ export const generateCustomFieldColumns = (): ColumnDef<StudentTable>[] => {
  */
 export const getCustomFieldColumnWidths = (): Record<string, string> => {
     try {
-        const customFields = getFieldsForLocation("Learner's List");
-
-        if (!customFields || customFields.length === 0) {
-            return {};
-        }
+        const customFields = getAllCustomFieldsForLearnerList();
+        if (customFields.length === 0) return {};
 
         const widths: Record<string, string> = {};
-
         customFields.forEach((field) => {
-            // Use the custom field ID as the key
             widths[field.id] = 'min-w-[180px]';
         });
-
         return widths;
     } catch (error) {
         console.error('Error generating custom field column widths:', error);

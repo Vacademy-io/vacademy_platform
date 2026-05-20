@@ -1,4 +1,42 @@
 // Updated to support layout configuration
+
+/**
+ * A single tier in a quantity-based additional charge (e.g. shipping).
+ * `maxQty: null` means unbounded (top tier — applies for all quantities >= minQty).
+ * Each tier is backed by its own PaymentPlan in the DB so the backend can verify
+ * `paid_amount == PaymentPlan.actualPrice`.
+ */
+export interface AdditionalChargeTier {
+  minQty: number;
+  maxQty: number | null;
+  planId: string;
+  amount: number;
+}
+
+/**
+ * Charge added to checkout beyond the items themselves — e.g. shipping, security deposit.
+ * Backed by a dedicated "internal" Package (`package_type` = `DELIVERY_CHARGE` /
+ * `SECURITY_DEPOSIT`) so it flows through the same enroll/payment/invoice plumbing
+ * as a regular purchase. Two pricing shapes:
+ *   - `tiers[]` — quantity-dependent (cart picks the matching tier by total qty)
+ *   - `planId + amount` — flat charge
+ * `applicableTo` gates which cart mode the charge appears in: "COURSE" = buy mode,
+ * "MEMBERSHIP" = rent mode. A charge can apply to one or both.
+ */
+export interface AdditionalCharge {
+  key: string;
+  label: string;
+  applicableTo: ("COURSE" | "MEMBERSHIP")[];
+  packageSessionId: string;
+  enrollInviteId: string;
+  paymentOptionId: string;
+  tiers?: AdditionalChargeTier[];
+  planId?: string;
+  amount?: number;
+  refundable?: boolean;
+  description?: string;
+}
+
 export interface GlobalSettings {
   courseCatalogeType: {
     enabled: boolean;
@@ -46,8 +84,9 @@ export interface GlobalSettings {
   };
   payment: {
     enabled: boolean;
-    provider: "razorpay" | "stripe" | "paypal";
+    provider: "razorpay" | "stripe" | "paypal" | "PHONEPE";
     fields: string[];
+    additionalCharges?: AdditionalCharge[];
   };
   communityJoinLink?: string;
   layout?: {
@@ -337,6 +376,7 @@ export interface CartComponentProps {
   showEmptyState?: boolean;
   emptyStateMessage?: string;
   instituteId?: string;
+  globalSettings?: GlobalSettings;
   styles?: {
     padding?: string;
     roundedEdges?: boolean;

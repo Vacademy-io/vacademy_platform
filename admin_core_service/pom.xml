@@ -81,6 +81,24 @@
             <version>1.43.3</version>
         </dependency>
 
+        <!-- YouTube Data API v3 — used for auto-uploading BBB recordings -->
+        <dependency>
+            <groupId>com.google.apis</groupId>
+            <artifactId>google-api-services-youtube</artifactId>
+            <version>v3-rev20240514-2.0.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.google.oauth-client</groupId>
+            <artifactId>google-oauth-client</artifactId>
+            <version>1.36.0</version>
+        </dependency>
+
         <dependency>
             <groupId>com.stripe</groupId>
             <artifactId>stripe-java</artifactId>

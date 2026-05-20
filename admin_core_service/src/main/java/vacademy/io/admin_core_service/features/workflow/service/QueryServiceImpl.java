@@ -44,9 +44,16 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Student
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.repository.UserRoleRepository;
 
 @Slf4j
 @Service
@@ -69,10 +76,13 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final AuthService authService;
     private final EnrollInviteRepository enrollInviteRepository;
     private final UserPlanRepository userPlanRepository;
+    private final PaymentLogRepository paymentLogRepository;
+    private final StudentSessionRepository studentSessionRepository;
     private final vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService attendanceReportService;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -121,6 +131,10 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchBatchAttendanceReport(params);
             case "fetch_live_session_attendance":
                 return fetchLiveSessionAttendance(params);
+            case "fetch_institute_admin_emails":
+                return fetchInstituteAdminEmails(params);
+            case "fetch_enrollment_details":
+                return fetchEnrollmentDetails(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -1384,15 +1398,40 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 studentRows.addAll(ssigmRepo.findStudentContactsByUserIds(individualUserIds));
             }
 
-            // 3. Build the set of userIds marked PRESENT for this schedule.
+            // 3. Build the set of userIds marked PRESENT for this schedule, plus
+            //    capture each present user's log so we can expose joinTime and
+            //    attendance percentage on the per-student row.
             Set<String> presentUserIds = new HashSet<>();
+            Map<String, vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs> logByUserId = new HashMap<>();
             List<vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs> logs =
                     liveSessionLogsRepository.findAllAttendanceByScheduleId(scheduleId);
             for (var l : logs) {
                 if ("PRESENT".equalsIgnoreCase(l.getStatus()) && l.getUserSourceId() != null) {
                     presentUserIds.add(l.getUserSourceId());
+                    // Keep the log with the longest stay if the user appears multiple times
+                    // (rejoins). Always pick the entry with greatest providerTotalDurationMinutes.
+                    var existing = logByUserId.get(l.getUserSourceId());
+                    if (existing == null
+                            || (l.getProviderTotalDurationMinutes() != null
+                                && (existing.getProviderTotalDurationMinutes() == null
+                                    || l.getProviderTotalDurationMinutes() > existing.getProviderTotalDurationMinutes()))) {
+                        logByUserId.put(l.getUserSourceId(), l);
+                    }
                 }
             }
+
+            // SessionSchedule does not store a planned duration (only startTime + a
+            // late-entry cutoff). The most reliable proxy for "intended class length"
+            // is the longest stay among present attendees — typically that's a learner
+            // who stayed for the full session. We use it as the denominator for the
+            // attendance percentage, capped at 100 so transient over-runs (e.g. a host
+            // who started early) don't push values past 100.
+            final int sessionDurationMinutes = logByUserId.values().stream()
+                    .map(vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs::getProviderTotalDurationMinutes)
+                    .filter(java.util.Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .max()
+                    .orElse(0);
 
             // 4. Fan out into present/absent lists, deduping users that appear in both
             //    a batch and an individual entry.
@@ -1435,6 +1474,82 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 row.put("sessionId", sessionId);
                 row.put("scheduleId", scheduleId);
 
+                // Attach per-student attendance metrics for present learners. The
+                // raw fields are set as 0/empty when data is missing — those keys
+                // exist on every row so old templates that reference them don't
+                // render literal {{joinTime}}. Templates that want a clean "no data"
+                // experience should use {{attendanceBlockHtml}} instead, which is
+                // the empty string when join time is null in the LiveSessionLogs row.
+                String joinTimeStr = "";
+                int attendedMins = 0;
+                int attendancePct = 0;
+                boolean hasAttendanceData = false;
+                if (isPresent) {
+                    var lg = logByUserId.get(userId);
+                    if (lg != null && lg.getProviderJoinTime() != null && !lg.getProviderJoinTime().isBlank()) {
+                        // providerJoinTime is an ISO-8601 string from Zoho/etc. Try parsing
+                        // as OffsetDateTime first (handles "+05:30"), then LocalDateTime as
+                        // fallback. If both fail, render the raw value rather than blank.
+                        try {
+                            joinTimeStr = java.time.OffsetDateTime.parse(lg.getProviderJoinTime())
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"));
+                        } catch (Exception ex1) {
+                            try {
+                                joinTimeStr = java.time.LocalDateTime.parse(lg.getProviderJoinTime())
+                                        .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"));
+                            } catch (Exception ex2) {
+                                joinTimeStr = lg.getProviderJoinTime();
+                            }
+                        }
+                        if (lg.getProviderTotalDurationMinutes() != null) {
+                            attendedMins = lg.getProviderTotalDurationMinutes();
+                        }
+                        if (sessionDurationMinutes > 0 && attendedMins > 0) {
+                            attendancePct = (int) Math.round(
+                                    Math.min(100.0, (attendedMins * 100.0) / sessionDurationMinutes));
+                        }
+                        // We have at least a join time — render the attendance block.
+                        // Per-row metrics like duration / percentage may still be 0 if
+                        // the provider hasn't synced them yet, but the join time alone
+                        // is meaningful enough to show.
+                        hasAttendanceData = true;
+                    }
+                }
+
+                // Pre-rendered HTML snippet for the attendance summary box. Templates
+                // that want to omit the section entirely when sync data isn't available
+                // should use {{attendanceBlockHtml}} (this string) instead of
+                // hardcoding the box themselves.
+                String attendanceBlockHtml = "";
+                if (hasAttendanceData) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("<div style=\"background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;")
+                      .append("padding:14px 18px;margin:18px 0\">")
+                      .append("<p style=\"margin:0 0 8px 0;color:#166534;font-weight:600;font-size:14px\">")
+                      .append("Your attendance</p>");
+                    sb.append("<p style=\"margin:4px 0;color:#1e293b;font-size:14px\">")
+                      .append("<strong>Joined at:</strong> ").append(joinTimeStr).append("</p>");
+                    if (attendedMins > 0 && sessionDurationMinutes > 0) {
+                        sb.append("<p style=\"margin:4px 0;color:#1e293b;font-size:14px\">")
+                          .append("<strong>Time in class:</strong> ").append(attendedMins)
+                          .append(" min of ").append(sessionDurationMinutes).append(" min</p>");
+                    }
+                    if (attendancePct > 0) {
+                        sb.append("<p style=\"margin:4px 0;color:#1e293b;font-size:14px\">")
+                          .append("<strong>Attendance:</strong> ")
+                          .append("<span style=\"color:#16a34a;font-weight:600\">")
+                          .append(attendancePct).append("%</span></p>");
+                    }
+                    sb.append("</div>");
+                    attendanceBlockHtml = sb.toString();
+                }
+
+                row.put("joinTime", joinTimeStr);
+                row.put("attendedMinutes", attendedMins);
+                row.put("attendancePercentage", attendancePct);
+                row.put("sessionDurationMinutes", sessionDurationMinutes);
+                row.put("attendanceBlockHtml", attendanceBlockHtml);
+
                 if (isPresent) presentStudents.add(row);
                 else absentStudents.add(row);
             }
@@ -1448,6 +1563,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             result.put("instituteName", instituteName);
             result.put("meetingDate", meetingDateStr);
             result.put("startTime", startTimeStr);
+            // Estimated duration of the live class — derived from the longest attendee.
+            // Useful for top-level templates that want to show "Class duration: 60 min".
+            result.put("sessionDurationMinutes", sessionDurationMinutes);
             return result;
         } catch (Exception e) {
             log.error("Error in fetchLiveSessionAttendance", e);
@@ -1546,6 +1664,74 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("expiringMemberships", expiringList, "daysUntilExpiry", finalDaysUntilExpiry);
         } catch (Exception e) {
             log.error("Error in fetchExpiringMemberships", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * Returns the institute's team contacts (admins / teachers / etc.) as a
+     * List of Maps with at least {@code email} and {@code fullName}, so a
+     * SEND_EMAIL workflow node can iterate over them and notify the team.
+     *
+     * Params:
+     *   instituteId (required)
+     *   roles       (optional CSV or List, default "ADMIN,TEACHER")
+     *
+     * Result key: {@code adminContacts} — a list of Maps with
+     *   userId, email, fullName, mobileNumber, role
+     * deduplicated by userId (a user with two roles appears once with both
+     * role names joined).
+     *
+     * Powers the Settings → Automations "Admin & Team Reports" recipes — the
+     * only way to send to staff today, since SendEmailNodeHandler rejects
+     * static email strings (every item in {@code on} must be a Map with an
+     * email field).
+     */
+    private Map<String, Object> fetchInstituteAdminEmails(Map<String, Object> params) {
+        try {
+            String instituteId = (String) params.get("instituteId");
+            if (instituteId == null || instituteId.isBlank()) {
+                return Map.of("error", "instituteId is required");
+            }
+
+            List<String> roles;
+            Object rolesParam = params.get("roles");
+            if (rolesParam instanceof List<?> list) {
+                roles = list.stream().map(String::valueOf).collect(Collectors.toList());
+            } else if (rolesParam instanceof String s && !s.isBlank()) {
+                roles = Arrays.stream(s.split(",")).map(String::trim)
+                        .filter(r -> !r.isEmpty()).collect(Collectors.toList());
+            } else {
+                roles = List.of("ADMIN", "TEACHER");
+            }
+
+            // Aggregate across roles, dedupe by user.id, collect their role names.
+            Map<String, Map<String, Object>> byUserId = new LinkedHashMap<>();
+            for (String roleName : roles) {
+                List<User> users = userRoleRepository.findUsersByInstituteIdAndRoleName(instituteId, roleName);
+                for (User u : users) {
+                    if (u.getEmail() == null || u.getEmail().isBlank()) continue;
+                    Map<String, Object> existing = byUserId.get(u.getId());
+                    if (existing == null) {
+                        Map<String, Object> entry = new LinkedHashMap<>();
+                        entry.put("userId", u.getId());
+                        entry.put("email", u.getEmail());
+                        entry.put("fullName", u.getFullName() != null ? u.getFullName() : "");
+                        entry.put("mobileNumber", u.getMobileNumber() != null ? u.getMobileNumber() : "");
+                        entry.put("role", roleName);
+                        byUserId.put(u.getId(), entry);
+                    } else {
+                        existing.put("role", existing.get("role") + "," + roleName);
+                    }
+                }
+            }
+
+            return Map.of(
+                    "adminContacts", new ArrayList<>(byUserId.values()),
+                    "totalAdmins", byUserId.size(),
+                    "rolesFetched", roles);
+        } catch (Exception e) {
+            log.error("Error in fetchInstituteAdminEmails", e);
             return Map.of("error", e.getMessage());
         }
     }
@@ -1757,6 +1943,14 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // scheduled email workflow path.
             String fromParam = (String) params.get("from");
             String toParam = (String) params.get("to");
+            // Optional: when true, the upper bound of the daysBack window is shifted to
+            // yesterday so today's (still-in-progress) classes don't appear in the report.
+            // Used by morning-email workflows so the snapshot the email summarised stays
+            // consistent with what a learner sees when they click "View Full Report" later
+            // in the day after more classes have happened. Only applied to the daysBack
+            // fallback — explicit from/to from a deep link is always honored as-is.
+            boolean excludeToday = Boolean.TRUE.equals(params.get("excludeToday"))
+                    || "true".equalsIgnoreCase(String.valueOf(params.get("excludeToday")));
             java.time.LocalDate start;
             java.time.LocalDate end;
             if (fromParam != null && !fromParam.isBlank() && toParam != null && !toParam.isBlank()) {
@@ -1773,11 +1967,22 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     log.warn("Invalid from/to date params (from={}, to={}); falling back to daysBack={}",
                             fromParam, toParam, daysBack);
                     end = java.time.LocalDate.now();
-                    start = end.minusDays(daysBack);
+                    if (excludeToday) end = end.minusDays(1);
+                    start = end.minusDays(daysBack - 1);
                 }
             } else {
                 end = java.time.LocalDate.now();
-                start = end.minusDays(daysBack);
+                if (excludeToday) {
+                    // Shift end to yesterday and compute start so the window spans
+                    // exactly `daysBack` calendar days (e.g. daysBack=7 → 7 full days
+                    // ending yesterday). Without excludeToday the original semantic
+                    // (today minus daysBack days, inclusive on both ends, so daysBack+1
+                    // days total) is preserved for backwards compat.
+                    end = end.minusDays(1);
+                    start = end.minusDays(daysBack - 1);
+                } else {
+                    start = end.minusDays(daysBack);
+                }
             }
 
             // Three cases:
@@ -2214,6 +2419,137 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         if (o == null) return true;
         if (o instanceof String) return ((String) o).trim().isEmpty();
         return false;
+    }
+
+    /**
+     * Joins the learner's SSIGM (enrollment status, user plan) with their latest
+     * PaymentLog (payment status, order ID, amount) for a single (userId, packageSession)
+     * pair. Designed for use inside workflows that fire on LEARNER_BATCH_ENROLLMENT —
+     * the trigger has user.id + packageSessionIds on the context, both of which can be
+     * passed straight through as SpEL params from the QUERY node.
+     * <p>
+     * Returns the full set of fields even when partially missing (status keys = null,
+     * hasPayment = false) so HTTP_REQUEST bodies that reference these keys never
+     * render as literal {{...}}. SafeErrorMessage wraps the catch so an NPE inside
+     * the query doesn't mask the real cause.
+     */
+    private Map<String, Object> fetchEnrollmentDetails(Map<String, Object> params) {
+        try {
+            String userId = (String) params.get("userId");
+            // Accept either packageSessionId (singular) or packageSessionIds (CSV from trigger).
+            // For the CSV form, pick the first ID — a single enrollment event has one batch.
+            String packageSessionIdParam = (String) params.get("packageSessionId");
+            if (packageSessionIdParam == null) {
+                packageSessionIdParam = (String) params.get("packageSessionIds");
+            }
+            String instituteId = (String) params.get("instituteId");
+
+            if (userId == null || packageSessionIdParam == null || instituteId == null) {
+                return Map.of("error", "Missing userId, packageSessionId, or instituteId");
+            }
+
+            String packageSessionId = packageSessionIdParam.split(",")[0].trim();
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("userId", userId);
+            result.put("packageSessionId", packageSessionId);
+
+            // 1) SSIGM (enrollment record). Prefer the ACTIVE row if present, otherwise
+            //    fall back to any status — the workflow may fire during re-enrollment
+            //    where the row briefly has a non-ACTIVE status.
+            Optional<StudentSessionInstituteGroupMapping> ssigm = studentSessionRepository
+                    .findTopByPackageSessionIdAndUserIdAndStatusIn(
+                            packageSessionId, instituteId, userId,
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+            if (ssigm.isEmpty()) {
+                ssigm = studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+                        packageSessionId, instituteId, userId,
+                        Arrays.asList("ACTIVE", "INVITED", "TERMINATED", "INACTIVE", "EXPIRED", "ENROLLED"));
+            }
+
+            String userPlanId = null;
+            if (ssigm.isPresent()) {
+                StudentSessionInstituteGroupMapping m = ssigm.get();
+                result.put("enrollmentStatus", m.getStatus());
+                result.put("enrollmentId", m.getId());
+                result.put("userPlanId", m.getUserPlanId());
+                result.put("enrolledAt", m.getCreatedAt() != null ? m.getCreatedAt().toString() : null);
+                userPlanId = m.getUserPlanId();
+            } else {
+                result.put("enrollmentStatus", null);
+                result.put("enrollmentId", null);
+                result.put("userPlanId", null);
+                result.put("enrolledAt", null);
+            }
+
+            // 2) Latest PaymentLog joined by userPlanId. If the SSIGM row had no
+            //    user_plan_id (free enrollments often skip plan creation), report
+            //    hasPayment=false rather than throwing.
+            boolean hasPayment = false;
+            String paymentStatus = null;
+            String paymentOrderId = null;
+            Double paymentAmount = null;
+            String paymentCurrency = null;
+            String paymentVendor = null;
+            String paymentDate = null;
+
+            if (userPlanId != null && !userPlanId.isBlank()) {
+                List<PaymentLog> payments = paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlanId);
+                if (!payments.isEmpty()) {
+                    PaymentLog latest = payments.get(0);
+                    hasPayment = true;
+                    paymentStatus = latest.getPaymentStatus();
+                    paymentAmount = latest.getPaymentAmount();
+                    paymentCurrency = latest.getCurrency();
+                    paymentVendor = latest.getVendor();
+                    paymentDate = latest.getDate() != null ? latest.getDate().toString() : null;
+                    paymentOrderId = extractOrderIdFromPaymentSpecificData(latest.getPaymentSpecificData());
+                    // Fallback to tracking_id when the JSON didn't carry an order id —
+                    // covers payment gateways that store it as a top-level column.
+                    if (paymentOrderId == null && latest.getTrackingId() != null) {
+                        paymentOrderId = latest.getTrackingId();
+                    }
+                }
+            }
+
+            result.put("hasPayment", hasPayment);
+            result.put("paymentStatus", paymentStatus);
+            result.put("paymentOrderId", paymentOrderId);
+            result.put("paymentAmount", paymentAmount);
+            result.put("paymentCurrency", paymentCurrency);
+            result.put("paymentVendor", paymentVendor);
+            result.put("paymentDate", paymentDate);
+
+            return result;
+        } catch (Exception e) {
+            log.error("Error in fetchEnrollmentDetails", e);
+            // Map.of() rejects null values; NPE's getMessage() is often null. Guard so
+            // the catch block itself doesn't NPE and mask the real cause.
+            String msg = e.getMessage();
+            return Map.of("error", msg != null ? msg : e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * payment_log.payment_specific_data is a free-form JSON column. The order id is
+     * conventionally stored under originalRequest.order_id (PaymentLogService writes
+     * this shape) but may also appear at the root as order_id / orderId for gateway
+     * callbacks. Returns null if none of those paths resolve to a text value.
+     */
+    private String extractOrderIdFromPaymentSpecificData(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode n = root.path("originalRequest").path("order_id");
+            if (n.isTextual()) return n.asText();
+            n = root.path("order_id");
+            if (n.isTextual()) return n.asText();
+            n = root.path("orderId");
+            if (n.isTextual()) return n.asText();
+        } catch (Exception ignored) {
+            // malformed JSON — treat as no order id
+        }
+        return null;
     }
 }
 

@@ -23,10 +23,15 @@ import java.util.List;
 @Service
 public class AssignmentSlideActivityLogService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AssignmentSlideActivityLogService.class);
+
     private final AssignmentSlideTrackedRepository assignmentSlideTrackedRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
+    private final vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+    private final vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
 
     public void addAssigmentSlideActivityLog(ActivityLog activityLog,
             List<AssignmentSlideActivityLogDTO> assignmentSlideActivityLogDTOS) {
@@ -60,6 +65,37 @@ public class AssignmentSlideActivityLogService {
                 packageSessionId,
                 subjectId,
                 activityLogDTO);
+
+        // Fire ASSIGNMENT_SUBMITTED workflow trigger — first-time submissions
+        // only (re-submissions / saves don't fire). Institute is resolved off
+        // the package session via the existing faculty-mapping query (same
+        // pattern DoubtsManager uses). Wrapped so workflow failures can't
+        // affect the submission write.
+        if (activityLogDTO.isNewActivity() && packageSessionId != null && !packageSessionId.isBlank()) {
+            try {
+                String instituteId = facultyMappingRepository
+                        .findInstituteIdByPackageSessionId(packageSessionId)
+                        .orElse(null);
+                if (instituteId != null && !instituteId.isBlank()) {
+                    java.util.Map<String, Object> ctx = new java.util.HashMap<>();
+                    ctx.put("activityLogId", activityLog.getId());
+                    ctx.put("userId", userId);
+                    ctx.put("slideId", slideId);
+                    ctx.put("chapterId", chapterId);
+                    ctx.put("moduleId", moduleId);
+                    ctx.put("subjectId", subjectId);
+                    ctx.put("packageSessionId", packageSessionId);
+                    workflowTriggerService.handleTriggerEvents(
+                            vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.ASSIGNMENT_SUBMITTED.name(),
+                            slideId,
+                            instituteId,
+                            ctx);
+                }
+            } catch (Exception wfe) {
+                log.warn("Failed to trigger ASSIGNMENT_SUBMITTED for slide {} user {}: {}",
+                        slideId, userId, wfe.getMessage());
+            }
+        }
 
         return activityLog.getId();
     }

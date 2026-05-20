@@ -9,11 +9,12 @@ import html as _html
 
 METADATA = {
     "id": "three_up_grid",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "title": "Three-Up Grid",
     "description": "2-4 equal cells with numbered headers, optional headline. Staggered slide-up reveal.",
     "use_when": "Listing 2-4 parallel concepts ('three reasons', 'three pillars', 'three benefits', step summaries). Best at 5-8s shot duration.",
-    "compatible_shot_types": ["TEXT_DIAGRAM", "PROCESS_STEPS", "DATA_STORY", "*"],
+    # Explicit allow-list — Director's catalog gets cleaner signal than "*".
+    "compatible_shot_types": ["TEXT_DIAGRAM", "PROCESS_STEPS", "DATA_STORY"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -46,15 +47,21 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_h1 = fs.get("h1", "5rem")
-    fs_h2 = fs.get("h2", "3rem")
-    fs_body = fs.get("body", "1.6rem")
-    fs_caption = fs.get("caption", "1.2rem")
-    fs_micro = fs.get("micro", "0.95rem")
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_h1 = fs.get("h1", "clamp(1.6rem, min(10.5vw, 6vh), 4.75rem)")
+    fs_h2 = fs.get("h2", "clamp(1.2rem, min(7vw, 4vh), 3.1rem)")
+    fs_body = fs.get("body", "clamp(0.95rem, min(3.4vw, 1.9vh), 1.5rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
+    fs_micro = fs.get("micro", "clamp(0.75rem, 1.9vmin, 0.9rem)")  # noqa: F841 (kept for parity with other templates)
     safe = sp.get("safe_area", "4%")
     gap_md = sp.get("md", "24px")
     gap_lg = sp.get("lg", "40px")
     ease_entry = ez.get("entry", "power3.out")
+
+    canvas_w = int(ctx.get("canvas_w", 1920) or 1920)
+    canvas_h = int(ctx.get("canvas_h", 1080) or 1080)
+    is_portrait = canvas_h > canvas_w
 
     headline = (params.get("headline") or "").strip()
     show_numbers = params.get("show_numbers", True) is not False
@@ -87,7 +94,10 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
         )
 
     n = len(items)
-    grid_cols = "1fr " * n
+    # Portrait: stack vertically (single column) so each cell breathes — three
+    # ~310px columns on a 1080-wide portrait canvas are unreadable. Landscape:
+    # keep the equal-column grid.
+    grid_cols = "1fr" if is_portrait else "1fr " * n
     html = (
         f'<div class="{sid}-stage stage-drift" data-cells="{n}">'
         f'{headline_html}'
@@ -97,6 +107,11 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
         '</div>'
     )
 
+    # Portrait gets narrower gaps + tighter padding so 3+ stacked cells fit on
+    # a 1920px-tall canvas without overflowing.
+    cell_padding = "1.1rem 1.2rem" if is_portrait else "1.6rem 1.4rem"
+    grid_gap = gap_md if is_portrait else gap_lg
+
     css = f"""
 .{sid}-stage {{
   position:absolute; inset:0; padding:{safe}; display:flex;
@@ -105,37 +120,51 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 }}
 .{sid}-headline {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(2rem,{fs_h1},6rem);
+  font-size:{fs_h1};
   letter-spacing:0.01em; line-height:1.05; opacity:0;
   text-align:center; max-width:90%; margin:0 auto;
 }}
 .{sid}-grid {{
-  display:grid; gap:{gap_lg}; width:100%; align-items:start;
+  display:grid; gap:{grid_gap}; width:100%; max-width:88%;
+  margin:0 auto; align-items:start;
 }}
+/* Cell: tinted brand background + colored leading bar so the cell renders
+   as a visible card on both light and dark brand backgrounds. Original
+   rgba(255,255,255,0.06) top border was invisible on white-bg runs (the
+   reason this template shipped as raw text in the Chanakya video). */
 .{sid}-cell {{
-  display:flex; flex-direction:column; gap:{gap_md};
-  padding:1.6rem 1.2rem; opacity:0;
-  border-top:1px solid rgba(255,255,255,0.06);
+  position:relative;
+  display:flex; flex-direction:column; gap:0.4rem;
+  padding:{cell_padding}; opacity:0;
+  border-radius:12px;
+  background:color-mix(in srgb, var(--brand-primary, #004280) 6%, transparent);
+  border:1px solid color-mix(in srgb, var(--brand-primary, #004280) 14%, transparent);
+  border-left:4px solid var(--brand-accent);
 }}
+/* "01"/"02"/"03" — promoted from orphaned label to inline pill so it
+   visually anchors with the title and the leading bar. */
 .{sid}-num {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
   font-size:{fs_caption}; letter-spacing:0.18em;
-  color:var(--brand-accent); font-weight:700;
+  color:var(--brand-accent); font-weight:800;
+  align-self:flex-start;
 }}
 .{sid}-rule {{
-  width:2.5rem; height:3px; background:var(--brand-accent);
+  width:clamp(2rem, 5vmin, 4rem); height:3px; background:var(--brand-accent);
   border-radius:2px; transform-origin:left center;
+  margin-top:0.1rem; margin-bottom:0.4rem;
 }}
 .{sid}-ctitle {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(1.6rem,{fs_h2},3.5rem);
+  font-size:{fs_h2};
   line-height:1.05; color:var(--brand-text);
 }}
 .{sid}-cdesc {{
   font-family:'Inter',sans-serif;
-  font-size:clamp(1rem,{fs_body},1.7rem);
+  font-size:{fs_body};
   line-height:1.5; color:var(--brand-text-secondary);
-  max-width:36ch;
+  max-width:46ch;
+  margin-top:0.2rem;
 }}
 """
 

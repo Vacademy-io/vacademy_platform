@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
 import vacademy.io.notification_service.features.notification_log.repository.EmailAddressMappingRepository;
@@ -28,7 +30,51 @@ public class EmailConfigurationService {
     private final InstituteInternalService instituteInternalService;
     private final ObjectMapper objectMapper;
     private final EmailAddressMappingRepository emailAddressMappingRepository;
+
+    // Platform-wide default sender; used as fallback when an institute has no email config.
+    // Driven by SES_SENDER_EMAIL env var. If unset, falls back to support@vacademy.io.
+    @Value("${app.ses.sender.email:support@vacademy.io}")
+    private String defaultSenderEmail;
     
+    /**
+     * Return only the from-addresses an institute has explicitly configured in
+     * institute.setting.EMAIL_SETTING.data (lowercased + deduped). The platform default
+     * fallback is NOT included — callers that need "all senders including default"
+     * should use {@link #getEmailConfigurations(String)} or
+     * {@code EmailService.listInstituteEmailSenders}.
+     *
+     * Used by the Notification Hub to scope per-institute email stats safely.
+     */
+    public List<String> getInstituteConfiguredFromAddresses(String instituteId) {
+        try {
+            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null) {
+                // Likely cause: admin.core.service.baseurl / HMAC creds mismatch.
+                // Kept at WARN since this is a genuinely actionable error in any environment.
+                log.warn("getInstituteConfiguredFromAddresses: institute lookup returned NULL for id={}",
+                        instituteId);
+                return List.of();
+            }
+            if (institute.getSetting() == null) {
+                log.debug("getInstituteConfiguredFromAddresses: institute {} has setting=null (no EMAIL_SETTING configured)",
+                        instituteId);
+                return List.of();
+            }
+            List<String> result = parseInstituteEmailSettings(institute.getSetting()).stream()
+                    .map(EmailConfigDTO::getEmail)
+                    .filter(e -> e != null && !e.isBlank())
+                    .map(e -> e.toLowerCase().trim())
+                    .distinct()
+                    .toList();
+            log.debug("getInstituteConfiguredFromAddresses: institute={} resolved {} from-address(es)",
+                    instituteId, result.size());
+            return result;
+        } catch (Exception e) {
+            log.warn("Failed to read configured from-addresses for institute {}: {}", instituteId, e.getMessage(), e);
+            return List.of();
+        }
+    }
+
     /**
      * Get available email configurations for dropdown
      */
@@ -267,38 +313,23 @@ public class EmailConfigurationService {
     }
     
     /**
-     * Get default email configurations
+     * Default email configurations surfaced when an institute has no email config set up.
+     * The primary entry is the platform-wide SES sender (env var SES_SENDER_EMAIL), with
+     * support@vacademy.io as the ultimate fallback if the env var is unset.
      */
     private List<EmailConfigDTO> getDefaultEmailConfigurations() {
+        String senderEmail = StringUtils.hasText(defaultSenderEmail) ? defaultSenderEmail : "support@vacademy.io";
+
         List<EmailConfigDTO> configs = new ArrayList<>();
-        
-        // Marketing email
+
         configs.add(EmailConfigDTO.builder()
-            .email("info@example.com")
-            .name("Marketing Team")
-            .type("MARKETING_EMAIL")
-            .description("Marketing and promotional emails")
-            .displayText("Marketing Email")
-            .build());
-            
-        // Utility email
-        configs.add(EmailConfigDTO.builder()
-            .email("notifications@example.com")
-            .name("Notifications")
+            .email(senderEmail)
+            .name("Vacademy Support")
             .type("UTILITY_EMAIL")
-            .description("Utility and system notifications")
-            .displayText("Utility Email")
+            .description("Default platform sender — utility and system notifications")
+            .displayText("Vacademy Support (default)")
             .build());
-            
-        // Developer email
-        configs.add(EmailConfigDTO.builder()
-            .email("developer@example.com")
-            .name("Developer")
-            .type("DEVELOPER_EMAIL")
-            .description("Developer and technical notifications")
-            .displayText("Developer Email")
-            .build());
-            
+
         return configs;
     }
 }

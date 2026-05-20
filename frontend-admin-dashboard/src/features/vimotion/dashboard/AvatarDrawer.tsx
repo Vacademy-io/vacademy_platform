@@ -296,7 +296,7 @@ export function AvatarDrawer({ open, onOpenChange, instituteId, avatar }: Avatar
 
                         <div className="rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
                             <p className="mb-3 text-sm font-medium text-neutral-700">Voice</p>
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <FormField
                                     control={form.control}
                                     name="voiceLanguage"
@@ -528,7 +528,7 @@ function BuiltInPicker({ form }: BuiltInPickerProps) {
                 name="externalAvatarId"
                 render={({ field }) => (
                     <FormItem>
-                        <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4">
+                        <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3 md:grid-cols-4">
                             {filtered.map((entry) => {
                                 const selected = entry.externalAvatarId === externalAvatarId;
                                 return (

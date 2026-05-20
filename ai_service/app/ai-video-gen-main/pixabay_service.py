@@ -123,21 +123,28 @@ class PixabayService:
         query: str,
         orientation: str = "landscape",
         per_page: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> Optional[Dict[str, str]]:
         """Return a single best-match photo dict or None.
 
         Shape matches PexelsService.search_photos: {url, photographer,
         photographer_url, alt, pexels_url}. The `pexels_url` key holds the
         Pixabay page URL to keep call sites uniform.
+
+        When `must_match_keywords` is set, only return a photo whose `tags`
+        contain at least one keyword (case-insensitive). On no match we
+        return None so the caller can cascade to AI gen rather than ship
+        an off-context image.
         """
         if not self.is_available:
             return None
 
+        effective_per_page = max(3, min(40 if must_match_keywords else per_page, 200))
         params = {
             "q": query,
             "image_type": "photo",
             "orientation": self._ORIENTATION_MAP.get(orientation, "all"),
-            "per_page": max(3, min(per_page, 200)),  # Pixabay requires per_page >= 3
+            "per_page": effective_per_page,  # Pixabay requires per_page >= 3
             "safesearch": "true",
         }
         data = self._request(self.PHOTOS_URL, params)
@@ -149,7 +156,21 @@ class PixabayService:
             logger.info(f"[Pixabay] No photo results for: {query[:50]}")
             return None
 
-        photo = hits[0]
+        if must_match_keywords:
+            kws = [k.lower() for k in must_match_keywords if k]
+            for h in hits:
+                tags_lower = (h.get("tags") or "").lower()
+                if any(kw in tags_lower for kw in kws):
+                    photo = h
+                    break
+            else:
+                logger.info(
+                    f"[Pixabay] No photo matched cultural keywords {kws} "
+                    f"in {len(hits)} candidates for: {query[:50]}"
+                )
+                return None
+        else:
+            photo = hits[0]
         # largeImageURL (1280w) is reliably available; fullHDURL/imageURL require
         # full API tier and may be absent for free keys.
         url = photo.get("fullHDURL") or photo.get("largeImageURL") or photo.get("webformatURL")
@@ -172,14 +193,20 @@ class PixabayService:
         orientation: str = "landscape",
         per_page: int = 3,
         min_duration: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> Optional[Dict[str, str]]:
+        """When `must_match_keywords` is set, drop hits whose `tags` field
+        (Pixabay's comma-separated keyword list, the most reliable signal)
+        doesn't mention any keyword. Returns None on no match so the caller
+        cascades to the next provider — same pattern as search_photos."""
         if not self.is_available:
             return None
 
+        effective_per_page = max(3, min(40 if must_match_keywords else per_page, 200))
         params = {
             "q": query,
             "video_type": "film",
-            "per_page": max(3, min(per_page, 200)),
+            "per_page": effective_per_page,
             "safesearch": "true",
         }
         data = self._request(self.VIDEOS_URL, params)
@@ -192,12 +219,23 @@ class PixabayService:
             return None
 
         target = self._ORIENTATION_MAP.get(orientation, "all")
+        kws = [k.lower() for k in (must_match_keywords or []) if k]
         for video in hits:
             duration = video.get("duration", 0)
             if duration < min_duration:
                 continue
             if target != "all" and not self._matches_orientation(video, target):
                 continue
+            if kws:
+                # Pixabay's `tags` is a comma-separated keyword list — the
+                # most reliable cultural signal. Fall back to pageURL slug
+                # which usually encodes subject.
+                hay = " ".join(filter(None, [
+                    (video.get("tags") or ""),
+                    (video.get("pageURL") or ""),
+                ])).lower()
+                if not any(kw in hay for kw in kws):
+                    continue
             file_info = self._pick_video_file(video.get("videos", {}))
             if not file_info:
                 continue
@@ -210,7 +248,11 @@ class PixabayService:
                 "pexels_url": video.get("pageURL", ""),
             }
 
-        logger.info(f"[Pixabay] No suitable video (min {min_duration}s) for: {query[:50]}")
+        reason = (
+            f"no suitable video (min {min_duration}s)"
+            if not kws else f"no video matched cultural keywords {kws}"
+        )
+        logger.info(f"[Pixabay] {reason} in {len(hits)} for: {query[:50]}")
         return None
 
     def search_video_candidates(
@@ -219,14 +261,17 @@ class PixabayService:
         orientation: str = "landscape",
         per_page: int = 6,
         min_duration: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """See `search_videos` for `must_match_keywords` semantics."""
         if not self.is_available:
             return []
 
+        effective_per_page = max(3, min(40 if must_match_keywords else per_page, 200))
         params = {
             "q": query,
             "video_type": "film",
-            "per_page": max(3, min(per_page, 200)),
+            "per_page": effective_per_page,
             "safesearch": "true",
         }
         data = self._request(self.VIDEOS_URL, params)
@@ -234,6 +279,7 @@ class PixabayService:
             return []
 
         target = self._ORIENTATION_MAP.get(orientation, "all")
+        kws = [k.lower() for k in (must_match_keywords or []) if k]
         candidates: List[Dict[str, Any]] = []
         for video in data.get("hits", []):
             duration = video.get("duration", 0)
@@ -241,6 +287,13 @@ class PixabayService:
                 continue
             if target != "all" and not self._matches_orientation(video, target):
                 continue
+            if kws:
+                hay = " ".join(filter(None, [
+                    (video.get("tags") or ""),
+                    (video.get("pageURL") or ""),
+                ])).lower()
+                if not any(kw in hay for kw in kws):
+                    continue
             file_info = self._pick_video_file(video.get("videos", {}))
             if not file_info:
                 continue

@@ -281,6 +281,7 @@ public class OpenPackageService {
                                                         PackageSessionStatusEnum.HIDDEN.name()),
                                         List.of(LevelStatusEnum.ACTIVE.name()),
                                         learnerPackageFilterDTO.getLevelIds(),
+                                        learnerPackageFilterDTO.getSessionIds(),
                                         List.of(StatusEnum.ACTIVE.name()), // ratingStatuses
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
@@ -297,6 +298,7 @@ public class OpenPackageService {
                         learnerPackageDetail = packageRepository.getOpenCatalogPackageDetailV2(
                                         instituteId,
                                         learnerPackageFilterDTO.getLevelIds(),
+                                        learnerPackageFilterDTO.getSessionIds(),
                                         List.of(PackageStatusEnum.ACTIVE.name()),
                                         learnerPackageFilterDTO.getPackageTypes(),
                                         List.of(PackageSessionStatusEnum.ACTIVE.name(),
@@ -365,6 +367,8 @@ public class OpenPackageService {
                                         projection.getPackageSessionId(),
                                         projection.getLevelId(),
                                         projection.getLevelName(),
+                                        projection.getSessionId(),
+                                        projection.getSessionName(),
                                         projection.getDripConditionJson(),
                                         instructors,
                                         projection.getReadTimeInMinutes(),
@@ -376,6 +380,7 @@ public class OpenPackageService {
                                         projection.getPaymentOptionStatus(),
                                         projection.getPaymentPlanId(),
                                         projection.getMinPlanActualPrice(),
+                                        projection.getMinPlanElevatedPrice(),
                                         projection.getCurrency(),
                                         projection.getAvailableSlots(),
                                         projection.getMaxSeats());

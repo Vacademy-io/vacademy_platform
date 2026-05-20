@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getInstituteId } from "@/constants/helper";
 import { getUserId } from "@/constants/getUserId";
-import { BASE_URL } from "@/constants/urls";
+import { PAYMENT_LOGS_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
 import { ShoppingBag, ChevronLeft, ChevronRight, Package } from "lucide-react";
@@ -52,8 +52,6 @@ interface PaymentLogEntry {
         full_name: string;
     };
 }
-
-const PAYMENT_LOGS_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 
 const ORDER_STATUS_STYLES: Record<string, string> = {
     ORDERED: "bg-gray-100 text-gray-700",

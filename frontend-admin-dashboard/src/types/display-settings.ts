@@ -30,10 +30,16 @@ export interface SidebarTabConfig {
 // Dashboard widget identifiers. These are string literal ids that we can enforce in UI.
 // The list is derived from widgets present in `src/routes/dashboard/index.tsx`.
 export type DashboardWidgetId =
+    | 'quickActions'
+    | 'pendingActions'
+    | 'kpiBand'
+    | 'financeSummary'
+    | 'recentTransactions'
     | 'recentNotifications'
     | 'realTimeActiveUsers'
     | 'currentlyActiveUsers'
     | 'userActivitySummary'
+    | 'dailyActivityTrend'
     | 'enrollLearners'
     | 'learningCenter'
     | 'assessmentCenter'
@@ -185,6 +191,30 @@ export interface LearnerManagementSettings {
     showApprovalToggle: boolean;
 }
 
+// Per-role column visibility on the manage-students learner-list. Holds the
+// set of column accessors (system field accessorKey, e.g. 'mobile_number', or
+// a custom-field UUID) this role must NOT see. Missing/empty list = role
+// inherits the institute-wide defaults configured in CustomFieldsSettings.
+//
+// Precedence at render time:
+//   1. Filter-driven visibility (Batch/Invite/Plan/Amount) ALWAYS wins — when
+//      the filter is active those columns must be visible so the admin can
+//      see what they filtered on.
+//   2. Role hiddenColumns — forces those accessors hidden.
+//   3. Institute-wide system field setting — admin-level defaults.
+export interface LearnerListColumnSettings {
+    // System field accessors this role has EXPLICITLY HIDDEN. Missing/empty list = role
+    // sees all system columns. Default semantics: visible unless listed here.
+    hiddenColumns: string[];
+
+    // Custom field accessors (custom_field UUIDs) this role has EXPLICITLY ENABLED for
+    // the learner-list table. Missing/empty = no custom fields visible for this role.
+    // Default semantics: hidden unless listed here. (Opposite of hiddenColumns above.)
+    // Admins opt in per role; new custom fields added later default to hidden until
+    // an admin toggles them on.
+    enabledCustomFields?: string[];
+}
+
 export interface LiveClassSchedulingSettings {
     /** Whether the "Bulk Schedule" entry point is available for this role. */
     bulkScheduleEnabled: boolean;
@@ -200,7 +230,7 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
 // Per-role control over which roles this role can see/select in the Team tab —
 // in the role-type filter chips and the "Role Type" dropdown of the Invite
 // User dialog. Keys are role names uppercased (matches backend authorities and
-// RoleType.name from dummy-data), e.g. 'ADMIN', 'TEACHER', 'COURSE CREATOR'.
+// RoleType.name from dummy-data), e.g. 'ADMIN', 'TEACHER', 'CONTENT CREATOR'.
 // Missing keys default to true so existing institutes are unaffected.
 export interface TeamManagementSettings {
     visibleRoles: Record<string, boolean>;
@@ -260,12 +290,28 @@ export interface DisplaySettingsData {
         // into slides on a published / in-review course in read-only mode.
         // When false, slide click is blocked entirely (legacy behavior).
         allowViewSlidesInReadOnly?: boolean;
+        // When true, non-admin roles bypass the read-only lock on published
+        // courses and the Copy-to-Edit / Submit-for-Review approval flow —
+        // they can edit and publish published courses directly.
+        directEditPublishedCourse?: boolean;
+        // When true, Edit buttons on Subject / Module / Chapter rows in the
+        // Outline & Content Structure tabs are visible regardless of course
+        // status. Admin always sees these; this flag is for non-admin roles.
+        canEditCourseStructure?: boolean;
+        // When true, Delete buttons on Subject / Module / Chapter rows are
+        // visible regardless of course status.
+        canDeleteCourseStructure?: boolean;
+        // When true, the Course Details header shows a "..." menu exposing
+        // raw IDs (course / package session / session / level) with copy.
+        // Off by default — intended for admins debugging configuration.
+        showAdvancedCourseIds?: boolean;
     };
 
     // 10) Slide view action visibility toggles
     slideView?: {
         showCopyTo: boolean;
         showMoveTo: boolean;
+        showDelete?: boolean;
     };
 
     // 10b) Authored Courses card action visibility (Explore Courses → Authored tab)
@@ -285,6 +331,11 @@ export interface DisplaySettingsData {
 
     // 12) Student portal side-view tab visibility
     studentSideView?: StudentSideViewSettings;
+
+    // 12b) Manage-students learner-list column visibility for this role.
+    //      Independent from the institute-wide custom-field settings — this is the
+    //      per-role overlay that admins use to hide columns from teachers etc.
+    learnerListColumns?: LearnerListColumnSettings;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

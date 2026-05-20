@@ -69,6 +69,136 @@ function getCommonLibraries(): string {
         };
         </script>
         <script>${DIAGRAM_TEMPLATES_SCRIPT}</script>
+        <script>
+        // Runtime broken-image handler (mirrors render_harness.py).
+        // Captures img load failures via document-wide capture-phase listener
+        // (img.onerror does not bubble). Tags failed images AND swaps src to
+        // a transparent 1×1 GIF so the browser stops drawing the broken-image
+        // icon. CSS in getBaseStyles then paints a brand gradient in place.
+        // Belt-and-braces sweep catches images that "succeeded" with
+        // naturalWidth==0 (CDNs serving empty 200 responses on auth fail).
+        (function () {
+            var _BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+            function _markBroken(t) {
+                if (!t || !t.getAttribute || t.hasAttribute('data-img-broken')) return;
+                t.setAttribute('data-img-broken', '1');
+                try {
+                    var orig = t.getAttribute('src') || '';
+                    if (orig) t.setAttribute('data-img-broken-src', orig.slice(0, 300));
+                    t.src = _BLANK;
+                } catch (_e) {}
+            }
+            document.addEventListener('error', function (ev) {
+                try {
+                    var t = ev && ev.target;
+                    if (!t) return;
+                    var tag = (t.tagName || '').toUpperCase();
+                    if (tag !== 'IMG') return;
+                    _markBroken(t);
+                } catch (_e) {}
+            }, true);
+            function _imgSweep() {
+                try {
+                    var imgs = document.getElementsByTagName('img');
+                    for (var i = 0; i < imgs.length; i++) {
+                        var im = imgs[i];
+                        if (im.hasAttribute('data-img-broken')) continue;
+                        if (im.complete && im.naturalWidth === 0 && im.src && im.src !== _BLANK) {
+                            _markBroken(im);
+                        }
+                    }
+                } catch (_e) {}
+            }
+            if (document.readyState === 'complete') {
+                setTimeout(_imgSweep, 1000);
+            } else {
+                window.addEventListener('load', function () { setTimeout(_imgSweep, 1000); });
+            }
+        })();
+        </script>
+        <script>
+        // Bug 5 — auto-scale-to-fit text (mirrors dispatcher_install_js.py).
+        // Display text whose intrinsic width exceeds its container would
+        // otherwise wrap mid-word because of the foundation CSS rule
+        // word-break: break-word. Binary-search the font-size scale
+        // between 0.55 and 1.0 of the computed size until the text fits.
+        // Result: UPS/C, DREA/M character-breaks are pre-empted by
+        // shrinking the font instead. Runs after fonts.ready and ~1s after
+        // mount to catch GSAP-set transforms / late-loading custom fonts.
+        (function () {
+            function _fitTextOne(el) {
+                try {
+                    if (!el || !el.style || !el.getBoundingClientRect) return;
+                    if (el.hasAttribute('data-no-fit')) return;
+                    if (el.hasAttribute('data-fit-text-done')) return;
+                    var hasText = false;
+                    for (var ci = 0; ci < el.childNodes.length; ci++) {
+                        var cn = el.childNodes[ci];
+                        if (cn.nodeType === 3 && (cn.nodeValue || '').trim()) {
+                            hasText = true; break;
+                        }
+                    }
+                    if (!hasText) return;
+                    var cs = getComputedStyle(el);
+                    var fsPx = parseFloat(cs.fontSize);
+                    if (!fsPx || fsPx < 32) return;
+                    if (el.clientWidth <= 0) return;
+                    if (el.scrollWidth <= el.clientWidth + 2) return;
+                    // Binary-search ∈ [0.55, 1.0] for the LARGEST scale that fits.
+                    // Direction: fits → lo=mid (try larger); overflows → hi=mid.
+                    var lo = 0.55, hi = 1.0;
+                    var original = fsPx;
+                    var best = lo;
+                    for (var iter = 0; iter < 7; iter++) {
+                        var mid = (lo + hi) / 2;
+                        el.style.fontSize = (original * mid) + 'px';
+                        if (el.scrollWidth <= el.clientWidth + 2) {
+                            best = mid; lo = mid;
+                        } else {
+                            hi = mid;
+                        }
+                    }
+                    el.style.fontSize = (original * best) + 'px';
+                    el.setAttribute('data-fit-text-done', '1');
+                } catch (_e) {}
+            }
+            function _fitTextSweep() {
+                try {
+                    var nodes = document.querySelectorAll(
+                        'div, span, p, h1, h2, h3, h4, ' +
+                        '[class*="headline"], [class*="title"], [class*="display"], ' +
+                        '[id*="title"], [id*="headline"], [id*="display"], [id*="slam"]'
+                    );
+                    for (var ni = 0; ni < nodes.length; ni++) {
+                        _fitTextOne(nodes[ni]);
+                    }
+                } catch (_e) {}
+            }
+            function _schedule() {
+                try {
+                    if (document.fonts && document.fonts.ready) {
+                        document.fonts.ready.then(function () {
+                            requestAnimationFrame(_fitTextSweep);
+                            // Re-sweep at 500ms + 2s to catch any shots / fonts
+                            // that mount after initial render (animations,
+                            // late shot-add via player progression).
+                            setTimeout(_fitTextSweep, 500);
+                            setTimeout(_fitTextSweep, 2000);
+                        });
+                    } else {
+                        requestAnimationFrame(_fitTextSweep);
+                        setTimeout(_fitTextSweep, 500);
+                        setTimeout(_fitTextSweep, 2000);
+                    }
+                } catch (_e) { try { _fitTextSweep(); } catch (_e2) {} }
+            }
+            if (document.readyState === 'complete') {
+                _schedule();
+            } else {
+                window.addEventListener('load', _schedule);
+            }
+        })();
+        </script>
     `;
 }
 
@@ -431,6 +561,44 @@ function getKenBurnsStyles(): string {
             @keyframes shotFadeIn {
               from { opacity: 0; }
               to   { opacity: 1; }
+            }
+
+            /* ============================================================
+               CSS visibility safety net (Phase 1.2 -- mirrors render_harness.py)
+
+               If the LLM-emitted script sets an element to inline opacity:0
+               and then fails to run its GSAP/anime/etc. fade-in (optional
+               library threw, JS sanitizer missed a pattern, or script never
+               reached the relevant tween), this rule force-reveals the
+               element after 5 seconds. Shot may look stiff but ships CONTENT
+               -- never blank canvas.
+
+               Scope: matches ONLY inline opacity:0; CSS-class-driven opacity
+               (used by deterministic templates with known animations) is
+               untouched. data-allow-hidden is the LLM opt-out for
+               legitimately-hidden elements. data-vx-managed is set by the
+               dispatcher on elements it knows are owned by GSAP/anime so
+               long-delay entrances are not double-revealed.
+
+               Keep BYTE-IDENTICAL to the rule in render_harness.py.
+            */
+            @keyframes __sd_force_reveal { to { opacity: 1; } }
+            [style*="opacity:0"]:not([data-allow-hidden]):not([data-vx-managed]),
+            [style*="opacity: 0"]:not([data-allow-hidden]):not([data-vx-managed]) {
+              animation: __sd_force_reveal 0.4s linear 5s forwards;
+            }
+
+            /* Runtime broken-image fallback (mirrors render_harness.py).
+               NOTE: pseudo-elements (::before/::after) don't render on
+               <img> because it's a replaced element — we use background +
+               transparent-color instead, and the JS handler swaps src to a
+               transparent 1×1 GIF so the broken-image icon stops painting.
+               Net result: a soft brand-gradient block where the broken
+               image was, instead of the browser's default broken-icon. */
+            img[data-img-broken="1"] {
+              background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+              color: transparent;
+              font-size: 0;
             }
         </style>
     `;

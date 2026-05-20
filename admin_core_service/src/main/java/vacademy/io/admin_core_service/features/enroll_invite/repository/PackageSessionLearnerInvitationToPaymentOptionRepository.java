@@ -110,4 +110,29 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                         "WHERE psl.enroll_invite_id IN (:enrollInviteIds) " +
                         "AND psl.status != 'DELETED'", nativeQuery = true)
         List<String> findPackageSessionIdsByEnrollInviteIds(@Param("enrollInviteIds") List<String> enrollInviteIds);
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "JOIN FETCH psl.packageSession ps " +
+                        "LEFT JOIN FETCH ps.level " +
+                        "LEFT JOIN FETCH ps.session " +
+                        "LEFT JOIN FETCH ps.packageEntity " +
+                        "JOIN FETCH psl.paymentOption po " +
+                        "JOIN psl.enrollInvite ei " +
+                        "WHERE psl.packageSession.id IN :packageSessionIds " +
+                        "AND ei.instituteId = :instituteId " +
+                        "AND psl.status = 'ACTIVE' " +
+                        "AND ei.status = 'ACTIVE'")
+        List<PackageSessionLearnerInvitationToPaymentOption> findActiveByPackageSessionIdsAndInstituteId(
+                        @Param("packageSessionIds") List<String> packageSessionIds,
+                        @Param("instituteId") String instituteId);
+
+        @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+                        "JOIN psl.enrollInvite ei " +
+                        "WHERE psl.paymentOption.id IN :paymentOptionIds " +
+                        "AND ei.instituteId = :instituteId " +
+                        "AND psl.status = 'ACTIVE' " +
+                        "AND ei.status = 'ACTIVE'")
+        List<PackageSessionLearnerInvitationToPaymentOption> findActiveByPaymentOptionIdsAndInstituteId(
+                        @Param("paymentOptionIds") List<String> paymentOptionIds,
+                        @Param("instituteId") String instituteId);
 }

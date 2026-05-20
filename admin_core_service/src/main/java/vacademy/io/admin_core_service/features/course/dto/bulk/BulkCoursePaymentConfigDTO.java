@@ -56,7 +56,7 @@ public class BulkCoursePaymentConfigDTO {
 
     /**
      * Validity in days for ONE_TIME payments.
-     * Defaults to 365 (1 year) if not provided.
+     * Null means no expiry (one-time purchase, lifetime access).
      */
     private Integer validityInDays;
 
@@ -86,10 +86,12 @@ public class BulkCoursePaymentConfigDTO {
     }
 
     /**
-     * Returns effective validity in days, defaulting to 365.
+     * Returns validity in days as-is. Null = no expiry (lifetime access);
+     * propagates through to payment_plan.validity_in_days and ultimately to
+     * SSIGM.expiry_date so one-time purchases don't accrue phantom expiries.
      */
-    public int getEffectiveValidityInDays() {
-        return validityInDays != null ? validityInDays : 365;
+    public Integer getEffectiveValidityInDays() {
+        return validityInDays;
     }
 
     /**

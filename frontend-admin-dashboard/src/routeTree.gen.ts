@@ -12,6 +12,7 @@ import { createFileRoute } from "@tanstack/react-router"
 
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
+import { Route as ErrorPageRouteImport } from "./routes/error-page"
 import { Route as AgentChatRouteImport } from "./routes/agent-chat"
 import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
@@ -90,6 +91,7 @@ import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/eval
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./routes/communication/whatsapp-templates/index"
+import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
@@ -111,6 +113,7 @@ import { Route as AdmissionsDashboardIndexRouteImport } from "./routes/admission
 import { Route as AdmissionsApplicationIndexRouteImport } from "./routes/admissions/application/index"
 import { Route as AdmissionsAdmissionListIndexRouteImport } from "./routes/admissions/admission-list/index"
 import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
+import { Route as AdminPackageManagementOffersIndexRouteImport } from "./routes/admin-package-management/offers/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
 import { Route as VimReelsNewRouteImport } from "./routes/vim/reels/new"
 import { Route as TemplatesEditTemplateIdRouteImport } from "./routes/templates/edit/$templateId"
@@ -118,6 +121,7 @@ import { Route as SignupOauthCallbackRouteImport } from "./routes/signup/oauth/c
 import { Route as PlanningPlanningLogIdRouteImport } from "./routes/planning/planning/$logId"
 import { Route as PlanningActivityLogsLogIdRouteImport } from "./routes/planning/activity-logs/$logId"
 import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pages/editor/$tagName"
+import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes/manage-custom-teams/sub-orgs/$subOrgSlug"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
@@ -199,6 +203,11 @@ const ExploreAiLazyRoute = ExploreAiLazyRouteImport.update({
 const LockedFeatureRoute = LockedFeatureRouteImport.update({
   id: "/locked-feature",
   path: "/locked-feature",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ErrorPageRoute = ErrorPageRouteImport.update({
+  id: "/error-page",
+  path: "/error-page",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentChatRoute = AgentChatRouteImport.update({
@@ -791,6 +800,16 @@ const CommunicationWhatsappTemplatesIndexRoute =
       (d) => d.Route,
     ),
   )
+const CommunicationNotificationHubIndexRoute =
+  CommunicationNotificationHubIndexRouteImport.update({
+    id: "/communication/notification-hub/",
+    path: "/communication/notification-hub/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/communication/notification-hub/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const CommunicationInboxIndexRoute = CommunicationInboxIndexRouteImport.update({
   id: "/communication/inbox/",
   path: "/communication/inbox/",
@@ -962,6 +981,16 @@ const AdmissionsAdmissionFormIndexRoute =
       (d) => d.Route,
     ),
   )
+const AdminPackageManagementOffersIndexRoute =
+  AdminPackageManagementOffersIndexRouteImport.update({
+    id: "/admin-package-management/offers/",
+    path: "/admin-package-management/offers/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/admin-package-management/offers/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AdminPackageManagementBulkCreateIndexRoute =
   AdminPackageManagementBulkCreateIndexRouteImport.update({
     id: "/admin-package-management/bulk-create/",
@@ -1010,6 +1039,16 @@ const ManagePagesEditorTagNameRoute =
     path: "/manage-pages/editor/$tagName",
     getParentRoute: () => rootRouteImport,
   } as any)
+const ManageCustomTeamsSubOrgsSubOrgSlugRoute =
+  ManageCustomTeamsSubOrgsSubOrgSlugRouteImport.update({
+    id: "/manage-custom-teams/sub-orgs/$subOrgSlug",
+    path: "/manage-custom-teams/sub-orgs/$subOrgSlug",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/manage-custom-teams/sub-orgs/$subOrgSlug.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const LoginOauthRedirectRoute = LoginOauthRedirectRouteImport.update({
   id: "/login/oauth/redirect",
   path: "/login/oauth/redirect",
@@ -1438,6 +1477,7 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
 
 export interface FileRoutesByFullPath {
   "/agent-chat": typeof AgentChatRoute
+  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1478,6 +1518,7 @@ export interface FileRoutesByFullPath {
   "/vim/": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
+  "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
@@ -1485,6 +1526,7 @@ export interface FileRoutesByFullPath {
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admin-package-management/offers/": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list/": typeof AdmissionsAdmissionListIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
@@ -1506,6 +1548,7 @@ export interface FileRoutesByFullPath {
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1601,6 +1644,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/agent-chat": typeof AgentChatRoute
+  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1640,6 +1684,7 @@ export interface FileRoutesByTo {
   "/vim": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
+  "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
@@ -1647,6 +1692,7 @@ export interface FileRoutesByTo {
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admin-package-management/offers": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list": typeof AdmissionsAdmissionListIndexRoute
   "/admissions/application": typeof AdmissionsApplicationIndexRoute
@@ -1668,6 +1714,7 @@ export interface FileRoutesByTo {
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
@@ -1764,6 +1811,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/agent-chat": typeof AgentChatRoute
+  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1804,6 +1852,7 @@ export interface FileRoutesById {
   "/vim/": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
+  "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
@@ -1811,6 +1860,7 @@ export interface FileRoutesById {
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admin-package-management/offers/": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list/": typeof AdmissionsAdmissionListIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
@@ -1832,6 +1882,7 @@ export interface FileRoutesById {
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1929,6 +1980,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/agent-chat"
+    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -1969,6 +2021,7 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
+    | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
     | "/planning/planning/$logId"
@@ -1976,6 +2029,7 @@ export interface FileRouteTypes {
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
     | "/admin-package-management/bulk-create/"
+    | "/admin-package-management/offers/"
     | "/admissions/admission-form/"
     | "/admissions/admission-list/"
     | "/admissions/application/"
@@ -1997,6 +2051,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
+    | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2092,6 +2147,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/agent-chat"
+    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2131,6 +2187,7 @@ export interface FileRouteTypes {
     | "/vim"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
+    | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
     | "/planning/planning/$logId"
@@ -2138,6 +2195,7 @@ export interface FileRouteTypes {
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
     | "/admin-package-management/bulk-create"
+    | "/admin-package-management/offers"
     | "/admissions/admission-form"
     | "/admissions/admission-list"
     | "/admissions/application"
@@ -2159,6 +2217,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
+    | "/communication/notification-hub"
     | "/communication/whatsapp-templates"
     | "/community/question-paper"
     | "/content/$contentId"
@@ -2254,6 +2313,7 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/agent-chat"
+    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2294,6 +2354,7 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
+    | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
     | "/planning/planning/$logId"
@@ -2301,6 +2362,7 @@ export interface FileRouteTypes {
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
     | "/admin-package-management/bulk-create/"
+    | "/admin-package-management/offers/"
     | "/admissions/admission-form/"
     | "/admissions/admission-list/"
     | "/admissions/application/"
@@ -2322,6 +2384,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
+    | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2418,6 +2481,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AgentChatRoute: typeof AgentChatRoute
+  ErrorPageRoute: typeof ErrorPageRoute
   LockedFeatureRoute: typeof LockedFeatureRoute
   ExploreAiLazyRoute: typeof ExploreAiLazyRoute
   LandingLazyRoute: typeof LandingLazyRoute
@@ -2457,6 +2521,7 @@ export interface RootRouteChildren {
   VimIndexRoute: typeof VimIndexRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
+  ManageCustomTeamsSubOrgsSubOrgSlugRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   ManagePagesEditorTagNameRoute: typeof ManagePagesEditorTagNameRoute
   PlanningActivityLogsLogIdRoute: typeof PlanningActivityLogsLogIdRoute
   PlanningPlanningLogIdRoute: typeof PlanningPlanningLogIdRoute
@@ -2464,6 +2529,7 @@ export interface RootRouteChildren {
   TemplatesEditTemplateIdRoute: typeof TemplatesEditTemplateIdRoute
   VimReelsNewRoute: typeof VimReelsNewRoute
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
+  AdminPackageManagementOffersIndexRoute: typeof AdminPackageManagementOffersIndexRoute
   AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
   AdmissionsAdmissionListIndexRoute: typeof AdmissionsAdmissionListIndexRoute
   AdmissionsApplicationIndexRoute: typeof AdmissionsApplicationIndexRoute
@@ -2485,6 +2551,7 @@ export interface RootRouteChildren {
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
+  CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
   CommunicationWhatsappTemplatesIndexRoute: typeof CommunicationWhatsappTemplatesIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
@@ -2614,6 +2681,13 @@ declare module "@tanstack/react-router" {
       path: "/locked-feature"
       fullPath: "/locked-feature"
       preLoaderRoute: typeof LockedFeatureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/error-page": {
+      id: "/error-page"
+      path: "/error-page"
+      fullPath: "/error-page"
+      preLoaderRoute: typeof ErrorPageRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/agent-chat": {
@@ -3162,6 +3236,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CommunicationWhatsappTemplatesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/communication/notification-hub/": {
+      id: "/communication/notification-hub/"
+      path: "/communication/notification-hub"
+      fullPath: "/communication/notification-hub/"
+      preLoaderRoute: typeof CommunicationNotificationHubIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/communication/inbox/": {
       id: "/communication/inbox/"
       path: "/communication/inbox"
@@ -3309,6 +3390,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdmissionsAdmissionFormIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin-package-management/offers/": {
+      id: "/admin-package-management/offers/"
+      path: "/admin-package-management/offers"
+      fullPath: "/admin-package-management/offers/"
+      preLoaderRoute: typeof AdminPackageManagementOffersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/admin-package-management/bulk-create/": {
       id: "/admin-package-management/bulk-create/"
       path: "/admin-package-management/bulk-create"
@@ -3356,6 +3444,13 @@ declare module "@tanstack/react-router" {
       path: "/manage-pages/editor/$tagName"
       fullPath: "/manage-pages/editor/$tagName"
       preLoaderRoute: typeof ManagePagesEditorTagNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/manage-custom-teams/sub-orgs/$subOrgSlug": {
+      id: "/manage-custom-teams/sub-orgs/$subOrgSlug"
+      path: "/manage-custom-teams/sub-orgs/$subOrgSlug"
+      fullPath: "/manage-custom-teams/sub-orgs/$subOrgSlug"
+      preLoaderRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/login/oauth/redirect": {
@@ -3724,6 +3819,7 @@ const LearnerInsightsLazyRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AgentChatRoute: AgentChatRoute,
+  ErrorPageRoute: ErrorPageRoute,
   LockedFeatureRoute: LockedFeatureRoute,
   ExploreAiLazyRoute: ExploreAiLazyRoute,
   LandingLazyRoute: LandingLazyRoute,
@@ -3763,6 +3859,8 @@ const rootRouteChildren: RootRouteChildren = {
   VimIndexRoute: VimIndexRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
+  ManageCustomTeamsSubOrgsSubOrgSlugRoute:
+    ManageCustomTeamsSubOrgsSubOrgSlugRoute,
   ManagePagesEditorTagNameRoute: ManagePagesEditorTagNameRoute,
   PlanningActivityLogsLogIdRoute: PlanningActivityLogsLogIdRoute,
   PlanningPlanningLogIdRoute: PlanningPlanningLogIdRoute,
@@ -3771,6 +3869,8 @@ const rootRouteChildren: RootRouteChildren = {
   VimReelsNewRoute: VimReelsNewRoute,
   AdminPackageManagementBulkCreateIndexRoute:
     AdminPackageManagementBulkCreateIndexRoute,
+  AdminPackageManagementOffersIndexRoute:
+    AdminPackageManagementOffersIndexRoute,
   AdmissionsAdmissionFormIndexRoute: AdmissionsAdmissionFormIndexRoute,
   AdmissionsAdmissionListIndexRoute: AdmissionsAdmissionListIndexRoute,
   AdmissionsApplicationIndexRoute: AdmissionsApplicationIndexRoute,
@@ -3794,6 +3894,8 @@ const rootRouteChildren: RootRouteChildren = {
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
+  CommunicationNotificationHubIndexRoute:
+    CommunicationNotificationHubIndexRoute,
   CommunicationWhatsappTemplatesIndexRoute:
     CommunicationWhatsappTemplatesIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,

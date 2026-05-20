@@ -15,6 +15,7 @@ import {
     Loader2,
     Pencil,
     RefreshCw,
+    Terminal,
     Zap,
     Clock,
     Film,
@@ -30,9 +31,14 @@ import {
     type RenderSettings,
 } from '../../-services/video-generation';
 import { RenderSettingsDialog } from '../RenderSettingsDialog';
-import type { PipelineState } from './-utils/derive-pipeline-state';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../../-utils/credits';
+import type { PipelineEventLogEntry, PipelineState } from './-utils/derive-pipeline-state';
 import { NODE_LABELS, type PipelineNodeId } from './-utils/stage-vocab';
 import { ThumbnailPickerPanel } from './ThumbnailPickerPanel';
+import { DeveloperAuditSheet } from './DeveloperAuditSheet';
+import { useVideoStatus } from './-utils/use-video-status';
+import { useTimelineJson } from './-utils/use-timeline-json';
 
 // ─── Render-job persistence (lifted from VideoResult.tsx) ────────────────
 const RENDER_JOB_KEY_PREFIX = 'render-job-';
@@ -65,6 +71,12 @@ type RenderState = 'idle' | 'submitting' | 'rendering' | 'done' | 'error';
 interface PipelinePanelProps {
     state: PipelineState;
     apiKey?: string;
+    /**
+     * Live SSE event log — passed in from the parent so the Developer
+     * audit drawer can show the chronological pathway. Absent on
+     * history-loaded runs (drawer falls back to a synthesized path).
+     */
+    eventLog?: PipelineEventLogEntry[];
     /** Cancel an in-flight production (live runs only). Hides when omitted. */
     onAbort?: () => void;
     /** Retry a halted production. Hides when omitted. */
@@ -84,9 +96,26 @@ interface PipelinePanelProps {
     }) => void;
 }
 
-export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: PipelinePanelProps) {
+export function PipelinePanel({
+    state,
+    apiKey,
+    eventLog,
+    onAbort,
+    onRetry,
+    onEdit,
+}: PipelinePanelProps) {
     const { videoId, status, contentType, orientation, artifactUrls, stats } = state;
     const isPortrait = orientation === 'portrait';
+    // Live USD→credits rate for AI video cost tooltips (Veo per-shot range,
+    // per-video cap). Falls back to the seed 150× when offline.
+    const ratio = useEffectiveCreditRatio();
+    const aiVideoTooltip = `Veo-generated shots (fal.ai). Each runs ${formatCredits(
+        usdToCredits(0.12, ratio),
+        { suffix: '' }
+    )}–${formatCredits(usdToCredits(0.4, ratio), { suffix: '' })} credits — hard cap ${formatCredits(
+        usdToCredits(1.5, ratio),
+        { suffix: 'credits' }
+    )}/video.`;
     const showDownload =
         (contentType === 'VIDEO' || contentType === 'SLIDES' || !!artifactUrls.audio) && !!apiKey;
 
@@ -222,17 +251,25 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
     }, [videoId, apiKey]);
 
     // ── Stages list (synced to PipelineState slot states) ────────────────
+    // v3 swaps the v2 Beats/Screenplay/Narration/Storyboard chain for the
+    // ShotPlanner + NarrationWriter pair — same surface area, different
+    // node set. Research / Talent / Score / Filming stay common to both.
     const stagesList = useMemo(() => {
+        const isV3 = state.pipelineVersion === 'v3';
         const linearOrder: PipelineNodeId[] = [
-            // Research runs before SCRIPT, so it leads the list when present.
             ...(state.research ? (['research'] as PipelineNodeId[]) : []),
-            'screenplay',
-            'narration',
-            'storyboard',
+            ...(isV3
+                ? ([
+                      ...(state.shotPlanner ? ['shotPlanner'] : []),
+                      ...(state.narrationWriter ? ['narrationWriter'] : []),
+                  ] as PipelineNodeId[])
+                : ([
+                      ...(state.beats ? ['beats'] : []),
+                      'screenplay',
+                      'narration',
+                      'storyboard',
+                  ] as PipelineNodeId[])),
             'filming',
-            // Talent / Score sit between Filming and Final Cut: both branch
-            // off Storyboard but converge at Final Cut, so they're "still
-            // upstream of the cut" in the production timeline.
             ...(state.talent ? (['talent'] as PipelineNodeId[]) : []),
             ...(state.score ? (['score'] as PipelineNodeId[]) : []),
             'finalCut',
@@ -242,6 +279,29 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
             return { id, slotState: slot?.state ?? 'scheduled' };
         });
     }, [state]);
+
+    // ── AI video credit subtotal (v3 + AI-video-on runs only) ───────────
+    // Sums `_ai_video_cost_credits` across every Veo-driven scene. Surfaces
+    // in the Production schedule footer so users see exactly how much of
+    // the per-video AI budget was spent (capped at ≈225 credits by BE).
+    const aiVideoCreditsSpent = useMemo(() => {
+        let total = 0;
+        let touched = false;
+        for (const s of state.scenes) {
+            if (typeof s.aiVideoCostCredits === 'number') {
+                total += s.aiVideoCostCredits;
+                touched = true;
+            }
+        }
+        return touched ? total : null;
+    }, [state.scenes]);
+    const aiVideoShotCount = useMemo(
+        () =>
+            state.scenes.filter(
+                (s) => s.shotType === 'AI_VIDEO_HERO' || s.aiVideoCostCredits != null
+            ).length,
+        [state.scenes]
+    );
 
     // ── Share URL + embed code ───────────────────────────────────────────
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -276,6 +336,13 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
             /* ignore */
         }
     };
+
+    // ── Developer audit drawer ──
+    // Cached reads — share React Query keys with PipelineFlow's hooks, so
+    // mounting the panel doesn't trigger duplicate network requests.
+    const [devOpen, setDevOpen] = useState(false);
+    const { data: statusResp } = useVideoStatus(videoId, apiKey);
+    const { data: timelineJson } = useTimelineJson(videoId, artifactUrls.timeline);
 
     const navigate = useNavigate();
     const handleEditClick = useCallback(() => {
@@ -358,7 +425,32 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
                         Stop production
                     </Button>
                 )}
+                {/* Developer / Audit drawer trigger. Always available so
+                    support / engineering can pull the full pathway for any
+                    run without going through CLI tools. Sits right of the
+                    status badge so it's discoverable but unobtrusive. */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDevOpen(true)}
+                    title="Open developer audit — see the full pipeline pathway, models, configs and URLs"
+                    className={`h-7 gap-1.5 text-[11px] text-muted-foreground hover:text-foreground ${
+                        status === 'in_production' && onAbort ? '' : 'ml-auto'
+                    }`}
+                >
+                    <Terminal className="size-3" />
+                    Audit
+                </Button>
             </div>
+            <DeveloperAuditSheet
+                open={devOpen}
+                onOpenChange={setDevOpen}
+                state={state}
+                statusResp={statusResp}
+                timelineJson={timelineJson}
+                eventLog={eventLog}
+                apiKey={apiKey}
+            />
 
             {/* Halted banner with retry CTA */}
             {status === 'halted' && (
@@ -417,9 +509,17 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
                             {id === 'talent' && <TalentCounter state={state} />}
                             {id === 'score' && <ScoreCounter state={state} />}
                             {id === 'research' && <ResearchCounter state={state} />}
+                            {id === 'shotPlanner' && <ShotPlannerCounter state={state} />}
+                            {id === 'narrationWriter' && <NarrationWriterCounter state={state} />}
                         </li>
                     ))}
                 </ul>
+                {state.pipelineVersion === 'v3' && (
+                    <div className="mt-2 border-t pt-2 text-[10px] text-muted-foreground">
+                        Pipeline <span className="font-mono text-foreground">v3</span> ·
+                        ShotPlanner-first
+                    </div>
+                )}
             </div>
 
             {/* Production stats */}
@@ -458,6 +558,19 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
                                 <dd>{stats.tokenUsage.image_count}</dd>
                             </>
                         ) : null}
+                        {aiVideoShotCount > 0 && (
+                            <>
+                                <dt className="text-muted-foreground">AI video</dt>
+                                <dd title={aiVideoTooltip} className="font-medium text-violet-700">
+                                    ✨ {aiVideoShotCount} shot{aiVideoShotCount === 1 ? '' : 's'}
+                                    {aiVideoCreditsSpent != null && (
+                                        <span className="ml-1 font-mono tabular-nums text-violet-500">
+                                            ({formatCredits(aiVideoCreditsSpent, { precision: 0 })})
+                                        </span>
+                                    )}
+                                </dd>
+                            </>
+                        )}
                     </dl>
                 </div>
             )}
@@ -767,6 +880,36 @@ function ResearchCounter({ state }: { state: PipelineState }) {
     return (
         <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
             {counts.join(' · ')}
+        </span>
+    );
+}
+
+/**
+ * "8 shots · 2 intrinsic" hint next to the ShotPlanner stages-list row.
+ * Wrapped + counter both show because the count is fundamentally what the
+ * planner produced (vs Talent / Score where the row's progress IS the count).
+ */
+function ShotPlannerCounter({ state }: { state: PipelineState }) {
+    const slot = state.shotPlanner;
+    if (!slot || slot.state !== 'wrapped') return null;
+    const { shotCount, intrinsicCount } = slot.data;
+    if (shotCount === 0) return null;
+    return (
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+            {shotCount} shot{shotCount === 1 ? '' : 's'}
+            {intrinsicCount > 0 ? ` · ${intrinsicCount} intr` : ''}
+        </span>
+    );
+}
+
+function NarrationWriterCounter({ state }: { state: PipelineState }) {
+    const slot = state.narrationWriter;
+    if (!slot || slot.state !== 'wrapped') return null;
+    const { totalWords, skippedIntrinsicCount } = slot.data;
+    if (totalWords === 0 && skippedIntrinsicCount === 0) return null;
+    return (
+        <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+            {totalWords} w{skippedIntrinsicCount > 0 ? ` · ${skippedIntrinsicCount} silent` : ''}
         </span>
     );
 }

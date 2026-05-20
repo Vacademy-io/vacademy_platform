@@ -203,9 +203,17 @@ DIRECTOR_SYSTEM_PROMPT = (
     "INFOGRAPHIC_SVG for concept-first openers, PRODUCT_HERO for brand/subject reels).\n"
     "2. Never use the same shot type 3 times in a row.\n"
     "3. Follow the topic image_ratio guidance provided.\n"
-    "4. Each shot: 2-5 seconds (reel/short-form pace). For portrait/9:16, aim for 2-4 seconds per shot. "
-    "Longer than 5s only for shots with heavy in-shot motion (PROCESS_STEPS, EQUATION_BUILD, DATA_STORY). "
-    "Split any content that would need longer.\n"
+    "4. **PACING PROFILE** (compute shot durations against the total audio_duration_s):\n"
+    "   - **Hook (shot 0)**:         audio_duration × 0.15,  min 3.5s, max 5.0s.\n"
+    "   - **Body shots (middle)**:   average audio_duration × 0.10–0.13, min 2.5s, max 4.0s.\n"
+    "   - **Close (final shot)**:    audio_duration × 0.17,  min 3.5s, max 5.5s.\n"
+    "   Worked example — 30s audio: hook ≈ 4.5s, body ≈ 7 shots × 2.9s, close ≈ 5.0s → 9 shots total.\n"
+    "   Worked example — 45s audio: hook ≈ 5.0s, body ≈ 10 shots × 3.0s, close ≈ 5.0s → 12 shots total.\n"
+    "   Hook and close MUST breathe — they anchor the viewer; cramming them sub-3.5s kills the open/close beat.\n"
+    "   Longer than 5s on a body shot only when it carries heavy in-shot motion (PROCESS_STEPS, "
+    "EQUATION_BUILD, DATA_STORY). Split any content that would otherwise need longer.\n"
+    "   NEVER pack more body shots than `(audio_duration - hook - close) / 2.5` allows — that's the floor.\n"
+    "   For portrait/9:16, hook/close stays in the same range; body skews 0.5s faster (min 2.0s).\n"
     "5. Shots must cover 100% of the narration timeline with NO gaps.\n"
     "6. Total of all shot durations must equal the audio duration.\n"
     "7. LOWER_THIRD can overlap other shots (mark `overlay: true`).\n"
@@ -217,7 +225,34 @@ DIRECTOR_SYSTEM_PROMPT = (
     "and whether they stay consistent or shift across the timeline. Coherence is usually good "
     "(matching shot families within an act), but a long video CAN change worlds between acts "
     "(e.g. photo hero → illustrated infographic → product hero outro) as long as each transition "
-    "feels intentional. Use KINETIC_TITLE or a hard cut between shots to mark act changes.\n\n"
+    "feels intentional. Use KINETIC_TITLE or a hard cut between shots to mark act changes.\n"
+    "13. **BRAND ASSET USAGE — non-negotiable when reference assets are present**. "
+    "When the user has uploaded reference assets (logos, product photos, brand marks — surfaced "
+    "below as 🏷️ BRAND ANCHOR), the FIRST and LAST shots MUST be designed to embed at least one "
+    "of those assets. Pick a shot_type that can host an `<img>` (PRODUCT_HERO, IMAGE_HERO, "
+    "ANIMATED_ASSET, INFOGRAPHIC_SVG, DEVICE_MOCKUP) — NOT a text-only shot type (KINETIC_TITLE, "
+    "KINETIC_TEXT, LOWER_THIRD) for the open/close. The per-shot LLM will embed the actual logo via "
+    "`data-img-source=\"reference\"`. Plus: any shot tagged `role: \"product_proof\"` in your plan "
+    "MUST also be an asset-hosting shot_type. The pipeline runs a post-render regex assertion on "
+    "these shots — missing the reference triggers a corrective regen.\n\n"
+
+    "**BACKGROUND CONTINUITY — `background_treatment` (per-shot, RECOMMENDED)**:\n"
+    "Every non-media-hero shot should declare a `background_treatment` field. Allowed values:\n"
+    "- `\"brand_solid\"`    — flat `var(--brand-bg)`. The default for typography, KINETIC_TITLE, "
+    "LOWER_THIRD, DEVICE_MOCKUP, and any connective shot. Cheap, calm, brand-anchored.\n"
+    "- `\"brand_textured\"` — `var(--brand-bg)` + halftone / dotgrid / fine line overlay. "
+    "For data-dense shots (DATA_STORY, PROCESS_STEPS, INFOGRAPHIC_SVG, TEXT_DIAGRAM, ANNOTATION_MAP).\n"
+    "- `\"brand_gradient\"` — `var(--brand-bg)` → 6% darker linear gradient. "
+    "For PRODUCT_HERO and brand reels where 'world changes around the subject' is the pattern.\n"
+    "- `\"media_hero\"`     — the visible media IS the background. "
+    "Required for VIDEO_HERO, IMAGE_HERO, IMAGE_CLIP, SOURCE_CLIP, AI_VIDEO_HERO.\n"
+    "**Cross-shot rule: use AT MOST 2 distinct non-media-hero treatments across the whole video.** "
+    "Pick ONE primary treatment (typically brand_solid or brand_textured) and use it for ≥75% of "
+    "non-media-hero shots. Media-hero shots are exempt from this count.\n"
+    "If you omit the field, the pipeline infers a default from `shot_type` — but the inferred "
+    "value is conservative; choose explicitly when a specific treatment serves the shot.\n"
+    "NEVER let a per-shot LLM invent its own background hex (`#fff`, `#000`, or a hand-picked color) — "
+    "every non-media-hero shot honors `var(--brand-bg)` through this field.\n\n"
 
     "**OPTIONAL — `semantic_accents` (per-shot contrast color)**:\n"
     "When a shot's narration introduces a binary or ternary contrast that color "
@@ -257,19 +292,99 @@ DIRECTOR_SYSTEM_PROMPT = (
     "- `\"zoom_in\"` — scale 0.85→1.0. KINETIC_TITLE (always), key concept hooks.\n"
     "- `\"zoom_out\"` — scale 1.15→1.0. Revealing larger context.\n"
     "- `\"wipe_right\"` — clip-path sweeps from left. After topic-break beats, act transitions.\n"
+    "- `\"circle_iris\"` — branded circular reveal expanding from center. Use for hero moments / "
+    "act openers / when you want a punchy 'show the reveal' beat.\n"
+    "- `\"diagonal_wipe\"` — diagonal stripe wipe. Use for forward-momentum reel cuts or "
+    "act-2 → act-3 transitions where standard slide feels too soft.\n"
+    "- `\"hexagon_iris\"` — hexagonal iris reveal. Distinctive / brand-personality moments; "
+    "reserve for opens and closes, not body shots.\n"
+    "- `\"blinds_horizontal\"` — horizontal blinds reveal. Pairs naturally after KINETIC_TITLE → "
+    "next act intro; reads as 'curtain rising' on a new section.\n"
     "Non-negotiable: KINETIC_TEXT → `cut`. KINETIC_TITLE → `zoom_in`. "
-    "After KINETIC_TITLE → next shot uses `wipe_right`. Reels → prefer `cut`/`slide_right`. "
-    "Education → prefer `fade`/`slide_up`. Default: `fade`.\n\n"
+    "After KINETIC_TITLE → next shot uses `wipe_right` or `blinds_horizontal`. "
+    "Reels → prefer `cut`/`slide_right`/`diagonal_wipe`. "
+    "Education → prefer `fade`/`slide_up`. Default: `fade`. "
+    "Use the branded mask reveals (`circle_iris` / `hexagon_iris` / `blinds_horizontal` / "
+    "`diagonal_wipe`) sparingly — once per video, on a hero moment, is usually enough.\n\n"
 
     "Return JSON only. No markdown, no commentary. "
     "The first character of your response must be `{` and the last must be `}`.\n\n"
 
     "**OUTPUT ENVELOPE — NON-NEGOTIABLE**:\n"
     "Your response MUST be a JSON object with a top-level `shots` array, even if the video "
-    "only has one shot. Example: `{\"shots\": [{...}, {...}], \"continuity_notes\": \"...\"}`.\n"
+    "only has one shot. Example: `{\"shots\": [{...}, {...}], \"continuity_notes\": \"...\", "
+    "\"recurring_motifs\": [...]}`.\n"
     "DO NOT return a bare shot object like `{\"shot_index\": 0, \"shot_type\": ...}` — "
     "this is wrong. ALWAYS wrap your shot(s) in `{\"shots\": [...]}`.\n"
-    "DO NOT return a bare list like `[{...}, {...}]` — wrap it in `{\"shots\": [...]}`.\n"
+    "DO NOT return a bare list like `[{...}, {...}]` — wrap it in `{\"shots\": [...]}`.\n\n"
+
+    "**TOP-LEVEL `recurring_motifs` (RECOMMENDED — drives cross-shot consistency)**:\n"
+    "Alongside `shots`, declare a top-level `recurring_motifs` array listing brand elements "
+    "that MUST appear at the same screen position across every applicable shot. Examples:\n"
+    "```json\n"
+    "\"recurring_motifs\": [\n"
+    "  {\"description\": \"Vacademy V monogram (orange #FF7A1A on transparent)\",\n"
+    "   \"screen_position\": \"top-right, 64px from each edge, 48px tall\",\n"
+    "   \"when_visible\": \"every shot except media_hero\"},\n"
+    "  {\"description\": \"Bottom safe-area progress bar\",\n"
+    "   \"screen_position\": \"bottom-edge full-width, 6px tall, fills with brand_accent over runtime\",\n"
+    "   \"when_visible\": \"every shot\"}\n"
+    "]\n"
+    "```\n"
+    "Each item: `description`, `screen_position`, `when_visible` (`every shot`, `every shot except "
+    "media_hero`, `intro and close only`, etc.). The per-shot LLM is handed this list verbatim — "
+    "without it, every shot reinvents where the logo sits and the video loses its through-line.\n"
+    "Leave the field absent (or empty array) when the run truly has no recurring branded elements — "
+    "but for any reel or product video with uploaded brand assets, at least the logo motif is "
+    "load-bearing.\n\n"
+
+    # Pillar 2.3 — concrete few-shot examples for the high-stakes shot-type
+    # selection cases that the v2026-05 audit found Director getting wrong.
+    # The biggest miss was stat-on-cinema vs stat-as-text-slate (shot 3 of
+    # the Met Gala run picked the deterministic stat_block_with_context
+    # template — a black slate — when the user wanted the stat overlaid on
+    # craft footage). These three contrasted examples force the binding
+    # decision before it gets to the deterministic template engine.
+    "**SHOT-TYPE SELECTION — concrete examples (these are HARD precedents)**:\n\n"
+
+    "EXAMPLE A — stat callout on CINEMATIC footage (CORRECT for editorial / "
+    "documentary / culture videos):\n"
+    "  Narration: \"A record forty-two million dollars raised.\"\n"
+    "  ✅ shot_type: VIDEO_HERO\n"
+    "     video_query: \"luxury gala interior dramatic lighting slow motion\"\n"
+    "     text_overlay: large bold display number ($42 MILLION) anchored "
+    "bottom-third, cinematic background visible behind.\n"
+    "  ❌ DO NOT pick: TEMPLATE_STAT_BLOCK / stat_block_with_context (text-on-"
+    "black slate). Editorial / documentary / culture videos REJECT slate "
+    "treatments — the stat must live ON the imagery.\n\n"
+
+    "EXAMPLE B — stat callout as TEXT SLATE (CORRECT for fast-paced "
+    "educational / explainer when the slate IS the moment):\n"
+    "  Narration: \"There are exactly 100 senators in the United States.\"\n"
+    "  ✅ shot_type: KINETIC_TITLE or TEMPLATE_STAT_BLOCK\n"
+    "     Background: clean brand color, no media. Number animates in word-"
+    "by-word as a deliberate beat of stillness.\n"
+    "  ❌ DO NOT pick: VIDEO_HERO with a generic crowd shot — it dilutes the "
+    "instructional clarity the slate is designed to deliver.\n\n"
+
+    "EXAMPLE C — quote / name callout WITHOUT real-person imagery available:\n"
+    "  Narration: \"Beyoncé in a hand-crafted skeletal gown.\"\n"
+    "  If reference_assets contains a Beyoncé image URL → IMAGE_HERO with "
+    "`data-img-source=\"reference\"` + `data-reference-url=<url>`. \n"
+    "  If NOT in reference_assets → IMAGE_HERO with `data-img-source=\"web\"` "
+    "+ `data-img-query=\"Beyoncé 2026 Met Gala red carpet\"` (the per-shot "
+    "pipeline fetches via Serper).\n"
+    "  ❌ DO NOT pick: deterministic-template TEXT_DIAGRAM that just shows the "
+    "person's name in text — when imagery IS available, naming someone "
+    "without showing them is a missed beat.\n\n"
+
+    "**Heuristic**: when the script names a real person, brand, event, or "
+    "product, the shot's shot_type should always carry an image or video "
+    "slot. Slate treatments (TEMPLATE_*, KINETIC_TITLE with no imagery) are "
+    "reserved for: (a) pure typography hero moments where the WORDS are the "
+    "point ('FASHION IS ART'), (b) numeric callouts where the stat IS the "
+    "frame for an educational beat. Editorial / documentary / cultural-"
+    "commentary videos almost never want pure slates for named-entity shots.\n"
 )
 
 
@@ -635,7 +750,11 @@ MUSIC_PLAN_EXTENSION = (
     "  \"overall_mood\": \"<2-4 adjectives derived from your shot plan>\",\n"
     "  \"overall_genre\": \"<genre + key instruments, picked to match shots>\",\n"
     "  \"chunks\": [ { \"start_time\": 0.0, \"end_time\": <≤180>, \"timestamped_prompt\": \"...\" } ]\n"
-    "}\n"
+    "},\n"
+    "\"audio_mood\": \"<optional: one of 'default' | 'celebratory' | "
+    "'educational' | 'cinematic' — pick only if the content tone is "
+    "unambiguous; otherwise omit and a heuristic will infer it. Drives "
+    "per-cue SFX timbre selection (chimes, impacts, whooshes).>\"\n"
     "```\n\n"
     "**Three example chunks (different genres) — use them as style references, "
     "do not copy verbatim:**\n\n"
@@ -874,6 +993,145 @@ _DIRECTOR_FAMILY_BIAS: Dict[str, Dict[str, str]] = {
 }
 
 
+def build_ai_video_director_block(
+    *,
+    enabled: bool,
+    audio_enabled: bool = False,
+    cost_cap_usd: float = 1.50,
+) -> str:
+    """Build the AI_VIDEO_HERO teaching block appended to the Director system
+    prompt when the run has AI video enabled (Phase 3b).
+
+    Returns "" when `enabled=False`, keeping the Director prompt clean for
+    the vast majority of runs that don't use AI video. When enabled, this
+    block:
+      - introduces AI_VIDEO_HERO as a shot type
+      - states the cost ceiling so the Director uses it sparingly
+      - locks the allowed durations (4/6/8s) and the per-shot fields
+      - reminds the Director NOT to schedule two consecutive heroes
+      - covers the audio variant separately so the prompt doesn't bloat
+        on runs without audio
+
+    Single-segment (≤8s) only for Phase 3b; multi-segment chains via
+    `ai_video_segments` ship in Phase 4 — this block will get extended
+    then. The Director may already emit `ai_video_segments`; orchestrator
+    truncates to the first segment with a warning during Phase 3.
+    """
+    if not enabled:
+        return ""
+
+    lines: List[str] = [
+        "",
+        "## AI_VIDEO_HERO (fal.ai Veo 3.1 Lite — ENABLED FOR THIS RUN)",
+        "",
+        "You MAY emit shots with `shot_type: \"AI_VIDEO_HERO\"` when content fits.",
+        f"Each AI video shot costs $0.24-$0.40 — there is a hard "
+        f"${cost_cap_usd:.2f} ceiling per video. **Plus a HARD CAP of 4 "
+        f"AI_VIDEO_HERO shots per video** (the post-Director validator "
+        f"demotes any excess to VIDEO_HERO automatically — pick your 4 "
+        f"shots intentionally rather than padding the plan).",
+        "",
+        "**WHERE TO USE AI_VIDEO_HERO** (in order of priority):",
+        "  1. **The hook** (shot 0 or 1) — if the opening visual needs "
+        "something stock can't deliver. A cinematic establishing shot of "
+        "a specific scene/subject is worth the $0.30. A generic opener "
+        "is NOT — use VIDEO_HERO + KINETIC_TEXT for those.",
+        "  2. **The CTA / closer** (last shot) — same logic; the lasting "
+        "impression deserves the spend if it's visually load-bearing.",
+        "  3. **One mid-act emotional beat** — the single most cinematic "
+        "moment that's not the hook or CTA. Pick ONE, not three.",
+        "  Beyond these 3, demand a real reason. Everything else is "
+        "VIDEO_HERO / IMAGE_HERO / TEXT_DIAGRAM / KINETIC_TEXT.",
+        "",
+        "**Best fit for AI_VIDEO_HERO:**",
+        "- Cinematic moments where stock footage can't capture the intent "
+        "(branded characters, abstract concepts, hard-to-source actions)",
+        "- Hooks and CTAs that want a strong sensory beat",
+        "- Continuity shots where a specific scene/character persists across multiple beats",
+        "",
+        "**Worst fit (do NOT use AI_VIDEO_HERO):**",
+        "- Anything text or animation could convey better (use TEXT_DIAGRAM, KINETIC_TEXT)",
+        "- Anything requiring readable text in-frame (Veo handles text poorly)",
+        "- Routine explanation shots (use stock, AI image, or motion graphics)",
+        "- **Shots shorter than 4 seconds** — Veo's minimum clip is 4s, "
+        "so a 2-3s AI_VIDEO_HERO wastes 30-50% of the cost on invisible "
+        "frames. Pick VIDEO_HERO/IMAGE_HERO for short beats.",
+        "- B-roll that real stock footage covers well (Pexels has decent "
+        "coverage for: classrooms, libraries, students writing, professors "
+        "lecturing, cityscapes, ocean, nature, generic office work). Try "
+        "VIDEO_HERO first; only escalate to AI_VIDEO_HERO if the moment "
+        "is conceptually too specific for stock.",
+        "",
+        "**Per-shot fields you MUST set when picking AI_VIDEO_HERO:**",
+        "  `ai_video_prompt` (string, REQUIRED) — detailed visual description in "
+        "third-person present tense; describe action, subject, framing, lighting; "
+        "avoid in-frame text",
+        "  `ai_video_duration_s` (integer, REQUIRED) — one of 4, 6, or 8",
+        "  `video_query` (string, REQUIRED — was 'recommended', now hard) — "
+        "stock-video search terms to fall back to if Veo fails or the per-"
+        "video budget is exhausted. The pipeline demotes AI_VIDEO_HERO to "
+        "VIDEO_HERO using this query on any failure path; an empty "
+        "`video_query` yields a worse IMAGE_HERO fallback.",
+        "",
+        "**Shot duration check:** the shot's `end_time - start_time` MUST "
+        "be ≥ 4.0 seconds for AI_VIDEO_HERO. If the beat is shorter, pick "
+        "a different shot_type — the validator will demote sub-4s "
+        "AI_VIDEO_HERO shots regardless of what you set.",
+        "",
+        "**For shots longer than 8s:** Veo's hard ceiling per call is 8 seconds. "
+        "You have TWO ways to extend a shot beyond that, both supported:",
+        "  Option A (recommended for continuity) — emit `ai_video_segments` as a "
+        "JSON list of `{prompt, duration_s}` objects. Each segment chains to the "
+        "next via image-to-video conditioning on the prior segment's last frame, "
+        "so a character or scene persists across the cut. Use a slightly evolved "
+        "prompt for each segment (e.g. 'dragon banks left' then 'dragon climbs "
+        "over the ridge') for natural motion. Max 6 segments per shot.",
+        "  Option B (auto-split, simplest) — set `ai_video_duration_s` to the "
+        "total target (e.g. 16, 24). The pipeline auto-splits into 8s chunks "
+        "reusing the same `ai_video_prompt`. The visual continuity is preserved "
+        "by image-to-video chaining, but the prompt stays fixed so motion may "
+        "feel repetitive. Best for ambient / mood shots where exact action "
+        "isn't load-bearing.",
+        "",
+        "**Hero-pacing rule — ENFORCED by validator:** never schedule two "
+        "consecutive AI_VIDEO_HERO shots. If you put AI_VIDEO_HERO at index "
+        "N, index N+1 (in temporal order, skipping overlay shots) must be "
+        "a non-hero shot (TEXT_DIAGRAM, KINETIC_TEXT, PROCESS_STEPS, etc.). "
+        "The validator demotes any second-in-a-row AI_VIDEO_HERO to "
+        "VIDEO_HERO automatically. Same rule applies to IMAGE_HERO / "
+        "VIDEO_HERO / PRODUCT_HERO adjacency — heroes always need a "
+        "motion-graphic or text shot between them.",
+    ]
+    if audio_enabled:
+        lines.extend([
+            "",
+            "**AUDIO MODE IS ON for this run.** You MAY additionally set "
+            "`ai_video_audio: true` on an AI_VIDEO_HERO shot when the visual "
+            "moment carries audio better than narration (e.g. a crowd cheer, "
+            "thunder, a synthesized swell). When you set "
+            "`ai_video_audio: true`:",
+            "  - the shot's master narration is silenced during that window",
+            "  - the Veo clip's generated audio plays alone (Veo's "
+            "`generate_audio: true`)",
+            "  - cost rises from $0.03/s to $0.05/s — use sparingly",
+            "  - the per-shot narration field should be empty or a brief "
+            "non-spoken note (the audio gap is real)",
+            "",
+            "Default to `ai_video_audio: false` (or omit) unless the moment "
+            "specifically benefits from Veo audio. Most AI_VIDEO_HERO shots "
+            "should stay narrated by the master TTS.",
+        ])
+    else:
+        lines.extend([
+            "",
+            "Audio mode is OFF for this run — do NOT set `ai_video_audio: "
+            "true`. The Veo clip is muted; master narration plays normally "
+            "during the shot.",
+        ])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_visual_preferences_director_block(
     prefs: Optional[Dict[str, Any]],
     *,
@@ -1072,7 +1330,7 @@ IMPORTANT:
 def build_director_user_prompt(
     script_text: str,
     beat_outline: List[Dict[str, Any]],
-    words: List[Dict[str, Any]],
+    words: Optional[List[Dict[str, Any]]],
     subject_domain: str,
     style_guide: Dict[str, Any],
     width: int = 1920,
@@ -1093,6 +1351,22 @@ def build_director_user_prompt(
     named_entities: Optional[List[Dict[str, Any]]] = None,
     web_search_available: bool = False,
     visual_preferences: Optional[Dict[str, Any]] = None,
+    # Pillar 2.2 — raw "VISUAL APPROACH" prose from the user's prompt. When
+    # provided, the Director sees BOTH the structured `visual_preferences`
+    # flags AND the original prose intent. Met-Gala audit found the user's
+    # multi-paragraph visual direction ("No on-screen avatar. The visuals
+    # are cinematic and editorial throughout. Use real fashion imagery…")
+    # was compressed into `{stock_video: high, …}` flags that lost the
+    # nuance — Director then picked a deterministic stat_block_with_context
+    # template for shot 3 ($42 M), shipping a black slate. The structured
+    # dict stays for soft per-family bias; this block carries the prose
+    # rules the dict cannot encode.
+    visual_intent_text: Optional[str] = None,
+    # Pillar 3 — pre-fetched reference image URLs for named entities the
+    # ShotPlanner / Director should lay out as `data-img-source="reference"`.
+    # Each entry: {name, kind, image_url, source, title?}. Empty / None
+    # means no pre-fetch happened (fall back to lazy Serper fetch as before).
+    reference_assets: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Assemble the Director user prompt from pipeline data."""
     aspect_label = "9:16 portrait" if width < height else "16:9"
@@ -1121,25 +1395,34 @@ def build_director_user_prompt(
 
     # Richer word timings — give the Director a denser sample so it can place
     # sync points precisely. Cap at 200 entries which is ~2-3x the old limit
-    # but still well under the token budget.
-    word_lines = ["Time(s)  | Word", "---------|--------"]
-    selected = set()
-    for i, w in enumerate(words):
-        word_text = str(w.get("word", "")).strip()
-        if not word_text:
-            continue
-        include = (
-            i < 5 or                    # first 5
-            i % 3 == 0 or               # every 3rd (was every 5th)
-            len(word_text) > 4 or       # likely key terms
-            i == len(words) - 1         # last word
+    # but still well under the token budget. On v2 (Director runs BEFORE TTS)
+    # `words` is None / empty — surface that explicitly so the LLM plans
+    # from word-count estimates instead of pretending an empty table is real.
+    if words:
+        word_lines = ["Time(s)  | Word", "---------|--------"]
+        selected = set()
+        for i, w in enumerate(words):
+            word_text = str(w.get("word", "")).strip()
+            if not word_text:
+                continue
+            include = (
+                i < 5 or                    # first 5
+                i % 3 == 0 or               # every 3rd (was every 5th)
+                len(word_text) > 4 or       # likely key terms
+                i == len(words) - 1         # last word
+            )
+            if include and i not in selected:
+                selected.add(i)
+                word_lines.append(f"{float(w['start']):>7.2f}  | {word_text}")
+            if len(selected) >= 200:
+                break
+        word_timings = "\n".join(word_lines)
+    else:
+        word_timings = (
+            "(none — Director runs before TTS on this pipeline. Plan shot "
+            "boundaries from beat narration word-counts using ~150 wpm. "
+            "Actual durations are reconciled after per-shot TTS completes.)"
         )
-        if include and i not in selected:
-            selected.add(i)
-            word_lines.append(f"{float(w['start']):>7.2f}  | {word_text}")
-        if len(selected) >= 200:
-            break
-    word_timings = "\n".join(word_lines)
 
     background_type = style_guide.get("background_type", "black")
 
@@ -1356,6 +1639,63 @@ def build_director_user_prompt(
     _vp_block = build_visual_preferences_director_block(visual_preferences)
     if _vp_block:
         extras.append(_vp_block)
+
+    # ── Pillar 2.2 — Raw visual-intent prose from the user's prompt ──
+    # The structured `visual_preferences` dict captures bias flags but loses
+    # the prose nuance ("no AI humans", "evoke atmosphere not recreate",
+    # "documentary score no drums"). Pass the raw paragraphs verbatim so the
+    # Director's shot-type / template selection respects intent the flag dict
+    # cannot encode. Trimmed to 2000 chars to keep token budget sane on
+    # extremely long prompts.
+    if visual_intent_text:
+        _vi_text = (visual_intent_text or "").strip()
+        if len(_vi_text) > 2000:
+            _vi_text = _vi_text[:2000].rstrip() + " …"
+        extras.append(
+            "\n\n<VISUAL_INTENT>\n"
+            "The user's prompt explicitly described how this video should look\n"
+            "and feel. The structured visual_preferences flags above are a\n"
+            "summary; the prose below carries rules the flags cannot encode.\n"
+            "**These are HARD constraints on shot-type selection, media source\n"
+            "choice, and deterministic-template overrides — honour every rule.**\n"
+            f"```\n{_vi_text}\n```\n"
+            "</VISUAL_INTENT>\n"
+        )
+
+    # ── Pillar 3 — Pre-fetched reference image URLs ──
+    # When named entities in the prompt have been web-fetched up-front, the
+    # Director sees the URLs at planning time and can lay them out as
+    # `<img data-img-source=\"reference\" data-reference-url=\"…\">`. This
+    # eliminates the lazy-fetch failure mode where shots that should feature
+    # a real person/brand end up text-only or AI-generated. For ANY shot
+    # featuring one of the entities below, prefer `IMAGE_HERO` or
+    # `IMAGE_SPLIT` with `data-img-source=\"reference\"`.
+    if reference_assets:
+        _ra_lines = []
+        for ra in (reference_assets or [])[:12]:  # cap at 12 for token budget
+            if not isinstance(ra, dict):
+                continue
+            _name = (ra.get("name") or ra.get("entity_name") or "").strip()
+            _kind = (ra.get("kind") or "entity").strip()
+            _url = (ra.get("image_url") or ra.get("url") or "").strip()
+            _src = (ra.get("source") or "").strip()
+            if not _name or not _url:
+                continue
+            _ra_lines.append(f"- {_name} ({_kind}) [{_src or 'web'}] → {_url}")
+        if _ra_lines:
+            extras.append(
+                "\n\n<REFERENCE_ASSETS>\n"
+                "Pre-fetched image URLs for named entities in the user prompt.\n"
+                "**For each entity below, emit a shot with `shot_type=IMAGE_HERO`\n"
+                "(or `IMAGE_SPLIT` when paired with a caption) and reference the\n"
+                "URL directly via `data-img-source=\"reference\"` +\n"
+                "`data-reference-url=\"<url>\"`.** These URLs are the highest-\n"
+                "fidelity option — prefer them over Pexels/Recraft for any shot\n"
+                "featuring the named entity. Do NOT emit `data-img-source=\"web\"`\n"
+                "or `\"generate\"` for these entities — they already exist.\n\n"
+                + "\n".join(_ra_lines)
+                + "\n</REFERENCE_ASSETS>\n"
+            )
 
     return base + "".join(extras)
 

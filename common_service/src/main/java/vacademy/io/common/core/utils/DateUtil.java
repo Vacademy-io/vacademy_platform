@@ -1,12 +1,14 @@
 package vacademy.io.common.core.utils;
 
 import org.springframework.util.StringUtils;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Date;
 import java.util.Locale;
 
@@ -47,12 +49,13 @@ public class DateUtil {
 
     public static Date convertStringToUTCDate(String dateString) {
         if (!StringUtils.hasText(dateString)) return new Date();
-        // Convert the input dateTime to ZonedDateTime
-        ZonedDateTime zonedDateTime = ZonedDateTime.parse(dateString, DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        // Store the dateTime in UTC
-        ZonedDateTime utcDateTime = zonedDateTime.withZoneSameInstant(ZoneId.of("UTC"));
-        // Convert ZonedDateTime to Date
-        return Date.from(utcDateTime.toInstant());
+        try {
+            ZonedDateTime zonedDateTime = ZonedDateTime.parse(dateString, DateTimeFormatter.ISO_ZONED_DATE_TIME);
+            ZonedDateTime utcDateTime = zonedDateTime.withZoneSameInstant(ZoneId.of("UTC"));
+            return Date.from(utcDateTime.toInstant());
+        } catch (DateTimeParseException e) {
+            throw new VacademyException("Invalid date format: '" + dateString + "'. Expected ISO zoned datetime (e.g. 2026-05-15T07:30:00.000Z).");
+        }
     }
 
     public static Date getCurrentUtcTime() {

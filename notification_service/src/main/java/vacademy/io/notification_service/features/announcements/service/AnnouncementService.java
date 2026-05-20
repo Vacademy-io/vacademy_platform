@@ -169,6 +169,116 @@ public class AnnouncementService {
                 .map(this::mapToCalendarItem);
     }
 
+    /**
+     * Update an existing announcement before it has been delivered.
+     * Allowed only when status is DRAFT, PENDING_APPROVAL, or SCHEDULED with a future nextRunTime.
+     * Replaces recipients, modes, mediums, and reschedules.
+     */
+    @Transactional
+    public AnnouncementResponse updateAnnouncement(String announcementId, CreateAnnouncementRequest request) {
+        if (announcementId == null || announcementId.isBlank()) {
+            throw new ValidationException("Announcement ID is required");
+        }
+
+        Announcement announcement = announcementRepository.findById(announcementId)
+                .orElseThrow(() -> new AnnouncementNotFoundException(announcementId));
+
+        AnnouncementStatus status = announcement.getStatus();
+        if (status == AnnouncementStatus.ACTIVE
+                || status == AnnouncementStatus.INACTIVE
+                || status == AnnouncementStatus.EXPIRED
+                || status == AnnouncementStatus.REJECTED) {
+            throw new ValidationException("Announcement in status " + status + " cannot be edited");
+        }
+
+        // If already scheduled, ensure the next run is still in the future
+        if (status == AnnouncementStatus.SCHEDULED) {
+            scheduledMessageRepository.findByAnnouncementIdAndIsActive(announcementId, true)
+                    .ifPresent(sm -> {
+                        LocalDateTime nextRun = sm.getNextRunTime();
+                        if (nextRun != null && !nextRun.isAfter(LocalDateTime.now())) {
+                            throw new ValidationException(
+                                    "Send time has already passed; this announcement can no longer be edited");
+                        }
+                    });
+        }
+
+        try {
+            // 1. Replace rich text content in place (keeps FK on announcements.rich_text_id stable)
+            if (request.getContent() != null) {
+                RichTextData rich = richTextDataRepository.findById(announcement.getRichTextId())
+                        .orElseGet(RichTextData::new);
+                rich.setType(request.getContent().getType());
+                rich.setContent(request.getContent().getContent());
+                richTextDataRepository.save(rich);
+                if (announcement.getRichTextId() == null) {
+                    announcement.setRichTextId(rich.getId());
+                }
+            }
+
+            // 2. Update basic announcement fields
+            if (request.getTitle() != null) {
+                announcement.setTitle(request.getTitle());
+            }
+            if (request.getTimezone() != null) {
+                announcement.setTimezone(request.getTimezone());
+            } else if (request.getScheduling() != null && request.getScheduling().getTimezone() != null) {
+                announcement.setTimezone(request.getScheduling().getTimezone());
+            }
+            announcement.setUpdatedAt(LocalDateTime.now());
+            announcementRepository.save(announcement);
+
+            // 3. Replace recipients, modes, mediums
+            recipientRepository.deleteByAnnouncementId(announcementId);
+            saveRecipients(announcementId, request.getRecipients(), false);
+            if (request.getExclusions() != null && !request.getExclusions().isEmpty()) {
+                saveRecipients(announcementId, request.getExclusions(), true);
+            }
+
+            deleteModeEntities(announcementId);
+            saveModes(announcementId, request.getModes());
+
+            mediumRepository.deleteByAnnouncementId(announcementId);
+            saveMediums(announcementId, request.getMediums());
+
+            // 4. Reschedule: cancel existing quartz job + scheduled_message, then re-create
+            if (request.getScheduling() != null) {
+                schedulingService.rescheduleAnnouncement(announcementId, request.getScheduling());
+
+                // Re-align status with new schedule
+                if (request.getScheduling().getScheduleType() == ScheduleType.IMMEDIATE) {
+                    // IMMEDIATE means deliver now (unless still pending approval, which we leave alone)
+                    if (status != AnnouncementStatus.PENDING_APPROVAL) {
+                        processingService.processAnnouncementDelivery(announcementId);
+                    }
+                } else if (status == AnnouncementStatus.DRAFT) {
+                    announcement.setStatus(AnnouncementStatus.SCHEDULED);
+                    announcement.setUpdatedAt(LocalDateTime.now());
+                    announcementRepository.save(announcement);
+                }
+            }
+
+            log.info("Updated announcement: {}", announcementId);
+            return mapToAnnouncementResponse(announcement);
+
+        } catch (ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error updating announcement {}: {}", announcementId, e.getMessage(), e);
+            throw new AnnouncementException("Failed to update announcement: " + e.getMessage(), "UPDATE_ERROR", e);
+        }
+    }
+
+    private void deleteModeEntities(String announcementId) {
+        systemAlertRepository.deleteByAnnouncementId(announcementId);
+        dashboardPinRepository.deleteByAnnouncementId(announcementId);
+        dmRepository.deleteByAnnouncementId(announcementId);
+        streamRepository.deleteByAnnouncementId(announcementId);
+        resourceRepository.deleteByAnnouncementId(announcementId);
+        communityRepository.deleteByAnnouncementId(announcementId);
+        taskRepository.deleteByAnnouncementId(announcementId);
+    }
+
     @Transactional
     public AnnouncementResponse updateAnnouncementStatus(String announcementId, AnnouncementStatus status) {
         Announcement announcement = announcementRepository.findById(announcementId)
@@ -418,6 +528,16 @@ public class AnnouncementService {
             processingService.processAnnouncementDelivery(announcementId);
         } else {
             schedulingService.scheduleAnnouncement(announcementId, scheduling);
+            // Without this the row stays DRAFT after a successful schedule, so the calendar
+            // shows it as a draft even though Quartz will fire it. PENDING_APPROVAL must
+            // win over SCHEDULED — the approval step is what releases delivery.
+            announcementRepository.findById(announcementId).ifPresent(a -> {
+                if (a.getStatus() == AnnouncementStatus.DRAFT) {
+                    a.setStatus(AnnouncementStatus.SCHEDULED);
+                    a.setUpdatedAt(LocalDateTime.now());
+                    announcementRepository.save(a);
+                }
+            });
         }
     }
 
@@ -743,6 +863,7 @@ public class AnnouncementService {
                 stats.setEmailClickRate(emailsDelivered > 0 ? (double) emailsClicked / emailsDelivered * 100 : 0.0);
                 stats.setEmailBounceRate(emailsSent > 0 ? (double) emailsBounced / emailsSent * 100 : 0.0);
                 stats.setEmailRejectRate(emailsSent > 0 ? (double) emailsRejected / emailsSent * 100 : 0.0);
+                stats.setEmailComplaintRate(emailsSent > 0 ? (double) emailsComplained / emailsSent * 100 : 0.0);
             } else {
                 // No emails sent yet, set all to 0
                 stats.setEmailsSend(0L);
@@ -758,6 +879,7 @@ public class AnnouncementService {
                 stats.setEmailClickRate(0.0);
                 stats.setEmailBounceRate(0.0);
                 stats.setEmailRejectRate(0.0);
+                stats.setEmailComplaintRate(0.0);
             }
         } catch (Exception e) {
             log.error("Error computing SES email event stats for announcement {}: {}", announcementId, e.getMessage(), e);
@@ -776,8 +898,9 @@ public class AnnouncementService {
             stats.setEmailClickRate(0.0);
             stats.setEmailBounceRate(0.0);
             stats.setEmailRejectRate(0.0);
+            stats.setEmailComplaintRate(0.0);
         }
-        
+
         return stats;
     }
     
@@ -836,9 +959,17 @@ public class AnnouncementService {
         List<ModeType> modeTypes = getModeTypesForAnnouncement(a.getId());
         item.setModeTypes(modeTypes.stream().map(Enum::name).toList());
 
+        // Medium summary — what channels this is going out on (EMAIL / WHATSAPP / PUSH).
+        item.setMediumTypes(
+                mediumRepository.findByAnnouncementIdAndIsActive(a.getId(), true).stream()
+                        .map(m -> m.getMediumType().name())
+                        .toList()
+        );
+
         // Scheduling summary (use first active schedule if present)
         scheduledMessageRepository.findByAnnouncementIdAndIsActive(a.getId(), true).ifPresent(sm -> {
             item.setScheduleType(sm.getScheduleType());
+            item.setTimezone(sm.getTimezone());
             item.setStartDate(sm.getStartDate());
             item.setEndDate(sm.getEndDate());
             item.setNextRunTime(sm.getNextRunTime());

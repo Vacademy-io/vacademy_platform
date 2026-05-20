@@ -12,7 +12,7 @@ This service handles:
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional, List
+from typing import Optional, List, Dict
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -56,9 +56,11 @@ logger = logging.getLogger(__name__)
 INITIAL_CREDITS = Decimal("100")
 DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("10")
 
-# $1 = 100 credits with 50% markup over AI cost
-# actual USD cost × 150 = credits charged
-# e.g. $0.028 API cost → 4.2 credits → customer pays $0.042 equivalent
+# Legacy fallback constant. Live calculations route through
+# `CreditRateService.get_effective_ratio()` (DB-driven via V252's
+# `credit_rate_config` table). This value matches the seeded row
+# (usd_to_credits=100, margin_pct=50 → effective=150) and is the
+# same number the codebase shipped with before V252.
 USD_TO_CREDIT_RATIO = Decimal("150")
 
 # Default model tier multipliers (used as fallback)
@@ -92,6 +94,19 @@ DEFAULT_PRICING = {
     "evaluation": {"base_cost": Decimal("0.10"), "token_rate": Decimal("0.000015"), "min_charge": Decimal("0.10"), "unit": "tokens"},
     "embedding": {"base_cost": Decimal("0.01"), "token_rate": Decimal("0.000002"), "min_charge": Decimal("0.01"), "unit": "tokens"},
     "image": {"base_cost": Decimal("0.30"), "token_rate": Decimal("0"), "min_charge": Decimal("0.30"), "unit": "none"},
+    # Video pricing reads actual model USD via the real-cost path in
+    # calculate_credits (line 854-865) when the per-shot HTML LLM call lands
+    # in deduct_credits with prompt_tokens + completion_tokens > 0 — the
+    # token_rate / base_cost below are FALLBACK numbers only.
+    # Real per-video cost since the May 2026 audit shipped is dominated by:
+    #   • Per-shot HTML LLM calls (8-12 shots × ~30K input + ~10K output)
+    #   • Post-render regens (bbox-lint ~30%, second-beat ~15%, brand-asset
+    #     ~10% on intro/outro) — each adds one extra LLM call
+    #   • Vision review (8 calls × ~$0.014/shot at Gemini 2.5 Pro)
+    #   • Vision review now also pays for a prior-shot reference thumbnail
+    #     (~+$0.001/call) on every non-first shot
+    # Typical ultra video: ~290 credits; super_ultra: ~360 credits.
+    # See AI_CREDITS_PRICING.md for the customer-facing breakdown.
     "video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     # Reels-from-long-video /preview gate. One Haiku-class LLM call per
     # picked candidate (~2k tokens round-trip — 1.5k prompt + 0.5k completion).
@@ -108,6 +123,13 @@ DEFAULT_PRICING = {
     # both Kling ($0.0562/s × 150 ≈ 8.4) and Fabric ($0.08/s × 150 = 12) on the
     # conservative-low side; the real-cost path picks the actual rate.
     "avatar_video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("8"), "min_charge": Decimal("0.05"), "unit": "seconds"},
+    # AI video shots (fal.ai Veo, AI_VIDEO_HERO + inline <aivideo>).
+    # Pricing is non-uniform (audio on/off × duration) and lives in
+    # fal_veo_client._PRICE_PER_SECOND_USD; the orchestrator computes
+    # the exact USD cost per call and deducts via `precomputed_credits`,
+    # bypassing calculate_credits. This entry exists so usage analytics
+    # group "ai_video" deductions correctly (by_request_type breakdown).
+    "ai_video": {"base_cost": Decimal("0"), "token_rate": Decimal("0"), "min_charge": Decimal("0"), "unit": "none"},
 }
 
 
@@ -572,6 +594,125 @@ class CreditService:
     # Credit Check (Pre-flight)
     # ========================================================================
 
+    # Tier-aware pre-flight estimates for the video pipeline (recalibrated
+    # 2026-05-15 against live stage data). Original floors (300/380 for
+    # ultra/super_ultra) were calibrated against the worst-case Gemini 3.1 Pro
+    # pricing — but production ultra runs use Gemini 3 Flash, which deducts
+    # ~7-15 credits for a typical 60s video (observed: 7.22 cr on a 10-shot
+    # Labour Link run, 56s narration, 313K tokens). Those original floors
+    # would have blocked users with 50-200 credits who could complete an
+    # ultra run 5-10× over — paternalistic and wrong.
+    #
+    # The floor's job is to catch truly-bankrupt institutes and provide a
+    # ~30% headroom over typical cost, NOT to reserve the worst-case maximum.
+    # Mid-run depletion is handled by refund-on-failure (TokenUsageService.
+    # refund_video_credits), and per-stage deduction tracks reality via
+    # actual OpenRouter token counts. Institutes choosing the more expensive
+    # Pro model for HTML gen will spend more — they should have a sufficient
+    # balance, but we don't punish the Flash majority for that minority case.
+    #
+    # `partial_run_factor` scales the floor for resume/retry endpoints (where
+    # checkpoints mean only a fraction of the work remains).
+    _VIDEO_TIER_FLOOR_CREDITS: Dict[str, Decimal] = {
+        "free":        Decimal("5"),
+        "standard":    Decimal("10"),
+        "premium":     Decimal("20"),
+        "ultra":       Decimal("30"),
+        "super_ultra": Decimal("50"),
+    }
+
+    def check_video_tier_credits(
+        self,
+        institute_id: str,
+        quality_tier: str,
+        ai_video_enabled: bool = False,
+        partial_run_factor: float = 1.0,
+    ) -> CreditCheckResponse:
+        """Tier-aware pre-flight credit check for the video pipeline.
+
+        Returns a CreditCheckResponse with `estimated_cost` set to the per-tier
+        typical+headroom floor (NOT actual cost — actual cost lands in
+        credit_transactions stage-by-stage via TokenUsageService).
+
+        Caller raises HTTP 402 when `has_sufficient_credits` is False.
+
+        - `quality_tier`: one of free/standard/premium/ultra/super_ultra.
+          Unknown tier falls back to the "standard" floor (defensive).
+        - `ai_video_enabled`: when True, adds the worst-case Veo cap
+          (currently 225 credits at $1.50 cap × 150-credit ratio) so a user
+          with marginal balance can't enable Veo and then circuit-break
+          mid-run. Subsumes the previous standalone Veo-aware pre-flight.
+        - `partial_run_factor`: 1.0 for fresh generation; 0.5 for resume/retry
+          where most shots are already cached. Lets the same gate apply at
+          all three router entry points without over-rejecting partial runs.
+        """
+        balance = self.get_balance(institute_id)
+        if not balance:
+            balance = self.create_initial_credits(institute_id)
+        current = balance.current_balance
+
+        tier_key = (quality_tier or "standard").strip().lower()
+        floor = self._VIDEO_TIER_FLOOR_CREDITS.get(
+            tier_key, self._VIDEO_TIER_FLOOR_CREDITS["standard"]
+        )
+        # partial_run_factor scales by the fraction of work remaining.
+        try:
+            factor = Decimal(str(max(0.1, min(1.0, float(partial_run_factor)))))
+        except (TypeError, ValueError):
+            factor = Decimal("1.0")
+        estimated_cost = (floor * factor).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+
+        # AI video (Veo) adds worst-case cap on top, regardless of partial-run
+        # factor — even on resume, the Veo cap is the same hard ceiling.
+        veo_cap_credits = Decimal("0")
+        if ai_video_enabled:
+            try:
+                from .ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
+                ratio = self._effective_usd_to_credit_ratio()
+                veo_cap_credits = (
+                    Decimal(str(AI_VIDEO_PER_VIDEO_COST_CAP_USD)) * ratio
+                ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                estimated_cost = (estimated_cost + veo_cap_credits).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+            except Exception as exc:
+                # Defensive: if the Veo cap import fails, fall back to a
+                # hardcoded 225-credit guard so we still gate something.
+                logger.warning(f"check_video_tier_credits: Veo cap lookup failed ({exc}); using 225-credit fallback")
+                veo_cap_credits = Decimal("225")
+                estimated_cost = (estimated_cost + veo_cap_credits).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+
+        has_sufficient = current >= estimated_cost
+        balance_after = current - estimated_cost
+
+        if has_sufficient:
+            message = (
+                f"Sufficient credits for {tier_key} tier"
+                f"{' + AI video' if ai_video_enabled else ''}. "
+                f"Estimated floor: {estimated_cost} credits."
+            )
+        else:
+            short_by = estimated_cost - current
+            message = (
+                f"Insufficient credits for {tier_key} tier"
+                f"{' + AI video (worst-case Veo cap included)' if ai_video_enabled else ''}. "
+                f"Need at least {estimated_cost} credits (you have {current}, short by {short_by}). "
+                f"Real cost is tracked per-stage via TokenUsageService — this is the upfront floor "
+                f"to keep your run from circuit-breaking mid-render."
+            )
+
+        return CreditCheckResponse(
+            has_sufficient_credits=has_sufficient,
+            current_balance=current,
+            estimated_cost=estimated_cost,
+            balance_after=balance_after,
+            message=message,
+        )
+
     def check_credits(self, request: CreditCheckRequest) -> CreditCheckResponse:
         """Check if institute has sufficient credits for an operation."""
         # Get current balance
@@ -612,15 +753,22 @@ class CreditService:
 
     def deduct_credits(self, request: CreditDeductRequest) -> CreditDeductResponse:
         """Deduct credits after an AI operation."""
-        # Calculate actual credits
-        credits_to_deduct = self.calculate_credits(
-            request_type=request.request_type,
-            model=request.model,
-            prompt_tokens=request.prompt_tokens,
-            completion_tokens=request.completion_tokens,
-            character_count=request.character_count,
-            seconds=getattr(request, "seconds", 0) or 0,
-        )
+        # Calculate actual credits — bypassed when `precomputed_credits` is set
+        # (Veo path: pricing lives in fal_veo_client.py rather than ai_models).
+        precomputed = getattr(request, "precomputed_credits", None)
+        if precomputed is not None and precomputed > 0:
+            credits_to_deduct = Decimal(str(precomputed)).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_UP
+            )
+        else:
+            credits_to_deduct = self.calculate_credits(
+                request_type=request.request_type,
+                model=request.model,
+                prompt_tokens=request.prompt_tokens,
+                completion_tokens=request.completion_tokens,
+                character_count=request.character_count,
+                seconds=getattr(request, "seconds", 0) or 0,
+            )
         
         now = datetime.utcnow()
         transaction_id = str(uuid4())
@@ -674,13 +822,14 @@ class CreditService:
             except Exception:
                 pass
 
+        desc_override = getattr(request, "description", None)
         self.db.execute(insert_txn, {
             "id": transaction_id,
             "institute_id": request.institute_id,
             "type": TransactionType.USAGE_DEDUCTION.value,
             "amount": -credits_to_deduct,  # Negative for deductions
             "balance": new_balance,
-            "desc": f"{request.request_type} using {request.model}",
+            "desc": desc_override or f"{request.request_type} using {request.model}",
             "ref_id": ref_id,
             "req_type": request.request_type,
             "model": request.model,
@@ -793,6 +942,23 @@ class CreditService:
     # Credit Calculation
     # ========================================================================
 
+    def _effective_usd_to_credit_ratio(self) -> Decimal:
+        """Current USD→credits multiplier from `credit_rate_config` (DB-driven).
+
+        Defers to `CreditRateService`, which caches the active row for 60s.
+        Falls back to the legacy `USD_TO_CREDIT_RATIO` constant only if the
+        table is missing or empty (pre-V252 environments).
+        """
+        try:
+            from .credit_rate_service import CreditRateService
+            return CreditRateService(self.db).get_effective_ratio()
+        except Exception as exc:
+            logger.warning(
+                "Failed to resolve effective USD→credit ratio (%s); using legacy fallback",
+                exc,
+            )
+            return USD_TO_CREDIT_RATIO
+
     def calculate_credits(
         self,
         request_type: str,
@@ -806,7 +972,9 @@ class CreditService:
         Calculate credits for an AI operation.
 
         Primary formula (when model USD pricing available):
-            max(min_charge, base_cost + actual_usd_cost × USD_TO_CREDIT_RATIO)
+            max(min_charge, base_cost + actual_usd_cost × effective_ratio)
+        where `effective_ratio = usd_to_credits × (1 + margin_pct/100)` from
+        `credit_rate_config` (seed: 100 × 1.5 = 150).
 
         Fallback formula (unknown models / flat-rate types):
             max(min_charge, base_cost + units × token_rate × model_multiplier)
@@ -823,7 +991,8 @@ class CreditService:
                     (Decimal(str(prompt_tokens)) * input_price_per_1m / Decimal("1000000"))
                     + (Decimal(str(completion_tokens)) * output_price_per_1m / Decimal("1000000"))
                 )
-                calculated = pricing["base_cost"] + (actual_usd * USD_TO_CREDIT_RATIO)
+                ratio = self._effective_usd_to_credit_ratio()
+                calculated = pricing["base_cost"] + (actual_usd * ratio)
                 result = max(pricing["min_charge"], calculated)
                 return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
@@ -832,7 +1001,8 @@ class CreditService:
             per_sec = self._get_model_video_per_second(model)
             if per_sec is not None:
                 actual_usd = Decimal(str(seconds)) * per_sec
-                calculated = pricing["base_cost"] + (actual_usd * USD_TO_CREDIT_RATIO)
+                ratio = self._effective_usd_to_credit_ratio()
+                calculated = pricing["base_cost"] + (actual_usd * ratio)
                 result = max(pricing["min_charge"], calculated)
                 return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 

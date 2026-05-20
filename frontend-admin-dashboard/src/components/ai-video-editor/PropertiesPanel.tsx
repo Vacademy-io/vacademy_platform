@@ -20,8 +20,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useVideoEditorStore, DEFAULT_TRANSFORM } from './stores/video-editor-store';
-import { regenerateFrame } from '@/routes/video-api-studio/-services/video-generation';
+import {
+    regenerateFrame,
+    type RegenerateFrameResponse,
+} from '@/routes/video-api-studio/-services/video-generation';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { fetchAllAIModels } from '@/services/aiModelsService';
 import {
     extractTextElements,
     applyTextPatch,
@@ -48,8 +53,18 @@ import {
     findOverlayPath,
 } from './utils/html-overlay-editor';
 import { pathsEqual } from './utils/html-tree';
-import { TRANSITION_OPTIONS, Transition, TransitionType } from './utils/transitions';
+import {
+    TRANSITION_OPTIONS,
+    Transition,
+    TransitionType,
+    EASING_PRESETS,
+    easingPresetFor,
+} from './utils/transitions';
 import { LayersTab } from './LayersTab';
+import { ShotCaptionOverride } from './ShotCaptionOverride';
+import { FIT_LABELS } from './controls';
+import { AdvancedSection } from './AdvancedSection';
+import { friendlyEntryName } from './registry/friendly-labels';
 import { downloadShotHtml } from './utils/download-shot';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
@@ -163,6 +178,10 @@ function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
 
     return (
         <div className="space-y-3 p-3">
+            {/* Background — color picker is the primary control. The raw CSS
+                text input (which accepts gradients / image URLs) is tucked
+                into the Advanced disclosure inside this card so layman users
+                aren't staring at `linear-gradient(...)` placeholders. */}
             <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-medium text-gray-600">Background</span>
@@ -183,17 +202,25 @@ function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
                         className="h-7 w-9 cursor-pointer rounded border border-gray-300 bg-white p-0"
                         aria-label="Background color"
                     />
+                    <span
+                        className="h-7 flex-1 truncate rounded border border-gray-200 bg-white px-2 py-1 font-mono text-[11px] text-gray-600"
+                        title={background || 'No background — transparent'}
+                    >
+                        {background || <span className="text-gray-300">No background</span>}
+                    </span>
+                </div>
+                <AdvancedSection label="Custom background CSS">
                     <input
                         type="text"
                         value={background}
-                        placeholder="#ffffff or linear-gradient(...)"
+                        placeholder="#ffffff or linear-gradient(...) or url(...)"
                         onChange={(e) => updateEntryBackground(entryId, e.target.value)}
-                        className="h-7 flex-1 rounded border border-gray-300 px-2 font-mono text-[11px] focus:border-indigo-400 focus:outline-none"
+                        className="h-7 w-full rounded border border-gray-300 px-2 font-mono text-[11px] focus:border-indigo-400 focus:outline-none"
                     />
-                </div>
-                <div className="text-[10px] text-gray-400">
-                    Solid color, CSS gradient, or image URL — applied behind this shot.
-                </div>
+                    <p className="text-[10px] text-gray-400">
+                        Solid color, CSS gradient, or image URL — applied behind this shot.
+                    </p>
+                </AdvancedSection>
             </div>
             <SliderField
                 label="X Offset"
@@ -287,6 +314,49 @@ function MotionTab({ entryId, inTime, exitTime }: MotionTabProps) {
         updateEntryTransition(entryId, which, { ...existing, duration });
     };
 
+    /** Apply an easing CSS value to whichever transitions are set. Users who
+     *  want different easings for in vs out can use the Advanced section
+     *  below (per-side raw cubic-bezier input). */
+    const setEasingForBoth = (css: string) => {
+        if (transitions?.in) {
+            updateEntryTransition(entryId, 'in', { ...transitions.in, easing: css });
+        }
+        if (transitions?.out) {
+            updateEntryTransition(entryId, 'out', { ...transitions.out, easing: css });
+        }
+    };
+    const setEasingForSide = (which: 'in' | 'out', css: string) => {
+        const existing = transitions?.[which];
+        if (!existing) return;
+        updateEntryTransition(entryId, which, {
+            ...existing,
+            easing: css.trim() || undefined,
+        });
+    };
+
+    // Both transitions sharing the same easing → highlight it on the
+    // segmented picker. Different easings → no preset active; user can
+    // either re-pick a preset (sets both) or use Advanced per-side.
+    //
+    // Subtle: `easing` is optional in the schema. An undefined easing is
+    // visually `ease` (the CSS default), which is our "Smooth" preset. So
+    // we treat `undefined` as `'ease'` when comparing for divergence and
+    // when looking up the matching preset. Without this normalization a
+    // pair of transitions that both omit `easing` would compare equal but
+    // a pair of (undefined, 'linear') would diverge — and (more importantly)
+    // a genuinely-divergent pair would fall through to easingPresetFor(undef)
+    // which returns Smooth, lying about state.
+    const hasAnyTransition = !!(transitions?.in || transitions?.out);
+    const inEffective = transitions?.in ? transitions.in.easing ?? 'ease' : null;
+    const outEffective = transitions?.out ? transitions.out.easing ?? 'ease' : null;
+    const effectiveEasing: string | null =
+        inEffective !== null && outEffective !== null
+            ? inEffective === outEffective
+                ? inEffective
+                : null
+            : inEffective ?? outEffective;
+    const activePreset = effectiveEasing != null ? easingPresetFor(effectiveEasing) : null;
+
     const renderTransitionRow = (which: 'in' | 'out', label: string) => {
         const current: Transition | undefined = transitions?.[which];
         return (
@@ -337,6 +407,72 @@ function MotionTab({ entryId, inTime, exitTime }: MotionTabProps) {
                 <div className="text-[10px] text-gray-400">
                     Plays at the shot&apos;s start / end. Duration in seconds.
                 </div>
+
+                {/* Easing picker — friendly preset row applied to both
+                    transitions. Disabled until at least one transition is
+                    set. Per-side custom CSS easing lives in Advanced below. */}
+                <div className="space-y-1 pt-1">
+                    <label className="text-[10px] font-medium text-gray-500">Easing</label>
+                    <div className="flex flex-wrap gap-1">
+                        {EASING_PRESETS.map((p) => {
+                            const isActive = activePreset?.id === p.id;
+                            return (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    disabled={!hasAnyTransition}
+                                    onClick={() => setEasingForBoth(p.css)}
+                                    title={p.description}
+                                    className={[
+                                        'h-6 rounded px-2 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                                        isActive
+                                            ? 'bg-indigo-100 text-indigo-700'
+                                            : 'bg-white text-gray-600 hover:text-gray-900',
+                                    ].join(' ')}
+                                >
+                                    {p.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {hasAnyTransition && activePreset && (
+                        <p className="text-[10px] text-gray-400">{activePreset.description}</p>
+                    )}
+                    {hasAnyTransition && !activePreset && (
+                        <p className="text-[10px] text-amber-700">
+                            Custom easing — see Advanced below.
+                        </p>
+                    )}
+                </div>
+
+                <AdvancedSection label="Custom easing per side">
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-gray-500">In</label>
+                        <input
+                            type="text"
+                            value={transitions?.in?.easing ?? ''}
+                            disabled={!transitions?.in}
+                            placeholder="ease-in-out or cubic-bezier(0.5,0,0.5,1)"
+                            onChange={(e) => setEasingForSide('in', e.currentTarget.value)}
+                            className="h-7 w-full rounded border border-gray-300 px-2 font-mono text-[11px] disabled:bg-gray-50 disabled:text-gray-300"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-medium text-gray-500">Out</label>
+                        <input
+                            type="text"
+                            value={transitions?.out?.easing ?? ''}
+                            disabled={!transitions?.out}
+                            placeholder="ease-in-out or cubic-bezier(0.5,0,0.5,1)"
+                            onChange={(e) => setEasingForSide('out', e.currentTarget.value)}
+                            className="h-7 w-full rounded border border-gray-300 px-2 font-mono text-[11px] disabled:bg-gray-50 disabled:text-gray-300"
+                        />
+                    </div>
+                    <p className="text-[10px] text-gray-400">
+                        Any CSS timing function. Different in/out values bypass the preset picker
+                        above.
+                    </p>
+                </AdvancedSection>
             </div>
 
             {/* Animation speed — only meaningful for time_driven */}
@@ -851,6 +987,7 @@ interface HtmlTabProps {
 
 function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
     const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
+    const viewMode = useVideoEditorStore((s) => s.viewMode);
     const [localHtml, setLocalHtml] = useState(entryHtml);
     const [isDirty, setIsDirty] = useState(false);
 
@@ -885,6 +1022,18 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
 
     return (
         <div className="flex h-full flex-col">
+            {/* Simple-mode warning — editing raw HTML can break the
+                layout. Power users can switch to developer mode (or just
+                ignore this banner) to skip the warning. */}
+            {viewMode === 'simple' && (
+                <div className="flex items-center gap-1.5 border-b border-amber-200 bg-amber-50 px-3 py-1.5">
+                    <AlertTriangle className="size-3 shrink-0 text-amber-500" />
+                    <span className="text-[10px] text-amber-700">
+                        Editing raw code can break the layout. Most edits are easier in the other
+                        tabs.
+                    </span>
+                </div>
+            )}
             {isLarge && (
                 <div className="flex items-center gap-1.5 border-b border-amber-200 bg-amber-50 px-3 py-1.5">
                     <AlertTriangle className="size-3 shrink-0 text-amber-500" />
@@ -1046,30 +1195,36 @@ function OverlayEditor({
             )}
 
             {overlay.kind !== 'text' && (
-                <div className="flex items-center gap-1.5">
-                    <button
-                        onClick={onReplaceSrc}
-                        className="flex h-6 flex-1 items-center justify-center gap-1 rounded border border-gray-200 bg-white text-[11px] text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
-                    >
-                        <Upload className="size-3" />
-                        Replace
-                    </button>
-                    <div className="flex gap-0.5">
-                        {(['contain', 'cover', 'fill'] as const).map((f) => (
-                            <button
-                                key={f}
-                                onClick={() => onPatch({ objectFit: f } as Partial<Overlay>)}
-                                className={[
-                                    'h-6 rounded px-1.5 text-[10px]',
-                                    overlay.objectFit === f
-                                        ? 'bg-indigo-100 text-indigo-700'
-                                        : 'bg-white text-gray-500 hover:text-gray-800',
-                                ].join(' ')}
-                            >
-                                {f[0]}
-                            </button>
-                        ))}
+                <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={onReplaceSrc}
+                            className="flex h-6 flex-1 items-center justify-center gap-1 rounded border border-gray-200 bg-white text-[11px] text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+                        >
+                            <Upload className="size-3" />
+                            Replace
+                        </button>
+                        <div className="flex gap-0.5">
+                            {(['contain', 'cover', 'fill'] as const).map((f) => (
+                                <button
+                                    key={f}
+                                    onClick={() => onPatch({ objectFit: f } as Partial<Overlay>)}
+                                    title={FIT_LABELS[f].description}
+                                    className={[
+                                        'h-6 rounded px-2 text-[10px]',
+                                        overlay.objectFit === f
+                                            ? 'bg-indigo-100 text-indigo-700'
+                                            : 'bg-white text-gray-500 hover:text-gray-800',
+                                    ].join(' ')}
+                                >
+                                    {FIT_LABELS[f].label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
+                    <p className="text-[10px] text-gray-400">
+                        {FIT_LABELS[overlay.objectFit as 'contain' | 'cover' | 'fill'].description}
+                    </p>
                 </div>
             )}
 
@@ -1316,19 +1471,31 @@ interface PropertiesPanelProps {
  * Works as a right column (landscape) or bottom drawer (portrait).
  */
 export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
-    const { entries, meta, selectedEntryId, deleteEntry, updateEntryHtml, videoId, apiKey, seek } =
-        useVideoEditorStore(
-            useShallow((s) => ({
-                entries: s.entries,
-                meta: s.meta,
-                selectedEntryId: s.selectedEntryId,
-                deleteEntry: s.deleteEntry,
-                updateEntryHtml: s.updateEntryHtml,
-                videoId: s.videoId,
-                apiKey: s.apiKey,
-                seek: s.seek,
-            }))
-        );
+    const {
+        entries,
+        meta,
+        selectedEntryId,
+        deleteEntry,
+        updateEntryHtml,
+        videoId,
+        apiKey,
+        seek,
+        viewMode,
+        displayNames,
+    } = useVideoEditorStore(
+        useShallow((s) => ({
+            entries: s.entries,
+            meta: s.meta,
+            selectedEntryId: s.selectedEntryId,
+            deleteEntry: s.deleteEntry,
+            updateEntryHtml: s.updateEntryHtml,
+            videoId: s.videoId,
+            apiKey: s.apiKey,
+            seek: s.seek,
+            viewMode: s.viewMode,
+            displayNames: s.displayNames,
+        }))
+    );
     const [tab, setTab] = useState<Tab>('layers');
 
     // ── Remake state ───────────────────────────────────────────────────────
@@ -1336,6 +1503,25 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     const [remakePrompt, setRemakePrompt] = useState('');
     const [remakeState, setRemakeState] = useState<'idle' | 'loading' | 'preview'>('idle');
     const [remakeNewHtml, setRemakeNewHtml] = useState<string | null>(null);
+    // The model the BE actually ran (echoed back as `resolved_model`). On
+    // accept we stamp this onto the entry's `html_model` so the NEXT regen
+    // resolves to the same model. `null` for the dom_patch path — no LLM
+    // was used, so we leave the existing html_model alone.
+    const [remakeResolvedModel, setRemakeResolvedModel] = useState<string | null>(null);
+    // Advanced controls: model override. Default `null` = "Same as original"
+    // (BE resolves via persisted html_model → registry default → fallback).
+    const [remakeAdvancedOpen, setRemakeAdvancedOpen] = useState(false);
+    const [remakeModelOverride, setRemakeModelOverride] = useState<string | null>(null);
+
+    // Models eligible for regen — populated lazily when Advanced is opened.
+    // `staleTime: 5min` because the registry rarely changes during an editor session.
+    const { data: regenModels } = useQuery({
+        queryKey: ['ai-models', 'video_regenerate'],
+        queryFn: () =>
+            fetchAllAIModels({ use_case: 'video_regenerate', category: 'general' }),
+        enabled: remakeAdvancedOpen,
+        staleTime: 5 * 60 * 1000,
+    });
 
     // Reset remake panel whenever a different entry is selected
     useEffect(() => {
@@ -1343,6 +1529,9 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
         setRemakeState('idle');
         setRemakeNewHtml(null);
         setRemakePrompt('');
+        setRemakeAdvancedOpen(false);
+        setRemakeModelOverride(null);
+        setRemakeResolvedModel(null);
     }, [selectedEntryId]);
 
     const entry = selectedEntryId ? entries.find((e) => e.id === selectedEntryId) : null;
@@ -1390,15 +1579,23 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     const remakeTimestamp =
         meta.navigation === 'time_driven' ? inTime ?? 0 : entries.indexOf(entry);
 
-    // Pre-fill prompt from entry_meta if available
+    // Sentence narration is shown as STATIC context above the textarea so the
+    // user can see what scene they're editing. It used to be pre-filled into
+    // the textarea, which meant the user's edit instruction got concatenated
+    // with the narration sentence in `user_prompt` — the BE then couldn't
+    // tell which part was the instruction. Concrete failure: user_prompt
+    // `"Thousands of aspirants...\n\nUpdate the image"` confused the LLM
+    // into a near-copy of the original HTML. Now: sentence is read-only
+    // context, textarea is exclusively for the instruction.
     const entryMeta = (entry as unknown as Record<string, unknown>).entry_meta as
         | Record<string, unknown>
         | undefined;
-    const defaultPrompt = (entryMeta?.audio_text as string) ?? (entryMeta?.text as string) ?? '';
+    const sentenceContext = (
+        (entryMeta?.audio_text as string) ?? (entryMeta?.text as string) ?? ''
+    ).trim();
 
     const handleRemakeOpen = () => {
         if (!remakeOpen) {
-            setRemakePrompt(remakePrompt || defaultPrompt);
             setRemakeState('idle');
             setRemakeNewHtml(null);
         }
@@ -1409,9 +1606,47 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
         if (!remakePrompt.trim() || !videoId || !apiKey) return;
         setRemakeState('loading');
         try {
-            const result = await regenerateFrame(videoId, apiKey, remakeTimestamp, remakePrompt);
+            const result: RegenerateFrameResponse = await regenerateFrame(
+                videoId,
+                apiKey,
+                remakeTimestamp,
+                remakePrompt,
+                remakeModelOverride ? { model: remakeModelOverride } : undefined
+            );
             setRemakeNewHtml(result.new_html);
+            // Capture which model the BE actually ran. `null` for dom_patch
+            // (no LLM) — accept handler skips html_model update in that case.
+            setRemakeResolvedModel(result.resolved_model ?? null);
             setRemakeState('preview');
+
+            // Surface what the BE actually did. dom_patch is the fast path
+            // ($0 LLM, instant); full_remake is the canonical LLM rewrite.
+            // full_remake_fallback means the classifier wanted a patch but
+            // the deterministic patcher couldn't apply it (e.g. text op on
+            // an animation-span heavy element) — useful debug signal.
+            if (result.regen_path === 'dom_patch') {
+                const ops = result.applied_ops ?? [];
+                const opSummary = ops
+                    .map((o) =>
+                        o.target === 'image' || o.target === 'media_query'
+                            ? `Updated ${o.selector}`
+                            : o.target === 'color'
+                              ? `Changed ${o.selector} → ${o.after}`
+                              : `Edited ${o.selector}`
+                    )
+                    .join(' · ');
+                toast.success(opSummary || 'Targeted edit applied', {
+                    description: 'Direct DOM patch — no LLM call.',
+                });
+            } else if (result.regen_path === 'full_remake_fallback') {
+                toast.message('Rewrote whole shot', {
+                    description: 'Targeted patch wasn\'t applicable; used full remake.',
+                });
+            } else if (result.resolved_model) {
+                toast.message('Rewrote whole shot', {
+                    description: `Used ${result.resolved_model}`,
+                });
+            }
         } catch (err) {
             setRemakeState('idle');
             toast.error(err instanceof Error ? err.message : 'Regeneration failed');
@@ -1420,16 +1655,26 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
 
     const handleRemakeAccept = () => {
         if (remakeNewHtml) {
-            updateEntryHtml(entryId, remakeNewHtml);
+            // Pass the resolved_model so the next regen on this entry uses
+            // the same model. `undefined` (leave as-is) on the dom_patch
+            // path — that path didn't use an LLM, so html_model shouldn't
+            // change. `resolved_model` on full_remake / full_remake_fallback.
+            updateEntryHtml(
+                entryId,
+                remakeNewHtml,
+                remakeResolvedModel ?? undefined
+            );
         }
         setRemakeOpen(false);
         setRemakeState('idle');
         setRemakeNewHtml(null);
+        setRemakeResolvedModel(null);
     };
 
     const handleRemakeDiscard = () => {
         setRemakeState('idle');
         setRemakeNewHtml(null);
+        setRemakeResolvedModel(null);
     };
 
     return (
@@ -1437,8 +1682,19 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             {/* Header */}
             <div className="shrink-0 border-b border-gray-200 px-3 py-1.5">
                 <div className="flex items-center gap-2">
-                    <p className="flex-1 truncate font-mono text-xs font-semibold text-gray-800">
-                        {entry.id}
+                    {/* Header label: friendly entry name in both modes. The
+                        underlying `entry.id` only appears (in dim mono) when
+                        developer mode is on. */}
+                    <p
+                        className="flex-1 truncate text-xs font-semibold text-gray-800"
+                        title={entry.id}
+                    >
+                        {friendlyEntryName(entry, entryIndex, entries, displayNames)}
+                        {viewMode === 'developer' && (
+                            <span className="ml-1 font-mono text-[10px] text-gray-400">
+                                {entry.id}
+                            </span>
+                        )}
                     </p>
                     <OutsidePlayheadBadge
                         navigation={meta.navigation}
@@ -1448,13 +1704,15 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         onJump={handleJumpToEntry}
                     />
                     <span className="text-[10px] text-gray-400">
-                        z:{entry.z ?? 0}
+                        {/* z-index only surfaced in developer mode — it's
+                            noise for a layman user. */}
+                        {viewMode === 'developer' && <span>z:{entry.z ?? 0} </span>}
                         {meta.navigation === 'time_driven' ? (
-                            <span className="ml-1">
+                            <span>
                                 {formatTime(inTime)} → {formatTime(outTime)}
                             </span>
                         ) : (
-                            <span className="ml-1">#{entries.indexOf(entry) + 1}</span>
+                            <span>#{entries.indexOf(entry) + 1}</span>
                         )}
                     </span>
                     {/* Remake button — only shown when apiKey is available.
@@ -1502,6 +1760,17 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                 {/* Remake panel */}
                 {remakeOpen && (
                     <div className="mt-2 space-y-2">
+                        {/* Read-only scene context — sentence narration for
+                            this shot. Visible so the user knows what scene
+                            they're editing, NOT pre-filled into the textarea
+                            (that mixes narration with instruction in
+                            user_prompt and confuses the LLM). */}
+                        {sentenceContext && (
+                            <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] leading-snug text-gray-500">
+                                <span className="font-medium text-gray-400">Scene: </span>
+                                &ldquo;{sentenceContext}&rdquo;
+                            </div>
+                        )}
                         <textarea
                             rows={3}
                             value={remakePrompt}
@@ -1510,6 +1779,55 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                             className="w-full resize-none rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-800 placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none"
                             disabled={remakeState === 'loading'}
                         />
+
+                        {/* Advanced — model override. Hidden by default so the
+                            common user never sees it; opens on click. The BE
+                            default ("same model that authored this shot") is
+                            almost always what you want, so the override is
+                            an explicit opt-in. */}
+                        <details
+                            open={remakeAdvancedOpen}
+                            onToggle={(e) =>
+                                setRemakeAdvancedOpen(
+                                    (e.target as HTMLDetailsElement).open
+                                )
+                            }
+                            className="group rounded border border-gray-200 bg-gray-50/70"
+                        >
+                            <summary className="cursor-pointer select-none px-2 py-1 text-[10px] font-medium text-gray-500 hover:text-gray-700">
+                                Advanced
+                            </summary>
+                            <div className="px-2 pb-1.5 pt-0.5">
+                                <label className="mb-0.5 block text-[10px] text-gray-500">
+                                    Model
+                                </label>
+                                <select
+                                    value={remakeModelOverride ?? ''}
+                                    onChange={(e) =>
+                                        setRemakeModelOverride(e.target.value || null)
+                                    }
+                                    disabled={remakeState === 'loading'}
+                                    className="w-full rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:border-indigo-400 focus:outline-none"
+                                >
+                                    <option value="">
+                                        Same as original (recommended)
+                                    </option>
+                                    {regenModels?.models.map((m) => (
+                                        <option key={m.model_id} value={m.model_id}>
+                                            {m.name}
+                                            {m.tier && m.tier !== 'standard'
+                                                ? ` · ${m.tier}`
+                                                : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {!regenModels && remakeAdvancedOpen && (
+                                    <p className="mt-0.5 text-[10px] text-gray-400">
+                                        Loading models…
+                                    </p>
+                                )}
+                            </div>
+                        </details>
 
                         {remakeState === 'preview' ? (
                             <div className="space-y-1.5">
@@ -1567,21 +1885,25 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             >
                 {(
                     [
-                        { id: 'layers', icon: <Layers className="size-3" />, label: 'Layers' },
+                        { id: 'layers', icon: <Layers className="size-3" />, label: 'Elements' },
                         {
                             id: 'transform',
                             icon: <Sliders className="size-3" />,
-                            label: 'Transform',
+                            label: 'Position & Size',
                         },
-                        { id: 'motion', icon: <Zap className="size-3" />, label: 'Motion' },
+                        { id: 'motion', icon: <Zap className="size-3" />, label: 'Transitions' },
                         { id: 'text', icon: <Type className="size-3" />, label: 'Text' },
-                        { id: 'media', icon: <Image className="size-3" />, label: 'Media' },
+                        {
+                            id: 'media',
+                            icon: <Image className="size-3" />,
+                            label: 'Images & Video',
+                        },
                         {
                             id: 'overlays',
                             icon: <Shapes className="size-3" />,
                             label: 'Overlays',
                         },
-                        { id: 'code', icon: <Code2 className="size-3" />, label: 'HTML' },
+                        { id: 'code', icon: <Code2 className="size-3" />, label: 'Code' },
                     ] as const
                 ).map(({ id, icon, label }) => (
                     <button
@@ -1629,7 +1951,12 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         canvasH={canvasH}
                     />
                 )}
-                {tab === 'layers' && <LayersTab entryId={entryId} entryHtml={entry.html} />}
+                {tab === 'layers' && (
+                    <>
+                        <ShotCaptionOverride entryId={entryId} />
+                        <LayersTab entryId={entryId} entryHtml={entry.html} />
+                    </>
+                )}
                 {tab === 'code' && <HtmlTab entryId={entryId} entryHtml={entry.html} />}
             </div>
 

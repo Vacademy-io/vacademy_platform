@@ -206,7 +206,7 @@ export const CopyContentDialog = ({
     };
 
     const referenceLockedReason = targetBatchHasContent
-        ? 'This batch already has content. Sharing content by reference would mix shared and existing rows. Use "Import by value" instead.'
+        ? 'This batch already has its own content. Linking it to another batch would mix linked and existing lessons. Choose "Make a separate copy" instead.'
         : undefined;
     const referenceDisabled = !!targetBatchHasContent;
 
@@ -222,7 +222,7 @@ export const CopyContentDialog = ({
                 {/* Mode toggle */}
                 <div className="rounded-md border border-neutral-200 p-3">
                     <div className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
-                        How should the content be imported?
+                        How would you like to bring the content in?
                     </div>
                     <div className="flex flex-col gap-2">
                         <label
@@ -243,11 +243,12 @@ export const CopyContentDialog = ({
                             />
                             <div className="flex flex-col">
                                 <span className="text-sm font-medium">
-                                    Import by value (independent copy)
+                                    Make a separate copy
                                 </span>
                                 <span className="text-xs text-neutral-500">
-                                    Subjects, modules, chapters and slides are duplicated with
-                                    fresh ids. Edits in either course stay isolated.
+                                    Subjects, modules, chapters and slides are duplicated for
+                                    this course. Editing them here will not affect the original
+                                    course.
                                 </span>
                             </div>
                         </label>
@@ -274,16 +275,16 @@ export const CopyContentDialog = ({
                             />
                             <div className="flex flex-col">
                                 <span className="text-sm font-medium">
-                                    Import by reference (shared content)
+                                    Keep linked to the original
                                 </span>
                                 <span className="text-xs text-neutral-500">
-                                    Both courses point at the same content rows. Same lessons
-                                    behind a different course title, description and banner —
-                                    but edits in either course are visible in both.
+                                    Both courses use the same lessons behind a different course
+                                    title, description and banner. Any edit in either course is
+                                    reflected in both.
                                 </span>
                                 {referenceDisabled && (
                                     <span className="mt-1 text-xs font-medium text-amber-700">
-                                        Disabled — {referenceLockedReason}
+                                        Unavailable — {referenceLockedReason}
                                     </span>
                                 )}
                             </div>
@@ -315,17 +316,17 @@ export const CopyContentDialog = ({
                         {mode === 'VALUE' ? (
                             <>
                                 After your course is created, the chosen batch&apos;s subjects,
-                                modules, chapters and slides will be deep-cloned into every
-                                batch of this new course. New copies are independent — editing
-                                one will not affect the other.
+                                modules, chapters and slides will be duplicated into every
+                                batch of this new course. The copies are independent — editing
+                                content here will not affect the original course.
                             </>
                         ) : (
                             <>
-                                The new course&apos;s batches will <strong>share</strong> the
-                                source batch&apos;s subjects, modules, chapters and slides.
-                                Editing the content in either course will reflect in the
-                                other. Only the course&apos;s metadata (title, description,
-                                banner, tags) stays independent.
+                                The new course&apos;s batches will stay <strong>linked</strong>{' '}
+                                to the source batch&apos;s subjects, modules, chapters and
+                                slides. Editing content in either course is reflected in the
+                                other. Only the course&apos;s own details (title, description,
+                                banner, tags) stay independent.
                             </>
                         )}
                         <div

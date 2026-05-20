@@ -781,44 +781,297 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 __sd_Vivus.LINEAR = window.Vivus.LINEAR;
                             }
 
+                            // Phase 1.3 telemetry — emit ENTER on script eval so we
+                            // can later see which shots failed to reach EXIT (= script
+                            // threw mid-execution). The console listener in the render
+                            // worker tees these to shot_telemetry.jsonl for grep-by-id.
+                            try { console.log("[SHOT-TELEM] shot=${e.id} enter"); } catch (_te) {}
+
+                            // Tag every element currently in the shadow scope with
+                            // `data-vx-managed` so the CSS visibility safety net's
+                            // 5s force-reveal rule does NOT fire on elements that
+                            // the dispatcher knows are owned by an active animation
+                            // pipeline (their fades are handled by GSAP/anime, not
+                            // by the LLM's inline-opacity:0). If the script
+                            // subsequently errors, the recovery walker below still
+                            // un-tags them so the safety net CAN fire on legitimately-
+                            // stuck elements. Net effect: the safety net's 5s
+                            // reveal only triggers when the dispatcher's recovery
+                            // ALSO failed.
                             try {
-                                ${originalCode}
-                            } catch (e) {
-                                console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
-                                // Visual recovery: when the LLM script crashes mid-animation,
-                                // GSAP often leaves elements stuck at the from state
-                                // (opacity:0, scale, transform) because fromTo applies the
-                                // from values immediately then errors before queuing the tween.
-                                // Walk the shadow root and force any element with an
-                                // invisible inline style back to a visible neutral state —
-                                // matching what admin FE preview shows when animations
-                                // play out fully.
+                                const _scoped = scope.querySelectorAll('[style*="opacity:0"], [style*="opacity: 0"]');
+                                for (const _el of _scoped) {
+                                    if (_el && _el.setAttribute) _el.setAttribute('data-vx-managed', '1');
+                                }
+                            } catch (_tagErr) { /* tagging must never break the page */ }
+
+                            // Helper: snapshot #shot-root opacity. The shot-2-white bug
+                            // showed shot-root stuck at opacity 0 in the rendered MP4.
+                            // Logging it at every exit (and in the catch) makes the
+                            // failure mode visible in shot_telemetry.jsonl — easy to
+                            // grep for `root-opacity=0` to find blank shots before users do.
+                            var __snapRootOpacity = function () {
                                 try {
-                                    const _all = scope.querySelectorAll('*');
-                                    for (const _el of _all) {
-                                        const _st = _el.style;
+                                    var _r = scope.querySelector('#shot-root') || scope.host;
+                                    if (!_r) return 'no-root';
+                                    return (getComputedStyle ? getComputedStyle(_r).opacity : (_r.style && _r.style.opacity)) || '?';
+                                } catch (_se) { return 'err'; }
+                            };
+
+                            // Helper: detect a clip-path value that collapses the
+                            // element to ~0 visible area. Real-world patterns
+                            // seen in the LLM output (verified against the
+                            // Chanakya shot files):
+                            //   shot-5:  polygon(0% 0%, 0% 0%, 0% 0%, 0% 100%)
+                            //            → 3 of 4 vertices identical
+                            //   shot-7:  inset(50% 0% 50% 0%)
+                            //            → top+bottom sum to 100%, collapsed vertically
+                            //   shot-10: polygon(50% 50%, ... , 50% 50%)
+                            //            → all vertices identical
+                            //   plus circle(0) / ellipse(0 0) / inset(100% ...)
+                            // Returns true if the value would render essentially nothing.
+                            var __isCollapsedClipPath = function (cp) {
+                                if (!cp || cp === 'none') return false;
+                                // inset(t r b l). Collapse cases:
+                                //   • any side >= 100% → degenerate
+                                //   • top + bottom >= 100% → 0 visible height (shot-7)
+                                //   • left + right >= 100% → 0 visible width
+                                // Non-percent units (px/em) are treated as 0 here —
+                                // we can't know collapse without element size, but
+                                // GSAP clipPath wipes consistently use %.
+                                var insetMatch = cp.match(/inset\(\s*([^)]+)\)/);
+                                if (insetMatch) {
+                                    var raw = insetMatch[1].trim().split(/\s+/);
+                                    var sides = [0, 0, 0, 0]; // top right bottom left
+                                    for (var _si = 0; _si < Math.min(raw.length, 4); _si++) {
+                                        var m = raw[_si].match(/^(-?[0-9]+(?:\.[0-9]+)?)%$/);
+                                        sides[_si] = m ? parseFloat(m[1]) : 0;
+                                    }
+                                    // CSS shorthand: fewer values mirror to opposite sides.
+                                    if (raw.length === 1) { sides[1] = sides[2] = sides[3] = sides[0]; }
+                                    else if (raw.length === 2) { sides[2] = sides[0]; sides[3] = sides[1]; }
+                                    else if (raw.length === 3) { sides[3] = sides[1]; }
+                                    if (sides[0] >= 100 || sides[1] >= 100 || sides[2] >= 100 || sides[3] >= 100) return true;
+                                    if (sides[0] + sides[2] >= 100) return true; // top+bottom
+                                    if (sides[1] + sides[3] >= 100) return true; // left+right
+                                }
+                                // circle(0) / circle(0%) / circle(0px ...). Lookahead
+                                // `(?![\d.])` blocks matching the leading "0" of
+                                // "0.5em" or "05" as the full radius (no false fires
+                                // on visibly-sized small clip circles).
+                                if (/circle\(\s*0(?:\.0+)?(?:px|%|em|rem)?(?![\d.])/.test(cp)) return true;
+                                if (/ellipse\(\s*0(?:\.0+)?(?:px|%|em|rem)?\s+0(?:\.0+)?(?:px|%|em|rem)?(?![\d.])/.test(cp)) return true;
+                                if (/polygon\(/.test(cp)) {
+                                    var pts = cp.match(/-?[0-9]+(?:\.[0-9]+)?%?\s+-?[0-9]+(?:\.[0-9]+)?%?/g) || [];
+                                    if (pts.length < 3) return true; // not enough points for a real shape
+                                    var uniq = {};
+                                    for (var _i = 0; _i < pts.length; _i++) {
+                                        uniq[pts[_i].replace(/\s+/g, ' ').trim()] = 1;
+                                    }
+                                    var u = Object.keys(uniq).length;
+                                    // If 3+ vertices of an N-gon collapse to <=2 unique points
+                                    // OR more than half the vertices share one coord, the
+                                    // visible area is ~0. The exact threshold isn't critical
+                                    // — false positives only fire when the script has ALSO
+                                    // failed to open the reveal, in which case forcing
+                                    // clip-path:none is the correct repair.
+                                    if (u <= 2) return true;
+                                    if (u < Math.max(2, Math.ceil(pts.length / 2))) return true;
+                                }
+                                return false;
+                            };
+
+                            // Helper: walk the shadow scope and force any element
+                            // out of a hidden inline state back to a visible neutral
+                            // state. `force` is true when the script threw (we no
+                            // longer trust ANY of its work); false for the success
+                            // path, where we only repair elements that still look
+                            // hidden AFTER the script ran (e.g. shot-5: clipPath
+                            // collapses to a polygon with 3 identical points and
+                            // the reveal tween never opened it).
+                            var __vxRecover = function (force) {
+                                try {
+                                    if (force) {
+                                        var _tagged = scope.querySelectorAll('[data-vx-managed]');
+                                        for (var _ti = 0; _ti < _tagged.length; _ti++) {
+                                            try { _tagged[_ti].removeAttribute('data-vx-managed'); } catch (_te) {}
+                                        }
+                                    }
+                                    var _all = scope.querySelectorAll('*');
+                                    for (var _ai = 0; _ai < _all.length; _ai++) {
+                                        var _el = _all[_ai];
+                                        var _st = _el.style;
                                         if (!_st) continue;
-                                        // opacity:0 → 1 (covers fade-in animations that crashed)
-                                        if (_st.opacity !== '' && parseFloat(_st.opacity) < 1) {
-                                            _st.opacity = '1';
+                                        if (force) {
+                                            // opacity:0 → 1 (covers fade-in animations that crashed)
+                                            if (_st.opacity !== '' && parseFloat(_st.opacity) < 1) _st.opacity = '1';
+                                            // visibility:hidden → visible
+                                            if (_st.visibility === 'hidden') _st.visibility = 'visible';
+                                            // scale:0 / scale(0.x) → drop transform
+                                            if (_st.transform && /scale\((0(\.\d+)?|0\.\d)\)/.test(_st.transform)) {
+                                                _st.transform = '';
+                                            }
                                         }
-                                        // visibility:hidden → visible
-                                        if (_st.visibility === 'hidden') {
-                                            _st.visibility = 'visible';
-                                        }
-                                        // scale:0/0.something → reset transform if it's an entrance scale
-                                        if (_st.transform && /scale\((0(\.\d+)?|0\.\d)\)/.test(_st.transform)) {
-                                            _st.transform = '';
-                                        }
-                                        // clip-path: inset(...) hidden states
-                                        if (_st.clipPath && /inset\(.*100%.*\)/.test(_st.clipPath)) {
-                                            _st.clipPath = '';
+                                        // clip-path collapse — repair on BOTH paths.
+                                        // On the success path this catches the
+                                        // shot-5-white pattern where gsap.set hid the
+                                        // root but the gsap.to reveal never applied
+                                        // (scrub-mode edge / silent failure / etc.).
+                                        if (_st.clipPath && __isCollapsedClipPath(_st.clipPath)) {
+                                            _st.clipPath = 'none';
                                         }
                                     }
                                 } catch (_recoveryErr) {
-                                    // Recovery itself shouldn't crash; log and move on.
                                     console.warn("[SCRIPT-ERR shot=${e.id}] visual recovery failed:", _recoveryErr && _recoveryErr.message);
                                 }
+                            };
+
+                            // Bug 5 (word-break root cause):
+                            // Auto-scale-to-fit text helper. Runs AFTER the shot
+                            // script (which may set initial transforms / opacities)
+                            // and AFTER FontFace.ready (which finishes loading
+                            // any @font-face declarations the shot CSS uses).
+                            // Walks the shadow scope for text-bearing elements
+                            // whose intrinsic width exceeds the container's
+                            // max-content width AND that would otherwise wrap
+                            // mid-word because of the universal `word-break:
+                            // break-word` foundation rule. For each such
+                            // element, binary-searches a font-size scale
+                            // between 0.55 and 1.0 of the computed font-size
+                            // until the text fits on its allotted lines (or
+                            // floor is reached). Applies the resulting size
+                            // as inline `font-size`.
+                            //
+                            // This makes the recurring "UPS/C", "DREA/M"
+                            // character-break bug essentially impossible: the
+                            // foundation rule still exists as a last-resort,
+                            // but text never reaches it because the auto-scaler
+                            // pre-empts overflow by shrinking the font.
+                            //
+                            // Cost: ~5-15 text elements per shot × ~7 binary-
+                            // search iterations × 1 getBoundingClientRect each
+                            // ≈ 50ms per shot. Acceptable for the small text
+                            // count of typical generated HTML.
+                            var __fitTextOne = function (el) {
+                                try {
+                                    if (!el || !el.style || !el.getBoundingClientRect) return;
+                                    // Skip explicit opt-outs.
+                                    if (el.hasAttribute('data-no-fit')) return;
+                                    // Skip elements with no visible text node.
+                                    var hasText = false;
+                                    for (var ci = 0; ci < el.childNodes.length; ci++) {
+                                        var cn = el.childNodes[ci];
+                                        if (cn.nodeType === 3 && (cn.nodeValue || '').trim()) {
+                                            hasText = true; break;
+                                        }
+                                    }
+                                    if (!hasText) return;
+                                    // Read computed font-size (in px). If it's already
+                                    // small (<32px), don't bother — large display text
+                                    // is the failure mode, not body copy.
+                                    var cs = getComputedStyle(el);
+                                    var fsPx = parseFloat(cs.fontSize);
+                                    if (!fsPx || fsPx < 32) return;
+                                    // Quick fit check: scrollWidth catches the natural
+                                    // intrinsic width even when CSS overflow:hidden
+                                    // would clip it visually.
+                                    var initialScroll = el.scrollWidth;
+                                    var initialClient = el.clientWidth;
+                                    if (initialClient <= 0) return;
+                                    // Allow a small tolerance — sub-pixel jitter.
+                                    if (initialScroll <= initialClient + 2) return;
+                                    // Binary-search font-size scale ∈ [0.55, 1.0].
+                                    // 1.0 known to overflow (we hit this branch
+                                    // because scrollWidth > clientWidth at the
+                                    // original size); 0.55 is the floor.
+                                    // Goal: find the LARGEST scale at which the
+                                    // text fits. If it fits at mid, try larger
+                                    // (lo = mid). If it overflows, try smaller
+                                    // (hi = mid). Floor at 0.55 — below that
+                                    // the text becomes unreadable; accept
+                                    // overflow if even 0.55 won't fit.
+                                    var lo = 0.55, hi = 1.0;
+                                    var original = fsPx;
+                                    var best = lo;  // pessimistic default
+                                    for (var iter = 0; iter < 7; iter++) {
+                                        var mid = (lo + hi) / 2;
+                                        el.style.fontSize = (original * mid) + 'px';
+                                        // Force layout flush by reading.
+                                        if (el.scrollWidth <= el.clientWidth + 2) {
+                                            best = mid; lo = mid;   // fits; try larger
+                                        } else {
+                                            hi = mid;                // overflows; try smaller
+                                        }
+                                    }
+                                    el.style.fontSize = (original * best) + 'px';
+                                    try {
+                                        console.log(
+                                            "[fit-text] shot=${e.id} " +
+                                            "tag=" + el.tagName.toLowerCase() +
+                                            " id=" + (el.id || '-') +
+                                            " " + Math.round(original) + "px → " +
+                                            Math.round(original * best) + "px"
+                                        );
+                                    } catch (_lge) {}
+                                } catch (_fterr) { /* never break the shot */ }
+                            };
+
+                            var __fitTextSweep = function () {
+                                try {
+                                    var nodes = scope.querySelectorAll(
+                                        // Restrict to nodes that the LLM tends to make
+                                        // big-text containers. Skip <script>, <style>,
+                                        // <video>, <img>, <svg>, etc. — they aren't
+                                        // text containers and scrollWidth on them is
+                                        // meaningless.
+                                        'div, span, p, h1, h2, h3, h4, ' +
+                                        '[class*="headline"], [class*="title"], [class*="display"], ' +
+                                        '[id*="title"], [id*="headline"], [id*="display"], [id*="slam"]'
+                                    );
+                                    for (var ni = 0; ni < nodes.length; ni++) {
+                                        __fitTextOne(nodes[ni]);
+                                    }
+                                } catch (_fserr) { /* never break the shot */ }
+                            };
+
+                            // Run the fit-text sweep when fonts are ready — running
+                            // before fonts load gives stale measurements based on
+                            // fallback fonts.
+                            var __scheduleFit = function () {
+                                try {
+                                    if (document && document.fonts && document.fonts.ready) {
+                                        document.fonts.ready.then(function () {
+                                            // Defer one rAF so the shot script's
+                                            // initial gsap.set / transforms have
+                                            // applied before we measure.
+                                            requestAnimationFrame(__fitTextSweep);
+                                        });
+                                    } else {
+                                        requestAnimationFrame(__fitTextSweep);
+                                    }
+                                } catch (_se) {
+                                    try { __fitTextSweep(); } catch (_se2) {}
+                                }
+                            };
+
+                            try {
+                                ${originalCode}
+                                try { console.log("[SHOT-TELEM] shot=${e.id} exit ok root-opacity=" + __snapRootOpacity()); } catch (_te2) {}
+                                // Soft sweep after a successful run. Only repairs
+                                // collapsed clip-path — the script "succeeded" so
+                                // we don't touch opacity / visibility / transform
+                                // (those may be legitimate end-states for shots
+                                // with delayed entrances or terminal hide-outs).
+                                __vxRecover(false);
+                                // Bug 5 — auto-scale text on the success path.
+                                // Doesn't run on the catch path because the
+                                // recovery already touched font sizes / transforms.
+                                __scheduleFit();
+                            } catch (e) {
+                                try { console.log("[SHOT-TELEM] shot=${e.id} exit threw root-opacity=" + __snapRootOpacity() + " err=" + (e && (e.message || e))); } catch (_te3) {}
+                                console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
+                                // Hard sweep: script crashed, repair every hide state.
+                                __vxRecover(true);
                             }
                         })(document.getElementById('${e.id}').shadowRoot);
                       `;
@@ -1053,31 +1306,22 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                 host.style.height = (e.h | 0) + 'px';
                 console.log('[SIZING-DIAG] branding ' + e.id + ' size=' + e.w + 'x' + e.h + ' pos=' + e.x + ',' + e.y);
               } else {
+                // Caption host sits over the shot iframes as a transparent
+                // full-viewport overlay. The inner caption HTML (emitted by
+                // generate_video.py) is a `<div style="width:100%; height:100%; position:relative;">`
+                // wrapper with an absolutely-positioned caption pill — so the
+                // host must be viewport-sized for the percentage math to
+                // resolve correctly, but MUST stay transparent. The earlier
+                // version copy-pasted the shot-entry logic from
+                // `__updateSnippets` and forced an opaque body-colored
+                // background here, which turned every captioned frame into a
+                // solid white screen with just the caption visible.
                 host.style.left = '0px';
                 host.style.top = '0px';
                 host.style.width = window.innerWidth + 'px';
                 host.style.height = window.innerHeight + 'px';
                 host.style.overflow = 'hidden';
-                host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
-                // Force the inner content to stretch to fill — prevents white gap at bottom
-                const wr = host.shadowRoot.getElementById('content-wrapper');
-                if (wr) {
-                  wr.style.minHeight = window.innerHeight + 'px';
-                  // Find the first child div and stretch it too
-                  const firstChild = wr.firstElementChild;
-                  if (firstChild && firstChild.tagName === 'STYLE') {
-                    // Skip <style> tags, get the first content element
-                    const contentEl = firstChild.nextElementSibling;
-                    if (contentEl) {
-                      contentEl.style.minHeight = '100%';
-                      contentEl.style.boxSizing = 'border-box';
-                    }
-                  } else if (firstChild) {
-                    firstChild.style.minHeight = '100%';
-                    firstChild.style.boxSizing = 'border-box';
-                  }
-                }
-                console.log('[SIZING-DIAG] full-viewport ' + e.id + ' (orig size=' + e.w + 'x' + e.h + ', forced=' + window.innerWidth + 'x' + window.innerHeight + ')');
+                host.style.background = 'transparent';
               }
             };
           }

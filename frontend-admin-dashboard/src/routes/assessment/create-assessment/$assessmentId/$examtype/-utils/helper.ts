@@ -24,6 +24,19 @@ import { convertCustomFields } from '../-services/assessment-services';
 import testAccessSchema from './add-participants-schema';
 import { CourseWithSessionsType } from '@/stores/study-library/use-study-library-store';
 import { BatchData } from '@/types/assessments/batch-details';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+
+export const getAssessmentJoinLink = (
+    learnerPortalBaseUrl: string | undefined | null,
+    code: string | undefined | null
+) => {
+    const learnerBaseUrl = learnerPortalBaseUrl
+        ? learnerPortalBaseUrl.startsWith('http')
+            ? learnerPortalBaseUrl
+            : `https://${learnerPortalBaseUrl}`
+        : BASE_URL_LEARNER_DASHBOARD;
+    return `${learnerBaseUrl}/register?code=${code ?? ''}`;
+};
 
 interface Role {
     roleId: string;
@@ -273,18 +286,10 @@ export function getAllSessions(data: BatchData[]): { id: string; name: string }[
     return Array.from(sessionMap.entries()).map(([id, name]) => ({ id, name }));
 }
 
-export const convertToUTC = (dateString: string) => {
-    if (dateString === '') return '';
-
-    // Handle datetime-local input format (YYYY-MM-DDTHH:mm)
-    if (dateString.includes('T') && !dateString.includes('Z') && !dateString.includes('+')) {
-        // This is a datetime-local input, treat it as local time and convert to UTC
-        const date = new Date(dateString);
-        return date.toISOString();
-    }
-
-    // Handle other date formats
+export const convertToUTC = (dateString: string | undefined | null) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
     return date.toISOString();
 };
 
@@ -770,8 +775,8 @@ export const convertDataToStep3 = (
         newData?.open_test.instructions !== oldData.open_test.instructions
     ) {
         convertedData.open_test_details = {
-            registration_start_date: newData?.open_test.start_date + ':00.000Z' || '',
-            registration_end_date: newData?.open_test.end_date + ':00.000Z' || '',
+            registration_start_date: convertToUTC(newData?.open_test.start_date),
+            registration_end_date: convertToUTC(newData?.open_test.end_date),
             instructions_html: newData?.open_test.instructions || '',
             registration_form_details: {
                 added_custom_added_fields: [],

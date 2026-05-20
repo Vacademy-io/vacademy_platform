@@ -12,6 +12,7 @@ import { Users, User, Buildings, ShieldCheck, ArrowSquareOut, Copy, Check, Key }
 import { toast } from 'sonner';
 import { useStudentCredentialsStore } from '@/stores/students/students-list/useStudentCredentialsStore';
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
+import { BatchPicker } from '../BatchPicker';
 
 export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -41,6 +42,19 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
     // Fetch credentials if not available
     const credentials = userId ? getCredentials(userId) : null;
 
+    // Multi-enrollment: admin picks which batch's sub-org members/admins to fetch.
+    // Defaults to the row's primary (latest) ps_id; falls back to the legacy single field.
+    const enrollmentPsIds: string[] = (selectedStudent?.all_package_session_ids?.length
+        ? selectedStudent.all_package_session_ids
+        : selectedStudent?.package_session_id
+          ? [selectedStudent.package_session_id]
+          : []) as string[];
+    const [selectedPsId, setSelectedPsId] = useState<string>(enrollmentPsIds[0] ?? '');
+    useEffect(() => {
+        setSelectedPsId(enrollmentPsIds[0] ?? '');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedStudent?.user_id]);
+
     useEffect(() => {
         if (userId && !credentials && isSubOrgAdmin()) {
             fetchCredentials({ userIds: [userId] });
@@ -61,14 +75,14 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
 
     useEffect(() => {
         const fetchDetails = async () => {
-            if (!selectedStudent || !selectedStudent.sub_org_id || !userId) return;
+            if (!selectedStudent || !selectedStudent.sub_org_id || !userId || !selectedPsId) return;
 
             setIsLoading(true);
             try {
                 if (isSubOrgAdmin()) {
                     // Fetch members
                     const response = await fetchSubOrgMembers(
-                        selectedStudent.package_session_id,
+                        selectedPsId,
                         selectedStudent.sub_org_id
                     );
                     setMembers(response.student_mappings);
@@ -76,7 +90,7 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                     // Fetch admins
                     const response = await fetchSubOrgAdmins(
                         userId,
-                        selectedStudent.package_session_id,
+                        selectedPsId,
                         selectedStudent.sub_org_id
                     );
                     setAdmins(response.admins);
@@ -90,7 +104,7 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
         };
 
         fetchDetails();
-    }, [selectedStudent, userId]);
+    }, [selectedStudent, userId, selectedPsId]);
 
     if (!selectedStudent?.sub_org_name) {
         return (
@@ -101,10 +115,26 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
         );
     }
 
-    if (isLoading) return <DashboardLoader />;
+    const picker = (
+        <BatchPicker
+            packageSessionIds={enrollmentPsIds}
+            value={selectedPsId}
+            onChange={setSelectedPsId}
+            label="Sub-org for"
+        />
+    );
+
+    if (isLoading)
+        return (
+            <div>
+                {picker}
+                <DashboardLoader />
+            </div>
+        );
 
     return (
         <div className="animate-fadeIn space-y-4 text-neutral-600">
+            {picker}
             {/* Header Card with SubOrg Details */}
             <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 shadow-sm">
                 <div className="flex items-center gap-3">

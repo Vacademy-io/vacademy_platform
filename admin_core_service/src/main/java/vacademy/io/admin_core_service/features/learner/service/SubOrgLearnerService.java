@@ -22,8 +22,21 @@ import vacademy.io.admin_core_service.features.faculty.service.FacultyService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSubOrg;
 import vacademy.io.admin_core_service.features.institute_learner.enums.StudentSubOrgLinkType;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSubOrgRepository;
+import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.fee_management.service.CpoEnrollmentConfigApplier;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
+import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
+import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
+import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
@@ -41,10 +54,14 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerS
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.payment.enums.PaymentGateway;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.common.institute.entity.Group;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -70,6 +87,14 @@ public class SubOrgLearnerService {
     private final StudentSubOrgRepository studentSubOrgRepository;
     private final PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
     private final FacultyService facultyService;
+    private final PaymentLogService paymentLogService;
+    private final PaymentLogRepository paymentLogRepository;
+    private final InvoiceService invoiceService;
+    private final PaymentOptionRepository paymentOptionRepository;
+    private final StudentFeePaymentGenerationService studentFeePaymentGenerationService;
+    private final StudentFeePaymentRepository studentFeePaymentRepository;
+    private final CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
+    private final FeeLedgerAllocationService feeLedgerAllocationService;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -299,14 +324,29 @@ public class SubOrgLearnerService {
 
     @Transactional
     public SubOrgEnrollResponseDTO enrollLearnerToSubOrg(SubOrgEnrollRequestDTO request, CustomUserDetails admin) {
-        log.info("Starting sub-org enrollment for package_session_id: {}, sub_org_id: {}",
-                request.getPackageSessionId(), request.getSubOrgId());
+        // Resolve the PS list once — multi-PS variant takes precedence; otherwise fall back
+        // to the single packageSessionId for backwards compatibility.
+        List<String> psIds = (request.getPackageSessionIds() != null
+                && !request.getPackageSessionIds().isEmpty())
+                ? request.getPackageSessionIds()
+                : (StringUtils.hasText(request.getPackageSessionId())
+                        ? List.of(request.getPackageSessionId())
+                        : Collections.emptyList());
 
-        // 1. Validate request
+        log.info("Starting sub-org enrollment for package_session_ids: {}, sub_org_id: {}",
+                psIds, request.getSubOrgId());
+
+        // 1. Validate request (PS list non-empty + everything else)
+        if (psIds.isEmpty()) {
+            throw new VacademyException("At least one package session ID is required");
+        }
         validateRequest(request);
 
-        // 2. Validate entities exist
-        PackageSession packageSession = validatePackageSession(request.getPackageSessionId());
+        // 2. Validate every PS up front
+        List<PackageSession> packageSessions = new ArrayList<>(psIds.size());
+        for (String psId : psIds) {
+            packageSessions.add(validatePackageSession(psId));
+        }
         Institute subOrg = validateSubOrg(request.getSubOrgId());
         validateInstitute(request.getInstituteId());
 
@@ -316,57 +356,298 @@ public class SubOrgLearnerService {
         // 4. Ensure student record exists
         ensureStudentExists(user);
 
-        // 5. Validate member count limit for this sub-org
-        validateMemberCountLimit(request.getSubOrgId(), request.getPackageSessionId());
-
-        // 6. Validate no duplicate enrollment
-        validateNoDuplicateEnrollment(user.getId(), request);
-
-        // 7. Create individual UserPlan for the learner (linked to scoped FREE invite)
-        String learnerUserPlanId = createLearnerUserPlan(user.getId(), request.getSubOrgId(),
-                request.getPackageSessionId());
-
-        // 8. Create mapping (using learner's own UserPlan, not root admin's)
-        StudentSessionInstituteGroupMapping mapping = createMapping(request, user, packageSession, subOrg,
-                learnerUserPlanId);
-        mapping = mappingRepository.save(mapping);
-
-        // 9. Create student_sub_org junction entry
-        createStudentSubOrgEntry(user.getId(), subOrg, request.getCommaSeparatedOrgRoles());
-
-        // 10. Sync faculty mapping for sub-org admins (enables HAS_FACULTY_ASSIGNED scoping)
-        if (isAdminRole(request.getCommaSeparatedOrgRoles())) {
-            syncFacultyMappingForSubOrgAdmin(user, request.getPackageSessionId(),
-                    request.getSubOrgId(), request.getCommaSeparatedOrgRoles());
+        // 5. Validate member count limit + dedupe enrollment per PS
+        for (String psId : psIds) {
+            validateMemberCountLimit(request.getSubOrgId(), psId);
+        }
+        for (String psId : psIds) {
+            // Re-use existing helper by temporarily setting the field — single-PS dedupe.
+            String saved = request.getPackageSessionId();
+            request.setPackageSessionId(psId);
+            try {
+                validateNoDuplicateEnrollment(user.getId(), request);
+            } finally {
+                request.setPackageSessionId(saved);
+            }
         }
 
-        log.info("Created mapping with ID: {} for user: {}", mapping.getId(), user.getId());
+        // 6. Create ONE UserPlan against the first PS's scoped invite — this UserPlan is
+        // shared across all PSes the user gets access to. Each PS then gets its own SSIGM,
+        // StudentSubOrg, and FSPSSM rows referencing this UserPlan.
+        String primaryPsId = psIds.get(0);
+        String learnerUserPlanId = createLearnerUserPlan(user.getId(), request.getSubOrgId(), primaryPsId);
+
+        // 7-9. Per-PS: SSIGM + StudentSubOrg + faculty mapping (admin only).
+        StudentSessionInstituteGroupMapping firstMapping = null;
+        for (PackageSession ps : packageSessions) {
+            // createMapping reads request.packageSessionId — temporarily set it.
+            String saved = request.getPackageSessionId();
+            request.setPackageSessionId(ps.getId());
+            try {
+                StudentSessionInstituteGroupMapping mapping = createMapping(
+                        request, user, ps, subOrg, learnerUserPlanId);
+                mapping = mappingRepository.save(mapping);
+                if (firstMapping == null) firstMapping = mapping;
+                if (isAdminRole(request.getCommaSeparatedOrgRoles())) {
+                    syncFacultyMappingForSubOrgAdmin(user, ps.getId(),
+                            request.getSubOrgId(), request.getCommaSeparatedOrgRoles());
+                }
+            } finally {
+                request.setPackageSessionId(saved);
+            }
+        }
+        createStudentSubOrgEntry(user.getId(), subOrg, request.getCommaSeparatedOrgRoles());
+
+        String firstMappingId = firstMapping != null ? firstMapping.getId() : null;
+        log.info("Created {} mapping(s) for user: {}", psIds.size(), user.getId());
         UserDTO adminDTO = authService.getUsersFromAuthServiceByUserIds(List.of(admin.getUserId())).get(0);
-        // 10. Save custom fields if provided
-        if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
-            // Save custom fields for the mapping entity
+
+        // 10. Save custom fields (against the first mapping — they're user-level).
+        if (firstMappingId != null
+                && request.getCustomFieldValues() != null
+                && !request.getCustomFieldValues().isEmpty()) {
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.STUDENT_SESSION_INSTITUTE_GROUP_MAPPING.name(),
-                    mapping.getId());
-            // Save custom fields for the user entity (using user.getId() not
-            // mapping.getId())
+                    firstMappingId);
             customFieldValueService.addCustomFieldValue(
                     request.getCustomFieldValues(),
                     CustomFieldValueSourceTypeEnum.USER.name(),
                     user.getId());
-            log.info("Saved {} custom field values for mapping: {} and user: {}",
-                    request.getCustomFieldValues().size(), mapping.getId(), user.getId());
         }
 
-        triggerEnrollmentWorkflow(request.getInstituteId(), user, request.getPackageSessionId(), adminDTO);
+        // 11. Optional payment-option override (typically CPO for admins). Runs against the
+        // single shared UserPlan, so SFP rows + offline allocation happen once.
+        PaymentOption resolvedLearnerOption = applyLearnerPaymentOptionOverrideIfRequested(
+                request, learnerUserPlanId, user.getId(), admin.getUserId());
 
-        // 9. Build and return response
+        // 12. Optional offline payment record + invoice.
+        ManualPaymentResult paymentResult = recordOfflinePaymentIfRequested(
+                request, user.getId(), learnerUserPlanId, admin.getUserId(), resolvedLearnerOption);
+
+        // Trigger workflow for each PS (existing per-PS contract).
+        for (String psId : psIds) {
+            triggerEnrollmentWorkflow(request.getInstituteId(), user, psId, adminDTO);
+        }
+
         return SubOrgEnrollResponseDTO.builder()
                 .user(user)
-                .mappingId(mapping.getId())
-                .message("Successfully enrolled learner to sub-organization")
+                .mappingId(firstMappingId)
+                .message("Successfully enrolled user to sub-organization (" + psIds.size() + " PS)")
+                .paymentLogId(paymentResult.paymentLogId)
+                .invoiceId(paymentResult.invoiceId)
                 .build();
+    }
+
+    private record ManualPaymentResult(String paymentLogId, String invoiceId) {
+        static ManualPaymentResult empty() {
+            return new ManualPaymentResult(null, null);
+        }
+    }
+
+    /**
+     * Records the optional offline payment fields on the request as a PaymentLog against
+     * the learner's UserPlan and, when requested, generates an invoice. For CPO learners
+     * the payment is FIFO-allocated against the previously-generated StudentFeePayment
+     * rows (mirroring bulk/v3/assign's CPO offline path); non-CPO learners just get the
+     * PaymentLog with no allocation, since they have no SFP rows.
+     */
+    private ManualPaymentResult recordOfflinePaymentIfRequested(SubOrgEnrollRequestDTO request,
+                                                                String learnerUserId,
+                                                                String learnerUserPlanId,
+                                                                String recordedByUserId,
+                                                                PaymentOption resolvedOption) {
+        boolean offlineRequested = "OFFLINE".equalsIgnoreCase(request.getPaymentMode())
+                && request.getOfflinePaymentAmount() != null
+                && request.getOfflinePaymentAmount() > 0.0
+                && StringUtils.hasText(learnerUserPlanId);
+        if (!offlineRequested) {
+            return ManualPaymentResult.empty();
+        }
+
+        UserPlan learnerPlan = userPlanRepository.findById(learnerUserPlanId).orElse(null);
+        if (learnerPlan == null) {
+            log.warn("Skipping offline payment recording — learner UserPlan {} not found",
+                    learnerUserPlanId);
+            return ManualPaymentResult.empty();
+        }
+
+        double amount = request.getOfflinePaymentAmount();
+        String currency = StringUtils.hasText(request.getOfflinePaymentCurrency())
+                ? request.getOfflinePaymentCurrency() : "INR";
+        Date paymentDate = request.getOfflinePaymentDate() != null
+                ? request.getOfflinePaymentDate() : new Date();
+
+        String paymentLogId;
+        try {
+            paymentLogId = paymentLogService.createPaymentLog(
+                    learnerUserId,
+                    amount,
+                    PaymentGateway.MANUAL.name(),
+                    PaymentGateway.MANUAL.name(),
+                    currency,
+                    learnerPlan,
+                    null,
+                    paymentDate);
+
+            Map<String, Object> specific = new HashMap<>();
+            specific.put("source", "SUB_ORG_ADD_MEMBER");
+            specific.put("recorded_by", recordedByUserId);
+            if (StringUtils.hasText(request.getOfflinePaymentReference())) {
+                specific.put("transaction_id", request.getOfflinePaymentReference());
+            }
+            String specificJson;
+            try {
+                specificJson = new ObjectMapper().writeValueAsString(specific);
+            } catch (Exception je) {
+                log.warn("Failed to serialize paymentSpecificData for offline payment: {}",
+                        je.getMessage());
+                specificJson = null;
+            }
+
+            paymentLogService.updatePaymentLogOnly(
+                    paymentLogId,
+                    PaymentLogStatusEnum.SUCCESS.name(),
+                    PaymentStatusEnum.PAID.name(),
+                    specificJson);
+            log.info("Recorded manual offline payment={} currency={} for learner={} userPlan={} logId={}",
+                    amount, currency, learnerUserId, learnerUserPlanId, paymentLogId);
+        } catch (Exception e) {
+            log.error("Failed to record manual offline payment for learner={}, userPlan={}: {}",
+                    learnerUserId, learnerUserPlanId, e.getMessage(), e);
+            return ManualPaymentResult.empty();
+        }
+
+        // CPO-only: FIFO-allocate the payment across the freshly-generated SFP rows so
+        // they transition PENDING → PARTIAL_PAID / PAID. Wrapped in try/catch — failure
+        // to allocate shouldn't kill the enrollment, the PaymentLog is already recorded.
+        boolean isCpo = resolvedOption != null
+                && PaymentOptionType.CPO.name().equalsIgnoreCase(resolvedOption.getType());
+        if (isCpo) {
+            try {
+                feeLedgerAllocationService.allocatePaymentForNewLog(
+                        paymentLogId, BigDecimal.valueOf(amount), learnerUserPlanId);
+            } catch (Exception e) {
+                log.error("FIFO allocation failed for paymentLogId={}, userPlanId={}: {}",
+                        paymentLogId, learnerUserPlanId, e.getMessage(), e);
+            }
+        }
+
+        String invoiceId = null;
+        if (request.isGenerateInvoice()) {
+            try {
+                PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
+                        .orElse(null);
+                if (persistedLog != null) {
+                    Invoice invoice = invoiceService.generateInvoice(
+                            learnerPlan, persistedLog, request.getInstituteId());
+                    if (invoice != null) invoiceId = invoice.getId();
+                }
+            } catch (Exception e) {
+                log.warn("Invoice generation failed for paymentLogId={}: {}",
+                        paymentLogId, e.getMessage());
+            }
+        }
+        return new ManualPaymentResult(paymentLogId, invoiceId);
+    }
+
+    /**
+     * Per-learner payment-option override. If the admin picks a different PaymentOption
+     * (e.g. CPO, ONE_TIME) on the Add User form, swap the learner's UserPlan to point at
+     * it and run any CPO-specific side effects (generate SFPs, apply cpoConfig). Returns
+     * the resolved option (or null if no override / not found) so the offline-payment
+     * step can decide whether to FIFO-allocate.
+     */
+    private PaymentOption applyLearnerPaymentOptionOverrideIfRequested(
+            SubOrgEnrollRequestDTO request,
+            String learnerUserPlanId,
+            String learnerUserId,
+            String adminUserId) {
+        if (!StringUtils.hasText(request.getPaymentOptionId())
+                || !StringUtils.hasText(learnerUserPlanId)) {
+            log.info("Payment option override skipped — paymentOptionId={} userPlanId={}",
+                    request.getPaymentOptionId(), learnerUserPlanId);
+            return null;
+        }
+
+        // The frontend's CPO picker uses ComplexPaymentOption.id as the option value (the
+        // mirror id isn't exposed there), so try a direct PaymentOption.id lookup first
+        // and fall back to mirror-by-CPO. Both shapes end up at the same mirror row.
+        PaymentOption override = paymentOptionRepository
+                .findById(request.getPaymentOptionId())
+                .orElseGet(() -> paymentOptionRepository
+                        .findByComplexPaymentOptionId(request.getPaymentOptionId())
+                        .orElse(null));
+        if (override == null) {
+            log.warn("Requested paymentOptionId={} not found as PaymentOption or CPO mirror; "
+                            + "keeping default plan",
+                    request.getPaymentOptionId());
+            return null;
+        }
+
+        UserPlan learnerPlan = userPlanRepository.findById(learnerUserPlanId).orElse(null);
+        if (learnerPlan == null) return null;
+
+        boolean isCpo = PaymentOptionType.CPO.name().equalsIgnoreCase(override.getType());
+        boolean alreadyOnOverride = override.getId().equals(learnerPlan.getPaymentOptionId());
+
+        if (!alreadyOnOverride) {
+            learnerPlan.setPaymentOptionId(override.getId());
+            if (override.getPaymentPlans() != null && !override.getPaymentPlans().isEmpty()) {
+                learnerPlan.setPaymentPlanId(override.getPaymentPlans().get(0).getId());
+            }
+            // CPO plans start PENDING_FOR_PAYMENT — installments awaiting allocation.
+            if (isCpo) learnerPlan.setStatus(UserPlanStatusEnum.PENDING_FOR_PAYMENT.name());
+            userPlanRepository.save(learnerPlan);
+            log.info("Override applied: userPlan={} type={} cpoId={}",
+                    learnerUserPlanId, override.getType(), override.getComplexPaymentOptionId());
+        } else {
+            log.info("UserPlan {} already pointing at PaymentOption {} ({}); skipping option swap"
+                            + " but will ensure CPO side-effects still run.",
+                    learnerUserPlanId, override.getId(), override.getType());
+        }
+
+        // CPO side-effects: generate SFP rows IF NONE EXIST YET. This is the critical
+        // step that the earlier early-return swallowed — when createLearnerUserPlan
+        // resolved the UserPlan directly to the CPO mirror via the org-level invite,
+        // the bills never got materialised.
+        if (isCpo) {
+            String cpoId = override.getComplexPaymentOptionId();
+            if (!StringUtils.hasText(cpoId)) {
+                log.error("CPO mirror PaymentOption {} has null complexPaymentOptionId — sync bug?",
+                        override.getId());
+                return override;
+            }
+            boolean hasExistingBills = !studentFeePaymentRepository
+                    .findByUserPlanId(learnerUserPlanId).isEmpty();
+            if (!hasExistingBills) {
+                try {
+                    List<String> ids = studentFeePaymentGenerationService.generateFeeBills(
+                            learnerUserPlanId, cpoId, learnerUserId, request.getInstituteId());
+                    log.info("Generated {} SFP row(s) for userPlan={} cpoId={}",
+                            ids != null ? ids.size() : 0, learnerUserPlanId, cpoId);
+                } catch (Exception e) {
+                    log.error("Failed to generate SFP rows for learnerUserPlan={}, cpoId={}: {}",
+                            learnerUserPlanId, cpoId, e.getMessage(), e);
+                    throw new VacademyException("Failed to generate fee bills: " + e.getMessage());
+                }
+            } else {
+                log.info("SFP rows already exist for userPlan={} — skipping generateFeeBills",
+                        learnerUserPlanId);
+            }
+            if (request.getCpoConfig() != null) {
+                try {
+                    cpoEnrollmentConfigApplier.apply(learnerUserPlanId, request.getCpoConfig(),
+                            adminUserId);
+                    log.info("Applied cpoConfig for userPlan={}", learnerUserPlanId);
+                } catch (Exception e) {
+                    log.error("Failed to apply cpoConfig for userPlan={}: {}",
+                            learnerUserPlanId, e.getMessage(), e);
+                    throw new VacademyException("Failed to apply CPO configuration: " + e.getMessage());
+                }
+            }
+        }
+        return override;
     }
 
     /**
@@ -376,8 +657,11 @@ public class SubOrgLearnerService {
         if (request.getUser() == null) {
             throw new VacademyException("User details are required");
         }
-        if (!StringUtils.hasText(request.getPackageSessionId())) {
-            throw new VacademyException("Package session ID is required");
+        boolean hasSingle = StringUtils.hasText(request.getPackageSessionId());
+        boolean hasMulti = request.getPackageSessionIds() != null
+                && !request.getPackageSessionIds().isEmpty();
+        if (!hasSingle && !hasMulti) {
+            throw new VacademyException("Package session ID(s) required");
         }
         if (!StringUtils.hasText(request.getSubOrgId())) {
             throw new VacademyException("Sub-organization ID is required");
@@ -770,6 +1054,11 @@ public class SubOrgLearnerService {
     /**
      * Creates an individual UserPlan for a sub-org learner, linked to the scoped FREE invite.
      * Falls back to rootAdminPlanId if no scoped invite exists.
+     *
+     * The sub-org's admin-level CPO does NOT cascade to learners — that's an institute↔admin
+     * finance agreement only. Learners default to the scoped FREE invite; if the admin wants
+     * a different per-learner payment option (CPO/ONE_TIME/...), it's applied later in
+     * {@link #applyLearnerPaymentOptionOverrideIfRequested}.
      */
     private String createLearnerUserPlan(String userId, String subOrgId, String packageSessionId) {
         Optional<EnrollInvite> scopedInviteOpt = enrollInviteRepository
@@ -783,8 +1072,6 @@ public class SubOrgLearnerService {
 
         EnrollInvite scopedInvite = scopedInviteOpt.get();
 
-        // Resolve PaymentOption and PaymentPlan from the scoped invite
-        // The scoped invite has a linked PaymentOption via the mapping table
         UserPlan learnerPlan = new UserPlan();
         learnerPlan.setUserId(userId);
         learnerPlan.setSource(UserPlanSourceEnum.SUB_ORG.name());
@@ -793,7 +1080,6 @@ public class SubOrgLearnerService {
         learnerPlan.setStartDate(new Date());
         learnerPlan.setEnrollInviteId(scopedInvite.getId());
 
-        // Try to find the PaymentPlan from the scoped invite's linked PaymentOption
         try {
             var inviteMappings = packageSessionEnrollInviteToPaymentOptionService
                     .findByInvite(scopedInvite);
@@ -804,7 +1090,6 @@ public class SubOrgLearnerService {
                             && !mapping.getPaymentOption().getPaymentPlans().isEmpty()) {
                         PaymentPlan plan = mapping.getPaymentOption().getPaymentPlans().get(0);
                         learnerPlan.setPaymentPlanId(plan.getId());
-                        // Set end date based on validity
                         if (plan.getValidityInDays() != null) {
                             Calendar cal = Calendar.getInstance();
                             cal.add(Calendar.DAY_OF_YEAR, plan.getValidityInDays());

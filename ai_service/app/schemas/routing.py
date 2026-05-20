@@ -112,7 +112,9 @@ class HostAvatarPlan(BaseModel):
 
     `provider` decides the per-shot generation path:
       • 'custom'  → Seedream image-to-image conditioned on `face_image_url`,
-                    then `avatar_model` (Kling v2 / VEED Fabric) for talking-head.
+                    then the user-chosen `avatar_model` (see
+                    schemas/video_generation.py::AvatarModelLiteral for the
+                    supported set) for talking-head.
       • 'argil'   → fal.ai `argil/avatars/audio-to-video` keyed by
                     `external_avatar_id`. No Seedream, no face image. Locked
                     identity + scene per the catalog enum.

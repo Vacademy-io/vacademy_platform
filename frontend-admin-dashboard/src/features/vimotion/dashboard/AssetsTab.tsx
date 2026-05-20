@@ -7,12 +7,12 @@ import {
     Clock,
     FolderOpen,
     Image as ImageIcon,
-    Loader2,
     Mic,
     Monitor,
     Upload,
     X,
 } from 'lucide-react';
+import { VimotionLoader } from '../brand/VimotionLoader';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
@@ -76,8 +76,8 @@ export function AssetsTab() {
     return (
         <div className="space-y-5">
             {/* Toolbar: filter chips + upload */}
-            <div className="flex items-center justify-between">
-                <div className="flex gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
                     <FilterChip current={filter} value="all" onClick={setFilter}>
                         All
                     </FilterChip>
@@ -92,7 +92,7 @@ export function AssetsTab() {
                     type="button"
                     onClick={() => setUploadOpen(true)}
                     disabled={!apiKey.data}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-md bg-neutral-900 px-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-10 items-center gap-1.5 rounded-md bg-neutral-900 px-3.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     <Upload className="size-4" />
                     Upload
@@ -156,7 +156,7 @@ function FilterChip({
             type="button"
             onClick={() => onClick(value)}
             className={cn(
-                'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                'inline-flex min-h-[36px] items-center rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors',
                 active
                     ? 'bg-neutral-900 text-white'
                     : 'bg-white text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-50'
@@ -244,7 +244,7 @@ function StatusBadge({ status, progress }: { status: InputAssetStatus; progress:
         },
         PROCESSING: {
             label: `${progress || 0}%`,
-            Icon: Loader2,
+            Icon: CheckCircle2,
             cls: 'bg-blue-50 text-blue-700 border-blue-200',
         },
         QUEUED: {
@@ -272,7 +272,11 @@ function StatusBadge({ status, progress }: { status: InputAssetStatus; progress:
                 cls
             )}
         >
-            <Icon className={cn('size-3', spinning && 'animate-spin')} />
+            {spinning ? (
+                <VimotionLoader size={12} className="text-blue-700" label="Processing" />
+            ) : (
+                <Icon className="size-3" />
+            )}
             {label}
         </span>
     );
@@ -366,12 +370,12 @@ function UploadModal({ apiKey, onClose }: { apiKey: string; onClose: () => void 
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
             onClick={onClose}
         >
             <div
                 onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+                className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
             >
                 <div className="flex items-center justify-between">
                     <h2 className="text-base font-semibold text-neutral-900">Upload asset</h2>
@@ -478,7 +482,7 @@ function UploadModal({ apiKey, onClose }: { apiKey: string; onClose: () => void 
                                 disabled={busy || !name.trim()}
                                 className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-neutral-900 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                                {busy ? <VimotionLoader size={16} className="text-white" label="Uploading" /> : <Upload className="size-4" />}
                                 {busy ? 'Uploading…' : 'Upload & Index'}
                             </button>
                             <button

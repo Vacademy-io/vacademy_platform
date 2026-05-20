@@ -113,6 +113,8 @@ export const enum SettingsTabs {
     Integrations = 'integrations',
     DoubtManagement = 'doubtManagement',
     LiveSession = 'liveSession',
+    Youtube = 'youtube',
+    Automations = 'automations',
 }
 
 export const DAYS_IN_MONTH = 30;

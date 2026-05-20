@@ -6,14 +6,24 @@
  * Backend sub_stage strings (sourced from automation_pipeline.py +
  * music_generator.py — see docs/ai_content/AI_VIDEO_GENERATION.md). The FE
  * never invents these; it just maps them onto the production vocabulary.
+ *
+ * Two graph shapes coexist:
+ *   v2 → Pitch → Research? → Beats? → Screenplay → Narration → Storyboard → Scenes → Talent? / Score? → Final Cut
+ *   v3 → Pitch → Research? → ShotPlanner → NarrationWriter → Scenes → Talent? / Score? → Final Cut
+ * v3 collapses Beats/Screenplay/Narration/Storyboard into the ShotPlanner +
+ * NarrationWriter pair (one LLM hop each instead of three).
  */
 
 export type PipelineNodeId =
     | 'pitch'
     | 'research'
+    | 'beats'
     | 'screenplay'
     | 'narration'
     | 'storyboard'
+    // v3 nodes — present only when pipelineVersion === 'v3'.
+    | 'shotPlanner'
+    | 'narrationWriter'
     | 'filming'
     | 'talent'
     | 'score'
@@ -26,9 +36,12 @@ export type PipelineNodeId =
 export const NODE_LABELS: Record<PipelineNodeId, string> = {
     pitch: 'Pitch',
     research: 'Research',
+    beats: 'Beats',
     screenplay: 'Screenplay',
     narration: 'Narration',
     storyboard: 'Storyboard',
+    shotPlanner: 'Shot Planner',
+    narrationWriter: 'Narration Writer',
     filming: 'Filming',
     talent: 'Talent',
     score: 'Score',
@@ -43,9 +56,12 @@ export const NODE_LABELS: Record<PipelineNodeId, string> = {
 export const ACTIVE_SUB_STATUS: Record<PipelineNodeId, string> = {
     pitch: 'Brief in hand',
     research: 'Investigating sources…',
+    beats: 'Outlining story beats…',
     screenplay: 'Writer at work…',
     narration: 'Recording the voiceover…',
     storyboard: 'Director planning shots…',
+    shotPlanner: 'Planning shots…',
+    narrationWriter: 'Writing per-shot narration…',
     filming: 'On set, rolling cameras…',
     talent: 'Recording lead performance…',
     score: 'Composing the score…',
@@ -57,10 +73,13 @@ export const ACTIVE_SUB_STATUS: Record<PipelineNodeId, string> = {
  * `in_production` (if it was scheduled) or keeps it active. The `*_done`
  * sub_stages are handled separately as "wrapped" signals.
  *
- * Source: automation_pipeline.py + music_generator.py (see plan doc for line
- * refs).
+ * Source: automation_pipeline.py + music_generator.py + shot_planner.py +
+ * narration_writer.py (see plan doc for line refs).
  */
 export const SUB_STAGE_BY_NODE: Record<string, PipelineNodeId> = {
+    // v2 stages
+    beats_planning: 'beats',
+    beats_done: 'beats',
     script_writing: 'screenplay',
     script_done: 'screenplay',
     tts_generating: 'narration',
@@ -69,6 +88,14 @@ export const SUB_STAGE_BY_NODE: Record<string, PipelineNodeId> = {
     director_done: 'storyboard',
     html_generating: 'filming',
     html_done: 'filming',
+    // v3 stages — ShotPlanner runs first (absorbs BeatPlanner +
+    // ScriptGenerator + Director); NarrationWriter runs second (replaces
+    // monolithic TTS planning, per-shot TTS still produces audio downstream).
+    shot_planning: 'shotPlanner',
+    shot_planning_done: 'shotPlanner',
+    narration_writing: 'narrationWriter',
+    narration_writing_done: 'narrationWriter',
+    // Talent / Score (sub-stages emitted by avatar_batch + music_generator)
     avatar_batch_start: 'talent',
     avatar_image_audio_ready: 'talent',
     avatar_render_done: 'talent',
@@ -97,14 +124,27 @@ export type PipelineStage = (typeof STAGE_ORDER)[number];
 /**
  * Which broad stage owns a given linear node. Storyboard and Filming both
  * live inside the HTML stage but are split apart by sub_stage signals.
+ *
+ * `beats` lives inside the SCRIPT stage (BeatPlanner runs before _draft_script
+ * inside the script-writing block). It rides the same stage marker as
+ * screenplay but uses `beats_planning` / `beats_done` sub-stages to flip
+ * earlier than screenplay's `script_writing`.
+ *
+ * v3 nodes (`shotPlanner`, `narrationWriter`) live in the SCRIPT stage —
+ * ShotPlanner runs in the script stage's dispatch block (replacing BeatPlanner
+ * + Script Generator + Director); NarrationWriter immediately follows.
+ * Per-shot TTS then runs inside the HTML stage on v3.
  */
 export const NODE_STAGE: Record<
     Exclude<PipelineNodeId, 'research' | 'talent' | 'score' | 'finalCut'>,
     PipelineStage
 > = {
     pitch: 'PENDING',
+    beats: 'SCRIPT',
     screenplay: 'SCRIPT',
     narration: 'TTS', // WORDS is folded into Narration
     storyboard: 'HTML',
+    shotPlanner: 'SCRIPT',
+    narrationWriter: 'SCRIPT',
     filming: 'HTML',
 };

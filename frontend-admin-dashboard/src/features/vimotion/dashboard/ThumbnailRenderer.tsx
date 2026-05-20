@@ -27,10 +27,15 @@ const PAD_SCALE: Record<RendererSize, string> = {
 };
 
 /**
- * Renders a Seedream-generated thumbnail base image with a brand-kit-styled
- * headline overlay positioned by `thumb.layout`. The base image deliberately
- * contains no text — we composite the headline here so the brand kit's
- * heading font + palette stay authoritative even after the brand kit changes.
+ * Renders a thumbnail base image.
+ *
+ * - `layout: 'baked'` — the image already contains the headline typography
+ *   rendered by Recraft. We render just the `<img>` with no overlay; the
+ *   brand kit is irrelevant.
+ * - Legacy layouts (`bottom_band` / `top_left` / `center` / `none`) — the
+ *   image is a Seedream-era plain photograph and we composite the headline
+ *   on top using the brand kit's font + palette. Kept for backward compat
+ *   with thumbnails that pre-date the Recraft migration.
  */
 export function ThumbnailRenderer({
     thumb,
@@ -40,11 +45,32 @@ export function ThumbnailRenderer({
     className,
 }: ThumbnailRendererProps) {
     const aspectClass = orientation === 'portrait' ? 'aspect-[9/16]' : 'aspect-video';
+
+    // Baked-in text path — just render the image. No overlay, no brand kit needed.
+    if (thumb.layout === 'baked') {
+        return (
+            <div
+                className={cn(
+                    'relative w-full overflow-hidden bg-neutral-900',
+                    aspectClass,
+                    className
+                )}
+            >
+                <img
+                    src={thumb.image_url}
+                    alt={(thumb.headline || '').trim() || 'Thumbnail'}
+                    className="absolute inset-0 size-full object-cover"
+                    loading="lazy"
+                />
+            </div>
+        );
+    }
+
+    // Legacy overlay path (kept for thumbnails written before the Recraft swap).
     const headingFont = brandKit?.heading_font;
     const headlineColor =
         brandKit?.palette?.primary || brandKit?.palette?.accent || '#ffffff';
     const bandColor = brandKit?.palette?.background || '#0a0a0a';
-
     const headline = (thumb.headline || '').trim();
 
     return (
@@ -73,7 +99,7 @@ export function ThumbnailRenderer({
                 />
             )}
 
-            {/* type_led ('none' layout) — the headline IS the thumbnail. */}
+            {/* Legacy type_led ('none' layout) — the headline IS the thumbnail. */}
             {headline && thumb.layout === 'none' && (
                 <div
                     className={cn(

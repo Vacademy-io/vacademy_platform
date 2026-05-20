@@ -1,12 +1,15 @@
 package vacademy.io.media_service.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.json.JsonReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.media_service.ai.ExternalAIApiService;
+import vacademy.io.media_service.dto.AiGeneratedQuestionJsonDto;
 import vacademy.io.media_service.dto.AiGeneratedQuestionPaperJsonDto;
 import vacademy.io.media_service.dto.AutoQuestionPaperResponse;
 import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
@@ -14,6 +17,9 @@ import vacademy.io.media_service.dto.lecture.LecturePlanDto;
 import vacademy.io.media_service.exception.AiProcessingException;
 import vacademy.io.media_service.util.HtmlParsingUtils;
 import vacademy.io.media_service.util.JsonUtils;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Service for converting AI responses to structured DTOs.
@@ -28,6 +34,19 @@ public class ResponseConverterService {
     private final ExternalAIApiService externalAIApiService;
 
     /**
+     * Private mapper used only for LLM response parsing. Kept separate from the
+     * shared Spring-managed {@link ObjectMapper} so the lenient features below do
+     * not affect strict client-payload validation elsewhere in the service.
+     */
+    private final ObjectMapper lenientMapper = new ObjectMapper()
+            .configure(JsonReadFeature.ALLOW_TRAILING_COMMA.mappedFeature(), true)
+            .configure(JsonReadFeature.ALLOW_NON_NUMERIC_NUMBERS.mappedFeature(), true)
+            .configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true)
+            .configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true)
+            .configure(JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER.mappedFeature(), true)
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    /**
      * Converts AI JSON response to AutoQuestionPaperResponse.
      *
      * @param jsonResponse The raw JSON response from AI
@@ -38,33 +57,95 @@ public class ResponseConverterService {
             return new AutoQuestionPaperResponse();
         }
 
+        // Top-level JSON parse failure preserves the original behavior: throw
+        // AiProcessingException. TaskStatusManager catches and returns an empty
+        // response; the synchronous controllers let it surface as 5xx so the
+        // frontend's existing error-toast / retry interceptors keep working.
+        JsonNode root;
         try {
             String validJson = JsonUtils.extractAndSanitizeJson(jsonResponse);
             String cleanedJson = tryUnwrapQuotedJson(validJson);
-            String processedJson = cleanedJson;
-
-            AiGeneratedQuestionPaperJsonDto response = objectMapper.readValue(
-                    processedJson,
-                    new TypeReference<AiGeneratedQuestionPaperJsonDto>() {
-                    });
-
-            AutoQuestionPaperResponse result = new AutoQuestionPaperResponse();
-            result.setQuestions(externalAIApiService.formatQuestions(response.getQuestions()));
-            result.setTitle(response.getTitle());
-            result.setTags(response.getTags());
-            result.setClasses(response.getClasses());
-            result.setSubjects(response.getSubjects());
-            result.setDifficulty(response.getDifficulty());
-
-            return result;
+            root = lenientMapper.readTree(cleanedJson);
         } catch (Exception e) {
-            log.error("Failed to convert question paper response: {}", e.getMessage(), e);
+            log.error("Failed to parse question paper response: {}", e.getMessage(), e);
             throw new AiProcessingException(
                     "RESPONSE_CONVERSION_ERROR",
                     "Failed to process AI response. Please try again.",
                     "Response conversion failed: " + e.getMessage(),
                     e);
         }
+
+        // If the parsed tree is not an object (e.g. a top-level array, a literal
+        // value, or null), fall through to the original strict behavior: throw,
+        // so the controller layer surfaces the same error it did before.
+        if (root == null || !root.isObject()) {
+            throw new AiProcessingException(
+                    "RESPONSE_CONVERSION_ERROR",
+                    "Failed to process AI response. Please try again.",
+                    "Response is not a JSON object");
+        }
+
+        AutoQuestionPaperResponse result = new AutoQuestionPaperResponse();
+
+        // Metadata: isolate parse so a malformed tag/subject field doesn't kill the response
+        try {
+            AiGeneratedQuestionPaperJsonDto metadata = lenientMapper.treeToValue(
+                    withoutQuestions(root), AiGeneratedQuestionPaperJsonDto.class);
+            if (metadata != null) {
+                result.setTitle(metadata.getTitle());
+                result.setTags(metadata.getTags());
+                result.setClasses(metadata.getClasses());
+                result.setSubjects(metadata.getSubjects());
+                result.setDifficulty(metadata.getDifficulty());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse question paper metadata; continuing with questions only: {}",
+                    e.getMessage());
+        }
+
+        // Questions: lenient per-element parse, then resilient per-element formatting
+        try {
+            List<AiGeneratedQuestionJsonDto> validQuestions = parseQuestionsLeniently(root.get("questions"));
+            result.setQuestions(externalAIApiService.formatQuestions(
+                    validQuestions.toArray(new AiGeneratedQuestionJsonDto[0])));
+        } catch (Exception e) {
+            log.error("Failed to format questions: {}", e.getMessage(), e);
+            result.setQuestions(new ArrayList<>());
+        }
+
+        return result;
+    }
+
+    private JsonNode withoutQuestions(JsonNode root) {
+        if (root == null || !root.isObject()) {
+            return objectMapper.createObjectNode();
+        }
+        return ((com.fasterxml.jackson.databind.node.ObjectNode) root.deepCopy()).without("questions");
+    }
+
+    private List<AiGeneratedQuestionJsonDto> parseQuestionsLeniently(JsonNode questionsNode) {
+        List<AiGeneratedQuestionJsonDto> parsed = new ArrayList<>();
+        if (questionsNode == null || !questionsNode.isArray()) {
+            return parsed;
+        }
+        int index = 0;
+        for (JsonNode questionNode : questionsNode) {
+            index++;
+            try {
+                AiGeneratedQuestionJsonDto dto = lenientMapper.treeToValue(
+                        questionNode, AiGeneratedQuestionJsonDto.class);
+                if (dto != null && dto.getQuestion() != null
+                        && dto.getQuestion().getContent() != null
+                        && dto.getQuestionType() != null) {
+                    parsed.add(dto);
+                } else {
+                    log.warn("Skipping malformed question at index {}: missing required fields", index);
+                }
+            } catch (Exception e) {
+                log.warn("Skipping malformed question at index {}: {}", index, e.getMessage());
+            }
+        }
+        return parsed;
     }
 
     /**

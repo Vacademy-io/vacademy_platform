@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 METADATA = {
     "id": "bar_chart_grow",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "motion_primitive",
     "title": "Bar Chart Grow-in",
     "description": "Horizontal bars growing from 0 with staggered entry and number counter per row.",
@@ -45,6 +45,14 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     shot_idx = ctx.get("shot_index", 0)
     prefix = f"bcg{shot_idx}"
 
+    # Canvas-aware fonts via shot_pack. Bars labels/values are body-scale text;
+    # fall back to slightly tighter hardcoded values when shot_pack is absent.
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    fs_label = fs.get("body") or "1.5rem"
+    fs_value = fs.get("body") or "1.6rem"
+    shot_duration = float(ctx.get("shot_duration", 5.0) or 5.0)
+
     values = [float(b.get("value", 0) or 0) for b in bars]
     max_val = max(values + [1.0])
 
@@ -65,20 +73,24 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
             f'data-target-value="{value:g}">0{unit}</span>'
             f'</div>'
         )
-    html = f'<div class="{prefix}-chart">' + "".join(rows) + "</div>"
+    html = f'<div class="{prefix}-chart" id="{prefix}-root">' + "".join(rows) + "</div>"
 
+    # min-width (not flex-basis) on value cell so 4-digit numbers ("1,250") don't
+    # blow out the layout — the cell grows to fit, the track shrinks gracefully.
     css = f"""
 .{prefix}-chart {{ display:flex; flex-direction:column; gap:1.1rem; width:100%; padding:1.2rem 0; }}
 .{prefix}-row {{ display:flex; align-items:center; gap:1rem; }}
-.{prefix}-label {{ flex:0 0 9rem; font-size:1.5rem; font-weight:700; color:var(--brand-text); text-transform:uppercase; letter-spacing:0.04em; }}
+.{prefix}-label {{ flex:0 0 9rem; font-size:{fs_label}; font-weight:700; color:var(--brand-text); text-transform:uppercase; letter-spacing:0.04em; }}
 .{prefix}-track {{ flex:1; height:2.4rem; background:rgba(255,255,255,0.07); border-radius:0.35rem; overflow:hidden; }}
 .{prefix}-fill {{ height:100%; width:0%; border-radius:0.35rem; box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset; }}
-.{prefix}-value {{ flex:0 0 5.5rem; font-size:1.8rem; font-weight:800; color:var(--brand-accent); text-align:right; font-variant-numeric:tabular-nums; }}
+.{prefix}-value {{ min-width:5rem; font-size:{fs_value}; font-weight:800; color:var(--brand-accent); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }}
 """
 
     js_parts = []
+    last_bar_finish = entry_delay
     for i, _ in enumerate(bars):
         d = entry_delay + i * 0.12
+        last_bar_finish = d + 0.9
         js_parts.append(
             f'{{'
             f'var fill=document.getElementById("{prefix}-fill-{i}");'
@@ -93,6 +105,14 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
             f'}}'
             f'}}'
         )
+    # Back-half motion: after the last bar lands, give the chart a subtle drift.
+    back_half_delay = max(last_bar_finish + 0.3, shot_duration * 0.55)
+    back_half_dur = max(0.8, shot_duration - back_half_delay)
+    js_parts.append(
+        f'gsap.fromTo("#{prefix}-root",'
+        f'{{x:0}},'
+        f'{{x:6, duration:{back_half_dur:.2f}, delay:{back_half_delay:.2f}, ease:"sine.inOut"}});'
+    )
     js = "\n".join(js_parts)
 
     # Audio events: one ui_click as each bar starts growing, final ui_positive
@@ -134,6 +154,10 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     unit = str(params.get("unit", ""))
     shot_idx = ctx.get("shot_index", 0)
     prefix = f"bcg{shot_idx}fb"
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    fs_label = fs.get("body") or "1.5rem"
+    fs_value = fs.get("body") or "1.6rem"
 
     values = [float((b or {}).get("value", 0) or 0) for b in bars]
     max_val = max(values + [1.0])
@@ -160,9 +184,9 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     css = f"""
 .{prefix}-chart {{ display:flex; flex-direction:column; gap:1.1rem; width:100%; padding:1.2rem 0; }}
 .{prefix}-row {{ display:flex; align-items:center; gap:1rem; }}
-.{prefix}-label {{ flex:0 0 9rem; font-size:1.5rem; font-weight:700; color:var(--brand-text); text-transform:uppercase; letter-spacing:0.04em; }}
+.{prefix}-label {{ flex:0 0 9rem; font-size:{fs_label}; font-weight:700; color:var(--brand-text); text-transform:uppercase; letter-spacing:0.04em; }}
 .{prefix}-track {{ flex:1; height:2.4rem; background:rgba(255,255,255,0.07); border-radius:0.35rem; overflow:hidden; }}
 .{prefix}-fill {{ height:100%; border-radius:0.35rem; box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset; }}
-.{prefix}-value {{ flex:0 0 5.5rem; font-size:1.8rem; font-weight:800; color:var(--brand-accent); text-align:right; font-variant-numeric:tabular-nums; }}
+.{prefix}-value {{ min-width:5rem; font-size:{fs_value}; font-weight:800; color:var(--brand-accent); text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }}
 """
     return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

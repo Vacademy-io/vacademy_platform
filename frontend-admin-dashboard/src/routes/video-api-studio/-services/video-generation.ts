@@ -1,7 +1,13 @@
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 
 export type VideoStage = 'PENDING' | 'SCRIPT' | 'TTS' | 'WORDS' | 'HTML' | 'RENDER';
-export type VideoStatusType = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'STALLED';
+export type VideoStatusType =
+    | 'PENDING'
+    | 'IN_PROGRESS'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'STALLED'
+    | 'CANCELLED';
 
 export type VoiceGender = 'female' | 'male';
 export type TtsProvider = 'standard' | 'premium';
@@ -166,6 +172,12 @@ export interface VisualPreferences {
     /** Bias for DEVICE_MOCKUP (HTML-rendered app/web/mobile UI). */
     app_ui_mockup?: FamilyBias | null;
     /**
+     * Bias for AI_VIDEO_HERO and inline `<aivideo>` clips (fal.ai Veo).
+     * Ultra+ tiers only — even when set, the run-level `ai_video_enabled`
+     * flag must be on for Veo to actually fire.
+     */
+    ai_video?: FamilyBias | null;
+    /**
      * On-screen text density. Does NOT affect narration length — only the
      * amount of visible text in each shot. On `minimal`/`low` the Director
      * forbids KINETIC_TEXT and the per-shot HTML caps headline word count.
@@ -180,10 +192,60 @@ export const VISUAL_PREFERENCE_FAMILIES = [
     { key: 'svg_illustrated', label: 'SVG / illustrated diagrams' },
     { key: 'motion_graphics', label: 'Motion graphics' },
     { key: 'app_ui_mockup', label: 'App / device UI mockups' },
+    { key: 'ai_video', label: 'AI-generated video (Veo)' },
 ] as const satisfies ReadonlyArray<{
     key: keyof Omit<VisualPreferences, 'text_density'>;
     label: string;
 }>;
+
+/** Default AI video model when none is specified. Phase 3 only ships
+ *  fal-ai/veo3.1/lite; the dropdown exists for future model additions. */
+export const AI_VIDEO_MODELS = [
+    { value: 'fal-ai/veo3.1/lite', label: 'Veo 3.1 Lite (fal.ai)' },
+] as const;
+export type AiVideoModel = (typeof AI_VIDEO_MODELS)[number]['value'];
+
+// ── Per-stage model overrides (V200 — DB-backed routing) ─────────────────
+// Backend canonical stage IDs the user can override at request time. Keep in
+// lockstep with `app/constants/pipeline_stages.py` USER_OVERRIDABLE_STAGES.
+// Non-overridable stages (vision_review, cultural_context, etc.) are pinned
+// to admin defaults and stay off this list — sending them is a silent no-op.
+//
+// v2-legacy stage IDs (`director`, `script_generation`, `script_review`) are
+// no longer surfaced in the UI now that v3 is the only supported pipeline.
+// The BE still accepts them in `per_stage` for back-compat, so any clients
+// that still send them keep working — they just resolve to matrix rows that
+// the v3 runtime never reads.
+export type UserOverridableStage =
+    | 'shot_planner'
+    | 'narration_writer'
+    | 'per_shot_html'
+    | 'act_planner'
+    | 'regen_html';
+
+// Display order + labels for the ModelOverridesPanel "advanced" expander.
+// Same shape as AI_VIDEO_MODELS — readonly tuple so dropdowns stay
+// well-typed and constant.
+export const USER_OVERRIDABLE_STAGE_META: readonly {
+    value: UserOverridableStage;
+    label: string;
+    hint?: string;
+}[] = [
+    { value: 'shot_planner', label: 'Shot planning', hint: 'Plans the whole video shot-by-shot.' },
+    { value: 'narration_writer', label: 'Narration writing', hint: 'Authors per-shot narration text.' },
+    { value: 'per_shot_html', label: 'Per-shot HTML', hint: 'Generates HTML for every shot — biggest token bucket.' },
+    { value: 'act_planner', label: 'Act planner', hint: 'Decomposes intent into acts before shot planning.' },
+    { value: 'regen_html', label: 'HTML regeneration', hint: 'Corrective regen for failed validation passes.' },
+] as const;
+
+export interface ModelOverrides {
+    /** Mass-pick model — applied to every user-overridable stage. */
+    default?: string;
+    /** Per-stage explicit overrides. Wins over `default` for individual stages.
+     *  Keys must be `UserOverridableStage` values; unknown / non-overridable
+     *  keys are silently ignored by the backend. */
+    per_stage?: Partial<Record<UserOverridableStage, string>>;
+}
 
 /** Returns true when the user has expressed any non-default opinion. */
 export function hasActiveVisualPreferences(prefs: VisualPreferences | undefined | null): boolean {
@@ -201,7 +263,12 @@ export interface ReferenceFile {
 // Mirrors the BE schema in app/schemas/video_generation.py (HostConfig).
 // Available on ultra / super_ultra only — lower tiers reject at the API edge.
 
-export type AvatarModel = 'fal-ai/kling-video/ai-avatar/v2/standard' | 'veed/fabric-1.0';
+export type AvatarModel =
+    | 'fal-ai/kling-video/ai-avatar/v2/standard'
+    | 'fal-ai/kling-video/ai-avatar/v2/pro'
+    | 'fal-ai/heygen/avatar4/image-to-video'
+    | 'veed/fabric-1.0'
+    | 'fal-ai/flashtalk';
 
 export type AvatarQuality = '480p' | '720p';
 
@@ -217,7 +284,9 @@ export interface HostAvatarConfig {
     face_image_url?: string;
     /** Free-form description: clothing, demeanour, background hints. Threaded into per-shot avatar image prompts. */
     details_prompt?: string;
-    /** fal.ai model. Default Kling v2 ($0.0562/sec). Ignored for argil/veed providers (their endpoints are fixed). */
+    /** fal.ai model. Default Kling v2 (≈8.4 credits/sec @ current rate; see
+     *  `useCreditRate()` for the live multiplier). Ignored for argil/veed
+     *  providers (their endpoints are fixed). */
     avatar_model?: AvatarModel;
     /** Avatar video resolution. Same per-second price for both. */
     quality?: AvatarQuality;
@@ -249,7 +318,15 @@ export interface HostConfig {
     raw?: HostRawConfig;
 }
 
+// `perSecondUsd` is the source-of-truth price from fal.ai's pricing page.
+// UI labels render this via `usdToCredits(perSecondUsd, ratio)` from
+// `useEffectiveCreditRatio()` — never display the raw USD value to users.
 export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecondUsd: number }> = [
+    {
+        value: 'fal-ai/flashtalk',
+        label: 'FlashTalk (fast, budget)',
+        perSecondUsd: 0.02,
+    },
     {
         value: 'fal-ai/kling-video/ai-avatar/v2/standard',
         label: 'Kling AI Avatar v2 (Standard)',
@@ -259,6 +336,16 @@ export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecond
         value: 'veed/fabric-1.0',
         label: 'VEED Fabric 1.0',
         perSecondUsd: 0.08,
+    },
+    {
+        value: 'fal-ai/heygen/avatar4/image-to-video',
+        label: 'HeyGen Avatar 4',
+        perSecondUsd: 0.1,
+    },
+    {
+        value: 'fal-ai/kling-video/ai-avatar/v2/pro',
+        label: 'Kling AI Avatar v2 (Pro)',
+        perSecondUsd: 0.115,
     },
 ];
 
@@ -273,7 +360,17 @@ export interface GenerateVideoRequest {
     html_quality: 'classic' | 'advanced';
     target_audience: string;
     target_duration: string;
+    /** @deprecated Use `model_overrides` instead. Kept for backwards compat —
+     *  when set without `model_overrides`, the BE collapses it to
+     *  `ModelOverrides(default=model)` so it only applies to user-overridable
+     *  critical stages (vision review + utility prompts stay on admin defaults). */
     model: string;
+    /** Per-stage model overrides (V200 DB-backed routing). When omitted, every
+     *  stage uses its admin-configured default from `ai_model_stage_assignments`.
+     *  `default` mass-applies to all user-overridable stages; `per_stage` wins
+     *  over `default` for specific stages. Vision review + utility prompts
+     *  ignore this entirely (pinned to admin defaults). */
+    model_overrides?: ModelOverrides;
     quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
     reference_files?: ReferenceFile[];
@@ -307,6 +404,26 @@ export interface GenerateVideoRequest {
      * matching field via the IntentRouter free-text scanner.
      */
     visual_preferences?: VisualPreferences;
+    /**
+     * Enable AI video generation (fal.ai Veo) for this run. Ultra and
+     * super_ultra tiers only — backend downgrades to false on other tiers
+     * with a warning. Each AI video shot costs ≈18–60 credits @ current
+     * rate (USD source: $0.12–$0.40); the run is circuit-broken at the
+     * per-video credit cap (≈225 credits @ current rate, USD source: $1.50).
+     */
+    ai_video_enabled?: boolean;
+    /**
+     * When ai_video_enabled is on, lets AI video clips bring their own audio.
+     * Master narration is silenced during those shots. Veo audio is ≈7.5
+     * credits/sec instead of ≈4.5 credits/sec (USD source: $0.05/s vs
+     * $0.03/s); only meaningful with ai_video_enabled=true.
+     */
+    ai_video_audio_enabled?: boolean;
+    /**
+     * Optional override for the AI video model. Defaults to
+     * 'fal-ai/veo3.1/lite'. Currently the only supported value.
+     */
+    ai_video_model?: AiVideoModel;
 }
 
 // ── Intent Router types ─────────────────────────────────────────────────
@@ -454,23 +571,72 @@ export interface CancelledEvent {
     video_id?: string;
 }
 
+/**
+ * Per-shot plan entry. Carries the union of v2 (Director) + v3 (ShotPlanner +
+ * NarrationWriter) fields. v2 runs only populate the first six fields; v3
+ * runs add `narration_brief`, `audio_policy`, `background_treatment`,
+ * `transition_in`, `intent_role`, and the pre-computed per-shot audio URLs.
+ * The FE consumes both shapes uniformly — every v3 field is optional.
+ *
+ * `audio_policy` controls how the master narration interacts with the shot
+ * during render: `narration_only` (default) plays the voiceover normally;
+ * `intrinsic_only` mutes the voiceover in the shot's window so the shot's
+ * own audio (Veo-generated, source clip) plays alone.
+ */
+export interface ShotPlanItem {
+    shot_index: number;
+    shot_type: string;
+    start_time: number;
+    end_time: number;
+    duration_s: number;
+    /** Truncated narration the Director / NarrationWriter assigned. */
+    narration_excerpt?: string;
+    // ── v3 fields (ShotPlanner + NarrationWriter) ──
+    /** What the planner wants this shot to say — distinct from `narration_text`. */
+    narration_brief?: string;
+    /** Full per-shot narration authored by NarrationWriter. Empty on intrinsic_only shots. */
+    narration_text?: string;
+    audio_policy?: 'narration_only' | 'intrinsic_only';
+    /** brand_solid | brand_textured | brand_gradient | media_hero | etc. */
+    background_treatment?: string;
+    /** transition_picker.py key — `crossfade`, `circle_iris`, `slide_left`, etc. */
+    transition_in?: string;
+    /** ShotPlanner intent role — `hook`, `body`, `close`, `product_proof`, etc. */
+    intent_role?: string;
+    /** Pre-computed per-shot TTS mp3 URL. Absent on `intrinsic_only` (audio_skipped). */
+    audio_url?: string;
+    /** Pre-computed per-shot word timings JSON URL. */
+    audio_words_url?: string;
+    /** Pre-computed per-shot narration script (plain text) URL. */
+    audio_script_url?: string;
+    /** Per-shot audio duration in seconds, as reported by the TTS pass. */
+    audio_duration_s?: number;
+    /** True when the shot is `intrinsic_only` and no per-shot TTS was generated. */
+    audio_skipped?: boolean;
+}
+
 /** Sub-stage progress event emitted during long phases (e.g. director_planning, shot_done) */
 export interface SubStageEvent {
     type: 'sub_stage';
     sub_stage: string;
     message?: string;
     video_id?: string;
-    /** Director shot count — only present when sub_stage === 'director_done' */
+    /** Director / ShotPlanner shot count — present on `director_done` or `shot_planning_done`. */
     shot_count?: number;
-    /** Full Director shot plan — only present when sub_stage === 'director_done' */
-    shot_plan?: Array<{
-        shot_index: number;
-        shot_type: string;
-        start_time: number;
-        end_time: number;
-        duration_s: number;
-        narration_excerpt?: string;
+    /** Full plan — present on `director_done` (v2) or `shot_planning_done` (v3). */
+    shot_plan?: ShotPlanItem[];
+    /**
+     * v3 only: plan-level recurring visual motifs (logo placement, repeated
+     * UI element, etc.) that span multiple shots. Emitted on
+     * `shot_planning_done`.
+     */
+    recurring_motifs?: Array<{
+        description: string;
+        screen_position?: string;
+        when_visible?: string;
     }>;
+    /** v3 only: total words in the authored narration, emitted on `narration_writing_done`. */
+    narration_word_count?: number;
     /** Per-shot index for avatar_* sub-stages */
     shot_index?: number;
     /** Per-shot total for avatar_* sub-stages */
@@ -573,14 +739,23 @@ export interface GenerationProgress {
     sub_stage?: string;
     shots_completed?: number;
     shots_total?: number;
-    shot_plan?: Array<{
-        shot_index: number;
-        shot_type: string;
-        duration_s: number;
-        start_time: number;
-        end_time: number;
-        narration_excerpt?: string;
+    /**
+     * Full per-shot plan. v2 runs populate the legacy fields only; v3 runs
+     * include the richer ShotPlanner + NarrationWriter metadata (audio_policy,
+     * narration_brief, background_treatment, etc.). See `ShotPlanItem`.
+     */
+    shot_plan?: ShotPlanItem[];
+    /**
+     * v3 only — plan-level recurring motifs the ShotPlanner emitted.
+     * Surfaced in the ShotPlanner detail sheet for cross-shot continuity.
+     */
+    recurring_motifs?: Array<{
+        description: string;
+        screen_position?: string;
+        when_visible?: string;
     }>;
+    /** v3 only — total words NarrationWriter authored across all shots. */
+    narration_word_count?: number;
     shots_history?: Array<{
         shot_index: number;
         shot_type: string;
@@ -696,19 +871,77 @@ export interface VideoMetadataIntentOutcomes {
 }
 
 /**
+ * Snapshot of the GenerateVideoRequest the BE persisted at gen start —
+ * everything the pipeline view's Pitch / Configuration card displays. BE
+ * writes this once at `extra_metadata.user_selections` after the intent
+ * router resolves, so it's available from the first poll onward (no SSE
+ * dependency).
+ */
+export interface VideoStatusUserSelections {
+    prompt?: string;
+    content_type?: ContentType;
+    quality_tier?: QualityTier;
+    model?: string;
+    /** Canonical uppercase target stage (SCRIPT/TTS/WORDS/HTML/RENDER). Lets
+     *  the FE distinguish review-mode runs from full runs without SSE state. */
+    target_stage?: VideoStage;
+    target_duration?: string;
+    target_audience?: string;
+    orientation?: VideoOrientation;
+    language?: string;
+    voice_gender?: VoiceGender;
+    tts_provider?: TtsProvider;
+    voice_id?: string | null;
+    html_quality?: 'classic' | 'advanced';
+    captions_enabled?: boolean;
+    generate_avatar?: boolean;
+    avatar_image_url?: string | null;
+    sound_effects_enabled?: boolean | null;
+    background_music_enabled?: boolean | null;
+    background_music_volume?: number | null;
+    sub_shots_enabled?: boolean;
+    mute_tts_on_source_clips_kwarg?: boolean;
+    input_video_ids?: string[];
+    input_video_audio?: 'original' | 'tts' | null;
+    reference_files_count?: number;
+    routing_overrides?: Record<string, unknown> | null;
+    /** Top-level mirror of HostConfig — full shape on the request type. */
+    host?: {
+        type?: 'avatar' | 'raw';
+        host_in_video_percentage?: number;
+        avatar?: Record<string, unknown>;
+        raw?: Record<string, unknown>;
+    };
+    visual_preferences?: Record<string, unknown> | null;
+    /**
+     * Which AI video pipeline architecture this run used: `'v2'` (legacy:
+     * BeatPlanner → ScriptGenerator → Director → per-shot HTML) or `'v3'`
+     * (ShotPlanner-first: ShotPlanner → NarrationWriter → per-shot TTS →
+     * per-shot HTML). v3 is opt-in via env or tier override; absent / unknown
+     * is treated as v2 by the FE for back-compat.
+     */
+    pipeline_version?: 'v2' | 'v3';
+}
+
+/**
  * Subset of `extra_metadata` the FE pipeline view reads. Returned inside
  * `VideoStatusResponse.metadata` (BE writes `metadata` via `extra_metadata`).
  */
 export interface VideoStatusMetadata {
-    user_selections?: {
-        host?: { type?: 'avatar' | 'raw' };
-        generate_avatar?: boolean;
-        background_music_enabled?: boolean | null;
-    };
+    user_selections?: VideoStatusUserSelections;
     host?: VideoMetadataHostBlock;
     /** Top-level legacy mirror of background_music_enabled. */
     background_music_enabled?: boolean | null;
     intent_outcomes?: VideoMetadataIntentOutcomes;
+    /** Background-music track URL once the BE writes the merged Lyria track
+     *  to metadata. Not populated today — comes online when Phase 3 BE work
+     *  flushes music outputs to /status. Read defensively. */
+    audio_tracks?: Array<{ id?: string; url?: string; label?: string }>;
+    /**
+     * Top-level mirror of `user_selections.pipeline_version` — BE may write
+     * it here too. Either source is authoritative; FE checks both.
+     */
+    pipeline_version?: 'v2' | 'v3';
     [key: string]: unknown;
 }
 
@@ -717,17 +950,143 @@ export interface VideoStatusResponse {
     video_id: string;
     current_stage: VideoStage;
     status: VideoStatusType;
+    content_type?: ContentType;
+    /** Original prompt as persisted on the video record. */
+    prompt?: string | null;
+    language?: string;
+    /** BE returns every populated key; FE reads defensively via lookup. */
     s3_urls: {
         script?: string;
         audio?: string;
+        words?: string;
+        timeline?: string;
+        avatar?: string;
         video?: string;
+        [key: string]: string | undefined;
     };
+    file_ids?: Record<string, string | null | undefined>;
+    error_message?: string | null;
     created_at: string;
+    updated_at?: string | null;
+    completed_at?: string | null;
     /** Real-time sub-stage breakdown — populated while generation is in progress and after completion */
     generation_progress?: GenerationProgress | null;
     /** BE-side `extra_metadata` — see VideoStatusMetadata for the surface area we read. */
     metadata?: VideoStatusMetadata | null;
     token_usage?: TokenUsage | null;
+    /**
+     * v3 live-progress snapshot. Single source of truth for the pipeline
+     * view — both live runs and history reads consume this shape. Read
+     * from the BE's in-memory RunStateAggregator while the run is active;
+     * falls back to the persisted snapshot in extra_metadata.live for
+     * post-restart and history reads. Absent for legacy v1/v2 runs.
+     */
+    live?: VideoLiveProgress | null;
+}
+
+/**
+ * v3 live-progress snapshot returned by `GET /status/{video_id}.live`.
+ * Mirrors `LiveProgress` in ai_service/.../run_state_aggregator.py.
+ */
+export interface VideoLiveProgress {
+    status: VideoStatusType;
+    active_stage: VideoLiveStageId;
+    active_substage?: string | null;
+    director_thought?: string | null;
+    started_at?: number | null;
+    last_event_at?: number | null;
+    finished_at?: number | null;
+    stages: Record<VideoLiveStageId, VideoLiveStageProgress>;
+    shots: VideoLiveShotProgress[];
+    recurring_motifs?: Array<Record<string, unknown>>;
+    external_calls?: VideoLiveExternalCall[];
+    costs?: VideoLiveCosts;
+    /** Rolling log; capped at 50 events on the wire. */
+    event_log?: VideoLiveEvent[];
+}
+
+export type VideoLiveStageId =
+    | 'pitch'
+    | 'research'
+    | 'shotPlanner'
+    | 'narrationWriter'
+    | 'filming'
+    | 'talent'
+    | 'score'
+    | 'finalCut';
+
+export interface VideoLiveStageProgress {
+    state: 'pending' | 'in_progress' | 'wrapped' | 'failed';
+    started_at?: number | null;
+    wrapped_at?: number | null;
+    message?: string | null;
+    detail?: Record<string, unknown>;
+}
+
+export interface VideoLiveShotProgress {
+    idx: number;
+    shot_type?: string | null;
+    intent_role?: string | null;
+    audio_policy?: string | null;
+    background_treatment?: string | null;
+    transition_in?: string | null;
+    narration_brief?: string | null;
+    duration_estimate_s?: number | null;
+    state: 'pending' | 'in_progress' | 'wrapped' | 'cut' | 'reshoot';
+    /** One of: html_gen | density | bbox_lint | brand_asset | vision_review | screenshot | tts | media_polling */
+    substage?: string | null;
+    /** Map of step → attempt count, e.g. {vision_regen: 2, bbox_regen: 1}. */
+    attempts?: Record<string, number>;
+    regen_log?: Array<{
+        step: string;
+        attempt: number;
+        verdict: string;
+        reason?: string | null;
+        at: number;
+    }>;
+    external_call_ids?: string[];
+    cost_usd?: number;
+    tokens_in?: number;
+    tokens_out?: number;
+    started_at?: number | null;
+    wrapped_at?: number | null;
+    elapsed_s?: number | null;
+    last_error?: string | null;
+}
+
+export interface VideoLiveExternalCall {
+    id: string;
+    provider: string;
+    op: string;
+    state: 'queued' | 'polling' | 'done' | 'failed';
+    shot_idx?: number | null;
+    request_id?: string | null;
+    started_at?: number;
+    finished_at?: number | null;
+    elapsed_s?: number | null;
+    poll_count?: number;
+    eta_s?: number | null;
+    error?: string | null;
+}
+
+export interface VideoLiveCosts {
+    spent_usd?: number;
+    spent_credits?: number;
+    cap_usd?: number | null;
+    cap_credits?: number | null;
+    tokens_prompt?: number;
+    tokens_completion?: number;
+    tokens_total?: number;
+    estimated_cost_usd?: number;
+}
+
+export interface VideoLiveEvent {
+    at: number;
+    type: string;
+    stage?: string | null;
+    shot_idx?: number | null;
+    message?: string | null;
+    detail?: Record<string, unknown>;
 }
 
 /** A single intent-aware thumbnail option generated by the pipeline. */
@@ -885,6 +1244,13 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     quality_tier: 'ultra',
     orientation: 'landscape',
     visual_style: 'standard',
+    // AI video flags default OFF (ultra+ users opt in per run). Backend
+    // downgrades these to false on tier-ineligible runs even when sent.
+    ai_video_enabled: false,
+    ai_video_audio_enabled: false,
+    // model_overrides intentionally omitted (undefined) — the request body
+    // serializer drops undefined keys so the BE applies admin defaults
+    // for every stage.
 };
 
 export function generateVideoId(): string {
@@ -1615,6 +1981,23 @@ export async function getRemoteHistory(
                 orientation,
                 visual_style: visualStyle,
                 ...(visualPreferences ? { visual_preferences: visualPreferences } : {}),
+                // Phase 3b/4/5 AI video flags — surfaced so re-runs from
+                // history rehydrate the user's original choice. Defaults
+                // false; backend gates against tier eligibility.
+                ai_video_enabled: pickBool('ai_video_enabled', false),
+                ai_video_audio_enabled: pickBool('ai_video_audio_enabled', false),
+                ai_video_model: pickStrOrUndef('ai_video_model') as AiVideoModel | undefined,
+                // V200 per-stage overrides — rehydrate from saved metadata
+                // (user_selections.model_overrides, falling back to
+                // meta.model_overrides). Old records without model_overrides
+                // fall back to the legacy `model` string which the BE
+                // collapses into ModelOverrides(default=model) server-side.
+                ...(() => {
+                    const v = sel['model_overrides'] ?? meta['model_overrides'];
+                    return v && typeof v === 'object'
+                        ? { model_overrides: v as ModelOverrides }
+                        : {};
+                })(),
             },
             token_usage: item.token_usage ?? null,
             thumbnails,
@@ -1626,12 +2009,48 @@ export async function getRemoteHistory(
 // Frame regeneration
 // ---------------------------------------------------------------------------
 
+export interface RegenerateFramePatchOp {
+    target: string;
+    selector_hint?: string;
+    new_value?: string;
+    confidence?: number;
+}
+
+export interface RegenerateFrameClassification {
+    intent: 'targeted_patch' | 'full_remake';
+    patch_ops?: RegenerateFramePatchOp[];
+    rationale?: string;
+    confidence?: number;
+}
+
+export interface RegenerateFrameAppliedOp {
+    target: string;
+    selector: string;
+    before: string;
+    after: string;
+    ok: boolean;
+}
+
 export interface RegenerateFrameResponse {
     video_id: string;
     frame_index: number;
     timestamp: number;
     original_html: string;
     new_html: string;
+    /** model_id actually used. `null` when the DOM-patch fast path ran (no LLM). */
+    resolved_model?: string | null;
+    /** 'dom_patch' (deterministic), 'full_remake' (canonical LLM), or
+     *  'full_remake_fallback' (classifier wanted a patch but no op was applicable). */
+    regen_path?: 'dom_patch' | 'full_remake' | 'full_remake_fallback';
+    classification?: RegenerateFrameClassification | null;
+    applied_ops?: RegenerateFrameAppliedOp[] | null;
+}
+
+export interface RegenerateFrameOptions {
+    /** Optional model override. When omitted, the BE uses the same model that
+     *  authored the shot (persisted at gen time), then registry default for
+     *  use_case='video_regenerate', then a hard fallback. */
+    model?: string;
 }
 
 /**
@@ -1644,7 +2063,8 @@ export async function regenerateFrame(
     videoId: string,
     apiKey: string,
     timestamp: number,
-    userPrompt: string
+    userPrompt: string,
+    options?: RegenerateFrameOptions
 ): Promise<RegenerateFrameResponse> {
     const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/regenerate`, {
         method: 'POST',
@@ -1656,6 +2076,7 @@ export async function regenerateFrame(
             video_id: videoId,
             timestamp,
             user_prompt: userPrompt,
+            ...(options?.model ? { model: options.model } : {}),
         }),
     });
 
@@ -1679,7 +2100,8 @@ export async function updateFrame(
     videoId: string,
     apiKey: string,
     frameIndex: number,
-    newHtml: string
+    newHtml: string,
+    options?: { htmlModel?: string }
 ): Promise<void> {
     const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`, {
         method: 'POST',
@@ -1691,6 +2113,9 @@ export async function updateFrame(
             video_id: videoId,
             frame_index: frameIndex,
             new_html: newHtml,
+            // Stamp the model that authored this HTML — read at regen time
+            // so the next "Remake with AI" uses the same model.
+            ...(options?.htmlModel ? { html_model: options.htmlModel } : {}),
         }),
     });
 
@@ -1725,6 +2150,10 @@ export interface VideoCostPreviewRequest {
     attachments_count: number;
     /** Optional on-screen host. Adds avatar synthesis cost lines on ultra+ tiers. */
     host?: HostConfig;
+    /** When true (ultra+ only), the estimator adds an AI video (Veo)
+     *  upper-bound row to the breakdown. Mirrors the runtime flag. */
+    ai_video_enabled?: boolean;
+    ai_video_audio_enabled?: boolean;
 }
 
 export interface VideoCostPreviewBreakdownRow {

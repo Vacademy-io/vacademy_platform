@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { CartComponentProps } from "../../-types/course-catalogue-types";
@@ -13,6 +13,12 @@ import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { Preferences } from "@capacitor/preferences";
+import { PriceWithMrp } from "@/components/common/price-with-mrp";
+import {
+  resolveAdditionalCharges,
+  sumChargeAmounts,
+  ResolvedCharge,
+} from "../../-utils/additional-charges-util";
 
 
 // Helper for simple image loading in Rent loop
@@ -124,9 +130,13 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
           {/* Price - Always visible on top right */}
           {showPrice && (
             <div className="text-right flex-shrink-0">
-              <p className="text-sm sm:text-base font-bold text-gray-900">
-                ₹{item.price.toFixed(0)}
-              </p>
+              <PriceWithMrp
+                actual={item.price}
+                elevated={item.elevatedPrice}
+                currency={item.currency}
+                size="sm"
+                freeForZero={false}
+              />
             </div>
           )}
         </div>
@@ -203,7 +213,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
     ? `Maximum ${maxSeats} books can be rented in this period`
     : "No limit on total number of books in this period";
   const price = plan.min_plan_actual_price || 0;
-  const currencySymbol = '₹';
+  const elevatedPrice = plan.min_plan_elevated_price;
 
   return (
     <div
@@ -224,9 +234,13 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
             {planName}
           </h3>
           <div className="flex items-baseline gap-0.5 flex-shrink-0">
-            <span className="text-xs sm:text-sm font-bold text-gray-900">
-              {currencySymbol}{price.toFixed(0)}
-            </span>
+            <PriceWithMrp
+              actual={price}
+              elevated={elevatedPrice}
+              currency={plan.currency}
+              size="sm"
+              freeForZero={false}
+            />
           </div>
         </div>
 
@@ -275,6 +289,63 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
   );
 };
 
+/**
+ * Tiny banner shown above cart items when the cart holds items from a store
+ * that isn't the currently-selected store. Reads `storeFilter` from
+ * localStorage (set by the catalogue page) and listens for changes.
+ */
+const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
+  const [storeFilter, setStoreFilter] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : localStorage.getItem("storeFilter")
+  );
+  useEffect(() => {
+    const refresh = () =>
+      setStoreFilter(typeof window === "undefined" ? null : localStorage.getItem("storeFilter"));
+    window.addEventListener("storage", refresh);
+    window.addEventListener("storeFilterChanged", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("storeFilterChanged", refresh);
+    };
+  }, []);
+
+  const distinctStoresInCart = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const item of items) {
+      if (item.sessionId) {
+        set.set(item.sessionId, item.sessionName || item.sessionId);
+      }
+    }
+    return Array.from(set.entries()).map(([id, name]) => ({ id, name }));
+  }, [items]);
+
+  if (distinctStoresInCart.length === 0) return null;
+
+  // Case A: multiple stores within the cart itself.
+  if (distinctStoresInCart.length > 1) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        Your cart contains items from {distinctStoresInCart.length} different stores
+        ({distinctStoresInCart.map((s) => s.name).join(", ")}). Each store handles its
+        own fulfillment, so you may need to check out separately.
+      </div>
+    );
+  }
+
+  // Case B: single store in cart, but doesn't match the active filter.
+  const cartStore = distinctStoresInCart[0];
+  if (storeFilter && storeFilter !== cartStore.id) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        Your cart items are from <span className="font-semibold">{cartStore.name}</span>,
+        but your active store is different. Switch stores or remove these items to keep
+        things consistent.
+      </div>
+    );
+  }
+  return null;
+};
+
 export const CartComponent: React.FC<CartComponentProps> = ({
   showItemImage = true,
   showItemTitle = true,
@@ -287,6 +358,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   emptyStateMessage = "Your cart is empty. Add some books!",
   styles = {},
   instituteId, // Accept instituteId prop
+  globalSettings,
   onlyLogic = false,
 }) => {
 
@@ -557,6 +629,17 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   const roundedEdges = styles.roundedEdges ? "rounded-lg" : "";
   const backgroundColor = styles.backgroundColor || "#ffffff";
 
+  // Buy-mode additional charges (shipping). Rent mode is intentionally excluded —
+  // security deposit / rent-mode shipping is a separate piece of work.
+  const buyModeItemQty = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const resolvedAdditionalCharges = useMemo<ResolvedCharge[]>(() => {
+    if (isRentMode) return [];
+    return resolveAdditionalCharges(globalSettings, "buy", buyModeItemQty);
+  }, [globalSettings, isRentMode, buyModeItemQty]);
+  const additionalChargesTotal = sumChargeAmounts(resolvedAdditionalCharges);
+  const buyModeSubtotal = getTotal();
+  const buyModeGrandTotal = buyModeSubtotal + additionalChargesTotal;
+
   const paymentBanner = paymentMessage ? (
     <div className={`w-full p-4 mb-4 rounded-lg flex items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${paymentMessage.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
       paymentMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
@@ -753,6 +836,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
       style={{ backgroundColor, padding }}
     >
       {paymentBanner}
+      <CrossStoreWarning items={items} />
       {items.map((item) => (
         <CartItemCard
           key={item.enrollInviteId || item.id}
@@ -773,14 +857,26 @@ export const CartComponent: React.FC<CartComponentProps> = ({
       {/* Checkout Button for Buy mode */}
       {items.length > 0 && !isRentMode && (
         <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
-          <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
-            <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
-            <span className="text-base sm:text-lg font-bold text-gray-900">₹{getTotal().toFixed(2)}</span>
+          <div className="space-y-1.5 pt-2 mb-3">
+            <div className="flex justify-between items-center text-sm text-gray-700">
+              <span>Subtotal ({buyModeItemQty} {buyModeItemQty === 1 ? "book" : "books"})</span>
+              <span className="font-medium">₹{buyModeSubtotal.toFixed(2)}</span>
+            </div>
+            {resolvedAdditionalCharges.map((charge) => (
+              <div key={charge.key} className="flex justify-between items-center text-sm text-gray-700">
+                <span>{charge.label}</span>
+                <span className="font-medium">₹{charge.amount.toFixed(2)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+              <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
+              <span className="text-base sm:text-lg font-bold text-gray-900">₹{buyModeGrandTotal.toFixed(2)}</span>
+            </div>
           </div>
 
           <Button
             onClick={() => {
-              console.log("[CartComponent] Proceeding to checkout (Buy) with items:", items);
+              console.log("[CartComponent] Proceeding to checkout (Buy) with items:", items, "charges:", resolvedAdditionalCharges);
               setIsCheckoutFormOpen(true);
             }}
             className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
@@ -795,10 +891,11 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         open={isCheckoutFormOpen}
         onOpenChange={setIsCheckoutFormOpen}
         instituteId={instituteId || INSTITUTE_ID}
-        totalAmount={getTotal()}
+        totalAmount={buyModeGrandTotal}
         items={items}
         membershipPlan={membershipPlan}
         isRentMode={false}
+        additionalCharges={resolvedAdditionalCharges}
       />
     </div>
   );

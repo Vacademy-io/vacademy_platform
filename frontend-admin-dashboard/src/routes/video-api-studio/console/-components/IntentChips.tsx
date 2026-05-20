@@ -193,7 +193,11 @@ export function IntentChips({ selected, onSelect, onSamplePromptSelect }: Intent
                             <ChevronDown className="size-3" />
                         </button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[420px] p-2" align="center">
+                    <PopoverContent
+                        className="w-[calc(100vw-2rem)] max-w-[420px] p-2"
+                        align="center"
+                        collisionPadding={16}
+                    >
                         <div className="space-y-1">
                             {samples.map((p, i) => (
                                 <button

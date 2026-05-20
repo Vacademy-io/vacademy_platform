@@ -49,6 +49,10 @@ public interface PackageDetailV2Projection {
 
     String getLevelName();
 
+    String getSessionId();
+
+    String getSessionName();
+
     // Faculty IDs (from faculty_subject_package_session_mapping)
     List<String> getFacultyUserIds();
 
@@ -69,6 +73,8 @@ public interface PackageDetailV2Projection {
     String getPaymentPlanId();
 
     Double getMinPlanActualPrice();
+
+    Double getMinPlanElevatedPrice();
 
     String getCurrency();
 

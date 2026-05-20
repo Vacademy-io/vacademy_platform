@@ -2,7 +2,6 @@ import { SettingsTabs } from '../-constants/terms';
 import PaymentSettings from '../-components/Payment/PaymentSettings';
 import ReferralSettings from '../-components/Referral/ReferralSettings';
 import CourseSettings from '../-components/Course/CourseSettings';
-import TabSettings from '../-components/Tab/TabSettings';
 import NamingSettings from '../-components/NamingSettings';
 import NotificationSettings from '../-components/Notification/NotificationSettings';
 import RoleDisplaySettingsMain from '../-components/RoleDisplay/RoleDisplaySettingsMain';
@@ -21,14 +20,14 @@ import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
+import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
+import { AutomationSettings } from '../-components/Automations';
 
 export const getAvailableSettingsTabs = () => {
+    // Entries are sorted A-Z by display label (`value`) at the end so the
+    // sidebar renders in alphabetical order. Authoring order here is
+    // irrelevant — add new entries anywhere.
     return [
-        {
-            tab: SettingsTabs.Tab,
-            value: 'Tab Settings',
-            component: TabSettings,
-        },
         {
             tab: SettingsTabs.RoleDisplay,
             value: 'Display Settings',
@@ -48,6 +47,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Notification,
             value: 'Notification Settings',
             component: NotificationSettings,
+        },
+        {
+            tab: SettingsTabs.Automations,
+            value: 'Automations',
+            component: AutomationSettings,
         },
         {
             tab: SettingsTabs.Payment,
@@ -134,5 +138,10 @@ export const getAvailableSettingsTabs = () => {
             value: 'Live Session Settings',
             component: LiveSessionSettings,
         },
-    ];
+        {
+            tab: SettingsTabs.Youtube,
+            value: 'YouTube Integration',
+            component: YoutubeIntegrationSettings,
+        },
+    ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

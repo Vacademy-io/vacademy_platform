@@ -22,6 +22,7 @@ from ..db import db_dependency
 from ..core.security import get_current_user
 from ..dependencies import require_internal_service_token
 from ..services.credit_service import CreditService
+from ..services.credit_rate_service import CreditRateService
 from ..schemas.credits import (
     CreditBalanceResponse,
     CreditGrantRequest,
@@ -30,6 +31,8 @@ from ..schemas.credits import (
     CreditCheckResponse,
     CreditDeductRequest,
     CreditDeductResponse,
+    CreditRateConfigResponse,
+    CreditRateConfigUpdateRequest,
     InternalGrantFromPaymentRequest,
     InternalRefundFromPaymentRequest,
     InternalGrantOrRefundResponse,
@@ -374,6 +377,87 @@ def estimate_cost(
             result["has_sufficient_credits"] = balance.current_balance >= estimated_cost
 
     return result
+
+
+# ============================================================================
+# Rate Config (V252 — DB-driven USD↔credits ratio + margin)
+#
+# Read endpoint is public so the FE can render rate footnotes / convert
+# USD-denominated upper bounds (e.g. AI video cost cap) into credits.
+# Write endpoint is gated to ROOT_ADMIN — changing the ratio reprices
+# every future deduction across all institutes.
+# ============================================================================
+
+
+def get_rate_service(
+    db: Session = Depends(db_dependency),
+) -> CreditRateService:
+    return CreditRateService(db)
+
+
+def _rate_response(svc: CreditRateService) -> CreditRateConfigResponse:
+    usd_to_credits, margin_pct = svc.get_current_rate()
+    effective = svc.get_effective_ratio()
+    return CreditRateConfigResponse(
+        usd_to_credits=usd_to_credits,
+        margin_pct=margin_pct,
+        effective_ratio=effective,
+    )
+
+
+@router.get(
+    "/rate-config",
+    response_model=CreditRateConfigResponse,
+    summary="Get current credit↔USD rate + margin",
+    description=(
+        "Returns the active row from `credit_rate_config`. The frontend uses "
+        "this to convert USD upper-bounds (e.g. AI video cost cap) into the "
+        "credit equivalent shown to users."
+    ),
+)
+def get_rate_config(
+    svc: CreditRateService = Depends(get_rate_service),
+):
+    return _rate_response(svc)
+
+
+@router.post(
+    "/admin/rate-config",
+    response_model=CreditRateConfigResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Append a new credit↔USD rate (ROOT_ADMIN)",
+    description=(
+        "Inserts a new rate row with `effective_from = now`. Historical "
+        "credit_transactions are NOT repriced — `amount` and `balance_after` "
+        "are already credit-denominated snapshots."
+    ),
+)
+def create_rate_config(
+    request: CreditRateConfigUpdateRequest,
+    svc: CreditRateService = Depends(get_rate_service),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    if not check_root_admin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only ROOT_ADMIN can change the credit rate.",
+        )
+
+    created_by = None
+    if current_user:
+        created_by = (
+            getattr(current_user, "user_id", None)
+            or getattr(current_user, "id", None)
+            or (current_user.get("user_id") or current_user.get("id") if isinstance(current_user, dict) else None)
+        )
+
+    svc.insert_new_rate(
+        usd_to_credits=request.usd_to_credits,
+        margin_pct=request.margin_pct,
+        notes=request.notes,
+        created_by=created_by,
+    )
+    return _rate_response(svc)
 
 
 # ============================================================================

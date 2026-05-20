@@ -12,7 +12,7 @@ import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
 import { getBackendCourseDuration } from "@/utils/courseTime";
-import { getCurrencySymbol } from "@/utils/currency";
+import { PriceWithMrp } from "@/components/common/price-with-mrp";
 import {
   getTerminology,
   getTerminologyPlural,
@@ -287,6 +287,7 @@ interface CourseData {
   duration: string | null;
   instructor: string | null;
   price: number;
+  elevatedPrice?: number;
   type: string;
   level: string;
   thumbnail: string;
@@ -518,6 +519,10 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
         let finalPrice = price
           ? parseFloat(price)
           : course.min_plan_actual_price || 0;
+        let finalElevatedPrice: number | undefined =
+          typeof course.min_plan_elevated_price === "number"
+            ? course.min_plan_elevated_price
+            : undefined;
         let finalCurrency = course.currency || "USD";
 
         // Fetch enroll-invite API to get the correct price and currency from payment plans
@@ -550,16 +555,21 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
 
             if (paymentPlan) {
               const planPrice = paymentPlan.actual_price;
+              const planElevated = paymentPlan.elevated_price;
               const planCurrency = paymentPlan.currency;
 
               console.log("[CourseDetailsPage] Payment plan found:", {
                 actualPrice: planPrice,
+                elevatedPrice: planElevated,
                 currency: planCurrency,
                 planName: paymentPlan.name,
               });
 
               if (planPrice !== undefined && planPrice !== null) {
                 finalPrice = planPrice;
+              }
+              if (typeof planElevated === "number") {
+                finalElevatedPrice = planElevated;
               }
               if (planCurrency) {
                 finalCurrency = planCurrency;
@@ -661,6 +671,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             courseResponse.sessions?.[0]?.level_with_details?.[0]
               ?.instructors?.[0]?.full_name || null,
           price: finalPrice,
+          elevatedPrice: finalElevatedPrice,
           type: "Course", // Generic type since it's not specified in the API
           level: level || "Basic",
           thumbnail: thumbnailUrl,
@@ -959,11 +970,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             <span className="text-xs font-medium text-primary-700">
                               Price
                             </span>
-                            <span className="text-lg font-bold text-primary-800">
-                              {courseData.price === 0
-                                ? "Free"
-                                : `${getCurrencySymbol(courseData.currency || "INR")}${courseData.price}`}
-                            </span>
+                            <PriceWithMrp
+                              actual={courseData.price}
+                              elevated={courseData.elevatedPrice}
+                              currency={courseData.currency}
+                              size="md"
+                              className="text-primary-800"
+                            />
                           </div>
                         )}
 
@@ -1165,11 +1178,13 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                             <span className="text-xs font-medium text-primary-700">
                               Price
                             </span>
-                            <span className="text-lg font-bold text-primary-800">
-                              {courseData.price === 0
-                                ? "Free"
-                                : `${getCurrencySymbol(courseData.currency || "INR")}${courseData.price}`}
-                            </span>
+                            <PriceWithMrp
+                              actual={courseData.price}
+                              elevated={courseData.elevatedPrice}
+                              currency={courseData.currency}
+                              size="md"
+                              className="text-primary-800"
+                            />
                           </div>
                         )}
 

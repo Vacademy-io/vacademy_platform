@@ -247,6 +247,14 @@ def score_windows(
             continue
 
         composite = _composite(hook, pacing, info, loop)
+        # Boundary-quality bonus (Phase 2e bug-followup): nudges cleanly-
+        # snapped windows above mid-sentence picks. Capped at 100 so the
+        # bonus can't push a 95 candidate to 105.
+        boundary_bonus = _boundary_quality_bonus(
+            win_start, win_end, sentence_starts, sentence_ends,
+        )
+        composite = min(100.0, composite + boundary_bonus)
+        breakdown["boundary_quality_bonus"] = round(boundary_bonus, 1)
         score = ScoreVec(
             hook=hook, pacing=pacing, info=info, loop=loop, composite=composite,
             breakdown=breakdown,
@@ -821,6 +829,54 @@ def _composite(hook: float, pacing: float, info: float, loop: float) -> float:
     return max(0.0, min(100.0, math.exp(log_sum)))
 
 
+# Tolerance for "this edge matches a sentence boundary exactly". Most
+# snapped edges land within a few ms of a recorded boundary; 50ms is
+# tight enough that only genuinely-snapped windows pass, but loose
+# enough to handle floating-point rounding from the snap logic upstream.
+_BOUNDARY_SNAP_TOLERANCE_S = 0.05
+
+# Composite-score bonuses for clean sentence boundaries. +10 when BOTH
+# edges land on sentence boundaries (rare-but-best — clean opening +
+# clean payoff). +5 when ONE edge snaps. Bias is intentionally additive
+# (not an axis-weight change) so we don't have to retune the geometric-
+# mean weights — a window with weak hook can't be saved by a clean
+# boundary, but two equal-engagement windows are correctly ordered with
+# the cleaner one on top. Matches the audit doc's "+5 to +10 bonus" call.
+_BOUNDARY_BONUS_BOTH = 10.0
+_BOUNDARY_BONUS_ONE = 5.0
+
+
+def _boundary_quality_bonus(
+    win_start: float,
+    win_end: float,
+    sentence_starts: list[float],
+    sentence_ends: list[float],
+) -> float:
+    """Composite-score bonus for windows that begin AND end at sentence
+    boundaries. Surfaces "complete thought" picks above mid-sentence picks.
+
+    Returns:
+      `_BOUNDARY_BONUS_BOTH` (+10)  when both edges snap within tolerance
+      `_BOUNDARY_BONUS_ONE`  (+5)   when only one edge snaps
+      0.0                           when neither snaps
+
+    Empty sentence arrays return 0 — no boundaries means no signal.
+    """
+    if not sentence_starts or not sentence_ends:
+        return 0.0
+    start_clean = any(
+        abs(win_start - s) <= _BOUNDARY_SNAP_TOLERANCE_S for s in sentence_starts
+    )
+    end_clean = any(
+        abs(win_end - e) <= _BOUNDARY_SNAP_TOLERANCE_S for e in sentence_ends
+    )
+    if start_clean and end_clean:
+        return _BOUNDARY_BONUS_BOTH
+    if start_clean or end_clean:
+        return _BOUNDARY_BONUS_ONE
+    return 0.0
+
+
 def _diversify(
     candidates: list[CandidateScore],
     keep_n: int,
@@ -828,7 +884,11 @@ def _diversify(
 ) -> list[CandidateScore]:
     """Greedy selection: highest composite first, but skip any candidate
     that overlaps >50% with an already-picked window, or whose midpoint is
-    within `effective_radius` of an already-picked window's midpoint.
+    within `effective_radius` of an already-picked window's midpoint, OR
+    whose content tokens have Jaccard similarity > `_JACCARD_DEDUP_THRESHOLD`
+    with an already-picked window's snippet (Phase 2e bug-followup —
+    catches near-duplicate candidates from the same monologue that pass
+    the time filters but cover the same topic).
 
     R-tune-3: `effective_radius` is now proportional to source duration so
     short sources (a 3-min podcast) don't have a 60s exclusion zone that
@@ -839,6 +899,11 @@ def _diversify(
     effective_radius = max(10.0, min(DIVERSITY_RADIUS_S, source_duration_s / 5.0))
     sorted_cands = sorted(candidates, key=lambda c: c.score.composite, reverse=True)
     picked: list[CandidateScore] = []
+    # Cache content-tokens per picked candidate so we don't re-tokenize on
+    # every pairwise comparison. With keep_n=30 and a typical 10-15 tokens
+    # per snippet, this is negligible — but the lazy caching keeps the
+    # loop body simple and lets us reuse the tokens elsewhere if needed.
+    picked_tokens: list[set[str]] = []
     for cand in sorted_cands:
         if len(picked) >= keep_n:
             break
@@ -854,7 +919,20 @@ def _diversify(
             pm_dists = [abs(((p.source_t_start + p.source_t_end) / 2.0) - cm) for p in picked]
             if any(d < effective_radius for d in pm_dists):
                 continue
+        # Transcript-similarity dedup. Two candidates from the SAME
+        # monologue covering the SAME topic produce ~identical content
+        # token sets even when they're minutes apart. The audit case had
+        # 3 such cards in the top-10 — this filter catches them.
+        cand_tokens = _content_tokens(cand.transcript_snippet)
+        if cand_tokens:
+            too_similar = any(
+                _jaccard(cand_tokens, pt) > _JACCARD_DEDUP_THRESHOLD
+                for pt in picked_tokens
+            )
+            if too_similar:
+                continue
         picked.append(cand)
+        picked_tokens.append(cand_tokens)
     return picked
 
 
@@ -867,6 +945,53 @@ def _overlap_ratio(a: CandidateScore, b: CandidateScore) -> float:
     overlap = hi - lo
     shorter = min(a.source_duration_s, b.source_duration_s) or 1.0
     return overlap / shorter
+
+
+# Transcript-similarity diversify (Phase 2e bug-followup).
+#
+# The 2026-05-13 audit flagged that the candidate grid surfaced 3 near-
+# duplicate cards all covering the same Sanskrit-numerals monologue — the
+# time-overlap filter passed them because they were a few minutes apart,
+# but their content overlap was 60-80%. Adding a Jaccard-on-content-tokens
+# check filters those out so the user sees topically-distinct picks.
+#
+# Threshold tuning: 0.40 chosen so that:
+#   - shared content ≥ 40% of the union → considered the same topic
+#   - shared content < 40% → distinct enough to surface
+# Calibration cases:
+#   - "raven 10 heads dashanan" vs "dashanan because 10 heads raven" → 100%
+#     (same monologue, different window) — dropped ✓
+#   - "Sanskrit numerals eka dasha sahasra" vs "Bakhashali manuscript zero
+#     invented India" — different topics — kept ✓
+_JACCARD_DEDUP_THRESHOLD = 0.40
+
+
+def _content_tokens(snippet: str) -> set[str]:
+    """Lowercased non-stopword tokens for similarity comparison.
+
+    Stripped of punctuation; words ≤2 chars dropped (mostly particles +
+    articles + digits already in STOPWORDS — keeping them would over-
+    boost similarity on padding tokens). Used by `_diversify` to dedupe
+    topical near-duplicates that pass the time-overlap filter.
+    """
+    if not snippet:
+        return set()
+    out: set[str] = set()
+    for raw in snippet.split():
+        tok = raw.strip(",.!?;:\"'()[]…").lower()
+        if not tok or len(tok) <= 2 or tok in STOPWORDS:
+            continue
+        out.add(tok)
+    return out
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    """Standard Jaccard index — |A∩B| / |A∪B|. Returns 0 on empty sets."""
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / union if union else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1025,6 +1150,71 @@ def _overlaps_any(
     return False
 
 
+# Leading-token cleanup for candidate snippet previews (Phase 2e bug-followup).
+# The 2026-05-13 audit surfaced candidate snippets like "a there was a
+# person you know..." — readable content buried under low-info openers.
+# We strip a CONSERVATIVE whitelist from the start of the snippet's first
+# sentence: articles, discourse markers, conjunctions, Whisper fillers.
+# We do NOT strip mid-sentence verbs ("was", "used", "had") — those carry
+# semantic content and stripping them would mislead the user about what
+# the window actually contains. The underlying source window is
+# unchanged; this is purely a display tweak in the snippet preview.
+_SNIPPET_LEADING_DROP = {
+    # Discourse markers / fillers
+    "so", "now", "well", "actually", "literally", "basically",
+    "anyway", "like", "yeah", "yep", "right", "okay", "ok", "alright",
+    # Conjunctions that often start a clipped fragment
+    "and", "but", "or",
+    # Articles
+    "a", "an", "the",
+    # Whisper transcription fillers
+    "um", "uh", "uhh", "umm", "hmm", "ah", "ahh", "er", "erm",
+}
+
+# Cap on how many leading tokens we'll strip. With more we'd risk eating
+# the actual content; if the first 4 tokens are all fillers the window
+# is degenerate and the user should see the messy snippet as a signal.
+_SNIPPET_MAX_LEADING_DROPS = 4
+
+# Minimum snippet length AFTER stripping. If stripping would shrink the
+# snippet below this, we bail and return the original — better a long
+# messy snippet than a 3-word fragment.
+_SNIPPET_MIN_LENGTH_AFTER_STRIP = 20
+
+
+def _strip_leading_filler(text: str) -> str:
+    """Drop leading fillers / articles / discourse markers from a snippet.
+
+    The window the scorer picked stays the same — only the displayed
+    snippet text changes. Capitalizes the new first character so the
+    cleaned snippet reads as a sentence opener.
+
+    Bails out (returns original) if stripping would leave a fragment
+    under _SNIPPET_MIN_LENGTH_AFTER_STRIP — that signals the window
+    really is mostly filler and the messy preview is a useful warning.
+    """
+    if not text or len(text) < _SNIPPET_MIN_LENGTH_AFTER_STRIP:
+        return text
+    tokens = text.split()
+    dropped = 0
+    while tokens and dropped < _SNIPPET_MAX_LEADING_DROPS:
+        candidate = tokens[0].strip(",.!?;:\"'()[]").lower()
+        if not candidate or candidate in _SNIPPET_LEADING_DROP:
+            tokens = tokens[1:]
+            dropped += 1
+        else:
+            break
+    if dropped == 0:
+        return text  # nothing to strip
+    rebuilt = " ".join(tokens)
+    if len(rebuilt) < _SNIPPET_MIN_LENGTH_AFTER_STRIP:
+        return text  # stripping gutted it; revert to original
+    # Capitalize the new lead character so the snippet looks sentence-like.
+    if rebuilt and rebuilt[0].islower():
+        rebuilt = rebuilt[0].upper() + rebuilt[1:]
+    return rebuilt
+
+
 def _build_snippet(t_start: float, t_end: float, transcript: list[dict]) -> str:
     """First sentence + … + last sentence of the window, capped at 140 chars.
 
@@ -1064,7 +1254,15 @@ def _build_snippet(t_start: float, t_end: float, transcript: list[dict]) -> str:
     else:
         first = (inside[0].get("text") or "").strip()
         last = (inside[-1].get("text") or "").strip()
+        # Clean leading filler from BOTH the first sentence and the last
+        # sentence (Phase 2e fix) — the snippet shows "first … last" and
+        # both halves benefit from a clean opener.
+        first = _strip_leading_filler(first)
+        last = _strip_leading_filler(last)
         text = f"{first} … {last}"
+    # Single-sentence case: clean leading filler too.
+    if len(inside) == 1:
+        text = _strip_leading_filler(text)
     if len(text) > 140:
         text = text[:137] + "…"
     return text

@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 METADATA = {
     "id": "number_counter",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "motion_primitive",
     "title": "Number Counter Roll",
     "description": "Large hero number rolling from a starting value to a target, with optional prefix/suffix.",
@@ -54,9 +54,17 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     shot_idx = ctx.get("shot_index", 0)
     sid = f"nc{shot_idx}"
 
+    # Canvas-aware font sizes via shot_pack (4-bucket caps). Falls back to the
+    # old hardcoded values when shot_pack isn't wired (tests / older callers).
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    fs_display = fs.get("display") or "9rem"
+    fs_label = fs.get("label") or "1.1rem"
+    shot_duration = float(ctx.get("shot_duration", 5.0) or 5.0)
+
     label_html = f'<div class="{sid}-label">{label}</div>' if label else ""
     html = (
-        f'<div class="{sid}-wrap">'
+        f'<div class="{sid}-wrap" id="{sid}-root">'
         f'{label_html}'
         f'<div class="{sid}-number">'
         f'<span class="{sid}-prefix">{prefix}</span>'
@@ -67,13 +75,18 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     css = f"""
-.{sid}-wrap {{ display:flex; flex-direction:column; align-items:center; gap:0.8rem; padding:1rem 0; }}
-.{sid}-label {{ font-size:1.35rem; font-weight:600; color:var(--brand-text-secondary); text-transform:uppercase; letter-spacing:0.12em; }}
-.{sid}-number {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:10rem; line-height:0.9; color:var(--brand-primary); font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:0.1em; }}
-.{sid}-prefix, .{sid}-suffix {{ color:var(--brand-accent); font-size:0.55em; font-weight:700; }}
+.{sid}-wrap {{ display:flex; flex-direction:column; align-items:center; gap:0.8rem; padding:1rem 0; will-change:transform; }}
+.{sid}-label {{ font-size:{fs_label}; font-weight:600; color:var(--brand-text-secondary); text-transform:uppercase; letter-spacing:0.12em; }}
+.{sid}-number {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{fs_display}; line-height:0.9; color:var(--brand-primary); font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:0.06em; padding-bottom:0.12em; }}
+.{sid}-prefix, .{sid}-suffix {{ color:var(--brand-accent); font-size:0.5em; font-weight:700; }}
 .{sid}-value {{ font-weight:900; }}
 """
 
+    # Back-half motion: after the counter lands, drift the wrap subtly so the
+    # shot doesn't go static for the rest of its duration (validator requires
+    # a tween with delay >= 0.55 × shot_duration).
+    back_half_delay = max(delay + duration + 0.2, shot_duration * 0.55)
+    back_half_dur = max(0.8, shot_duration - back_half_delay)
     js = (
         f'{{'
         f'var el=document.getElementById("{sid}-val");'
@@ -84,6 +97,9 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
         f'el.textContent=({decimals}>0?v.toFixed({decimals}):Math.round(v)).toLocaleString();'
         f'}}}});'
         f'}}'
+        f'gsap.fromTo("#{sid}-root",'
+        f'{{scale:1, y:0}},'
+        f'{{scale:1.012, y:-2, duration:{back_half_dur:.2f}, delay:{back_half_delay:.2f}, ease:"sine.inOut"}});'
         f'}}'
     )
 
@@ -113,6 +129,10 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     decimals = int(params.get("decimals", 0) or 0)
     shot_idx = ctx.get("shot_index", 0)
     sid = f"nc{shot_idx}fb"
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    fs_display = fs.get("display") or "9rem"
+    fs_label = fs.get("label") or "1.1rem"
     label_html = f'<div class="{sid}-label">{label}</div>' if label else ""
     html = (
         f'<div class="{sid}-wrap">'
@@ -126,9 +146,9 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     )
     css = f"""
 .{sid}-wrap {{ display:flex; flex-direction:column; align-items:center; gap:0.8rem; padding:1rem 0; }}
-.{sid}-label {{ font-size:1.35rem; font-weight:600; color:var(--brand-text-secondary); text-transform:uppercase; letter-spacing:0.12em; }}
-.{sid}-number {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:10rem; line-height:0.9; color:var(--brand-primary); font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:0.1em; }}
-.{sid}-prefix, .{sid}-suffix {{ color:var(--brand-accent); font-size:0.55em; font-weight:700; }}
+.{sid}-label {{ font-size:{fs_label}; font-weight:600; color:var(--brand-text-secondary); text-transform:uppercase; letter-spacing:0.12em; }}
+.{sid}-number {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{fs_display}; line-height:0.9; color:var(--brand-primary); font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:0.06em; padding-bottom:0.12em; }}
+.{sid}-prefix, .{sid}-suffix {{ color:var(--brand-accent); font-size:0.5em; font-weight:700; }}
 .{sid}-value {{ font-weight:900; }}
 """
     return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

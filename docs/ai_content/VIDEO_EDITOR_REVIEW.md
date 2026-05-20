@@ -1,9 +1,12 @@
 # Video Editor — Architecture Review, Bugs & Improvement Plan
 
-Scope: `frontend-admin-dashboard/src/components/ai-video-editor/*` and the route
-`routes/video-api-studio/edit/$videoId/index.lazy.tsx`.
+Scope: `frontend-admin-dashboard/src/components/ai-video-editor/*`, the route
+`routes/video-api-studio/edit/$videoId/index.lazy.tsx`, and the ai_service
+endpoints under `/external/video/v1/frame/*`.
 
-Companion doc: [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md).
+Companion docs:
+- [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md)
+- [CAPTIONS_TRACK_PLAN.md](./CAPTIONS_TRACK_PLAN.md)
 
 ---
 
@@ -12,237 +15,418 @@ Companion doc: [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md).
 A browser-based shot editor for AI-generated videos. Each **shot** (Entry) is
 a raw HTML fragment with optional `inTime/exitTime` (time-driven) or
 `start/end` index (user-driven), plus optional `audio_url`, `z`, and
-`entry_meta`.
+`entry_meta` (now including `display_name` — see §6.4).
 
 ```
-VideoEditorPage (shell, render polling)
-├─ EntryListPanel           (left: shot list)
-├─ EditorCanvas             (center: scaled canvas, one <iframe> per entry)
-├─ TimelineScrubber         (bottom: multi-channel tracks, waveform)
-├─ PropertiesPanel          (right: Transform / Text / Media / HTML tabs)
-├─ AddShotDialog            (insert blank shot)
-├─ AddMediaOverlayDialog    (upload image/video → new overlay entry)
-├─ AudioTracksPanel         (bg music / sfx tracks)
-└─ stores/video-editor-store.ts  (Zustand, undo/redo 50-step)
+VideoEditorPage (shell, render polling, toolbar)
+├─ EntryListPanel           (left: shot list with friendly names + inline rename,
+│                            drag-to-reorder via @dnd-kit)
+├─ EditorCanvas             (center: scaled canvas, one <iframe> per active entry)
+│   └─ LayerHandlesOverlay  (drag / resize / rotate handles + align tools)
+├─ TimelineScrubber         (bottom: multi-channel tracks, waveform, gap markers,
+│                            mode toolbar for body-drag verb)
+├─ PlaybackBar              (transport controls)
+├─ AudioTracksPanel         (bg music / sfx — upload, volume, delay, fade)
+├─ PropertiesPanel          (right column, seven tabs — friendly labels)
+│   ├─ Elements      (was Layers) — DOM tree of the selected entry with
+│   │                friendly kind labels (Container / Horizontal Layout /
+│   │                Image / Text / Heading / Graphic). Tag-name badges hidden
+│   │                in simple mode; SVG filter primitives hidden in simple
+│   │                mode. Inspector uses LengthControl/RotationControl with
+│   │                raw CSS in `Advanced ▾`.
+│   ├─ Position & Size (was Transform) — X/Y/scale/rotation, background
+│   │                color picker. Raw background CSS (gradient/URL) lives
+│   │                in `Advanced ▾`.
+│   ├─ Transitions  (was Motion) — per-entry `transitionIn`/`transitionOut`
+│   │                + easing presets (Smooth/Fast/Slow/Linear/Bouncy).
+│   │                Custom `cubic-bezier(...)` per side in `Advanced ▾`.
+│   ├─ Text         — list of editable text nodes in the entry HTML.
+│   ├─ Images & Video (was Media) — replace/delete src.
+│   ├─ Overlays     — combined-HTML overlays inside the shot's own document
+│   │                (`.vx-overlay > [data-vx-overlay-id]`). Fit labels are
+│   │                Fit inside / Fill / Stretch (not Contain / Cover / Fill).
+│   └─ Code         (was HTML) — Monaco editor for the raw entry HTML.
+│                    Sticky warning banner in simple mode.
+├─ AddShotDialog            (insert blank shot at start / current / end / custom range)
+├─ AddMediaOverlayDialog    (upload image/video → new overlay *entry* on top;
+│                            LayerOrderControl replaces numeric z-index)
+└─ stores/video-editor-store.ts  (Zustand, undo/redo 50-step, viewMode
+                              toggle, server-synced displayNames)
 ```
+
+**Two presentation modes** (see §7):
+- `simple` (default for all users) — friendly labels everywhere; raw-CSS /
+  class / tag-name / Code-tab content kept reachable but tucked into
+  `Advanced ▾` disclosures.
+- `developer` — same controls, advanced disclosures pre-expanded, tag-name
+  badges shown in the tree. Toggle: wrench icon in the toolbar or
+  `Cmd/Ctrl+Shift+D`.
 
 **Rendering model:** every active Entry at the current `currentTime` becomes
 its *own* sandboxed `<iframe srcDoc={html}>` stacked by `entry.z`. The canvas
-just CSS-scales a fixed-size (`meta.dimensions`) container to fit. See
-[EditorCanvas.tsx:175-227](../../frontend-admin-dashboard/src/components/ai-video-editor/EditorCanvas.tsx#L175-L227).
+just CSS-scales a fixed-size (`meta.dimensions`) container to fit.
 
-**Edit model:** edits rewrite the Entry HTML *string* — DOMParser →
-mutate → `body.innerHTML`. Transforms (x/y/scale/rotation) live separately
-in `entryTransforms` and are baked into a wrapper `<div
-style="position:absolute;inset:0;transform:...">` only on save, via the
-`WRAPPER_RE` regex round-trip ([video-editor-store.ts:33-34, 378-431](../../frontend-admin-dashboard/src/components/ai-video-editor/stores/video-editor-store.ts#L33-L34)).
+**Edit model:** edits rewrite the Entry HTML *string* — `DOMParser` →
+mutate → `body.innerHTML`. Geometry-aware utilities live next to the panels:
+- [html-text-editor.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-text-editor.ts)
+- [html-media-editor.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-media-editor.ts)
+- [html-overlay-editor.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-overlay-editor.ts) (combined-HTML overlay layer — see §4)
+- [html-tree.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-tree.ts) (Layers-tab DOM tree adapter)
+- [registry/friendly-labels.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/registry/friendly-labels.ts) (NEW — tag → friendly label, friendlyEntryName)
+- [controls.tsx](../../frontend-admin-dashboard/src/components/ai-video-editor/controls.tsx) (NEW — LengthControl, RotationControl, LayerOrderControl, FIT_LABELS)
+- [AdvancedSection.tsx](../../frontend-admin-dashboard/src/components/ai-video-editor/AdvancedSection.tsx) (NEW — shared collapsible)
+
+**Per-entry overlays** (transforms, transitions, backgrounds) live in store
+maps and are baked into a wrapper `<div data-vx-shot="1">` only on save.
+
+**Timeline interactions** (see §5):
+- Edge drag → `resizeEntryEdge` (slip/roll/ripple).
+- Body drag → `moveEntries` (move / ripple).
+- Row drag in EntryListPanel → `reorderEntries` via atomic `/frame/reorder`.
+
+**Backend surface** (ai_service `/external/video/v1`):
+- `frame/regenerate` — AI-rewrite an existing frame (preview-then-confirm).
+- `frame/add` — append/insert a new HTML frame; extends `total_duration`.
+  Now accepts `entry_meta` (e.g. for renames-before-first-save).
+- `frame/update` — overwrite a frame's HTML and timing. Now accepts
+  `entry_meta` (shallow-merge into existing).
+- `frame/delete` — remove a frame by `entry_id` (preferred) or `frame_index`.
+- `frame/reorder` — move a frame by `entry_id`. Atomic single-S3-PUT.
+- `sentences/build`, `sentence/regenerate`, `sentence/silence` —
+  per-sentence narration editing with audio splice.
+- `shot/insert` — fill a narration gap with a generated HTML shot.
+- `audio-track/*` — bg music / SFX CRUD.
 
 ---
 
-## 2. Bugs & issues found
+## 2. Bugs & issues — status
+
+Legend: ✅ fixed · ⚠ partial · ❌ open · ➕ new since the last review.
 
 ### 2.1 Critical / security
 
-| # | Where | Issue |
-|---|---|---|
-| B1 | `EditorCanvas.tsx:194-211`, every entry iframe | `srcDoc` renders unsanitized HTML with `sandbox="allow-scripts allow-same-origin"`. Because the sandbox includes **both** `allow-scripts` and `allow-same-origin`, any script in entry HTML can reach the parent origin's cookies/localStorage. This is the exact combo the HTML spec warns against. Either drop `allow-same-origin`, or sanitize HTML with DOMPurify before rendering. |
-| B2 | `html-media-editor.ts:66-97`, `replaceMediaSrc` | No validation of `newSrc`. `javascript:` and `data:text/html` URLs pass through. Same for `buildMediaOverlayHtml` (line 141). Allow only `http(s):`, `blob:`, and your S3 origin. |
-| B3 | `html-text-editor.ts` patch path | Text content is re-inserted via `textContent` in most places, which is safe, but `innerHTML` is used in some serialization paths. Audit every `innerHTML`/`outerHTML` write in both editors. |
-| B4 | `AddMediaOverlayDialog` raw-HTML mode | User can paste arbitrary HTML; no allowlist. Same XSS class as B1. |
+| # | Where | Status | Notes |
+|---|---|---|---|
+| B1 | `EditorCanvas.tsx`, every entry iframe | ✅ | Sandbox is `allow-scripts` only — `allow-same-origin` dropped. |
+| B2 | `html-media-editor.ts`, `replaceMediaSrc` / `buildMediaOverlayHtml` | ✅ | `sanitizeMediaUrl` allowlists `http(s):` / `blob:` / `data:image/`. |
+| B3 | `html-text-editor.ts` patch path | ⚠ | Most writes use `textContent`. A few `innerHTML` paths still need a once-over for safety against user-derived strings. |
+| B4 | `AddMediaOverlayDialog` raw-HTML mode | ✅ | Removed entirely; dialog is upload-only. |
+| B15 | Route file `edit/$videoId/index.lazy.tsx` | ⚠ | `apiKey` stashed to sessionStorage then stripped from URL. History/referer logs from the first hit still see it; true fix is a short-lived signed token + auth header. |
 
 ### 2.2 Correctness
 
-| # | Where | Issue |
-|---|---|---|
-| B5 | `AddShotDialog.tsx:86` | New entry id = `Date.now()`. Two adds in the same tick collide. Use `crypto.randomUUID()`. |
-| B6 | `video-editor-store.ts` — dirty tracking | A transform set and then reset to identity still leaves the entry in `dirtyEntryIds`, causing an unnecessary re-save. Compare against baseline, not "touched". |
-| B7 | `video-editor-store.ts:378-431` — save loop | Sequential POSTs to avoid S3 races (comment C26). If the 3rd of 5 fails, shots 1-2 are persisted and 3-5 aren't, with no rollback or user-visible "partially saved" state. Collect results, surface per-entry status. |
-| B8 | `track-layout.ts` — `assignChannelGroups` | Greedy interval scheduling assumes sorted entries and doesn't handle `user_driven` (no `inTime/exitTime`) — all land on track 0 and visually overlap. Short-circuit to "one track per channel" for user_driven. |
-| B9 | `TimelineScrubber` scrub math | `t/totalDuration*100` with no clamp; if the user drags past the end while audio tracks extend beyond `total_duration`, scrubber falls off the bar. Clamp in `xToTime`. |
-| B10 | `html-text-editor.ts:214-227` — transform merge | Regex `/translate\([^)]*\)\s*/g` strips *all* translates, including those inside `matrix(...)` or nested in `transform-box` context. Breaks if the AI generates matrix-based transforms. |
-| B11 | `PropertiesPanel` HTML tab, Tab key handling (L580-595) | Cursor restoration inside `requestAnimationFrame` loses position if React re-renders in between (common during typing debouncing). Use the native `setSelectionRange` synchronously inside the `onKeyDown` handler after `setValue`. |
-| B12 | `VideoEditorPage` render polling (L170-217) | 10s interval × 180 polls = 30 min, hard-coded; on network error it retries silently. Exponential backoff + surfaced "last check failed" status. |
-| B13 | `use-audio-waveform.ts` | Decodes on main thread; a 30 MB audio blob freezes the UI for seconds. Move to an `AudioWorklet` or offscreen worker; also handle CORS failure explicitly. |
-| B14 | `AudioTracksPanel` → `audio-track-api.ts:30` | Hand-written camelCase → snake_case mapping. Easy to drift from backend DTO. Centralize as a single `toApi/fromApi` pair with a type. |
-| B15 | Route file `edit/$videoId/index.lazy.tsx` | `apiKey` is pulled from `useSearch` and forwarded as a prop — i.e. placed in the URL query. API keys should never travel in the query string (logs, referrers, history). Move to an auth header or session. |
-| B16 | `EditorCanvas` iframe key = `editor-${entry.id}` | Good for identity, but *every* prop change forces a full iframe reload (browser can't diff srcDoc). Debounce edits or switch to a shadow-root renderer (see §4). |
+| # | Where | Status | Notes |
+|---|---|---|---|
+| B5 | `AddShotDialog.tsx` — id collisions | ✅ | New entries use `crypto.randomUUID()`. |
+| B6 | `video-editor-store.ts` — dirty tracking baseline | ❌ | A transform set then reset to identity still leaves the entry in `dirtyEntryIds`. Compare against baseline, not "touched". |
+| B7 | `video-editor-store.ts` — save loop partial-failure | ❌ | Sequential POSTs; if the Nth fails, earlier ones are persisted with no rollback or per-entry status. |
+| B8 | `track-layout.ts` — `assignChannelGroups` user_driven branch | ❌ | Greedy interval scheduling assumes `inTime/exitTime`; user-driven entries overlap on track 0. |
+| B9 | `TimelineScrubber` scrub math | ❌ | `t/totalDuration*100` with no clamp. |
+| B10 | `html-text-editor.ts` — transform merge regex | ❌ | `/translate\([^)]*\)\s*/g` strips translates inside `matrix(...)`. |
+| B11 | `PropertiesPanel` Code tab — Tab key handling | ❌ | Cursor restoration inside `requestAnimationFrame` loses position during typing debounce. |
+| B12 | `VideoEditorPage` render polling | ⚠ | Sticky via `localStorage`; fixed 10 s × 180 polls with silent retry — needs exponential backoff + visible "last check failed" status. |
+| B13 | `use-audio-waveform.ts` | ❌ | Decodes on main thread; large blob freezes UI. |
+| B14 | `AudioTracksPanel` ↔ `audio-track-api.ts` | ❌ | Hand-written camelCase ↔ snake_case mapping. |
+| B16 | `EditorCanvas` iframe key per entry | ❌ | Every prop change re-mounts the iframe (browser can't diff `srcDoc`). |
+| ➕ B17 | `AddShotDialog` insert with overlap | ❌ | "At current time" with `duration: 5` may overlap the existing shot. No ripple, no warning. |
+| ➕ B18 | `AddShotDialog` "At end" stacking | ❌ | Repeated "Add at end" clicks after a save stack new end-shots silently. |
+| ➕ B19 | Extending `total_duration` is silent | ❌ | `addEntry` bumps `total_duration` past existing narration; bg music isn't extended (no `loop` flag on `AudioTrack`); captions don't cover the tail. |
+| ➕ B20 | Overlays-tab Height defaulted to a fixed square | ✅ | Image/video overlays now default to width-only / natural aspect. Explicit Height slider with Auto/Set toggle. |
+| ➕ B21 | Layers tab — image/video had URL field only | ✅ | URL input + Upload button (re-uses `useFileUpload`). |
+| ➕ B22 | Deleting a saved shot didn't persist | ✅ | New backend `POST /frame/delete`; frontend tracks `deletedEntryIds`. |
+| ➕ B23 | Layers tab and Overlays tab can both edit the same overlay | ❌ | Edits in one tab can be partially overwritten by the other. Phase 3-of-editing-bugs is to collapse Layers + Overlays into one tab with chips. |
+| ➕ B24 | Reorder via sequential `/frame/update` was destructive | ✅ | New atomic `POST /frame/reorder` endpoint by `entry_id`; frontend queues ops in `pendingReorders`. |
+| ➕ B25 | Ripple drag didn't preview the growing timeline | ✅ | `totalDuration` derived from `previewedEntries`; `totalDurationRef` keeps the in-flight drag closure live. |
+| ➕ B26 | Snap to non-grid targets lost precision | ✅ | `applySnap` returns `{ delta, snapped }`; post-snap quantize skipped when snap fired. |
+| ➕ B27 | Ripple-mode snap targets included clips that themselves ripple | ✅ | Downstream rippling clips filtered out of snap targets when `dragMode === 'ripple'`. |
+| ➕ B28 | Clearing a renamed entry didn't propagate to the server | ✅ | `setEntryDisplayName` previously deleted the displayNames key on empty input; `saveChanges` then read `undefined` and skipped `entry_meta`. Server `display_name` survived across devices. Fix: store empty string as a sentinel so the save loop sends `entry_meta: { display_name: '' }`; server already drops the key when display_name is empty. |
+| ➕ B29 | Renames on never-saved entries were lost | ✅ | `frame/add` didn't accept `entry_meta`. A shot the user renamed before its first save persisted on the server *without* `display_name`; localStorage was cleared on save success → rename vanished on reload. Fix: `AddFrameRequest`/`add_video_frame` accept `entry_meta` and the frontend sends the pending display_name on the add path. |
+| ➕ B30 | MotionTab easing picker lied when In/Out easings differed | ✅ | Divergent easings produced `sharedEasing === undefined`, then `easingPresetFor(undefined)` returned "Smooth" — visually claiming all was Smooth even though the two transitions differed. Fix: compute `effectiveEasing` with explicit fallback to `'ease'` per side, treat true divergence as `null`, and only call `easingPresetFor` for non-null values. "Custom easing — see Advanced below" warning now appears correctly. |
+| ➕ B31 | localStorage persisted empty-string display-name sentinels | ✅ | A pending clear written to localStorage would survive reload visually (showing auto-name) but the dirty bit didn't, so saveChanges would never push the clear to the server → silent permanent desync. Fix: `persistDisplayNames` strips empty strings before writing; pending clears are in-memory only (lost on reload, same as any other unsaved edit). |
 
 ### 2.3 UX / polish
 
-- No transition animations between shots → hard cuts.
-- Selection outline is transformed with the entry — goes off-screen when the entry is scaled down or rotated. Draw the ring in screen space.
-- No multi-select, no copy/paste of entries, no align/distribute.
+- **Transitions exist** (Transitions tab) for fade / slide / zoom / wipe + easing presets.
+- **Move-mode drag exists** (Move + Ripple via mode toolbar). Slide / Swap deferred.
+- **viewMode toggle exists** — friendly defaults for all users; raw inputs reachable via `Advanced ▾`.
+- Selection outline still transformed with the entry — goes off-screen when scaled / rotated. Draw the ring in screen space.
+- No multi-select, no copy/paste of entries, no align/distribute across entries. `moveEntries(ids: string[], ...)` is plural-ready.
 - Portrait layout branch exists (`isPortrait`) but falls through to the 3-panel desktop layout.
-- Canvas doesn't show safe-area guides for the final video aspect.
+- Canvas safe-area / thirds / center guides exist (`CanvasGuides`).
 - Large-HTML warning at 50 KB is advisory only; should block save above a hard cap.
 
 ---
 
 ## 3. How a user *currently* adds text / image / video
 
-**Text** — edit the shot HTML directly (Properties → Text or HTML tab). Text
-is always inside the shot's HTML string.
+### 3.1 Text
+- **Inside a shot's HTML**: Properties → Text or Code tab.
+- **As a free-positioned overlay**: Properties → Overlays tab → `+ Text`.
 
-**Image / Video overlays** — `AddMediaOverlayDialog` does **not** merge into
-the current shot. It creates a **new Entry** with a higher `z` and
-(typically) the same `inTime/exitTime`, which `EditorCanvas` stacks as a
-second `<iframe>` on top. Two iframes, two documents.
+### 3.2 Image / video
 
-```
-┌────────── canvas ──────────┐
-│ ┌── iframe (entry A, z=10) │  ← base shot HTML
-│ │   ...                    │
-│ └──────────────────────────┤
-│ ┌── iframe (entry B, z=500)│  ← media overlay HTML
-│ │   <img .../>             │
-│ └──────────────────────────┘
-└────────────────────────────┘
-```
+| Surface | What it does | When it makes sense |
+|---|---|---|
+| **Add Media Overlay** dialog (toolbar) | Upload → wraps in HTML → appends as a *separate Entry* layered on top. | Whole-screen overlay with timing different from the base shot. |
+| **Overlays tab** in Properties panel | Upload → appends as `[data-vx-overlay-id]` child of `.vx-overlay` in the same entry HTML. | Default for "add a logo / sticker / picture-in-picture to this shot". |
+| **Layers tab** (Elements in simple mode) | Edit an existing `<img>`/`<video>` (URL + Upload). | When the AI-generated shot already contains the image/video to swap. |
 
-That is the **layered entries** model. It works but it's not what you're
-asking for.
+Combined-HTML (§4) is the authoritative path for overlays going forward.
 
 ---
 
-## 4. Adding overlays as a *combined HTML* (single-document top layer)
+## 4. Combined-HTML overlay layer — built
 
-You want the overlay baked into the *same HTML document* as the shot, so the
-server sees one HTML per shot and layering is just z-index inside that DOM.
+Shipped. The HTML shape, store actions, and Overlays-tab UI all exist.
 
-### 4.1 Target HTML shape
-
-Wrap the existing shot body, then append a positioned overlay layer:
+### 4.1 HTML shape
 
 ```html
-<!-- existing shot content, untouched -->
-<div class="vx-base" style="position:absolute;inset:0;z-index:0">
-  <!-- … original shot nodes … -->
-</div>
-
-<!-- new overlay layer, same document -->
+<div class="vx-base" style="position:absolute;inset:0;z-index:0"> … </div>
 <div class="vx-overlay" style="position:absolute;inset:0;z-index:500;pointer-events:none">
-  <!-- absolute-positioned children, one per overlay -->
-  <div data-vx-overlay-id="ov_abc"
-       style="position:absolute;left:40%;top:65%;width:20%;transform:translate(-50%,-50%);
-              font:600 32px/1.2 Inter,sans-serif;color:#fff;text-shadow:0 2px 8px #0008">
-    Hello world
+  <div data-vx-overlay-id="ov-…" data-vx-kind="text" style="…">Hello world</div>
+  <div data-vx-overlay-id="ov-…" data-vx-kind="image" style="…">
+    <img src="…" style="width:100%;height:auto;display:block"/>
   </div>
-
-  <img data-vx-overlay-id="ov_def"
-       src="https://cdn…/logo.png"
-       style="position:absolute;left:4%;top:4%;width:120px;height:auto;opacity:.9"/>
-
-  <video data-vx-overlay-id="ov_ghi"
-         src="https://cdn…/clip.mp4" autoplay muted loop playsinline
-         style="position:absolute;right:4%;bottom:4%;width:25%;object-fit:cover;border-radius:12px"></video>
 </div>
 ```
 
-Key points:
+Key invariants: percentage geometry; `data-vx-overlay-id` as the stable
+identifier; `pointer-events:none` on the container; image overlays default
+to width-only / natural aspect.
 
-- One **overlay container** per shot, `position:absolute;inset:0`, high z-index.
-- Each overlay is a positioned child with percentage geometry (resolution-independent — good for `object-fit` and rendering at different sizes).
-- `data-vx-overlay-id` lets the editor find/update/delete the node deterministically without indices.
-- `pointer-events:none` on the container keeps iframe click-through working.
-
-### 4.2 New util: `html-overlay-editor.ts`
-
-Mirror `html-media-editor.ts` with these exports:
+### 4.2 API surface — `html-overlay-editor.ts`
 
 ```ts
-type OverlayKind = 'text' | 'image' | 'video';
-type Pct = number; // 0..100
-
-interface OverlayPatch {
-  id?: string;
-  kind: OverlayKind;
-  // geometry in % of canvas — survives resizing
-  left: Pct; top: Pct; width?: Pct; height?: Pct;
-  anchor?: 'tl' | 'center' | 'br';
-  rotation?: number;
-  opacity?: number;
-  // kind-specific
-  text?: string; fontPx?: number; color?: string; weight?: number; align?: 'l'|'c'|'r';
-  src?: string; objectFit?: 'contain'|'cover'|'fill';
-  // timing within the shot (relative seconds)
-  appearAt?: number; disappearAt?: number;
-}
-
-export function listOverlays(html: string): OverlayPatch[];
-export function upsertOverlay(html: string, patch: OverlayPatch): string;
-export function deleteOverlay(html: string, id: string): string;
+export function listOverlays(html: string, canvas?: { w: number; h: number }): Overlay[];
+export function upsertOverlay(html: string, overlay: Overlay): string;
+export function deleteOverlay(html: string, overlayId: string): string;
+export function findOverlayPath(html: string, overlayId: string): number[] | null;
+export function newTextOverlay(text?: string): TextOverlay;
+export function newImageOverlay(src: string): ImageOverlay;
+export function newVideoOverlay(src: string): VideoOverlay;
 ```
 
-Implementation outline:
+`canvas` lets the parser tolerate px values committed by canvas drag/resize
+handles (px → % conversion). `findOverlayPath` bridges Overlays-tab
+selection into `selectedLayerPath` so the canvas drag handles work for
+overlays.
 
-1. `DOMParser.parseFromString(html, 'text/html')`.
-2. Find `div.vx-overlay`; create it if missing (append to `<body>`).
-3. For insert/update, find/create `div[data-vx-overlay-id=…]`, set inline styles from the patch, set innerHTML (text) / `src` (media). Sanitize text via `textContent`, sanitize URLs with an allowlist of `https:` / `blob:` / your S3 origin (fixes B2).
-4. Serialize with `doc.body.innerHTML`.
-5. For base-layer wrapping, do it **once** on first overlay insert: if there's no `.vx-base`, wrap the existing `body.childNodes` into one before appending the overlay layer.
+### 4.3 Timing inside one HTML
 
-### 4.3 Store & UI hooks
-
-- Store action: `addOverlay(entryId, patch)` / `updateOverlay(entryId, overlayId, patch)` / `deleteOverlay(entryId, overlayId)`. All just call the new util on the entry's HTML and push an undo snapshot.
-- Properties panel: add a fifth tab **"Overlays"** listing `listOverlays(html)` with inline editors (same controls as the existing Text/Media tabs, but geometry uses % sliders).
-- Canvas: add drag/resize handles for the selected overlay. Use `screenToCanvas` (already in [coord-convert.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/coord-convert.ts)) to translate pointer deltas into `%` geometry.
-- Add dialog: `AddMediaOverlayDialog` gets a toggle — "As new entry (layer)" vs "As overlay on selected shot (combined HTML)". The latter calls `addOverlay` instead of `addEntry`.
-
-### 4.4 Timing inside one HTML
-
-Combined HTML means one iframe, one timeline. To appear/disappear overlays inside a shot, use CSS animations keyed to the shot's relative time. Two options:
-
-- **Pure CSS** (simplest): emit `animation: vx-fade-in .3s <appearAt>s both, vx-fade-out .3s <shotDur - disappearAt>s both;` on each overlay and inject one `<style>` with the keyframes. Good for preview; will render identically in the final MP4 as long as the renderer drives the iframe clock.
-- **Scripted** (flexible): a tiny inlined `<script>` that reads `document.currentTime` from a parent message, applies `visibility`/`opacity` per overlay. Required for user-driven timelines where "time" is really an index. This needs `allow-scripts` (already enabled) but please *remove* `allow-same-origin` when you do this (fixes B1).
+Not yet built. `OverlayBase.appearAt` / `disappearAt` exist in the model but
+aren't surfaced in the UI and aren't emitted into the HTML as CSS animation.
 
 ---
 
-## 5. Transition possibilities between shots
+## 5. Move / Ripple / Reorder — built (Phase 1)
 
-Today: hard cuts. You have a few realistic options, cheapest first.
+### 5.1 Body-drag in the timeline
 
-### 5.1 Per-shot CSS enter/leave (no data model change)
-On every entry add an `animation` to the wrapper `<div>`:
-```css
-/* enter */ animation: vx-enter .4s ease both;
-/* leave */ animation: vx-leave .4s ease both;
-```
-EditorCanvas already renders two iframes when two shots overlap in time
-(e.g. if `entryA.exitTime = 5.0` and `entryB.inTime = 4.6`). Just by giving
-each entry enter/leave CSS keyframes and letting the timeline overlap them
-by a small window, you get **cross-fade, slide-in, zoom-in, wipe** for free
-with no renderer changes. This is the 80% solution.
+Mode toolbar in [TimelineScrubber](../../frontend-admin-dashboard/src/components/ai-video-editor/TimelineScrubber.tsx):
 
-### 5.2 Explicit `transition` on Entry
-Extend the schema:
-```ts
-interface Entry {
-  transitionIn?:  { type: 'fade'|'slide-l'|'slide-r'|'zoom'|'wipe'; duration: number; easing?: string };
-  transitionOut?: { type: ...;                                        duration: number; easing?: string };
-}
-```
-The editor auto-overlaps neighbours by `max(out.duration, next.in.duration)` and injects the right CSS. PropertiesPanel gets a "Transitions" section with a dropdown and a duration slider. Backend stores it as-is; renderer reproduces the same CSS.
+- **Move (M, default)** — shift `inTime/exitTime` by `Δt`. Duration preserved.
+- **Ripple (R)** — shift selected clip(s) + every non-branding entry whose
+  `inTime ≥ max(originalExitTime of selection)`. `total_duration`
+  grows/shrinks. Banner warns: "narration audio not shifted".
+- **Slide / Swap** — buttons rendered disabled with "Coming soon".
 
-### 5.3 Transition entries (timeline blocks)
-Model the transition itself as a special entry kind (`type: 'transition'`) that sits between two shots, has duration, and knows both neighbours' last/first frames. Gives the cleanest UI (drag a transition from the library onto the gap) at the cost of renderer work — this is what DaVinci/Premiere do. Overkill unless you need effects like light-leak, particle, or video-based transitions.
+Drag mechanics:
+- 8 px edge hit zone, body grab on the remainder. Below ~28 px clip width
+  body grab disables.
+- `MIN_SHOT_DURATION = 0.2 s`, `SNAP_S = 0.1 s` shared with `resizeEntryEdge`.
+- Snap targets: other clip edges, playhead, `0`, `total_duration`. Ripple
+  filters out downstream rippling clips.
+- `Alt + drag` disables snap.
+- Mouseup < 3 px displacement + 0 delta = click → seek to clip start
+  (preserves click semantics).
+- `totalDuration` derived from `previewedEntries`; `totalDurationRef`
+  feeds the in-flight drag closure.
 
-### 5.4 Practical additions beyond transitions
+### 5.2 Drag-to-reorder in EntryListPanel
 
-- **Keyframed transforms per shot.** Promote `entryTransforms` to an array of keyframes `[{t, x, y, scale, rotation, opacity}]` and emit `animation-*` or inline `@keyframes`. Lets you do Ken Burns pans, slow zooms, nudges.
-- **Overlay entrance animations.** Same CSS approach, per overlay inside a shot (§4.4).
-- **Audio fades synced to shot transitions.** `audio_tracks[].fade_in/fade_out` already exists in the schema — wire them into the shot boundary durations.
-- **Shot-level filters/effects** via CSS: `filter: blur(4px)`, `mix-blend-mode`, color grades. Cheap, renders everywhere.
-- **Speed ramps** (user-driven → time-driven): allow a shot to declare a playback-rate curve, renderer interprets.
-- **Ducking**: auto-lower background audio tracks during voiceover by scanning `audio_url` presence on base entries.
-- **Safe-area & title-safe guides** on canvas — tiny UI addition, big quality win.
+`@dnd-kit/sortable` powers a hover-revealed `GripVertical` handle. Branding
+entries show a `Lock` icon. Drop fires `reorderEntries(fromIndex, toIndex)`.
+
+### 5.3 Persistence — atomic `/frame/reorder`
+
+The naive "mark every shifted entry dirty + `/frame/update` for each"
+approach was destructive: `/frame/update` overwrites by position, so the
+first POST destroyed the entry at the target position. Fix: new endpoint
+[`POST /external/video/v1/frame/reorder`](../../ai_service/app/routers/external_video_generation.py)
+takes `entry_id` + `to_index` and rewrites the timeline JSON in one S3 PUT.
+Frontend queues `pendingReorders[]` and the save loop processes them after
+deletes and before adds/updates so subsequent `/frame/update` indices line
+up. Stale ops are dropped when the corresponding entry is deleted.
+
+### 5.4 Out of scope (deferred)
+
+- **Slide** and **Swap** body-drag modes.
+- **Multi-select** (store action is plural-ready).
+- **Audio clip drag on the timeline** — audio tracks aren't rendered as
+  timeline rows; needs new track row surface first.
+- Sentence-boundary snap targets, visible snap markers.
+- Cross-channel y-axis drag.
 
 ---
 
-## 6. Suggested execution order
+## 6. Layman-friendly editor — built (Phase 1 + 2 + 3)
 
-1. **Security fixes**: drop `allow-same-origin` from the iframe sandbox OR DOMPurify the HTML; URL allowlist in media/overlay editors; move `apiKey` out of the URL. (B1, B2, B4, B15)
-2. **Correctness cleanup**: UUID ids, dirty-tracking baseline, save loop error surfacing, scrub clamp, `assignChannelGroups` user-driven branch. (B5-B9)
-3. **Overlay-as-combined-HTML** via new `html-overlay-editor.ts` + Overlays tab + canvas drag handles (§4).
-4. **Shot transitions** — start with §5.1 (CSS enter/leave, no schema change), graduate to §5.2 if you need author control.
-5. **Perf**: audio decode off main thread; debounced iframe re-render / shadow-root renderer. (B13, B16)
-6. **Polish**: screen-space selection ring, portrait layout, safe-area guides, keyframed transforms.
+A non-techy user opening the editor in default (simple) mode sees friendly
+labels everywhere. Every advanced control remains reachable behind a
+collapsed `Advanced ▾` disclosure or the developer-mode toggle.
+
+### 6.1 Foundation
+
+- **`viewMode: 'simple' | 'developer'`** in the store, persisted to
+  `localStorage['vx-view-mode']`. Toolbar `<Wrench>` button + `Cmd/Ctrl+Shift+D`.
+- **[registry/friendly-labels.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/registry/friendly-labels.ts)**
+  — single source of truth:
+  - `inferDisplayMeta({ tag, kind, style })` → `{ label, icon, advanced }`.
+    Containers are auto-classified from `display`/`flex-direction` into
+    `Container` / `Horizontal Layout` / `Vertical Layout` / `Grid Layout`.
+    SVG filter primitives (`feTurbulence`, `feDisplacementMap`, …) are
+    marked `advanced` and hidden from the simple-mode tree.
+  - `PROPERTY_META` table for property-label friendly names.
+  - `friendlyEntryName(entry, index, entries, overrides)` — overrides win,
+    then branding-prefix special cases (Intro / Outro / Watermark), then
+    overlay numbering, then `Scene N`.
+  - `friendlyChannelLabel(id)` — `base → Main`, `overlay → On top`,
+    `ui → Watermarks`.
+- **[AdvancedSection.tsx](../../frontend-admin-dashboard/src/components/ai-video-editor/AdvancedSection.tsx)**
+  — shared collapsible disclosure. Collapsed by default in simple mode;
+  pre-expanded in developer mode. Local state syncs to viewMode on toggle.
+
+### 6.2 Friendly controls
+
+[controls.tsx](../../frontend-admin-dashboard/src/components/ai-video-editor/controls.tsx):
+- **`<LengthControl>`** — % slider with `Auto` toggle. `Custom` falls back
+  to a raw text input for `auto` / `px` / `calc(...)` values.
+- **`<RotationControl>`** — `-180°…180°` slider that surgically updates
+  the `rotate(Ndeg)` portion of a CSS `transform`, preserving siblings.
+- **`<LayerOrderControl>`** — three-button radio (Behind / On top /
+  Watermark) mapping to z = 0 / 500 / 9000. Numeric escape hatch lives in
+  the dialog's `Advanced ▾`.
+- **`FIT_LABELS`** — `Contain → "Fit inside"`, `Cover → "Fill"`,
+  `Fill → "Stretch"` + description tooltips.
+
+### 6.3 Per-panel changes
+
+| Surface | Simple-mode change | Developer-mode behaviour |
+|---|---|---|
+| Tab labels | Elements / Position & Size / Transitions / Text / Images & Video / Overlays / Code | Same labels |
+| Elements (Layers tab) | Row labels from `inferDisplayMeta`; tag-name badge hidden; SVG filter primitives hidden | Tag-name badge shown next to friendly label; advanced rows visible |
+| Elements inspector | `X position` / `Y position` / `Width` / `Height` use `LengthControl`; rotation slider in `Advanced ▾` alongside raw transform / CSS class / z-index | `Advanced ▾` pre-expanded |
+| Position & Size | Background color picker primary; raw background CSS (gradient/URL) in `Advanced ▾` | `Advanced ▾` pre-expanded |
+| Transitions | Easing presets row (Smooth / Fast / Slow / Linear / Bouncy); per-side `cubic-bezier(...)` in `Advanced ▾` | `Advanced ▾` pre-expanded |
+| Overlays | Friendly fit labels with descriptions; LayerOrderControl in AddMediaOverlay | Numeric z-index input also visible (in dialog's Advanced) |
+| Code tab | Sticky amber banner: "Editing raw code can break the layout. Most edits are easier in the other tabs." | Banner suppressed |
+| Properties header | Friendly name (`Scene 4   0:10 → 0:14`) | Friendly name + faded `entry.id` + `z:N` prefix |
+| EntryListPanel | UUIDs gone — `Scene N` / `Intro` / `Outro` / `Watermark` / `Overlay N`. Double-click or pencil-icon inline rename. Branding rows are renameable but locked from reorder. | Same |
+| TimelineScrubber channel labels | Main / On top / Watermarks | Same |
+
+### 6.4 Display-name persistence
+
+Server is the source of truth via `entries[].entry_meta.display_name`:
+- **Save**: `setEntryDisplayName` marks the entry dirty; `saveChanges`
+  sends `entry_meta: { display_name: <value> }` on the existing
+  `/frame/update` (and now `/frame/add`) payload. Empty string means
+  "drop the override server-side".
+- **Backend merge**: `update_video_frame` and `add_video_frame` shallow-
+  merge `entry_meta` into the entry's existing meta. Empty/None
+  `display_name` is popped from the merged dict.
+- **Load**: `loadTimeline` hydrates `displayNames` from
+  `entries[].entry_meta.display_name`, then overlays unsaved local
+  renames on top (localStorage cleared on save success).
+- **localStorage** is the offline buffer for pending unsaved renames.
+  Empty-string sentinels are *not* persisted to disk — they exist only
+  in-memory until save (mirrors how every other unsaved edit behaves).
+
+---
+
+## 7. Shot transitions
+
+The Transitions tab implements the explicit per-entry `transitionIn` /
+`transitionOut` path with type + duration + per-side easing. Friendly
+preset row applied to both transitions; per-side custom `cubic-bezier(...)`
+in `Advanced ▾`. Persisted in `entryTransitions`, baked into the shot
+wrapper's `animation` / `<style>` on save.
+
+What's open:
+- **Transition entries** dragged into gaps — not built.
+- **Keyframed transforms per shot** (Ken Burns, slow zooms) — not built.
+- **Overlay entrance animations** (§4.3) — not built.
+- **Audio fades synced to shot transitions** — `audio_tracks[].fade_in/out`
+  exist but aren't wired to shot boundaries.
+- **Shot-level filter effects** (blur, color grade, mix-blend) — not built.
+- **Speed ramps** — not built.
+- **Ducking** — not built.
+
+---
+
+## 8. Suggested execution order — updated
+
+Done ✅ — strikethrough left in for context:
+
+1. ~~Security fixes: drop `allow-same-origin`, URL allowlist, move `apiKey` out of the URL.~~ (B1 ✅, B2 ✅, B4 ✅, B15 ⚠)
+2. ~~Correctness — UUID ids.~~ (B5 ✅)
+3. ~~Overlay-as-combined-HTML.~~ (§4 ✅)
+4. ~~Shot transitions — explicit `transitionIn/Out` path.~~ (Transitions tab ✅)
+5. ~~Delete persistence — frontend `deletedEntryIds` + backend `/frame/delete`.~~ (B22 ✅)
+6. ~~Layers-tab upload for image/video; Overlays-tab Height slider; overlay selection → canvas handles.~~ (B20 ✅, B21 ✅)
+7. ~~Move-mode body drag + Ripple + EntryListPanel reorder + atomic `/frame/reorder`.~~ (§5 ✅, B24 ✅, B25 ✅, B26 ✅, B27 ✅)
+8. ~~Layman-friendly editor — viewMode toggle, friendly labels, controls, server-synced renames.~~ (§6 ✅, B28 ✅, B29 ✅, B30 ✅, B31 ✅)
+
+Now:
+
+9. **Collapse Layers (Elements) and Overlays into one tab with chips** (B23).
+   Add buttons (Text / Image / Video) become a `+` menu on the unified tab;
+   chips filter All / Text / Image / Video / Overlays; the inspector picks
+   its control set based on the selected node's kind and whether it sits
+   inside `.vx-overlay`.
+10. **Stop Add-Shot stacking at end** (B18). When an unsaved end-blank
+    already exists, the dialog should select it instead of creating another.
+
+Next, pick from:
+
+11. **Correctness sweep** — B6 (dirty baseline), B7 (per-entry save status
+    + retry), B8 (user-driven track layout), B9 (scrubber clamp), B10
+    (matrix-safe transform merge). Independent and small.
+12. **Audio policy on extend** (B19) — first-class prompt when
+    `total_duration` would grow: silent / auto-narrate / loop bg music /
+    stretch bg music. Adds `loop` flag to `AudioTrack`. Prereq for any
+    "add AI shot at end" flow and for audio-on-timeline drag.
+13. **Captions track** — see [CAPTIONS_TRACK_PLAN.md](./CAPTIONS_TRACK_PLAN.md).
+14. **Move-mode Phase 2** — Slide and Swap; multi-select; sentence-boundary
+    snap targets; audio drag on timeline (gated on §12).
+15. **Perf** — B13 (waveform off main thread), B16 (debounce iframe
+    re-renders or shadow-root renderer).
+16. **Polish** — screen-space selection ring, portrait layout branch,
+    keyframed transforms, overlay timing UI (§4.3), large-HTML hard cap.
+
+---
+
+## 9. Open architectural questions
+
+These came up during recent work and haven't been resolved — flagging so
+the next pass can pick one:
+
+1. **One tab or two** for layer-vs-overlay editing. Current direction:
+   collapse to one (B23 / step 9 above).
+2. **Where the renderer authority lives** for time-driven overlay
+   visibility (CSS keyframes vs scripted clock).
+3. **Should `total_duration` auto-shrink on entry delete?** Today: no —
+   `/frame/delete` leaves `total_duration` alone. Surface a "trim total"
+   affordance when the user has just deleted the last entry?
+4. **AI-shot generation on Add Shot** — skipped per discussion; users add
+   blank + use the existing Remake AI flow.
+5. **Reorder semantics in time_driven mode** — list reorder changes only
+   `frame_index`; visual scrubber order stays driven by `inTime`. Worth a
+   UX nudge (tooltip, or hide the grip in time_driven mode).
+6. **AdvancedSection on viewMode toggle** — flipping to developer auto-
+   expands every advanced section; flipping back collapses them, including
+   any the user had manually opened in simple mode. Acceptable today (no
+   state lost — they can re-open) but reconsider if user feedback flags it.
+7. **`branding-watermark-1`, `-2`** — `friendlyEntryName` returns plain
+   "Watermark" for all variants. If a video has multiple watermarks the
+   user can't distinguish them by name without renaming each. Low priority.

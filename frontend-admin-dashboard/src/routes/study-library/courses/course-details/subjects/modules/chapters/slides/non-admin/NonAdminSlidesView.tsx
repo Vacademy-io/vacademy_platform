@@ -32,6 +32,8 @@ import { useNonAdminSlides } from './hooks/useNonAdminSlides';
 import { SendForApprovalButton } from '@/components/study-library/approval-workflow/SendForApprovalButton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PreviewChangesButton } from '@/components/study-library/course-comparison/PreviewChangesButton';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 const SlideMaterial = React.lazy(() =>
     import(
@@ -73,7 +75,14 @@ export function NonAdminSlidesView({
     const courseStatus = courseData?.course?.status;
     const originalCourseId = courseData?.course?.originalCourseId || null;
     const isDraftCourse = courseStatus === 'DRAFT';
-    const isReadOnlyMode = !isDraftCourse;
+
+    // When the role's display settings allow direct edit of published courses,
+    // bypass the read-only lock and surface the manual Publish/Unpublish UI by
+    // forwarding hidePublishButtons={false} to SlideMaterial.
+    const allowDirectEditPublished =
+        getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())?.coursePage
+            ?.directEditPublishedCourse === true;
+    const isReadOnlyMode = !isDraftCourse && !allowDirectEditPublished;
 
     // Non-admin slides management
     const { unsavedChanges, showApprovalButton, saveSlideAsPublished } =
@@ -321,8 +330,10 @@ export function NonAdminSlidesView({
                     </div>
                 </div>
 
-                {/* Add Button - Only show for draft courses and when not in learner view */}
-                {!isLearnerView && isDraftCourse && (
+                {/* Add Button - shown for DRAFT courses or when the role's
+                    `directEditPublishedCourse` flag lets the teacher edit
+                    published courses in place. Hidden in learner view. */}
+                {!isLearnerView && (isDraftCourse || allowDirectEditPublished) && (
                     <div className="fixed bottom-0 flex w-[280px] items-center justify-center bg-primary-50 pb-3">
                         <ChapterSidebarAddButton />
                     </div>
@@ -368,17 +379,19 @@ export function NonAdminSlidesView({
 
     const getCurrentEditorHTMLContentRef = useRef<() => string>(() => '');
 
-    // Create our custom save function for non-admin users
+    // Create our custom save function for non-admin users. Triggers on DRAFT
+    // courses (the approval-flow path) AND when the role's
+    // `directEditPublishedCourse` flag is on (in-place edit on published
+    // courses). Without the second branch, teachers in direct-edit mode would
+    // see their slide edits silently dropped on save.
     const customSaveDraft = useCallback(
         async (slide: Slide) => {
-            if (isDraftCourse) {
-                // For non-admin users in draft courses, save as published
-                // Get current editor content for document slides
+            if (isDraftCourse || allowDirectEditPublished) {
                 const currentEditorContent = getCurrentEditorHTMLContentRef.current();
-                await saveSlideAsPublished(slide, true, currentEditorContent); // Pass editor content
+                await saveSlideAsPublished(slide, true, currentEditorContent);
             }
         },
-        [isDraftCourse, saveSlideAsPublished]
+        [isDraftCourse, allowDirectEditPublished, saveSlideAsPublished]
     );
 
     return (
@@ -405,7 +418,7 @@ export function NonAdminSlidesView({
                                         }
                                         setSaveDraft={() => {}} // Not used when customSaveFunction is provided
                                         isLearnerView={isLearnerView}
-                                        hidePublishButtons={true}
+                                        hidePublishButtons={!allowDirectEditPublished}
                                         customSaveFunction={customSaveDraft}
                                     />
                                 </Suspense>
@@ -417,15 +430,20 @@ export function NonAdminSlidesView({
 
             {/* Action Buttons Container */}
             <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-                {/* Preview Changes Button - Show for all courses */}
-                <PreviewChangesButton
-                    currentCourseId={courseId}
-                    originalCourseId={originalCourseId}
-                    subjectId={subjectId}
-                    packageSessionId={sessionId}
-                    chapterId={chapterId}
-                    disabled={unsavedChanges.hasChanges}
-                />
+                {/* Preview / View Content button — only relevant in the
+                    Copy-to-Edit / approval flow. In direct-edit mode the
+                    teacher is editing the live course in place, so there's
+                    no separate "original" to preview. */}
+                {!allowDirectEditPublished && (
+                    <PreviewChangesButton
+                        currentCourseId={courseId}
+                        originalCourseId={originalCourseId}
+                        subjectId={subjectId}
+                        packageSessionId={sessionId}
+                        chapterId={chapterId}
+                        disabled={unsavedChanges.hasChanges}
+                    />
+                )}
 
                 {/* Send for Approval Button - Only show for draft courses with changes */}
                 {isDraftCourse && (

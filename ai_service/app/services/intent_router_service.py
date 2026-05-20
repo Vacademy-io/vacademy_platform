@@ -356,6 +356,16 @@ _FAMILY_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
         r"dashboard\s+(?:mockup|screenshot)|product\s+ui)\b",
         re.IGNORECASE,
     )),
+    # Phase 7: AI video (fal.ai Veo). Phrases that indicate the user wants
+    # generative video clips: "AI video", "AI-generated video", "Veo",
+    # "generative video", "generated clips", "ai video clips". Negation
+    # window handles "less AI video", "no generated clips", etc.
+    ("ai_video", re.compile(
+        r"\b(?:ai[\s-]?(?:generated[\s-]?)?(?:video|clip|footage)s?|"
+        r"veo|generative\s+video|video\s+synthesis|generated\s+clips?|"
+        r"ai\s+motion\s+(?:video|clips?))\b",
+        re.IGNORECASE,
+    )),
 ]
 
 # Negation tokens that flip a family match from "high" to "no". Anchored to
@@ -433,6 +443,7 @@ def extract_visual_preferences_from_text(prompt: str) -> Dict[str, Optional[str]
         "svg_illustrated": None,
         "motion_graphics": None,
         "app_ui_mockup": None,
+        "ai_video": None,
         "text_density": None,
     }
     if not prompt:
@@ -459,7 +470,7 @@ def merge_visual_preferences(
     """
     keys = (
         "stock_video", "ai_imagery", "svg_illustrated",
-        "motion_graphics", "app_ui_mockup", "text_density",
+        "motion_graphics", "app_ui_mockup", "ai_video", "text_density",
     )
     base = dict(structured or {})
     merged: Dict[str, Optional[str]] = {k: base.get(k) for k in keys}

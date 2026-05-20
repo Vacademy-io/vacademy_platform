@@ -19,10 +19,12 @@ import {
 import { getInstituteId } from '@/constants/helper';
 import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
 
-// Feature flag: render USD cost lines next to credits. Flip to false (or set
-// VITE_SHOW_USD_COST=false) to hide all $ figures without touching layout.
-const SHOW_USD_COST: boolean =
-    (import.meta.env.VITE_SHOW_USD_COST ?? 'true').toString().toLowerCase() !== 'false';
+// Credit-only display: USD figures are intentionally not shown to the
+// user (credits are the only billing currency). The backend response
+// still carries `cost_usd` fields for internal accounting / forensic
+// debugging — we just don't render them. To re-enable USD for an
+// internal admin view, render the same `row.cost_usd` / `est.*_cost_usd`
+// fields explicitly behind your own gate.
 
 function buildPreviewPayload(
     options: Omit<GenerateVideoRequest, 'prompt'>,
@@ -56,6 +58,11 @@ function buildPreviewPayload(
         // synthesis + reference-image cost lines. BE silently ignores `host`
         // for tiers below ultra (matches the API-edge tier gate).
         host: options.host,
+        // Forward AI video opt-in so the BE adds a worst-case Veo row to
+        // the breakdown. Same tier-gate as host above — BE ignores on
+        // sub-ultra tiers.
+        ai_video_enabled: options.ai_video_enabled,
+        ai_video_audio_enabled: options.ai_video_audio_enabled,
     };
 }
 
@@ -159,10 +166,6 @@ function fmtCredits(n: number | null | undefined): string {
     if (n == null) return '—';
     return Math.round(n).toLocaleString();
 }
-function fmtUsd(n: number | null | undefined): string {
-    if (n == null) return '—';
-    return `$${n.toFixed(2)}`;
-}
 
 export function CostPreviewInline({
     data,
@@ -192,9 +195,6 @@ export function CostPreviewInline({
                         ({fmtCredits(est.low_credits)}–{fmtCredits(est.high_credits)})
                     </span>
                 </span>
-            )}
-            {SHOW_USD_COST && est && (
-                <span className="text-muted-foreground">≈ {fmtUsd(est.expected_cost_usd)}</span>
             )}
             {bal && bal.current != null && (
                 <span className={insufficient ? 'text-red-600' : 'text-muted-foreground'}>
@@ -349,9 +349,6 @@ export function CostPreviewModal({
                                         <tr>
                                             <th className="text-left font-normal">Component</th>
                                             <th className="text-right font-normal">Credits</th>
-                                            {SHOW_USD_COST && (
-                                                <th className="text-right font-normal">USD</th>
-                                            )}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -368,11 +365,6 @@ export function CostPreviewModal({
                                                 <td className="text-right tabular-nums">
                                                     {fmtCredits(row.credits)}
                                                 </td>
-                                                {SHOW_USD_COST && (
-                                                    <td className="text-right tabular-nums text-muted-foreground">
-                                                        {fmtUsd(row.cost_usd)}
-                                                    </td>
-                                                )}
                                             </tr>
                                         ))}
                                         <tr className="border-t font-semibold">
@@ -381,18 +373,11 @@ export function CostPreviewModal({
                                                 <div className="text-[11px] font-normal text-muted-foreground">
                                                     Range: {fmtCredits(est.low_credits)}–
                                                     {fmtCredits(est.high_credits)} credits
-                                                    {SHOW_USD_COST &&
-                                                        ` (${fmtUsd(est.low_cost_usd)}–${fmtUsd(est.high_cost_usd)})`}
                                                 </div>
                                             </td>
                                             <td className="text-right tabular-nums">
                                                 {fmtCredits(est.expected_credits)}
                                             </td>
-                                            {SHOW_USD_COST && (
-                                                <td className="text-right tabular-nums">
-                                                    {fmtUsd(est.expected_cost_usd)}
-                                                </td>
-                                            )}
                                         </tr>
                                     </tbody>
                                 </table>

@@ -369,6 +369,106 @@ async def take_screenshot(
 
 
 # ---------------------------------------------------------------------------
+# Bbox-check — deterministic post-render overflow lint.
+#
+# Catches the TEXT_CLIPPED class deterministically: walks the rendered shadow
+# DOM at each timestamp and reports every visible text/media element whose
+# bounding box crosses the canvas edge. The LLM vision reviewer is
+# probabilistic about this class (the audited vid_1778774930857_w8cwa1y
+# silently shipped a clipped KINETIC_TITLE); a `getBoundingClientRect()` check
+# doesn't lie.
+#
+# Same harness/dispatcher/wait pattern as /screenshot so what we measure
+# equals what the production MP4 renders.
+# ---------------------------------------------------------------------------
+
+
+class BboxCheckRequest(BaseModel):
+    html: str = Field(..., description="Shot HTML — same input as /screenshot")
+    width: int = Field(..., gt=0, le=4096, description="Viewport width in px")
+    height: int = Field(..., gt=0, le=4096, description="Viewport height in px")
+    timestamps: List[float] = Field(
+        ...,
+        min_length=1,
+        max_length=5,
+        description="Shot-relative seconds at which to evaluate. Typically [0.3*dur, 0.6*dur, dur-0.1].",
+    )
+    background: str = Field(default="#0a0e27", description="CSS color used as the harness fill")
+
+
+class BboxViolationRect(BaseModel):
+    l: float
+    t: float
+    r: float
+    b: float
+
+
+class BboxViolation(BaseModel):
+    t: float = Field(..., description="Timestamp (shot-relative seconds) at which the violation was observed")
+    selector: str = Field(..., description="Approximate CSS path of the offending element (#id or tag.class)")
+    rect: BboxViolationRect = Field(..., description="Bounding rect at the moment of the violation")
+    text: str = Field(default="", description="First 80 chars of the element's text content (empty for media)")
+    is_media: bool = Field(default=False, description="True if the element is IMG/SVG/CANVAS/VIDEO")
+
+
+class BboxCheckResponse(BaseModel):
+    ok: bool = Field(..., description="True if no violations across any timestamp")
+    violations: List[BboxViolation] = Field(default_factory=list)
+    ms: int = Field(..., description="Wall-clock duration of the bbox check")
+
+
+@app.post("/bbox-check", response_model=BboxCheckResponse)
+async def bbox_check(
+    request: BboxCheckRequest,
+    x_render_key: str = Header(""),
+):
+    """Deterministic overflow lint: walks the rendered shadow DOM and reports
+    every visible text/media element whose bounding box crosses the canvas
+    edge at any of the supplied timestamps.
+
+    Returns `ok=true, violations=[]` when every leaf-text and media element
+    renders fully within the canvas at every sampled timestamp. The pipeline
+    consumes this verdict to fire one corrective regen (demote font tier)
+    before shipping the shot — closing the loop the LLM reviewer leaves open.
+    """
+    _verify_key(x_render_key)
+
+    for t in request.timestamps:
+        if t < 0 or t > 600:
+            raise HTTPException(status_code=400, detail=f"timestamp out of range: {t}")
+
+    import time as _time
+    start = _time.monotonic()
+    try:
+        worker = get_screenshot_worker()
+        rows = await worker.bbox_check_shot(
+            html=request.html,
+            width=request.width,
+            height=request.height,
+            timestamps=request.timestamps,
+            background=request.background,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("bbox-check failed")
+        raise HTTPException(status_code=500, detail=f"bbox-check failed: {exc}")
+    elapsed_ms = int((_time.monotonic() - start) * 1000)
+
+    violations = [
+        BboxViolation(
+            t=float(row["t"]),
+            selector=str(row.get("selector", "?")),
+            rect=BboxViolationRect(**(row.get("rect") or {"l": 0, "t": 0, "r": 0, "b": 0})),
+            text=str(row.get("text", "")),
+            is_media=bool(row.get("is_media", False)),
+        )
+        for row in rows
+    ]
+    return BboxCheckResponse(ok=not violations, violations=violations, ms=elapsed_ms)
+
+
+# ---------------------------------------------------------------------------
 # Shot preview MP4 — single-shot debug render
 #
 # Renders one shot's HTML at every frame across `duration_seconds` and returns

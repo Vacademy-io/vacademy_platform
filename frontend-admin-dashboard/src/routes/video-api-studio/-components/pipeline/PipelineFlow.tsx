@@ -12,12 +12,15 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 import type {
+    NarrationWriterArtifact,
     NodeSlot,
     NodeState,
     PipelineState,
+    PitchArtifact,
     ResearchArtifact,
     SceneSlot,
     ScoreArtifact,
+    ShotPlannerArtifact,
     TalentArtifact,
 } from './-utils/derive-pipeline-state';
 import { buildPipelineGraph, type PipelineNodeData } from './-utils/build-pipeline-graph';
@@ -26,6 +29,8 @@ import {
     useBackgroundMusicTrack,
     useSceneThumbnails,
     useTimelinePalette,
+    useTimelineRecurringMotifs,
+    useTimelineShotMeta,
 } from './-utils/use-timeline-json';
 import { useVideoStatus } from './-utils/use-video-status';
 import { ScenesHtmlContext } from './-utils/scenes-html-context';
@@ -33,11 +38,14 @@ import { processHtmlContent } from '@/components/ai-video-player/html-processor'
 import { NodeDetailSheet, type DetailTarget } from './NodeDetailSheet';
 import { PitchNode } from './nodes/PitchNode';
 import { ResearchNode } from './nodes/ResearchNode';
+import { BeatsNode } from './nodes/BeatsNode';
 import { ScreenplayNode } from './nodes/ScreenplayNode';
 import { NarrationNode } from './nodes/NarrationNode';
 import { StoryboardNode } from './nodes/StoryboardNode';
 import { FilmingNode } from './nodes/FilmingNode';
 import { SceneNode } from './nodes/SceneNode';
+import { ShotPlannerNode } from './nodes/ShotPlannerNode';
+import { NarrationWriterNode } from './nodes/NarrationWriterNode';
 import { TalentNode } from './nodes/TalentNode';
 import { ScoreNode } from './nodes/ScoreNode';
 import { FinalCutNode } from './nodes/FinalCutNode';
@@ -51,9 +59,12 @@ import { BrollLaneNode } from './nodes/BrollLaneNode';
 const NODE_TYPES: NodeTypes = {
     pitch: PitchNode,
     research: ResearchNode,
+    beats: BeatsNode,
     screenplay: ScreenplayNode,
     narration: NarrationNode,
     storyboard: StoryboardNode,
+    shotPlanner: ShotPlannerNode,
+    narrationWriter: NarrationWriterNode,
     filming: FilmingNode,
     scene: SceneNode,
     talent: TalentNode,
@@ -115,6 +126,13 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
     // iframes seed the same CSS variables the rendered MP4 used.
     const palette = useTimelinePalette(state.videoId, state.artifactUrls.timeline);
 
+    // v3 per-shot meta + plan-level recurring motifs from timeline.json's
+    // `meta.shots[]` / `meta.recurring_motifs[]`. Drives the enriched
+    // SceneSlot fields (audio_policy, narration_brief, AI-video telemetry)
+    // and the ShotPlanner detail sheet for history-loaded runs.
+    const timelineShotMeta = useTimelineShotMeta(state.videoId, state.artifactUrls.timeline);
+    const timelineMotifs = useTimelineRecurringMotifs(state.videoId, state.artifactUrls.timeline);
+
     const enrichedState = useMemo<PipelineState>(() => {
         let working = state;
 
@@ -139,14 +157,30 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 else if (errEntry && errEntry.retrying) sceneState = 'reshoot';
                 else if (idx < shotsCompleted) sceneState = 'wrapped';
                 else if (idx === shotsCompleted) sceneState = 'in_production';
+                // Carry v3 fields when the BE included them on /status.shot_plan
+                // (the schema docstring is incomplete but the wire data is
+                // permissive Dict[str, Any], so v3 runs populate them). The
+                // separate `meta.shots[]` enrichment below still wins for
+                // history-loaded runs whose status didn't carry them.
                 return {
                     state: sceneState,
                     index: idx,
                     shotType: s.shot_type,
-                    narrationExcerpt: s.narration_excerpt,
+                    narrationExcerpt: s.narration_excerpt ?? s.narration_text,
                     durationS: s.duration_s,
                     startTime: s.start_time,
                     endTime: s.end_time,
+                    narrationBrief: s.narration_brief,
+                    narrationText: s.narration_text,
+                    audioPolicy: s.audio_policy,
+                    backgroundTreatment: s.background_treatment,
+                    transitionIn: s.transition_in,
+                    intentRole: s.intent_role,
+                    audioUrl: s.audio_url,
+                    audioWordsUrl: s.audio_words_url,
+                    audioScriptUrl: s.audio_script_url,
+                    audioDurationS: s.audio_duration_s,
+                    audioSkipped: s.audio_skipped,
                     error: sceneState === 'cut' ? errEntry?.error : undefined,
                 };
             });
@@ -165,6 +199,140 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 };
             });
             working = { ...working, scenes: merged };
+        }
+
+        // 2b. Merge v3 per-shot meta from timeline.json into the scene slots.
+        //     This is the canonical source for history-loaded v3 runs where
+        //     `cg.shotPlan` never carried the v3 fields. Covers audio_policy,
+        //     narration_brief/text, background_treatment, transition_in,
+        //     intent_role, per-shot audio URLs, AI-video telemetry, etc.
+        if (working.scenes.length > 0 && Object.keys(timelineShotMeta).length > 0) {
+            const merged: SceneSlot[] = working.scenes.map((s) => {
+                const m = timelineShotMeta[s.index];
+                if (!m) return s;
+                return {
+                    ...s,
+                    narrationBrief: s.narrationBrief ?? m.narration_brief,
+                    narrationText: s.narrationText ?? m.narration_text,
+                    audioPolicy: s.audioPolicy ?? m.audio_policy,
+                    backgroundTreatment: s.backgroundTreatment ?? m.background_treatment,
+                    transitionIn: s.transitionIn ?? m.transition_in,
+                    intentRole: s.intentRole ?? m.intent_role,
+                    audioUrl: s.audioUrl ?? m.audio_url,
+                    audioWordsUrl: s.audioWordsUrl ?? m.audio_words_url,
+                    audioScriptUrl: s.audioScriptUrl ?? m.audio_script_url,
+                    audioDurationS: s.audioDurationS ?? m.audio_duration_s,
+                    audioSkipped: s.audioSkipped ?? m.audio_skipped,
+                    aiVideoOn: m._ai_video_audio_on,
+                    aiVideoRequestId: m._ai_video_request_id,
+                    aiVideoUrl: m._ai_video_url,
+                    aiVideoCostCredits: m._ai_video_cost_credits,
+                    aiVideoCostUsd: m._ai_video_cost_usd,
+                    aiVideoElapsedS: m._ai_video_elapsed_s,
+                    aiVideoSegments: m._ai_video_segments?.map((seg) => ({
+                        segIdx: seg.seg_idx ?? 0,
+                        videoUrl: seg.video_url,
+                        durationS: seg.duration_s,
+                        requestId: seg.request_id,
+                        cacheHit: seg.cache_hit,
+                    })),
+                };
+            });
+            working = { ...working, scenes: merged };
+        }
+
+        // 2c. Backfill pipelineVersion from /status.metadata when the parent
+        //     derivation didn't set it (history-loaded path before the
+        //     metadata-aware derivation reaches here). Also promote to v3 if
+        //     any scene carries a v3 signal (audio_policy / narration_brief)
+        //     or the timeline persisted shot meta — these are positive proof
+        //     this run came out of the v3 pipeline.
+        const sceneHasV3Field = working.scenes.some(
+            (s) => s.audioPolicy != null || s.narrationBrief != null
+        );
+        const statusVersion = meta?.pipeline_version ?? meta?.user_selections?.pipeline_version;
+        const detectedVersion: 'v2' | 'v3' =
+            statusVersion === 'v3' || statusVersion === 'v2'
+                ? statusVersion
+                : sceneHasV3Field || Object.keys(timelineShotMeta).length > 0
+                  ? 'v3'
+                  : working.pipelineVersion;
+        if (detectedVersion !== working.pipelineVersion) {
+            working = { ...working, pipelineVersion: detectedVersion };
+        }
+
+        // 2d. Synthesize ShotPlanner + NarrationWriter slots from timeline
+        //     meta for history-loaded v3 runs (the live derivation already
+        //     populates these when SSE drove the run). Use the per-shot meta
+        //     when present; otherwise fall back to the (post-enrichment)
+        //     scene array which has the same v3 fields after step 2b.
+        if (working.pipelineVersion === 'v3' && working.scenes.length > 0) {
+            if (!working.shotPlanner) {
+                let intrinsic = 0;
+                let narrated = 0;
+                const intentRoleBreakdown: Record<string, number> = {};
+                const backgroundBreakdown: Record<string, number> = {};
+                for (const s of working.scenes) {
+                    if (s.audioPolicy === 'intrinsic_only') intrinsic++;
+                    else narrated++;
+                    if (s.intentRole) {
+                        intentRoleBreakdown[s.intentRole] =
+                            (intentRoleBreakdown[s.intentRole] ?? 0) + 1;
+                    }
+                    if (s.backgroundTreatment) {
+                        backgroundBreakdown[s.backgroundTreatment] =
+                            (backgroundBreakdown[s.backgroundTreatment] ?? 0) + 1;
+                    }
+                }
+                const data: ShotPlannerArtifact = {
+                    shotCount: working.scenes.length,
+                    intrinsicCount: intrinsic,
+                    narratedCount: narrated,
+                    recurringMotifs: timelineMotifs.map((m) => ({
+                        description: m.description,
+                        screenPosition: m.screen_position,
+                        whenVisible: m.when_visible,
+                    })),
+                    intentRoleBreakdown: Object.keys(intentRoleBreakdown).length
+                        ? intentRoleBreakdown
+                        : undefined,
+                    backgroundBreakdown: Object.keys(backgroundBreakdown).length
+                        ? backgroundBreakdown
+                        : undefined,
+                };
+                const wrapped: NodeSlot<ShotPlannerArtifact> =
+                    working.status === 'wrapped' || working.status === 'in_production'
+                        ? { state: 'wrapped', data }
+                        : { state: 'wrapped', data };
+                working = { ...working, shotPlanner: wrapped };
+            }
+            if (!working.narrationWriter) {
+                const perShotWordCounts: number[] = [];
+                let skipped = 0;
+                let total = 0;
+                for (const s of working.scenes) {
+                    if (s.audioSkipped || s.audioPolicy === 'intrinsic_only') {
+                        perShotWordCounts.push(0);
+                        skipped++;
+                        continue;
+                    }
+                    const text = (s.narrationText ?? s.narrationExcerpt ?? '').trim();
+                    const n = text ? text.split(/\s+/).length : 0;
+                    perShotWordCounts.push(n);
+                    total += n;
+                }
+                const data: NarrationWriterArtifact = {
+                    totalWords: total,
+                    perShotWordCounts,
+                    skippedIntrinsicCount: skipped,
+                    narrationMp3Url: working.artifactUrls.audio,
+                    narrationWordsUrl: working.artifactUrls.words,
+                };
+                working = {
+                    ...working,
+                    narrationWriter: { state: 'wrapped', data },
+                };
+            }
         }
 
         // 3. Synthesize Talent slot from extra_metadata.host. Live runs
@@ -301,8 +469,70 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
             working = { ...working, research };
         }
 
+        // 6. Pitch + prompt enrichment — history-restored runs lose the
+        //    full user_selections snapshot and sometimes lose the prompt
+        //    itself (the History sidebar hydrates a thin subset). /status
+        //    carries both via `metadata.user_selections` and top-level
+        //    `prompt`. Fill in whichever the parent didn't have so the
+        //    Pitch sheet's Brief + Configuration sections populate.
+        const statusPrompt = (statusResp as { prompt?: string | null } | undefined)?.prompt;
+        const userSelections = meta?.user_selections;
+        const haveLocalPrompt = !!working.prompt && working.prompt.length > 0;
+        const backfillPrompt = haveLocalPrompt
+            ? working.prompt
+            : userSelections?.prompt || statusPrompt || '';
+        const pitchSlot = working.pitch;
+        const needsPitchEnrichment =
+            !!userSelections && pitchSlot.state === 'wrapped' && !pitchSlot.data.userSelections;
+        const needsPromptBackfill = !haveLocalPrompt && backfillPrompt.length > 0;
+        if (needsPromptBackfill || needsPitchEnrichment) {
+            const newPitch: NodeSlot<PitchArtifact> =
+                pitchSlot.state === 'wrapped'
+                    ? {
+                          state: 'wrapped',
+                          data: {
+                              prompt: backfillPrompt || pitchSlot.data.prompt,
+                              referenceCount:
+                                  userSelections?.reference_files_count ??
+                                  pitchSlot.data.referenceCount,
+                              userSelections: userSelections ?? pitchSlot.data.userSelections,
+                          },
+                      }
+                    : pitchSlot;
+            working = {
+                ...working,
+                prompt: backfillPrompt || working.prompt,
+                contentType: working.contentType || userSelections?.content_type || 'VIDEO',
+                orientation: working.orientation || userSelections?.orientation || 'landscape',
+                pitch: newPitch,
+            };
+        }
+
+        // 7. Stats enrichment — history-restored runs only get whatever
+        //    `currentGeneration.tokenUsage` was hydrated from HistoryItem,
+        //    and never get `cumulativeTokens`. /status carries both. Fill
+        //    in whichever the parent didn't have so the right-rail Production
+        //    Budget block + RunSummaryFooter populate consistently.
+        const statusTokenUsage = (
+            statusResp as { token_usage?: typeof working.stats.tokenUsage } | undefined
+        )?.token_usage;
+        const statusCumulative = gp?.cumulative_tokens;
+        if (
+            (!working.stats.cumulativeTokens && statusCumulative) ||
+            (!working.stats.tokenUsage && statusTokenUsage)
+        ) {
+            working = {
+                ...working,
+                stats: {
+                    ...working.stats,
+                    cumulativeTokens: working.stats.cumulativeTokens ?? statusCumulative,
+                    tokenUsage: working.stats.tokenUsage ?? statusTokenUsage,
+                },
+            };
+        }
+
         return working;
-    }, [state, gp, thumbnails, meta, musicTrack]);
+    }, [state, gp, thumbnails, meta, musicTrack, statusResp, timelineShotMeta, timelineMotifs]);
 
     /**
      * React Flow's `onNodeClick` is the canonical hook for "user clicked
@@ -351,13 +581,21 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
         // Storyboard→FinalCut visual span scales with N.
         const sceneNodes = positioned.filter((n) => n.data?.kind === 'scene');
         if (sceneNodes.length > 0) {
-            const storyboard = positioned.find((n) => n.id === 'storyboard');
+            // v2 anchors off Storyboard; v3 anchors off NarrationWriter (the
+            // node that directly precedes the scene strip on v3). Whichever
+            // exists in `positioned` is the "upstream of scenes" reference.
+            const upstreamNode =
+                positioned.find((n) => n.id === 'storyboard') ??
+                positioned.find((n) => n.id === 'narrationWriter');
             const finalCut = positioned.find((n) => n.id === 'finalCut');
-            if (storyboard && finalCut) {
+            if (upstreamNode && finalCut) {
                 const sceneW = built.nodeSizeOverrides['scene-0']?.width ?? 200;
                 const sceneH = built.nodeSizeOverrides['scene-0']?.height ?? 220;
-                const sbW = built.nodeSizeOverrides.storyboard?.width ?? 280;
-                const sbH = built.nodeSizeOverrides.storyboard?.height ?? 180;
+                const sbW = built.nodeSizeOverrides[upstreamNode.id]?.width ?? 280;
+                const sbH = built.nodeSizeOverrides[upstreamNode.id]?.height ?? 180;
+                // Alias for the rest of the block — the layout math doesn't
+                // care whether it's storyboard or narrationWriter.
+                const storyboard = upstreamNode;
                 const sceneSpacing = 50;
                 // Start scenes just to the right of Storyboard, at the
                 // same vertical center as the linear chain so the flow
@@ -390,10 +628,18 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                     y: storyboard.position.y + (sbH - fcH) / 2,
                 };
                 // Ensure the linear-chain nodes also share that y so the
-                // whole top row aligns. `research` is conditional but
-                // included here so its dagre-computed x-position lands on
-                // the same row when present.
-                ['pitch', 'research', 'screenplay', 'narration'].forEach((id) => {
+                // whole top row aligns. v2: research, beats, screenplay,
+                // narration. v3: research, shotPlanner, narrationWriter.
+                // All optional — only realigned if present in `positioned`.
+                [
+                    'pitch',
+                    'research',
+                    'beats',
+                    'screenplay',
+                    'narration',
+                    'shotPlanner',
+                    'narrationWriter',
+                ].forEach((id) => {
                     const n = positioned.find((p) => p.id === id);
                     const w = built.nodeSizeOverrides[id]?.width ?? 260;
                     const h = built.nodeSizeOverrides[id]?.height ?? 140;
@@ -505,6 +751,51 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
         return () => cancelAnimationFrame(id);
     }, [flow, nodes.length, stateSignature]);
 
+    // ── Auto-focus on the active stage / scene during live runs ──────────
+    // When the BE pushes a new `live.active_stage` (or a single scene flips
+    // to `in_production` during Filming), softly pan the camera to that
+    // node. The user can opt out by interacting with the canvas — once they
+    // pan or zoom manually, `followLive` flips off until they hit the
+    // "Follow live" button (rendered alongside the canvas controls).
+    const followLiveRef = useRef(true);
+    const lastFocusKeyRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!followLiveRef.current) return;
+        if (state.status !== 'in_production') return;
+        const activeStage = state.liveActiveStage;
+        if (!activeStage) return;
+
+        // Prefer focusing on the single in-progress scene when Filming is
+        // active and exactly one scene is currently running — that's the
+        // most informative view.
+        let focusNodeId: string | null = null;
+        if (activeStage === 'filming' && state.scenes.length > 0) {
+            const running = state.scenes.filter((s) => s.state === 'in_production');
+            const only = running.length === 1 ? running[0] : undefined;
+            if (only) {
+                focusNodeId = `scene-${only.index}`;
+            }
+        }
+        if (!focusNodeId) focusNodeId = activeStage;
+
+        const target = nodes.find((n) => n.id === focusNodeId);
+        if (!target) return;
+
+        // Deduplicate: don't re-pan on every poll if the focus hasn't moved.
+        if (lastFocusKeyRef.current === focusNodeId) return;
+        lastFocusKeyRef.current = focusNodeId;
+
+        const id = requestAnimationFrame(() => {
+            flow.fitView({
+                nodes: [target],
+                padding: 0.3,
+                duration: 500,
+                maxZoom: 0.9,
+            });
+        });
+        return () => cancelAnimationFrame(id);
+    }, [flow, state.liveActiveStage, state.status, state.scenes, nodes]);
+
     // Show MiniMap once the diagram has many scene nodes — otherwise the
     // user can't see where they are after zooming in. Threshold = 8 since
     // the linear chain alone is already 6 nodes.
@@ -563,6 +854,12 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 panOnScroll={false}
                 defaultEdgeOptions={{ type: 'smoothstep' }}
                 onNodeClick={handleNodeClick}
+                onMoveStart={() => {
+                    // Any manual pan/zoom opts the user out of the auto-
+                    // focus camera. Stays off until the run flips to a new
+                    // status (the ref isn't reset between snapshots).
+                    followLiveRef.current = false;
+                }}
             >
                 <Background gap={24} size={1} color="#e5e7eb" />
                 <Controls position="bottom-left" showInteractive={false} />
@@ -573,6 +870,23 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 >
                     Click any stage for details
                 </Panel>
+                {/* Director-thinking ticker: a single live line of "what is
+                    the pipeline doing right now" sourced from
+                    state.liveDirectorThought (set by the BE on shot_decisions /
+                    director_thinking events) with a fallback to the active
+                    stage label. Only shown while the run is in production. */}
+                {state.status === 'in_production' && (state.liveDirectorThought || state.liveActiveStage) && (
+                    <Panel
+                        position="bottom-center"
+                        className="m-3 max-w-[560px] truncate rounded-full border bg-white/95 px-3 py-1.5 text-xs text-foreground shadow-md backdrop-blur"
+                    >
+                        <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-blue-500 align-middle" />
+                        <span className="font-medium text-muted-foreground">Director:</span>{' '}
+                        <span className="text-foreground/90">
+                            {state.liveDirectorThought ?? `working on ${state.liveActiveStage}…`}
+                        </span>
+                    </Panel>
+                )}
             </ReactFlow>
             <NodeDetailSheet
                 target={openTarget}

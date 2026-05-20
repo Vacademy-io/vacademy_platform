@@ -65,8 +65,8 @@ export function AvatarsTab() {
 
     return (
         <div className="space-y-5">
-            <div className="flex items-center justify-between">
-                <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-neutral-900">Avatars</h2>
                     <p className="text-sm text-neutral-500">
                         Saved hosts you can drop into any video.
@@ -74,7 +74,7 @@ export function AvatarsTab() {
                 </div>
                 <Button
                     onClick={openCreate}
-                    className="gap-2 bg-neutral-900 text-white hover:bg-neutral-800"
+                    className="shrink-0 gap-2 bg-neutral-900 text-white hover:bg-neutral-800"
                 >
                     <Plus className="size-4" />
                     New avatar
@@ -223,7 +223,8 @@ function AvatarCard({ avatar, onEdit, onDelete }: AvatarCardProps) {
                     <DropdownMenuTrigger asChild>
                         <button
                             type="button"
-                            className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                            aria-label="Avatar actions"
+                            className="inline-flex size-9 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
                         >
                             <MoreHorizontal className="size-4" />
                         </button>

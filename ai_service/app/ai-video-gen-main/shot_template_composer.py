@@ -47,6 +47,10 @@ _SPECIALIZED_SHOT_TYPES = frozenset({
     "KINETIC_TITLE",
     "SOURCE_CLIP",
     "IMAGE_CLIP",
+    # AI_VIDEO_HERO (Phase 3b): the entire shot is a Veo-generated MP4
+    # wrapped in a minimal <video> element. A shot template would emit
+    # generic HTML and shadow the Veo content. Never run through templates.
+    "AI_VIDEO_HERO",
 })
 
 

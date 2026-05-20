@@ -1400,7 +1400,8 @@ export interface GenerateVideoRequest {
   html_quality: 'classic' | 'advanced';
   target_audience: string;
   target_duration: string;
-  model: string;
+  model: string;                            // @deprecated — collapses to model_overrides.default server-side
+  model_overrides?: ModelOverrides;         // V200 — per-stage user overrides; honored when V200 migration is applied
   quality_tier: QualityTier;
   video_id?: string;
   reference_files?: ReferenceFile[];
@@ -1901,4 +1902,218 @@ See [SKILLS_AND_TEMPLATES_AUTHORING.md](./SKILLS_AND_TEMPLATES_AUTHORING.md) for
 
 ---
 
-**Maintainers**: if you change anything in `automation_pipeline.py::run()`, `_ensure_fonts()`, `shot_type_cards.py::SHOT_TYPE_CARDS`, `director_prompts.py::DIRECTOR_SYSTEM_PROMPT`, `skill_registry.py`, `skill_composer.py`, `shot_template_registry.py`, `shot_template_composer.py`, `transition_picker.py`, `subject_extractor.py`, `prompts.py::TRANSITION_CSS_BLOCKS`, `QUALITY_TIERS`, or the external API contract, update this doc in the same commit. Adding a new skill under `skills/**/skill.py` or a new template under `shot_templates/**/template.py` does NOT require a doc update — they are discovered at runtime. See [SKILLS_AND_TEMPLATES_AUTHORING.md](./SKILLS_AND_TEMPLATES_AUTHORING.md) for the authoring guide.
+**Maintainers**: if you change anything in `automation_pipeline.py::run()`, `_ensure_fonts()`, `shot_type_cards.py::SHOT_TYPE_CARDS`, `director_prompts.py::DIRECTOR_SYSTEM_PROMPT`, `skill_registry.py`, `skill_composer.py`, `shot_template_registry.py`, `shot_template_composer.py`, `transition_picker.py`, `subject_extractor.py`, `prompts.py::TRANSITION_CSS_BLOCKS`, `QUALITY_TIERS`, the AI video stack (`fal_veo_client.py`, `ai_video_orchestrator.py`, `ai_video_composer.py`, `audio_policy_planner.py`, `build_ai_video_director_block`, `build_ai_video_inline_teaching_block`), or the external API contract, update this doc in the same commit. Adding a new skill under `skills/**/skill.py` or a new template under `shot_templates/**/template.py` does NOT require a doc update — they are discovered at runtime. See [SKILLS_AND_TEMPLATES_AUTHORING.md](./SKILLS_AND_TEMPLATES_AUTHORING.md) for the authoring guide.
+
+---
+
+## AI video generation (fal.ai Veo 3.1 Lite) — added 2026-05
+
+Off-by-default user-opt-in capability, ultra+ tiers only. End-to-end:
+fal.ai's Veo 3.1 Lite generates short cinematic clips that the Director
+can embed as full-canvas `AI_VIDEO_HERO` shots or that the per-shot HTML
+LLM can drop inline via `<aivideo>` tags inside composite shots.
+
+### Request flags
+
+```jsonc
+{
+  "ai_video_enabled": false,        // master toggle; ignored on tier < ultra
+  "ai_video_audio_enabled": false,  // when on, Veo clips bring own audio
+  "ai_video_model": "fal-ai/veo3.1/lite"
+}
+```
+
+Schema fields live on `VideoGenerationRequest` in
+[`app/schemas/video_generation.py`](../../ai_service/app/schemas/video_generation.py).
+The frontend Advanced Settings ("AI video generation" section in
+[`SettingsPopover.tsx`](../../frontend-admin-dashboard/src/routes/video-api-studio/console/-components/SettingsPopover.tsx))
+drives them.
+
+### Tier eligibility + circuit breaker
+
+| Tier | `ai_video_eligible` | per-video cap |
+|---|---|---|
+| `free`, `standard`, `premium` | False (toggle hidden / downgraded silently) | — |
+| `ultra`, `super_ultra` | True | $1.50 |
+
+Enforced atomically per Veo call via `AiVideoCostTracker` in
+[`ai_video_orchestrator.py`](../../ai_service/app/ai-video-gen-main/ai_video_orchestrator.py).
+A pre-flight `try_charge(expected_cost)` reserves budget before any HTTP
+round-trip; cap-exhausted requests fall back without billing. Veo
+failures (safety block, timeout, malformed response) **refund** the
+reservation so transient errors don't slowly eat budget.
+
+### Pricing (per call, locked to 720p)
+
+| Audio | $/s | 4s cost | 8s cost |
+|---|---|---|---|
+| off | $0.03 | $0.12 | $0.24 |
+| on  | $0.05 | $0.20 | $0.40 |
+
+Per the orchestrator's `_resolve_audio_flag`, Veo's `generate_audio` is
+`true` only when **all three** are true: run-level
+`ai_video_audio_enabled`, shot-level `ai_video_audio`, and resolved
+`audio_policy=intrinsic_only`.
+
+### Three paths through the system
+
+1. **`AI_VIDEO_HERO` full-canvas single-shot** — Director sets shot_type
+   plus `ai_video_prompt` and `ai_video_duration_s ∈ {4,6,8}`.
+   `_shot_task` routes to `orchestrate_ai_video_shot()`. One Veo call,
+   minimal `<video>` HTML wrapper.
+
+2. **`AI_VIDEO_HERO` chain (>8s shots)** — Director emits either
+   `ai_video_segments: [{prompt, duration_s}, ...]` (Option A: continuity
+   via per-segment prompts) OR `ai_video_duration_s > 8` (Option B: auto
+   8s splits). Dispatched to `orchestrate_ai_video_chain()`. First
+   segment is text-to-video; each subsequent segment uses
+   image-to-video conditioned on the prior segment's ffmpeg-extracted
+   last frame. All segments concatenated via ffmpeg and uploaded via
+   the pipeline's S3 closure. Capped at `MAX_CHAIN_SEGMENTS=6`.
+
+3. **Inline `<aivideo>` in composite shots** — Per-shot HTML LLM may
+   drop `<aivideo data-prompt="..." data-duration="6" data-audio="false">`
+   tags. Resolved by
+   [`ai_video_composer.py`](../../ai_service/app/ai-video-gen-main/ai_video_composer.py)
+   right after `skill_composer`. Each tag = one text-to-video Veo call;
+   placeholder fallback on missing prompt / Veo failure / cap exhausted.
+
+### Audio path
+
+When `audio_policy=intrinsic_only` is on a shot, the orchestrator emits
+the `<video>` element UNMUTED so the browser plays Veo audio at render
+time. The master narration would otherwise play simultaneously — to
+prevent the double-audio mix, the pipeline post-processes
+`narration.mp3` via ffmpeg, zeroing the volume during each
+`intrinsic_only` shot's window. Implementation:
+`mute_master_narration_for_intrinsic_shots` runs between HTML compose
+and render. Output written to `narration_intrinsic_muted.mp3`; original
+master preserved for resume/debugging.
+
+### Fallback policy
+
+When a shot can't ship as AI video — Veo error, cap exhausted, missing
+fields, S3 unavailable for chains — `_shot_task` downgrades shot_type to
+`VIDEO_HERO` (if `video_query` is present) or `IMAGE_HERO`, strips the
+AI-video fields, and falls through to the regular per-shot LLM path.
+Inline `<aivideo>` failures resolve to a CSS-gradient placeholder
+in-place; the surrounding composite shot ships normally.
+
+### Telemetry
+
+Per-run summary written to `<run_dir>/ai_video_summary.json`:
+
+```jsonc
+{
+  "cap_usd": 1.50,
+  "spent_usd": 0.72,
+  "remaining_usd": 0.78,
+  "shots_completed": 3,
+  "shots_failed": 0,
+  "shots_skipped_circuit_breaker": 0,
+  "ai_video_enabled": true,
+  "ai_video_audio_enabled": false,
+  "single_shot_count": 1,
+  "chain_shot_count": 2
+}
+```
+
+Per-shot entries in `timeline.json` carry `_ai_video_request_id`,
+`_ai_video_url`, `_ai_video_cost_usd`, `_ai_video_elapsed_s`,
+`_ai_video_segments`, and `_ai_video_audio_on` for the FE editor sidebar.
+
+### Director + per-shot prompt extensions
+
+`director_prompts.py::build_ai_video_director_block(enabled,
+audio_enabled, cost_cap_usd)` appends to the Director system prompt only
+when AI video is enabled. Teaches AI_VIDEO_HERO shot type, per-shot
+field schema, >8s chain options, hero-pacing rule, and (when audio is
+on) the `ai_video_audio: true` opt-in.
+
+`shot_type_cards.py::build_ai_video_inline_teaching_block` appends the
+inline `<aivideo>` syntax to the per-shot HTML LLM system prompt for
+non-specialized shot types when AI video is enabled.
+
+### VisualPreferences integration
+
+Sixth family `ai_video` joins `VisualPreferences`. Wired through the
+free-text scanner (`intent_router_service.py::_FAMILY_PATTERNS`),
+`merge_visual_preferences` key list, and the realized-vs-declared
+telemetry's `_shot_to_family` map.
+
+### File map (additions for this feature)
+
+| File | Role |
+|---|---|
+| `app/services/fal_veo_client.py` | sync `FalVeoClient` (queue submit + poll), pricing, payload builders, response shape detection, typed exception hierarchy |
+| `app/ai-video-gen-main/ai_video_orchestrator.py` | `orchestrate_ai_video_shot`, `orchestrate_ai_video_chain`, `AiVideoCostTracker`, ffmpeg helpers (last-frame extract, concat, download), audio mute helpers |
+| `app/ai-video-gen-main/ai_video_composer.py` | Inline `<aivideo>` tag composer |
+| `app/ai-video-gen-main/audio_policy_planner.py` | Per-shot `audio_policy` assignment |
+| `app/ai-video-gen-main/beat_planner.py` | BeatPlanner (Phase 1; not yet wired into main pipeline) |
+| `app/ai-video-gen-main/default_shot_mapper.py` | DefaultShotMapper (Phase 1) |
+
+### What's deferred to a follow-up
+
+- Editor "Remake with AI" branch for AI_VIDEO_HERO shots
+- Circuit breaker tally persistence into the run checkpoint (resume safety)
+- S3 mirror of per-shot Veo MP4s (today they live on the fal CDN until segment cache cleanup)
+- Additional audio policies (`intrinsic_under_narration`, `narration_over_intrinsic`) for cinematic ducking
+- BeatPlanner / DefaultShotMapper main-pipeline wiring (modules exist but are off-by-default)
+
+---
+
+## Per-stage AI model overrides (V200) — added 2026-05
+
+`VideoGenerationRequest.model_overrides` lets the user route each LLM stage
+(ShotPlanner, NarrationWriter, per-shot HTML, etc.) to a different model
+without affecting utility stages or the pinned vision-review gate. Replaces
+the single global `model` field as the recommended way to override models;
+the legacy `model` field is still accepted and is collapsed to
+`ModelOverrides(default=model)` on the server.
+
+Shape:
+
+```ts
+interface ModelOverrides {
+  default?: string;                                          // mass-applies to every user-overridable stage
+  per_stage?: Partial<Record<UserOverridableStage, string>>; // wins over default for individual stages
+}
+
+type UserOverridableStage =
+  | 'shot_planner'         // plans the whole video shot-by-shot
+  | 'narration_writer'     // authors per-shot narration text
+  | 'per_shot_html'        // generates HTML for every shot
+  | 'act_planner'          // decomposes intent into acts pre-ShotPlanner
+  | 'regen_html';          // corrective regen on validation failures
+```
+
+v2-legacy stage IDs (`director`, `script_generation`, `script_review`) were dropped from the FE union once v3 became the only supported pipeline. The BE still accepts them in `per_stage` for back-compat; they resolve harmlessly against matrix rows that v3 never reads.
+
+**Pinned stages (ignore the override):** `vision_review` (always Pro for the
+quality gate), `cultural_context`, `entity_extraction`,
+`image_prompt_enhancement`, `stock_video_ranking`, `beat_planner`,
+`shot_decomposer`, `host_description`, `headline_thumbnail`. Sending
+`per_stage` keys for these is silently dropped.
+
+**Defaults source:** matrix table `ai_model_stage_assignments` (5 quality
+tiers × 17 stages = 85 rows). Edit via SQL — no admin UI in this scope.
+
+**FE surface:** `ModelOverridesPanel` inside the existing `SettingsPopover`.
+One "Default model" dropdown plus a "Customize per stage" expander for the
+5 user-overridable stages (`shot_planner`, `narration_writer`,
+`per_shot_html`, `act_planner`, `regen_html`). Source list comes from
+`useAIModelsList({ use_case: 'video' })`.
+
+**Telemetry:** every LLM `CostEvent` carries a `source` field — one of
+`"matrix"`, `"user_default"`, `"user_per_stage"`, or `""` (legacy path /
+stage routing off). Lands in `cost_breakdown.json` per run.
+
+**Activation:** the resolver runs on every request; no env flag required.
+Behavior is gated by the `ai_model_stage_assignments` table — applying the
+V200 migration enables it, and the day-1 seed matches the legacy effective
+behavior, so applying the migration is a behavior-preserving change.
+Rollback path: `TRUNCATE ai_model_stage_assignments` (or `UPDATE ... SET
+is_active=FALSE`) — the resolver returns an empty map and the pipeline
+falls back to the legacy global `script_model`/`html_model` routing.
+
+Deep dive: see [AI_VIDEO_ARCHITECTURE_CHANGES.md §"V200 — DB-Backed Per-Stage Model Routing"](./AI_VIDEO_ARCHITECTURE_CHANGES.md).

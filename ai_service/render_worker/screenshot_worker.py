@@ -210,6 +210,241 @@ class ScreenshotWorker:
         return results
 
 
+    async def bbox_check_shot(
+        self,
+        *,
+        html: str,
+        width: int,
+        height: int,
+        timestamps: List[float],
+        background: str = "#0a0e27",
+    ) -> List[Dict[str, object]]:
+        """Render `html` in the harness and check whether any visible text or
+        media overflows the viewport at each timestamp.
+
+        Returns a list of violation dicts:
+            {"t": float, "selector": str, "rect": {l, t, r, b}, "text": str}
+        — one entry per (timestamp, overflowing element) pair. Empty list means
+        every text/media element renders fully within the canvas at every
+        sampled timestamp.
+
+        Mirrors the harness/dispatcher setup of `screenshot_shot` so what we
+        measure equals what the production MP4 will render. The key difference:
+        no `page.screenshot()` call — we evaluate `getBoundingClientRect()` on
+        every visible element inside the shot's shadow root and collect the
+        ones that cross the viewport bounds.
+
+        Used by the deterministic post-render bbox lint (Tier 2 — kills the
+        TEXT_CLIPPED bug class that the LLM-based vision reviewer is
+        probabilistic about). See `vid_1778774930857_w8cwa1y` audit: shot 2's
+        "THE ULTIMATE / ECOSYSTEM." headline clipped at the left edge and the
+        v2 vision rubric had no rule to catch it.
+        """
+        if not html or not html.strip():
+            raise ValueError("html is required")
+        if width <= 0 or height <= 0:
+            raise ValueError("width and height must be positive")
+        if not timestamps:
+            raise ValueError("at least one timestamp required")
+
+        from render_harness import build_harness_html  # imported lazily after sys.path setup
+        from dispatcher_install_js import get_dispatcher_install_js  # type: ignore
+
+        await self._ensure_browser()
+
+        harness_html = build_harness_html(background)
+        context = await self._browser.new_context(
+            viewport={"width": width, "height": height},
+            device_scale_factor=1,
+        )
+        page = await context.new_page()
+        violations: List[Dict[str, object]] = []
+        try:
+            # Setup: identical sequence to screenshot_shot — harness, gsap wait,
+            # dispatcher install, shot injection, stylesheet+font wait. Kept
+            # inline (not factored) so divergence between the two paths is
+            # always obvious from a side-by-side diff.
+            await page.set_content(harness_html, wait_until="domcontentloaded")
+            try:
+                await page.wait_for_function(
+                    "() => typeof window.gsap === 'object' && window.gsap !== null",
+                    timeout=10_000,
+                )
+            except Exception:
+                logger.warning("bbox_check_shot: gsap not present after 10s — proceeding anyway")
+
+            await page.evaluate(get_dispatcher_install_js(libs=""))
+            try:
+                await page.wait_for_function(
+                    "() => typeof window.__updateSnippets === 'function'",
+                    timeout=5_000,
+                )
+            except Exception as exc:
+                logger.error(f"bbox_check_shot: __updateSnippets failed to install — {exc}")
+                raise
+
+            await page.evaluate(
+                "async (entries) => { await window.__updateSnippets(entries); }",
+                [{"id": "bbox-check-shot", "html": html, "inTime": 0}],
+            )
+
+            # Stylesheet + font load. Without these waits the bbox check fires
+            # against fallback fonts (which can mismeasure widths by 10–20%) and
+            # we'd flag false-positive overflows. Same sequence as screenshot.
+            try:
+                await page.evaluate(
+                    """async () => {
+                        const links = [];
+                        document.querySelectorAll('[id^="snippet-"],[id^="segment-"],[id^="shot-"],[id="bbox-check-shot"]').forEach(host => {
+                            const root = host.shadowRoot;
+                            if (!root) return;
+                            root.querySelectorAll('link[rel="stylesheet"]').forEach(l => links.push(l));
+                        });
+                        document.head.querySelectorAll('link[rel="stylesheet"]').forEach(l => links.push(l));
+                        const waits = links.map(l => {
+                            try { if (l.sheet) return Promise.resolve(); } catch (e) {}
+                            return new Promise(resolve => {
+                                let done = false;
+                                const finish = () => { if (!done) { done = true; resolve(); } };
+                                l.addEventListener('load', finish, { once: true });
+                                l.addEventListener('error', finish, { once: true });
+                                setTimeout(finish, 3000);
+                            });
+                        });
+                        await Promise.all(waits);
+                    }"""
+                )
+            except Exception as exc:
+                logger.debug(f"bbox stylesheet wait failed (non-fatal): {exc}")
+            try:
+                await page.evaluate("() => document.fonts.ready")
+            except Exception:
+                pass
+
+            # Per-timestamp: seek + double-RAF + walk shadow DOM for overflow.
+            # The walker filters by computed visibility (display:none, opacity≈0)
+            # so mid-flight elements that haven't faded in yet don't generate
+            # false positives. Only flag elements with visible text content or
+            # raster media (img/svg/canvas/video) — wrapper divs without their
+            # own text are skipped to avoid duplicate reports.
+            # NOTE — single-arg signature: Playwright >= 1.40 dropped multi-
+            # positional `Page.evaluate(expression, arg1, arg2, …)`; only ONE
+            # argument is now accepted. The previous call site passed `width`
+            # + `height` as two positional args, triggering
+            # `Page.evaluate() takes from 2 to 3 positional arguments but 4
+            # were given` (Met-Gala incident — bbox-lint silently skipped on
+            # EVERY shot of the run). Pack both dimensions into a single
+            # object argument and destructure on the JS side.
+            walker_js = """
+                ({W, H}) => {
+                    function cssPath(el) {
+                        if (!el) return '?';
+                        if (el.id) return '#' + el.id;
+                        let p = el.tagName ? el.tagName.toLowerCase() : '?';
+                        if (el.className && typeof el.className === 'string') {
+                            const classes = el.className.trim().split(/\\s+/).slice(0, 2);
+                            if (classes.length && classes[0]) p += '.' + classes.join('.');
+                        }
+                        return p;
+                    }
+                    const out = [];
+                    const hosts = document.querySelectorAll('[id="bbox-check-shot"]');
+                    hosts.forEach(host => {
+                        const root = host.shadowRoot;
+                        if (!root) return;
+                        const all = root.querySelectorAll('*');
+                        const view = root.host.ownerDocument.defaultView;
+                        all.forEach(el => {
+                            // Skip script/style/link nodes — they have no visual.
+                            const tag = (el.tagName || '').toUpperCase();
+                            if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'LINK' ||
+                                tag === 'META' || tag === 'HEAD') return;
+                            let cs;
+                            try { cs = view.getComputedStyle(el); }
+                            catch (e) { return; }
+                            if (!cs) return;
+                            if (cs.display === 'none' || cs.visibility === 'hidden') return;
+                            const op = parseFloat(cs.opacity);
+                            if (!isNaN(op) && op < 0.05) return;  // effectively invisible
+
+                            const r = el.getBoundingClientRect();
+                            if (r.width <= 0 || r.height <= 0) return;
+
+                            const text = (el.textContent || '').trim();
+                            const isMedia = ['IMG', 'SVG', 'CANVAS', 'VIDEO'].includes(tag);
+                            const isLeafText = text.length > 0 && el.children.length === 0;
+                            // Wrapper divs with text children would otherwise double-report;
+                            // only flag a wrapper if it has NO text-bearing descendants.
+                            const isWrapperText = text.length > 0 && !isLeafText;
+                            let wrapperHasTextDescendant = false;
+                            if (isWrapperText) {
+                                const descendants = el.querySelectorAll('*');
+                                for (let i = 0; i < descendants.length; i++) {
+                                    const d = descendants[i];
+                                    if ((d.textContent || '').trim().length > 0 && d.children.length === 0) {
+                                        wrapperHasTextDescendant = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (isWrapperText && wrapperHasTextDescendant) return;
+                            if (!isLeafText && !isMedia && !isWrapperText) return;
+
+                            // 1-pixel tolerance on each edge — sub-pixel rendering and
+                            // text antialiasing routinely push fractional pixels past
+                            // the canvas edge without any visible glyph clip.
+                            if (r.left < -1 || r.right > W + 1 || r.top < -1 || r.bottom > H + 1) {
+                                out.push({
+                                    selector: cssPath(el),
+                                    rect: {
+                                        l: Math.round(r.left * 10) / 10,
+                                        t: Math.round(r.top * 10) / 10,
+                                        r: Math.round(r.right * 10) / 10,
+                                        b: Math.round(r.bottom * 10) / 10,
+                                    },
+                                    text: text.slice(0, 80),
+                                    is_media: isMedia,
+                                });
+                            }
+                        });
+                    });
+                    return out;
+                }
+            """
+
+            for t in timestamps:
+                try:
+                    await page.evaluate(
+                        """(t) => {
+                            try { if (window.gsap) gsap.globalTimeline.totalTime(t); } catch (e) {}
+                            try { if (window._animeSeek) window._animeSeek(t); } catch (e) {}
+                        }""",
+                        t,
+                    )
+                    await page.evaluate(
+                        "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
+                    )
+                    rows = await page.evaluate(walker_js, {"W": width, "H": height})
+                    for row in rows or []:
+                        violations.append({
+                            "t": float(t),
+                            "selector": str(row.get("selector") or "?"),
+                            "rect": dict(row.get("rect") or {}),
+                            "text": str(row.get("text") or ""),
+                            "is_media": bool(row.get("is_media")),
+                        })
+                except Exception as exc:
+                    logger.warning(f"bbox_check_shot: failed at t={t}: {exc}")
+                    raise
+        finally:
+            try:
+                await context.close()
+            except Exception:
+                pass
+
+        return violations
+
+
     async def record_shot_mp4(
         self,
         *,

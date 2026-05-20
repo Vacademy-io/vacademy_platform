@@ -16,11 +16,14 @@ import html as _html
 
 METADATA = {
     "id": "stat_block_with_context",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "title": "Stat Block With Context",
     "description": "Hero animated number with eyebrow label, headline, and supporting context line. Locale-formatted, tabular digits.",
     "use_when": "Headline statistics that need framing — KPIs, savings figures, percentages, counts. Best at 3-6s shot duration.",
-    "compatible_shot_types": ["DATA_STORY", "TEXT_DIAGRAM", "IMAGE_HERO", "*"],
+    # Explicit allow-list — works for any shot whose narrative beat is "the
+    # number is the point". IMAGE_HERO is OK because the stat can sit over
+    # the image as an overlay.
+    "compatible_shot_types": ["DATA_STORY", "TEXT_DIAGRAM", "IMAGE_HERO"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -62,10 +65,12 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_display = fs.get("display", "10rem")
-    fs_h2 = fs.get("h2", "3rem")
-    fs_caption = fs.get("caption", "1.35rem")
-    fs_micro = fs.get("micro", "1.05rem")
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_display = fs.get("display", "clamp(2rem, min(14vw, 8vh), 6.25rem)")
+    fs_h2 = fs.get("h2", "clamp(1.2rem, min(7vw, 4vh), 3.1rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
+    fs_micro = fs.get("micro", "clamp(0.75rem, 1.9vmin, 0.9rem)")
     safe = sp.get("safe_area", "5%")
     ease_entry = ez.get("entry", "power3.out")
 
@@ -117,11 +122,12 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 .{sid}-stage {{
   position:absolute; inset:0; padding:{safe}; display:flex;
   flex-direction:column; align-items:center; justify-content:center;
-  gap:0.9rem; color:var(--brand-text);
+  gap:clamp(0.8rem, 2.4vmin, 2.6rem); color:var(--brand-text);
   font-family:'Inter',system-ui,sans-serif;
 }}
 .{sid}-rule {{
-  width:4rem; height:4px; background:var(--brand-accent);
+  width:clamp(3rem, 9vmin, 9rem); height:clamp(3px, 0.6vmin, 8px);
+  background:var(--brand-accent);
   border-radius:2px; transform-origin:center; transform:scaleX(0);
 }}
 .{sid}-eyebrow {{
@@ -131,7 +137,7 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 }}
 .{sid}-number {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(3.5rem,{fs_display},14rem);
+  font-size:{fs_display};
   line-height:0.9; color:var(--brand-primary);
   font-variant-numeric:tabular-nums;
   display:flex; align-items:baseline; gap:0.04em; opacity:0;
@@ -142,12 +148,12 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 .{sid}-value {{ font-weight:900; }}
 .{sid}-headline {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(1.6rem,{fs_h2},4rem);
+  font-size:{fs_h2};
   letter-spacing:0.01em; line-height:1.05;
   color:var(--brand-text); opacity:0; text-align:center; max-width:24ch;
 }}
 .{sid}-context {{
-  font-family:'Inter',sans-serif; font-size:clamp(0.95rem,{fs_caption},1.5rem);
+  font-family:'Inter',sans-serif; font-size:{fs_caption};
   color:var(--brand-text-secondary); opacity:0;
   text-align:center; max-width:48ch; line-height:1.45;
   font-style:italic;

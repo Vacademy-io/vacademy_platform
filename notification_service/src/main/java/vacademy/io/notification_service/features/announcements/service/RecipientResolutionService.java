@@ -142,9 +142,22 @@ public class RecipientResolutionService {
     }
 
     /**
-     * Build centralized request from announcement recipients
-     * Now supports custom field filters and exclusions per recipient
-     * Pre-resolves USER recipients (handles both user IDs and emails)
+     * Build the centralized resolution request from persisted AnnouncementRecipient rows.
+     *
+     * Per-type behaviour:
+     *  - USER: pre-resolve via AuthService (handles email → user ID conversion), emit one
+     *    USER recipient per resolved user.
+     *  - ROLE: pre-resolve via AuthService (admin_core's centralized SQL can't see auth_service's
+     *    user_role/roles tables — they live in a different database). Emit one USER recipient
+     *    per resolved user.
+     *  - CUSTOM_FIELD_FILTER: recipientName holds a JSON array of CustomFieldFilter (set by
+     *    AnnouncementService.saveRecipients). Parse it as filters and attach them — NOT as
+     *    exclusions; the shapes are different and Jackson would silently produce null-filled
+     *    Exclusion objects, which admin_core then rejects with 400.
+     *  - Everything else (TAG, PACKAGE_SESSION, sub-org-roles, AUDIENCE): recipientName may
+     *    hold a JSON array of Exclusions (when the row was saved with per-row exclusions) or
+     *    a display name. Try parsing as exclusions; if it's not an exclusion shape, treat it
+     *    as a display name and continue without exclusions.
      */
     private CentralizedRecipientResolutionRequest buildCentralizedRequest(Announcement announcement, List<AnnouncementRecipient> allRecipients) {
         CentralizedRecipientResolutionRequest request = new CentralizedRecipientResolutionRequest();
@@ -152,146 +165,210 @@ public class RecipientResolutionService {
         request.setPageNumber(0);
         request.setPageSize(1000);
 
-        // Group recipients by their logical grouping - each recipient can now have custom field filters and exclusions
-        List<CentralizedRecipientResolutionRequest.RecipientWithExclusions> recipientsWithExclusions = new ArrayList<>();
+        List<CentralizedRecipientResolutionRequest.RecipientWithExclusions> built = new ArrayList<>();
 
-        // For now, we'll treat each announcement recipient as a separate centralized recipient
-        // In the future, this could be optimized to group related recipients
         for (AnnouncementRecipient recipient : allRecipients) {
-            if (!recipient.isExclusion()) {
-                // This is an inclusion recipient
-                CentralizedRecipientResolutionRequest.RecipientWithExclusions recipientWithExclusions =
-                    new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+            if (recipient.isExclusion()) {
+                // Exclusions are scoped per-inclusion via recipientName JSON, not top-level.
+                continue;
+            }
 
-                recipientWithExclusions.setRecipientType(recipient.getRecipientType().name());
-                String actualRecipientId = recipient.getActualRecipientId();
+            String type = recipient.getRecipientType().name();
+            String actualRecipientId = recipient.getActualRecipientId();
 
-                // Pre-resolve USER recipients (handles both user IDs and emails)
-                if ("USER".equals(recipient.getRecipientType().name())) {
-                    // Use the resolver to handle email -> user ID conversion
-                    Optional<RecipientResolver> userResolverOpt = resolverRegistry.getResolver("USER");
-                    if (userResolverOpt.isPresent()) {
-                        try {
-                            Set<String> resolvedUserIds = userResolverOpt.get().resolve(actualRecipientId, announcement.getInstituteId());
-                            if (!resolvedUserIds.isEmpty()) {
-                                // For USER type, we need to create separate recipients for each resolved user ID
-                                for (String resolvedUserId : resolvedUserIds) {
-                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions userRecipient =
-                                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
-                                    userRecipient.setRecipientType("USER");
-                                    userRecipient.setRecipientId(resolvedUserId);
-                                    // USER recipients don't support exclusions in the centralized system
-                                    recipientsWithExclusions.add(userRecipient);
-                                }
-                                continue; // Skip adding the original recipient
-                            }
-                        } catch (Exception e) {
-                            log.error("Error pre-resolving USER recipient {}: {}", actualRecipientId, e);
-                            // Fall back to original ID
-                        }
-                    }
+            // USER / ROLE: pre-resolve to concrete user IDs, then emit them as USER recipients.
+            if ("USER".equals(type) || "ROLE".equals(type)) {
+                Set<String> resolvedUserIds = preResolveToUserIds(type, actualRecipientId, announcement.getInstituteId());
+                if (resolvedUserIds.isEmpty()) {
+                    log.warn("Pre-resolution of {} recipient '{}' yielded no users; skipping",
+                            type, actualRecipientId);
+                    continue;
                 }
+                for (String userId : resolvedUserIds) {
+                    CentralizedRecipientResolutionRequest.RecipientWithExclusions userRecipient =
+                            new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+                    userRecipient.setRecipientType("USER");
+                    userRecipient.setRecipientId(userId);
+                    built.add(userRecipient);
+                }
+                continue;
+            }
 
-                recipientWithExclusions.setRecipientId(actualRecipientId);
+            CentralizedRecipientResolutionRequest.RecipientWithExclusions rwe =
+                    new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+            rwe.setRecipientType(type);
+            rwe.setRecipientId(actualRecipientId);
 
-                // TODO: Add custom field filters from announcement payload (when available)
-                // For now, we'll handle basic recipient types without custom field filters
-                // recipientWithExclusions.setCustomFieldFilters(...);
+            if ("CUSTOM_FIELD_FILTER".equals(type)) {
+                // recipientName holds a JSON array of CustomFieldFilter (NOT exclusions).
+                List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter> filters =
+                        parseStoredFilters(recipient.getRecipientName());
+                if (filters.isEmpty()) {
+                    log.warn("CUSTOM_FIELD_FILTER recipient {} has no resolvable filters; skipping",
+                            recipient.getId());
+                    continue;
+                }
+                rwe.setCustomFieldFilters(filters);
+            } else {
+                // Try recipientName as stored exclusions JSON; otherwise treat as a display name.
+                List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion> exclusions =
+                        parseStoredExclusions(recipient.getRecipientName(), announcement.getInstituteId());
+                if (!exclusions.isEmpty()) {
+                    rwe.setExclusions(exclusions);
+                    log.info("Attached {} exclusions to recipient {}={} for announcement {}",
+                            exclusions.size(), type, actualRecipientId, announcement.getId());
+                }
+            }
 
-                // Check if exclusions are stored as JSON in recipientName
-                if (recipient.getRecipientName() != null && !recipient.getRecipientName().isEmpty()) {
-                    log.debug("Checking recipientName for exclusions: '{}' for recipient: {}", recipient.getRecipientName(), actualRecipientId);
+            built.add(rwe);
+        }
+
+        // Empty-recipient guard: admin-core requires at least one entry. Sending a
+        // bogus USER prevents a 400 and naturally resolves to zero users.
+        if (built.isEmpty()) {
+            CentralizedRecipientResolutionRequest.RecipientWithExclusions empty =
+                    new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
+            empty.setRecipientType("USER");
+            empty.setRecipientId("nonexistent");
+            built.add(empty);
+        }
+
+        request.setRecipients(built);
+        return request;
+    }
+
+    /**
+     * Run an existing resolver (USER or ROLE) and return the concrete user IDs.
+     * Both pull from auth_service via REST — admin_core can't see those tables directly.
+     */
+    private Set<String> preResolveToUserIds(String type, String recipientId, String instituteId) {
+        Optional<RecipientResolver> resolverOpt = resolverRegistry.getResolver(type);
+        if (resolverOpt.isEmpty()) {
+            log.warn("No resolver registered for type {}", type);
+            return Collections.emptySet();
+        }
+        try {
+            Set<String> resolved = resolverOpt.get().resolve(recipientId, instituteId);
+            return resolved == null ? Collections.emptySet() : resolved;
+        } catch (Exception e) {
+            log.error("Error pre-resolving {} recipient {}: {}", type, recipientId, e.getMessage(), e);
+            return Collections.emptySet();
+        }
+    }
+
+    /** Parse the CUSTOM_FIELD_FILTER JSON blob stored in recipientName into outbound filters. */
+    private List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter>
+            parseStoredFilters(String json) {
+        if (json == null || json.isBlank() || "ERROR".equals(json)) {
+            return Collections.emptyList();
+        }
+        try {
+            List<CreateAnnouncementRequest.RecipientRequest.CustomFieldFilter> stored =
+                    objectMapper.readValue(json,
+                            objectMapper.getTypeFactory().constructCollectionType(List.class,
+                                    CreateAnnouncementRequest.RecipientRequest.CustomFieldFilter.class));
+            List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter> out =
+                    new ArrayList<>(stored.size());
+            for (CreateAnnouncementRequest.RecipientRequest.CustomFieldFilter f : stored) {
+                if ((f.getCustomFieldId() == null || f.getCustomFieldId().isBlank())
+                        && (f.getFieldName() == null || f.getFieldName().isBlank())) {
+                    log.warn("Skipping filter with neither customFieldId nor fieldName");
+                    continue;
+                }
+                if (f.getFieldValue() == null) {
+                    log.warn("Skipping filter with null fieldValue (customFieldId={}, fieldName={})",
+                            f.getCustomFieldId(), f.getFieldName());
+                    continue;
+                }
+                CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter centralized =
+                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter();
+                centralized.setCustomFieldId(f.getCustomFieldId());
+                centralized.setFieldName(f.getFieldName());
+                centralized.setFieldValue(f.getFieldValue());
+                centralized.setOperator(f.getOperator());
+                out.add(centralized);
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Failed to parse stored CUSTOM_FIELD_FILTER JSON: {} (error: {})", json, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Parse stored exclusions JSON. Returns empty list if json is not a list-of-Exclusion shape
+     * (e.g. it's a display name instead).
+     */
+    private List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion>
+            parseStoredExclusions(String json, String instituteId) {
+        if (json == null || json.isBlank()) {
+            return Collections.emptyList();
+        }
+        // Cheap shape check before we ask Jackson to do work and swallow nulls.
+        String trimmed = json.trim();
+        if (!trimmed.startsWith("[")) return Collections.emptyList();
+
+        List<CreateAnnouncementRequest.RecipientRequest.Exclusion> stored;
+        try {
+            stored = objectMapper.readValue(json,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class,
+                            CreateAnnouncementRequest.RecipientRequest.Exclusion.class));
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
+
+        List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion> out = new ArrayList<>();
+        for (CreateAnnouncementRequest.RecipientRequest.Exclusion excl : stored) {
+            // exclusionType=null means this JSON is not actually an exclusion list (e.g. it's a
+            // stale filter list from before the type-based dispatch was correct). Skip.
+            if (excl.getExclusionType() == null || excl.getExclusionType().isBlank()) {
+                continue;
+            }
+
+            String exclusionId = excl.getExclusionId();
+
+            // USER email → user ID: same hop as the inclusion side.
+            if ("USER".equals(excl.getExclusionType()) && exclusionId != null && exclusionId.contains("@")) {
+                Optional<RecipientResolver> userResolverOpt = resolverRegistry.getResolver("USER");
+                if (userResolverOpt.isPresent()) {
                     try {
-                        // Try to deserialize exclusions from JSON
-                        List<CreateAnnouncementRequest.RecipientRequest.Exclusion> storedExclusions =
-                            objectMapper.readValue(recipient.getRecipientName(),
-                                objectMapper.getTypeFactory().constructCollectionType(List.class,
-                                    CreateAnnouncementRequest.RecipientRequest.Exclusion.class));
-
-                        if (!storedExclusions.isEmpty()) {
-                            List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion> exclusions = new ArrayList<>();
-
-                            for (CreateAnnouncementRequest.RecipientRequest.Exclusion excl : storedExclusions) {
-                                // Pre-resolve USER exclusions (convert emails to user IDs)
-                                String exclusionId = excl.getExclusionId();
-                                boolean skipExclusion = false;
-
-                                if ("USER".equals(excl.getExclusionType()) && exclusionId.contains("@")) {
-                                    try {
-                                        // Use the same resolver to convert email to user ID
-                                        Optional<RecipientResolver> userResolverOpt = resolverRegistry.getResolver("USER");
-                                        if (userResolverOpt.isPresent()) {
-                                            Set<String> resolvedUserIds = userResolverOpt.get().resolve(exclusionId, announcement.getInstituteId());
-                                            if (!resolvedUserIds.isEmpty()) {
-                                                exclusionId = resolvedUserIds.iterator().next(); // Take first resolved user ID
-                                                log.debug("Pre-resolved USER exclusion email {} to user ID: {}", excl.getExclusionId(), exclusionId);
-                                            } else {
-                                                log.warn("Could not resolve USER exclusion email {} to user ID, skipping exclusion", excl.getExclusionId());
-                                                skipExclusion = true;
-                                            }
-                                        }
-                                    } catch (Exception e) {
-                                        log.error("Error pre-resolving USER exclusion {}: {}", exclusionId, e);
-                                        skipExclusion = true;
-                                    }
-                                }
-
-                                if (!skipExclusion) {
-                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion centralizedExcl =
-                                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion();
-                                    centralizedExcl.setExclusionType(excl.getExclusionType());
-                                    centralizedExcl.setExclusionId(exclusionId);
-                                    log.debug("Added exclusion: type={}, id={}", excl.getExclusionType(), exclusionId);
-
-                                    // Convert custom field filters if present
-                                    if (excl.getCustomFieldFilters() != null && !excl.getCustomFieldFilters().isEmpty()) {
-                                        List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter> cffList =
-                                            excl.getCustomFieldFilters().stream()
-                                                .map(cff -> {
-                                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter centralizedCff =
-                                                        new CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter();
-                                                    // centralizedCff.setCustomFieldId(cff.getCustomFieldId()); // Temporarily commented until admin-core restart
-                                                    centralizedCff.setFieldName(cff.getFieldName());
-                                                    centralizedCff.setFieldValue(cff.getFieldValue());
-                                                    centralizedCff.setOperator(cff.getOperator());
-                                                    return centralizedCff;
-                                                })
-                                                .toList();
-                                        centralizedExcl.setCustomFieldFilters(cffList);
-                                    }
-
-                                    exclusions.add(centralizedExcl);
-                                }
-                            }
-
-                            recipientWithExclusions.setExclusions(exclusions);
-                            log.info("SUCCESS: Deserialized {} exclusions from JSON for recipient: {} (sending to admin-core)", exclusions.size(), actualRecipientId);
+                        Set<String> resolved = userResolverOpt.get().resolve(exclusionId, instituteId);
+                        if (!resolved.isEmpty()) {
+                            exclusionId = resolved.iterator().next();
                         } else {
-                            log.debug("Parsed JSON but found no exclusions for recipient: {}", actualRecipientId);
+                            log.warn("USER exclusion email {} unresolved; dropping exclusion", excl.getExclusionId());
+                            continue;
                         }
                     } catch (Exception e) {
-                        // Not JSON exclusions, this is just a regular recipient name - no exclusions
-                        log.debug("Recipient name '{}' is not JSON exclusions, no exclusions applied for recipient: {} (error: {})", recipient.getRecipientName(), actualRecipientId, e.getMessage());
+                        log.error("Error pre-resolving USER exclusion {}: {}", excl.getExclusionId(), e.getMessage());
+                        continue;
                     }
-                } else {
-                    log.debug("No recipientName found for recipient: {}", actualRecipientId);
                 }
-
-                recipientsWithExclusions.add(recipientWithExclusions);
             }
-        }
 
-        // If no inclusions found, add a default empty recipient to avoid empty list
-        if (recipientsWithExclusions.isEmpty()) {
-            CentralizedRecipientResolutionRequest.RecipientWithExclusions emptyRecipient =
-                new CentralizedRecipientResolutionRequest.RecipientWithExclusions();
-            emptyRecipient.setRecipientType("USER");
-            emptyRecipient.setRecipientId("nonexistent");
-            recipientsWithExclusions.add(emptyRecipient);
-        }
+            CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion centralized =
+                    new CentralizedRecipientResolutionRequest.RecipientWithExclusions.Exclusion();
+            centralized.setExclusionType(excl.getExclusionType());
+            centralized.setExclusionId(exclusionId);
 
-        request.setRecipients(recipientsWithExclusions);
-        return request;
+            if (excl.getCustomFieldFilters() != null && !excl.getCustomFieldFilters().isEmpty()) {
+                List<CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter> cffList =
+                        excl.getCustomFieldFilters().stream()
+                                .map(cff -> {
+                                    CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter c =
+                                            new CentralizedRecipientResolutionRequest.RecipientWithExclusions.CustomFieldFilter();
+                                    c.setCustomFieldId(cff.getCustomFieldId());
+                                    c.setFieldName(cff.getFieldName());
+                                    c.setFieldValue(cff.getFieldValue());
+                                    c.setOperator(cff.getOperator());
+                                    return c;
+                                })
+                                .toList();
+                centralized.setCustomFieldFilters(cffList);
+            }
+            out.add(centralized);
+        }
+        return out;
     }
     
     /**

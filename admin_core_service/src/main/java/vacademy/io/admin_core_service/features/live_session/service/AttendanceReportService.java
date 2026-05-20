@@ -141,7 +141,11 @@ public class AttendanceReportService {
         List<AttendanceReportProjection> attendanceRecords = liveSessionParticipantRepository.getAttendanceReportForStudentIds(
                 studentIdsPage.getContent(),
                 filter.getStartDate(),
-                filter.getEndDate()
+                filter.getEndDate(),
+                batchIds,
+                batchIds.size(),
+                liveSessionIds,
+                liveSessionIds.size()
         );
         Map<String, StudentAttendanceDTO> groupedData = new LinkedHashMap<>();
         for (AttendanceReportProjection record : attendanceRecords) {

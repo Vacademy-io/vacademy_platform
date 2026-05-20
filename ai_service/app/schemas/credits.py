@@ -111,6 +111,23 @@ class CreditDeductRequest(BaseModel):
     seconds: int = 0           # For per-second video models (avatar synthesis)
     usage_log_id: Optional[str] = None  # Link to ai_token_usage record
     batch_id: Optional[str] = Field(None, max_length=255, description="Group related transactions (e.g., all charges for one video)")
+    precomputed_credits: Optional[Decimal] = Field(
+        None,
+        description=(
+            "Skip calculate_credits and use this exact value. For paths "
+            "where the credit amount is derived from an external pricing "
+            "table (e.g. fal.ai Veo per-second-and-audio rates) rather "
+            "than the model's per-token pricing in ai_models."
+        ),
+    )
+    description: Optional[str] = Field(
+        None,
+        max_length=500,
+        description=(
+            "Override for the credit_transactions.description column. "
+            "Defaults to '{request_type} using {model}'."
+        ),
+    )
 
 
 class CreditDeductResponse(BaseModel):
@@ -244,6 +261,30 @@ class AllPricingResponse(BaseModel):
     """All pricing configurations."""
     request_types: List[PricingConfigResponse]
     model_tiers: List[ModelPricingResponse]
+
+
+# ============================================================================
+# Rate Config Schemas (V252 — DB-driven USD↔credits ratio + margin)
+# ============================================================================
+
+class CreditRateConfigResponse(BaseModel):
+    """Current credit↔USD rate.
+
+    `effective_ratio = usd_to_credits × (1 + margin_pct/100)` is the
+    multiplier callers apply (`credits = usd × effective_ratio`).
+    """
+    usd_to_credits: Decimal
+    margin_pct: Decimal
+    effective_ratio: Decimal
+    currency_code: str = "USD"
+
+
+class CreditRateConfigUpdateRequest(BaseModel):
+    """Append a new rate row. Past rows are kept for audit; the latest
+    one with `effective_from <= now` is treated as active."""
+    usd_to_credits: Decimal = Field(..., gt=0)
+    margin_pct: Decimal = Field(..., ge=0)
+    notes: Optional[str] = None
 
 
 # ============================================================================

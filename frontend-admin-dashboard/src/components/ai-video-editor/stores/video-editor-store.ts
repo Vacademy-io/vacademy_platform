@@ -3,11 +3,18 @@ import {
     Entry,
     TimelineMeta,
     AudioTrack,
+    WordTimestamp,
     getDefaultMeta,
 } from '@/components/ai-video-player/types';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 import { clamp } from '../utils/coord-convert';
 import { buildTransitionCss, TransitionPair, Transition } from '../utils/transitions';
+import {
+    CaptionEditorSettings,
+    CaptionPhrase,
+    DEFAULT_CAPTION_EDITOR_SETTINGS,
+    buildPhrases,
+} from '../utils/caption-rendering';
 
 /**
  * Which backend table this timeline lives in. `'reel'` routes `/frame/*`
@@ -39,6 +46,129 @@ export const DEFAULT_TRANSFORM: EntryTransform = { x: 0, y: 0, scale: 1, rotatio
 
 /** Minimum shot duration (seconds) — edges clamp against this so we can't crush a shot to zero. */
 export const MIN_SHOT_DURATION = 0.2;
+
+/** Timeline snap granularity (seconds). All edge/body moves quantize against this. */
+export const SNAP_S = 0.1;
+export function snapTime(t: number): number {
+    return Math.round(t / SNAP_S) * SNAP_S;
+}
+
+// ── viewMode (simple vs developer) ──────────────────────────────────────────
+//
+// Global UI mode toggle. 'simple' (default) shows friendly labels and tucks
+// raw-CSS / class / id inputs and the Code tab behind `Advanced ▾`
+// disclosures. 'developer' pre-expands the same disclosures and reveals
+// tag-name badges in the Layers tree. Both modes have access to every
+// underlying control — the difference is presentation, not capability.
+//
+// Persisted to localStorage so the choice survives reloads but stays
+// per-device.
+
+export type ViewMode = 'simple' | 'developer';
+
+const VIEW_MODE_LS_KEY = 'vx-view-mode';
+
+function loadViewMode(): ViewMode {
+    if (typeof window === 'undefined') return 'simple';
+    try {
+        const raw = window.localStorage.getItem(VIEW_MODE_LS_KEY);
+        return raw === 'developer' ? 'developer' : 'simple';
+    } catch {
+        return 'simple';
+    }
+}
+
+function persistViewMode(m: ViewMode): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(VIEW_MODE_LS_KEY, m);
+    } catch {
+        /* private mode — fine, just won't persist */
+    }
+}
+
+// ── Display-name overrides (per-shot rename) ────────────────────────────────
+//
+// Friendly per-entry names a user has set via inline rename in the
+// EntryListPanel. The server is the source of truth: each saved name lives
+// in the entry's `entry_meta.display_name` and is hydrated back into
+// `displayNames` on the next loadTimeline.
+//
+// localStorage is the *offline* buffer keyed by videoId — it lets a pending
+// rename survive a reload before the user clicks Save. It's cleared on save
+// success and only contains non-empty values (see persistDisplayNames for
+// why empty-string sentinels are in-memory only).
+
+const DISPLAY_NAMES_LS_PREFIX = 'vx-display-names-';
+
+function loadDisplayNames(videoId: string): Record<string, string> {
+    if (typeof window === 'undefined' || !videoId) return {};
+    try {
+        const raw = window.localStorage.getItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistDisplayNames(videoId: string, names: Record<string, string>): void {
+    if (typeof window === 'undefined' || !videoId) return;
+    try {
+        // Strip empty-string sentinels before writing to disk. They're an
+        // in-session signal to saveChanges ("this entry's override has been
+        // cleared, send entry_meta with display_name='' to the server").
+        // Persisting them would let a pending clear survive a reload — but
+        // the dirty bit is reset on reload, so the save loop would never
+        // actually push the clear, leaving the timeline silently desynced.
+        // Treat clears like every other unsaved edit: they're in-memory until
+        // save, lost on reload otherwise. Saved overrides (non-empty values)
+        // get hydrated back from the server's entry_meta on the next load.
+        const onDisk: Record<string, string> = {};
+        for (const [k, v] of Object.entries(names)) {
+            if (v) onDisk[k] = v;
+        }
+        if (Object.keys(onDisk).length === 0) {
+            window.localStorage.removeItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+        } else {
+            window.localStorage.setItem(DISPLAY_NAMES_LS_PREFIX + videoId, JSON.stringify(onDisk));
+        }
+    } catch {
+        /* private mode — fine */
+    }
+}
+
+// ── Caption editor settings (per-device preference) ───────────────────────
+//
+// Editor-side caption display preferences. NOT keyed by videoId — the user's
+// chosen size / colors / position apply across every video they edit so they
+// don't have to re-configure for each one. The render dialog seeds itself
+// from this slice (see RenderSettingsDialog.initialSettings) so what the user
+// previewed is what the MP4 will use.
+
+const CAPTION_SETTINGS_LS_KEY = 'vx-caption-editor-settings';
+
+function loadCaptionEditorSettings(): CaptionEditorSettings {
+    if (typeof window === 'undefined') return DEFAULT_CAPTION_EDITOR_SETTINGS;
+    try {
+        const raw = window.localStorage.getItem(CAPTION_SETTINGS_LS_KEY);
+        if (!raw) return DEFAULT_CAPTION_EDITOR_SETTINGS;
+        const parsed = JSON.parse(raw) as Partial<CaptionEditorSettings>;
+        return { ...DEFAULT_CAPTION_EDITOR_SETTINGS, ...parsed };
+    } catch {
+        return DEFAULT_CAPTION_EDITOR_SETTINGS;
+    }
+}
+
+function persistCaptionEditorSettings(s: CaptionEditorSettings): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(CAPTION_SETTINGS_LS_KEY, JSON.stringify(s));
+    } catch {
+        /* private mode — fine */
+    }
+}
 
 /** A span on the timeline where audio plays but no base-channel visual exists.
  *  These are the user-actionable gaps the "+ Add shot here" affordance fills. */
@@ -215,6 +345,14 @@ interface HistorySnapshot {
     dirtyEntryIds: string[];
     newEntryIds: string[];
     deletedEntryIds: string[];
+    pendingReorders: ReorderOp[];
+}
+
+/** One queued frame reorder, applied to the server-side timeline on save. */
+export interface ReorderOp {
+    entry_id: string;
+    /** Target index in the post-move local entries array. */
+    to_index: number;
 }
 
 export interface VideoEditorState {
@@ -250,6 +388,16 @@ export interface VideoEditorState {
     // Mode
     isPreviewMode: boolean;
 
+    /** UI presentation mode. 'simple' (default) hides raw-CSS / tag-name /
+     *  class inputs behind `Advanced ▾` disclosures. 'developer' pre-expands
+     *  them. Both modes expose every underlying control. */
+    viewMode: ViewMode;
+
+    /** Per-entry user-set display names ({entryId: name}). Persisted to
+     *  localStorage keyed by videoId; not yet sent to the backend. Empty
+     *  string / missing key falls back to the derived friendly name. */
+    displayNames: Record<string, string>;
+
     // Dirty tracking (HTML edits)
     dirtyEntryIds: string[];
     /** IDs of entries that are brand-new and have never been saved to the backend. */
@@ -258,6 +406,13 @@ export interface VideoEditorState {
      *  but has not yet saved. saveChanges() calls /frame/delete for each one
      *  before processing adds/updates so frame indices don't shift mid-save. */
     deletedEntryIds: string[];
+    /** Queued reorder operations (drag-to-reorder in EntryListPanel). Sent to
+     *  /frame/reorder before adds/updates so subsequent /frame/update calls
+     *  hit the right server-side positional indices. Routing through this
+     *  endpoint avoids the partial-failure destruction that sequential
+     *  /frame/update calls would cause (positional writes overwrite the entry
+     *  currently at that index). */
+    pendingReorders: ReorderOp[];
 
     // Extra audio tracks (background music, SFX, etc.)
     audioTracks: AudioTrack[];
@@ -283,6 +438,11 @@ export interface VideoEditorState {
      *  a second regenerate while the first is in flight. */
     regeneratingSentenceId: string | null;
 
+    /** Shot idx currently being re-narrated via `/shot/regenerate` (v3) (or
+     *  null when idle). Sentence and shot regen share the same audio file
+     *  so the store enforces a single in-flight regen across both units. */
+    regeneratingShotIdx: number | null;
+
     /** Per-entry "natural" animation duration (seconds) — the duration the HTML
      *  animations were originally designed for. Snapshotted at load time and used
      *  by `fitAnimationsToDuration` to compute the correct timeScale ratio.
@@ -296,6 +456,24 @@ export interface VideoEditorState {
      *  that this is fine in practice. */
     insertingGapKey: string | null;
 
+    // ── Captions (editor preview + render dialog seed) ──────────────────────
+    //
+    // captionSettings is a user preference persisted across videos.
+    // captionWords + captionPhrases are derived from the loaded video's
+    // narration.words.json. Both reset to empty on `init()` and refill via
+    // `loadCaptionWords()` after a new wordsUrl is set.
+
+    /** Per-device caption display preferences (size, position, colors).
+     *  Round-trips into the render dialog so MP4 captions match the editor preview. */
+    captionSettings: CaptionEditorSettings;
+
+    /** Raw word-level timestamps from narration.words.json (absolute, in audio time). */
+    captionWords: WordTimestamp[];
+
+    /** Pre-computed phrases for caption rendering. Built once from
+     *  captionWords using the same algorithm as the render server. */
+    captionPhrases: CaptionPhrase[];
+
     // Actions
     init: (params: InitParams) => void;
     loadTimeline: () => Promise<void>;
@@ -303,7 +481,25 @@ export interface VideoEditorState {
     selectEntry: (id: string | null) => void;
     selectLayer: (path: number[] | null) => void;
     togglePreviewMode: () => void;
-    updateEntryHtml: (entryId: string, newHtml: string) => void;
+
+    /** Switch between simple (friendly labels, advanced hidden) and developer
+     *  (advanced pre-expanded, tag-name badges visible) presentation. */
+    setViewMode: (m: ViewMode) => void;
+    toggleViewMode: () => void;
+
+    /** Set a user-chosen display name for an entry. Empty string clears the
+     *  override and falls back to the auto-derived friendly name. Persists to
+     *  localStorage per video — no backend round-trip required. */
+    setEntryDisplayName: (entryId: string, name: string) => void;
+    /**
+     * Replace an entry's HTML and optionally stamp the model that produced
+     * it. `htmlModel` is set when accepting a regen — so the next regen on
+     * this entry resolves to the SAME model on the BE side. Pass `null`
+     * (NOT undefined) to explicitly clear the model. Undefined means
+     * "leave the existing html_model alone" — useful for raw HTML edits
+     * (Code tab, transforms) that don't change which model authored it.
+     */
+    updateEntryHtml: (entryId: string, newHtml: string, htmlModel?: string | null) => void;
     /** Remove one scheduled sound effect from an entry. The entry is
      *  marked dirty so the deletion is persisted on the next saveChanges. */
     removeSoundCue: (entryId: string, cueId: string) => void;
@@ -348,6 +544,38 @@ export interface VideoEditorState {
         newTime: number,
         mode: 'slip' | 'roll' | 'ripple'
     ) => void;
+
+    /**
+     * Move one or more time_driven entries by `deltaTime` seconds.
+     *
+     *  - `move`   : shift only the listed entries; downstream entries untouched.
+     *               Clamps so no inTime < 0 and no exitTime > total_duration.
+     *  - `ripple` : shift the listed entries AND every non-branding entry whose
+     *               inTime >= max(originalExitTime of listed entries) by the
+     *               same delta. total_duration grows/shrinks accordingly. Audio
+     *               narration is NOT shifted — caller surfaces a warning.
+     *
+     * Branding entries (`id.startsWith('branding-')`) are silently skipped in
+     * the listed set and in the downstream-ripple sweep, so branding-outro
+     * stays anchored at the end of the timeline.
+     *
+     * IMPORTANT: never call from a pointer-move handler. Commit only on
+     * pointer-up so undo records one history entry per drag.
+     */
+    moveEntries: (ids: string[], deltaTime: number, mode: 'move' | 'ripple') => void;
+
+    /**
+     * Reorder the entries array by moving entries[fromIndex] to position
+     * toIndex. Queues a `/frame/reorder` op (atomic on the server) instead of
+     * marking entries dirty — sequential `/frame/update` calls would be
+     * destructive because they overwrite by positional index.
+     *
+     * Branding entries cannot be moved (they must stay at the ends).
+     * Does NOT modify inTime/exitTime — visual timeline order in the
+     * scrubber stays driven by inTime.
+     */
+    reorderEntries: (fromIndex: number, toIndex: number) => void;
+
     undo: () => void;
     redo: () => void;
     saveChanges: () => Promise<void>;
@@ -385,6 +613,22 @@ export interface VideoEditorState {
     silenceSentence: (sentenceId: string) => Promise<{ ok: boolean; error?: string }>;
 
     /**
+     * Re-narrate one shot (v3 editor unit) via `/shot/regenerate`. Mirrors
+     * `regenerateSentence` but operates on `meta.shots[]`:
+     *   - meta.shots[i] replaced with the new clip
+     *   - all later shots' start_time shifted by duration_delta
+     *   - all entries whose time range starts at/after the splice boundary
+     *     shifted by duration_delta
+     *   - meta.total_duration bumped
+     *   - audioUrl pointed at the new spliced MP3
+     *
+     * Refuses (ok:false) when the target shot is `audio_policy:
+     * 'intrinsic_only'` — those carry their own audio (source clip /
+     * Veo audio) and have no master-narration slot to replace.
+     */
+    regenerateShot: (shotIdx: number, newText: string) => Promise<{ ok: boolean; error?: string }>;
+
+    /**
      * Generate a new HTML shot to fill `[gapStart, gapEnd]` on the
      * timeline. Server uses the narration in that range as the LLM's
      * primary script and combines it with the optional `userHint` for
@@ -408,6 +652,24 @@ export interface VideoEditorState {
         gap: TimelineGap,
         userHint: string | null
     ) => Promise<{ ok: boolean; error?: string }>;
+
+    /** Patch caption display settings. Persists to localStorage. */
+    setCaptionSettings: (patch: Partial<CaptionEditorSettings>) => void;
+    /** Convenience: flip the captions on/off. */
+    setCaptionEnabled: (enabled: boolean) => void;
+    /** Fetch `wordsUrl`, validate, and populate `captionWords` + `captionPhrases`.
+     *  Mirrors `useCaptions.ts:fetchWords` — same validation + same parse shape. */
+    loadCaptionWords: () => Promise<void>;
+    /**
+     * Set or clear the per-shot caption override stored under
+     * `entry.entry_meta.caption_style`. Pass `null` to clear the override
+     * (the entry falls back to the global caption settings). Marks the entry
+     * dirty so the next `saveChanges` persists it via `/frame/update`.
+     */
+    setEntryCaptionStyle: (
+        entryId: string,
+        style: { hide?: boolean; position?: 'top' | 'bottom' } | null
+    ) => void;
 }
 
 function snapshot(s: VideoEditorState): HistorySnapshot {
@@ -419,6 +681,7 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
         dirtyEntryIds: s.dirtyEntryIds,
         newEntryIds: s.newEntryIds,
         deletedEntryIds: s.deletedEntryIds,
+        pendingReorders: s.pendingReorders,
     };
 }
 
@@ -446,9 +709,12 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     selectedEntryId: null,
     selectedLayerPath: null,
     isPreviewMode: false,
+    viewMode: loadViewMode(),
+    displayNames: {},
     dirtyEntryIds: [],
     newEntryIds: [],
     deletedEntryIds: [],
+    pendingReorders: [],
     audioTracks: [],
     entryTransforms: {},
     entryBackgrounds: {},
@@ -457,8 +723,12 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     future: [],
     isSaving: false,
     regeneratingSentenceId: null,
+    regeneratingShotIdx: null,
     insertingGapKey: null,
     naturalDurations: {},
+    captionSettings: loadCaptionEditorSettings(),
+    captionWords: [],
+    captionPhrases: [],
 
     init: (params) => {
         set({
@@ -478,9 +748,13 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             selectedEntryId: null,
             selectedLayerPath: null,
             isPreviewMode: false,
+            // Don't overwrite viewMode on re-init — it's a global preference.
+            // Display names are per-video though, so reload them now.
+            displayNames: loadDisplayNames(params.videoId),
             dirtyEntryIds: [],
             newEntryIds: [],
             deletedEntryIds: [],
+            pendingReorders: [],
             audioTracks: [],
             entryTransforms: {},
             entryBackgrounds: {},
@@ -488,6 +762,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             past: [],
             future: [],
             isSaving: false,
+            // captionSettings is a global preference — NOT reset per video.
+            // captionWords / captionPhrases ARE per-video and reload via
+            // loadCaptionWords() once the new wordsUrl is set.
+            captionWords: [],
+            captionPhrases: [],
         });
     },
 
@@ -537,12 +816,31 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     naturalDurations[e.id] = dur;
                 }
             }
+            // Hydrate display-name overrides. Server values (stored in
+            // entry_meta.display_name) form the base. localStorage overlays on
+            // top so an unsaved rename made on this device survives a
+            // reload. After a successful save the localStorage buffer is
+            // cleared, so the only entries it contains are pending overrides.
+            const serverNames: Record<string, string> = {};
+            for (const e of entries) {
+                const m = e.entry_meta;
+                if (m && typeof m === 'object') {
+                    const dn = (m as { display_name?: unknown }).display_name;
+                    if (typeof dn === 'string' && dn.trim()) {
+                        serverNames[e.id] = dn.trim();
+                    }
+                }
+            }
+            const localNames = loadDisplayNames(get().videoId);
+            const mergedNames = { ...serverNames, ...localNames };
+
             set({
                 entries,
                 meta,
                 audioTracks: meta.audio_tracks ?? [],
                 isLoading: false,
                 naturalDurations,
+                displayNames: mergedNames,
             });
         } catch (err) {
             set({
@@ -552,7 +850,42 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         }
     },
 
-    seek: (time) => set({ currentTime: time }),
+    seek: (time) =>
+        set((s) => {
+            // Auto-follow: whichever shot the playhead is now inside becomes
+            // the selected entry, so the right-side Properties panel
+            // automatically matches what the user is looking at. Branding
+            // intro/outro are excluded — the user almost never wants to
+            // edit those by scrubbing through them.
+            //
+            // In time_driven navigation the entry's [inTime, exitTime) range
+            // owns the playhead; in user_driven/self_contained the playhead
+            // is an integer index into entries[].
+            let nextSelected = s.selectedEntryId;
+            if (s.meta.navigation === 'time_driven') {
+                const containing = s.entries
+                    .filter((e) => !e.id?.startsWith('branding-'))
+                    .filter((e) => {
+                        const start = e.inTime ?? e.start ?? 0;
+                        const end = e.exitTime ?? e.end ?? Infinity;
+                        return time >= start && time < end;
+                    })
+                    .sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
+                const base = containing[0];
+                if (base) nextSelected = base.id;
+            } else {
+                const idx = Math.max(0, Math.min(Math.floor(time), s.entries.length - 1));
+                const entry = s.entries[idx];
+                if (entry && !entry.id?.startsWith('branding-')) nextSelected = entry.id;
+            }
+            // If the selection changed, drop the layer path — paths are
+            // scoped to a single entry's HTML.
+            return {
+                currentTime: time,
+                selectedEntryId: nextSelected,
+                selectedLayerPath: nextSelected !== s.selectedEntryId ? null : s.selectedLayerPath,
+            };
+        }),
 
     selectEntry: (id) =>
         set((s) => ({
@@ -571,10 +904,68 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             selectedLayerPath: null,
         })),
 
-    updateEntryHtml: (entryId, newHtml) => {
+    setViewMode: (m) => {
+        persistViewMode(m);
+        set({ viewMode: m });
+    },
+    toggleViewMode: () => {
+        const next: ViewMode = get().viewMode === 'simple' ? 'developer' : 'simple';
+        persistViewMode(next);
+        set({ viewMode: next });
+    },
+
+    setEntryDisplayName: (entryId, name) => {
+        set((s) => {
+            const trimmed = name.trim();
+            // We always store the value, even when empty. The empty string
+            // is the "explicit clear" sentinel — saveChanges uses it to send
+            // entry_meta: { display_name: '' } so the server drops the
+            // override on its side too. Deleting the key here would leak the
+            // clear: saveChanges would see undefined and skip entry_meta,
+            // leaving the stale name on the server (and on other devices).
+            //
+            // friendlyEntryName treats empty strings as "no override" (falsy)
+            // and falls back to the auto-derived name, so the UI stays
+            // friendly regardless of whether the key is absent or "".
+            const next = { ...s.displayNames, [entryId]: trimmed };
+
+            // localStorage is the offline buffer: it stores pending renames
+            // so they survive a reload even before the user clicks Save.
+            // After a successful save the entry's localStorage key is cleared
+            // (the value lives on the server now via entry_meta.display_name).
+            persistDisplayNames(s.videoId, next);
+
+            // Mark the entry dirty so saveChanges picks it up. Renames go
+            // through the existing /frame/update flow with the new
+            // entry_meta field — no new endpoint needed.
+            const dirtyEntryIds = s.dirtyEntryIds.includes(entryId)
+                ? s.dirtyEntryIds
+                : [...s.dirtyEntryIds, entryId];
+
+            return { displayNames: next, dirtyEntryIds };
+        });
+    },
+
+    updateEntryHtml: (entryId, newHtml, htmlModel) => {
         set((s) => ({
             ...pushPast(s),
-            entries: s.entries.map((e) => (e.id === entryId ? { ...e, html: newHtml } : e)),
+            entries: s.entries.map((e) =>
+                e.id === entryId
+                    ? {
+                          ...e,
+                          html: newHtml,
+                          // Three states for htmlModel:
+                          //   undefined → leave existing html_model alone
+                          //   null      → explicitly clear it
+                          //   string    → stamp this model
+                          ...(htmlModel === undefined
+                              ? {}
+                              : htmlModel === null
+                                ? { html_model: undefined }
+                                : { html_model: htmlModel }),
+                      }
+                    : e
+            ),
             dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
                 ? s.dirtyEntryIds
                 : [...s.dirtyEntryIds, entryId],
@@ -649,6 +1040,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     isNew || s.deletedEntryIds.includes(entryId)
                         ? s.deletedEntryIds
                         : [...s.deletedEntryIds, entryId],
+                // Drop any queued reorder for an entry that's about to be
+                // gone from the server — the /frame/delete will happen first
+                // on save and a follow-up /frame/reorder for the same id
+                // would 404.
+                pendingReorders: s.pendingReorders.filter((op) => op.entry_id !== entryId),
                 entryTransforms: nextT,
                 entryBackgrounds: nextB,
                 entryTransitions: nextX,
@@ -699,7 +1095,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             const outT = entry.exitTime ?? entry.end ?? inT + 1;
 
             // Normalize: quantize to 0.1s, clamp to non-negative
-            const snap = (t: number) => Math.max(0, Math.round(t * 10) / 10);
+            const snap = (t: number) => Math.max(0, snapTime(t));
 
             const dirty = new Set(s.dirtyEntryIds);
             let newEntries = [...s.entries];
@@ -801,6 +1197,116 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         });
     },
 
+    moveEntries: (ids, deltaTime, mode) => {
+        set((s) => {
+            if (s.meta.navigation !== 'time_driven') return {};
+            const movingIds = ids.filter((id) => !id.startsWith('branding-'));
+            if (movingIds.length === 0) return {};
+
+            let delta = snapTime(deltaTime);
+            if (delta === 0) return {};
+
+            const moving = s.entries.filter((e) => movingIds.includes(e.id));
+            if (moving.length === 0) return {};
+
+            const minStart = Math.min(...moving.map((e) => e.inTime ?? e.start ?? 0));
+            const totalDuration = s.meta.total_duration;
+
+            if (minStart + delta < 0) delta = -minStart;
+            if (mode === 'move' && totalDuration != null) {
+                const maxEnd = Math.max(...moving.map((e) => e.exitTime ?? e.end ?? 0));
+                if (maxEnd + delta > totalDuration) {
+                    delta = totalDuration - maxEnd;
+                }
+            }
+            delta = snapTime(delta);
+            if (delta === 0) return {};
+
+            // Capture the ripple boundary BEFORE mutating any entry — the
+            // boundary is the latest original exitTime among the moving set.
+            const rippleBoundary =
+                mode === 'ripple'
+                    ? Math.max(...moving.map((e) => e.exitTime ?? e.end ?? 0))
+                    : Infinity;
+
+            const movingSet = new Set(movingIds);
+            const dirty = new Set(s.dirtyEntryIds);
+
+            const newEntries = s.entries.map((e) => {
+                if (movingSet.has(e.id)) {
+                    dirty.add(e.id);
+                    return {
+                        ...e,
+                        inTime: (e.inTime ?? 0) + delta,
+                        exitTime: (e.exitTime ?? 0) + delta,
+                    };
+                }
+                if (
+                    mode === 'ripple' &&
+                    !e.id.startsWith('branding-') &&
+                    (e.inTime ?? Infinity) >= rippleBoundary
+                ) {
+                    dirty.add(e.id);
+                    return {
+                        ...e,
+                        inTime: (e.inTime ?? 0) + delta,
+                        exitTime: (e.exitTime ?? 0) + delta,
+                    };
+                }
+                return e;
+            });
+
+            const nextTotal =
+                mode === 'ripple' && totalDuration != null
+                    ? Math.max(0, totalDuration + delta)
+                    : totalDuration;
+
+            return {
+                ...pushPast(s),
+                entries: newEntries,
+                dirtyEntryIds: Array.from(dirty),
+                meta:
+                    nextTotal !== s.meta.total_duration
+                        ? { ...s.meta, total_duration: nextTotal }
+                        : s.meta,
+            };
+        });
+    },
+
+    reorderEntries: (fromIndex, toIndex) => {
+        set((s) => {
+            if (fromIndex === toIndex) return {};
+            if (fromIndex < 0 || fromIndex >= s.entries.length) return {};
+            if (toIndex < 0 || toIndex >= s.entries.length) return {};
+            const moved = s.entries[fromIndex]!;
+            if (moved.id.startsWith('branding-')) return {};
+
+            const nextEntries = [...s.entries];
+            nextEntries.splice(fromIndex, 1);
+            nextEntries.splice(toIndex, 0, moved);
+
+            // Queue a /frame/reorder call instead of marking entries dirty.
+            // Sequential /frame/update calls would be destructive here — the
+            // backend addresses frames positionally, so updating index N with
+            // entry X's content overwrites whatever was at N. /frame/reorder
+            // is atomic on the server (one S3 PUT of the rewritten timeline).
+            //
+            // If the same entry has been reordered earlier this session,
+            // collapse the prior op into the latest target index.
+            const filtered = s.pendingReorders.filter((op) => op.entry_id !== moved.id);
+            const nextReorders: ReorderOp[] = [
+                ...filtered,
+                { entry_id: moved.id, to_index: toIndex },
+            ];
+
+            return {
+                ...pushPast(s),
+                entries: nextEntries,
+                pendingReorders: nextReorders,
+            };
+        });
+    },
+
     updateEntryTransition: (entryId, which, transition) => {
         set((s) => {
             const next = { ...s.entryTransitions };
@@ -875,6 +1381,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 dirtyEntryIds: prev.dirtyEntryIds,
                 newEntryIds: prev.newEntryIds,
                 deletedEntryIds: prev.deletedEntryIds,
+                pendingReorders: prev.pendingReorders,
             };
         });
     },
@@ -893,6 +1400,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 dirtyEntryIds: next.dirtyEntryIds,
                 newEntryIds: next.newEntryIds,
                 deletedEntryIds: next.deletedEntryIds,
+                pendingReorders: next.pendingReorders,
             };
         });
     },
@@ -915,6 +1423,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             dirtyEntryIds,
             newEntryIds,
             deletedEntryIds,
+            pendingReorders,
             entryTransforms,
             entryBackgrounds,
             entryTransitions,
@@ -938,7 +1447,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 !!entryTransitions[e.id]
         );
 
-        if (toSave.length === 0 && deletedEntryIds.length === 0) return;
+        if (toSave.length === 0 && deletedEntryIds.length === 0 && pendingReorders.length === 0)
+            return;
 
         set({ isSaving: true });
 
@@ -969,6 +1479,32 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 }
             }
 
+            // Process reorders after deletes (deleted entries are already
+            // gone from pendingReorders via deleteEntry's filter) and before
+            // adds/updates (so subsequent /frame/update frame_index values
+            // line up with the post-reorder server-side positions).
+            // /frame/reorder is atomic on the server; sequential single-frame
+            // updates would destroy entries at the target positions, which is
+            // why we route through this dedicated endpoint.
+            for (const op of pendingReorders) {
+                const res = await fetch(`${frameBase}/reorder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Institute-Key': apiKey,
+                    },
+                    body: JSON.stringify({
+                        [idField]: videoId,
+                        entry_id: op.entry_id,
+                        to_index: op.to_index,
+                    }),
+                });
+                if (!res.ok) {
+                    const text = await res.text().catch(() => res.statusText);
+                    throw new Error(`Reorder frame failed (${op.entry_id}): ${text}`);
+                }
+            }
+
             // Send to backend sequentially to avoid S3 concurrent-write race (C26).
             // New entries (never persisted) use frame/add; existing use frame/update.
             for (const entry of toSave) {
@@ -983,6 +1519,26 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 const isNew = newEntryIds.includes(entry.id);
 
                 if (isNew) {
+                    // Same entry_meta logic as the /frame/update branch: send
+                    // the display name (including empty string for "clear")
+                    // when the user has touched it, plus any per-shot
+                    // caption_style override. Skipped entirely when there's
+                    // neither so we don't bloat the timeline JSON with empty
+                    // entry_meta objects for plain new shots.
+                    const pendingNameAdd = useVideoEditorStore.getState().displayNames[entry.id];
+                    const captionStyleAdd = entry.entry_meta?.caption_style;
+                    const addEntryMetaPayload: Record<string, unknown> | undefined =
+                        pendingNameAdd !== undefined || captionStyleAdd !== undefined
+                            ? {
+                                  ...(pendingNameAdd !== undefined
+                                      ? { display_name: pendingNameAdd }
+                                      : {}),
+                                  ...(captionStyleAdd !== undefined
+                                      ? { caption_style: captionStyleAdd }
+                                      : {}),
+                              }
+                            : undefined;
+
                     const res = await fetch(`${frameBase}/add`, {
                         method: 'POST',
                         headers: {
@@ -996,6 +1552,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                             exit_time: entry.exitTime ?? entry.end ?? null,
                             z: entry.z ?? 0,
                             entry_id: entry.id,
+                            ...(addEntryMetaPayload ? { entry_meta: addEntryMetaPayload } : {}),
                         }),
                     });
                     if (!res.ok) {
@@ -1004,6 +1561,34 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     }
                 } else {
                     const frameIndex = entries.indexOf(entry);
+                    // Build entry_meta payload for the server. Includes any
+                    // pending display-name override; empty string explicitly
+                    // clears the override (server treats empty as "drop the
+                    // key"). When there's nothing rename-related to send, omit
+                    // the field entirely so we don't trigger an unnecessary
+                    // entry_meta merge round-trip on every HTML edit.
+                    const pendingName = useVideoEditorStore.getState().displayNames[entry.id];
+                    // Per-shot caption override. Always send when present on
+                    // the entry (including `null` to clear an existing override
+                    // — BE merges naively, so null lands on disk and the
+                    // render server / load path treats null as "no override").
+                    const captionStyle = entry.entry_meta?.caption_style;
+                    const entryMetaPayload: Record<string, unknown> | undefined =
+                        pendingName !== undefined || captionStyle !== undefined
+                            ? {
+                                  ...(pendingName !== undefined
+                                      ? { display_name: pendingName ?? '' }
+                                      : {}),
+                                  // captionStyle can be undefined (no override set this
+                                  // session) or a value. We only enter this branch when
+                                  // it's defined OR a display name is pending — narrow
+                                  // explicitly so we don't emit `caption_style: undefined`.
+                                  ...(captionStyle !== undefined
+                                      ? { caption_style: captionStyle }
+                                      : {}),
+                              }
+                            : undefined;
+
                     const res = await fetch(`${frameBase}/update`, {
                         method: 'POST',
                         headers: {
@@ -1018,6 +1603,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                             exit_time: entry.exitTime ?? entry.end ?? null,
                             z: entry.z ?? 0,
                             entry_id: entry.id,
+                            ...(entryMetaPayload ? { entry_meta: entryMetaPayload } : {}),
+                            // Persist the model that authored this HTML.
+                            // Read at regen time so "Remake with AI" uses
+                            // the same model on next edit.
+                            ...(entry.html_model ? { html_model: entry.html_model } : {}),
                         }),
                     });
                     if (!res.ok) {
@@ -1045,10 +1635,21 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 dirtyEntryIds: [],
                 newEntryIds: [], // all new entries are now persisted
                 deletedEntryIds: [], // server-side deletions completed above
+                pendingReorders: [], // server-side reorders completed above
                 past: [],
                 future: [],
                 isSaving: false,
             }));
+            // Display-name overrides are now reflected server-side in
+            // entry_meta. Clear the localStorage offline buffer so the next
+            // reload pulls names from the server. The in-memory
+            // `displayNames` map stays intact — it matches the server and
+            // continues to drive the UI without a reload.
+            try {
+                window.localStorage.removeItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+            } catch {
+                /* private mode — fine */
+            }
         } catch (err) {
             set({ isSaving: false });
             throw err;
@@ -1175,6 +1776,119 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         return { ok: true };
     },
 
+    regenerateShot: async (shotIdx, newText) => {
+        const { videoId, apiKey, regeneratingShotIdx, regeneratingSentenceId, meta } = get();
+        // Sentence- and shot-regen share the same master audio, so only one
+        // in-flight at a time across both units.
+        if (regeneratingShotIdx != null || regeneratingSentenceId != null) {
+            return { ok: false, error: 'Another regen is already in flight' };
+        }
+        if (!videoId || !apiKey) {
+            return { ok: false, error: 'Video not initialized' };
+        }
+        const shots = meta.shots ?? [];
+        const targetIdx = shots.findIndex((s) => s.shot_idx === shotIdx);
+        if (targetIdx === -1) {
+            return { ok: false, error: `Shot ${shotIdx} not found` };
+        }
+        const target = shots[targetIdx];
+        if (!target) {
+            return { ok: false, error: `Shot ${shotIdx} not found` };
+        }
+        if (target.audio_policy === 'intrinsic_only') {
+            return {
+                ok: false,
+                error:
+                    'This shot carries intrinsic audio (source clip / Veo) — ' +
+                    'there is no narration to re-narrate.',
+            };
+        }
+        const trimmed = newText.trim();
+        if (!trimmed) {
+            return { ok: false, error: 'Text cannot be empty' };
+        }
+        if (trimmed === target.text.trim()) {
+            return { ok: false, error: 'Text unchanged — nothing to re-narrate' };
+        }
+
+        set({ regeneratingShotIdx: shotIdx });
+        const { apiRegenerateShot } = await import('../utils/sentence-api');
+        const result = await apiRegenerateShot(videoId, apiKey, shotIdx, trimmed);
+
+        if (!result.ok) {
+            set({ regeneratingShotIdx: null });
+            return { ok: false, error: result.error };
+        }
+
+        const { shot: updatedShot, duration_delta, new_global_audio_url } = result.data;
+        set((s) => {
+            // Boundary semantics (must match the server's regenerate_shot):
+            //   - SHOT ripple: list-position. Every shot after `targetIdx` shifts
+            //     by `duration_delta`. The edited shot's start_time stays put
+            //     (only its duration / end changes).
+            //   - SENTENCE ripple: time-based against `oldStart`. Sentences sit
+            //     inside the master audio at their absolute time — anything at
+            //     or after the edited shot's start ripples.
+            //   - ENTRY ripple: time-based against `oldEnd` (NOT oldStart).
+            //     In v3 each shot maps 1:1 to an entry — using oldStart would
+            //     shift the EDITED entry's inTime too, which moves the shot
+            //     forward in time and breaks render alignment. Using oldEnd:
+            //       • edited entry: inTime < oldEnd → not shifted; exitTime
+            //         == oldEnd → shifted to new end. ✓
+            //       • next entries: inTime ≥ oldEnd → shifted. ✓
+            //       • watermark overlays (inTime=0): not shifted; exitTime
+            //         spans full timeline → shifted. ✓
+            const oldStart = target.start_time;
+            const oldEnd = target.start_time + target.duration;
+            const epsilon = 1e-3;
+            const updatedShots = (s.meta.shots ?? []).map((sh, i) => {
+                if (i === targetIdx) return updatedShot;
+                if (i > targetIdx) {
+                    return { ...sh, start_time: sh.start_time + duration_delta };
+                }
+                return sh;
+            });
+            // meta.sentences[] (if present) is downstream-derived from the
+            // same audio file; ripple it too so legacy-sentence consumers
+            // stay coherent until the next timeline refetch.
+            const updatedSentences = (s.meta.sentences ?? []).map((sent) => {
+                if (sent.start_time >= oldStart - epsilon) {
+                    return { ...sent, start_time: sent.start_time + duration_delta };
+                }
+                return sent;
+            });
+            const updatedEntries = s.entries.map((e) => {
+                const next = { ...e };
+                let mutated = false;
+                if (e.inTime != null && e.inTime >= oldEnd - epsilon) {
+                    next.inTime = e.inTime + duration_delta;
+                    mutated = true;
+                }
+                if (e.exitTime != null && e.exitTime >= oldEnd - epsilon) {
+                    next.exitTime = e.exitTime + duration_delta;
+                    mutated = true;
+                }
+                return mutated ? next : e;
+            });
+            const newTotal =
+                s.meta.total_duration != null
+                    ? Math.max(0, s.meta.total_duration + duration_delta)
+                    : s.meta.total_duration;
+            return {
+                regeneratingShotIdx: null,
+                audioUrl: new_global_audio_url || s.audioUrl,
+                meta: {
+                    ...s.meta,
+                    shots: updatedShots,
+                    sentences: updatedSentences,
+                    total_duration: newTotal,
+                },
+                entries: updatedEntries,
+            };
+        });
+        return { ok: true };
+    },
+
     insertShot: async (gap, userHint) => {
         const { videoId, apiKey, insertingGapKey } = get();
         if (insertingGapKey) {
@@ -1233,5 +1947,91 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             };
         });
         return { ok: true };
+    },
+
+    setCaptionSettings: (patch) => {
+        set((s) => {
+            const next = { ...s.captionSettings, ...patch };
+            persistCaptionEditorSettings(next);
+            return { captionSettings: next };
+        });
+    },
+
+    setCaptionEnabled: (enabled) => {
+        set((s) => {
+            const next = { ...s.captionSettings, enabled };
+            persistCaptionEditorSettings(next);
+            return { captionSettings: next };
+        });
+    },
+
+    setEntryCaptionStyle: (entryId, style) => {
+        set((s) => {
+            const isClear = !style || (style.hide === undefined && style.position === undefined);
+            const entries = s.entries.map((e) => {
+                if (e.id !== entryId) return e;
+                const baseMeta = e.entry_meta ?? {};
+                // `null` is the explicit "clear" sentinel. We always write SOME
+                // value (null when clearing, the style object otherwise) so the
+                // save flow has an unambiguous signal: deleting the key would
+                // be indistinguishable from "this entry never had an override",
+                // and `null` would be lost during the BE's deep-merge of
+                // entry_meta — sending it explicitly forces the server to
+                // overwrite any stale value.
+                return {
+                    ...e,
+                    entry_meta: {
+                        ...baseMeta,
+                        caption_style: isClear ? null : style,
+                    },
+                };
+            });
+            const dirtyEntryIds = s.dirtyEntryIds.includes(entryId)
+                ? s.dirtyEntryIds
+                : [...s.dirtyEntryIds, entryId];
+            return { entries, dirtyEntryIds };
+        });
+    },
+
+    loadCaptionWords: async () => {
+        const { wordsUrl } = get();
+        if (!wordsUrl) {
+            set({ captionWords: [], captionPhrases: [] });
+            return;
+        }
+        try {
+            const res = await fetch(wordsUrl);
+            if (!res.ok) {
+                // Soft fail — captions are an enhancement, not a hard requirement.
+                // Editor still functions without them; CaptionOverlay just renders nothing.
+                console.warn(`[captions] Failed to load words: ${res.status}`);
+                set({ captionWords: [], captionPhrases: [] });
+                return;
+            }
+            const data: unknown = await res.json();
+            if (!Array.isArray(data)) {
+                console.warn('[captions] Invalid words.json: not an array');
+                set({ captionWords: [], captionPhrases: [] });
+                return;
+            }
+            const validWords: WordTimestamp[] = data
+                .filter(
+                    (w: unknown): w is { word: unknown; start: unknown; end: unknown } =>
+                        !!w &&
+                        typeof w === 'object' &&
+                        'word' in (w as object) &&
+                        'start' in (w as object) &&
+                        'end' in (w as object)
+                )
+                .map((w) => ({
+                    word: String(w.word),
+                    start: Number(w.start),
+                    end: Number(w.end),
+                }));
+            set({ captionWords: validWords, captionPhrases: buildPhrases(validWords) });
+        } catch (err) {
+            console.warn('[captions] Error loading words:', err);
+            set({ captionWords: [], captionPhrases: [] });
+        }
     },
 }));

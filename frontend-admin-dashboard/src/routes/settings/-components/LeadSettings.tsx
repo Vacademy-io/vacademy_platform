@@ -108,6 +108,11 @@ export default function LeadSettings() {
             toast.success('Lead settings saved');
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['lead-settings'] });
+            // Also invalidate the hook's actual key so manage-students / manage-contacts /
+            // enquiries pages refetch and apply the new enabled flag immediately —
+            // otherwise the LeadScoreBadge / Counsellor column stay visible for up to
+            // 5 minutes (staleTime) after admin toggles lead off.
+            queryClient.invalidateQueries({ queryKey: ['lead-settings-config'] });
         },
         onError: () => {
             toast.error('Failed to save lead settings');

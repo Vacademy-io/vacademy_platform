@@ -9,7 +9,7 @@ import math
 
 METADATA = {
     "id": "ring_progress",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "motion_primitive",
     "title": "Ring Progress Arc",
     "description": "Circular SVG stroke arc filling from 0 to a target percent, with a synced number counter in the center.",
@@ -44,9 +44,17 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     label = str(params.get("label", ""))
     duration = float(params.get("duration", 1.2) or 1.2)
     delay = float(params.get("delay", 0.3) or 0.3)
-    size = float(params.get("size", 380) or 380)
     shot_idx = ctx.get("shot_index", 0)
     sid = f"rp{shot_idx}"
+
+    # Default ring size scales with canvas short-side so the center number
+    # ends up at ~13% of canvas short-side (matches the display tier ceiling
+    # in `_CANVAS_TIER_RULES`). Caller can still pass an explicit `size`.
+    canvas_w = int(ctx.get("canvas_w", 1920) or 1920)
+    canvas_h = int(ctx.get("canvas_h", 1080) or 1080)
+    auto_size = max(220, min(640, int(min(canvas_w, canvas_h) * 0.46)))
+    size = float(params.get("size") or auto_size)
+    shot_duration = float(ctx.get("shot_duration", 5.0) or 5.0)
 
     radius = (size / 2.0) - 24.0
     circumference = 2.0 * math.pi * radius
@@ -56,7 +64,7 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
 
     label_html = f'<div class="{sid}-label">{label}</div>' if label else ""
     html = (
-        f'<div class="{sid}-wrap">'
+        f'<div class="{sid}-wrap" id="{sid}-root">'
         f'<svg class="{sid}-svg" width="{size:.0f}" height="{size:.0f}" viewBox="0 0 {size:.0f} {size:.0f}">'
         f'<circle cx="{cx:.0f}" cy="{cy:.0f}" r="{radius:.0f}" fill="none" '
         f'stroke="rgba(255,255,255,0.08)" stroke-width="{stroke_w:.0f}"/>'
@@ -82,6 +90,12 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
 """
 
     offset_target = circumference * (1 - percent / 100.0)
+    # Back-half motion: after the arc completes, give the whole ring a subtle
+    # breath so the shot doesn't go static. Satisfies the back-half rule on
+    # shots where the ring is the dominant visual.
+    arc_finish = delay + duration
+    back_half_delay = max(arc_finish + 0.3, shot_duration * 0.55)
+    back_half_dur = max(0.8, shot_duration - back_half_delay)
     js = (
         f'{{'
         f'var arc=document.getElementById("{sid}-arc");'
@@ -96,6 +110,9 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
         f'gsap.to({{v:0}},{{v:{percent}, duration:{duration}, delay:{delay}, ease:"power2.out", '
         f'onUpdate:function(){{val.textContent=Math.round(this.targets()[0].v);}}}});'
         f'}}'
+        f'gsap.fromTo("#{sid}-root",'
+        f'{{scale:1}},'
+        f'{{scale:1.012, duration:{back_half_dur:.2f}, delay:{back_half_delay:.2f}, ease:"sine.inOut"}});'
         f'}}'
     )
 

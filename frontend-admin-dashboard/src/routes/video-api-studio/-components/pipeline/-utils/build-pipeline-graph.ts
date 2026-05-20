@@ -21,9 +21,12 @@ import type { PipelineState } from './derive-pipeline-state';
 export type PipelineNodeKind =
     | 'pitch'
     | 'research'
+    | 'beats'
     | 'screenplay'
     | 'narration'
     | 'storyboard'
+    | 'shotPlanner'
+    | 'narrationWriter'
     | 'filming'
     | 'scene'
     | 'talent'
@@ -64,9 +67,16 @@ export const NODE_SIZES: Record<PipelineNodeKind, { width: number; height: numbe
     // Slightly taller than the other linear nodes so the source list +
     // optional search query fit without clipping.
     research: { width: 260, height: 160 },
+    // Beats node — slightly taller to fit the beat-count summary line.
+    beats: { width: 260, height: 150 },
     screenplay: { width: 260, height: 140 },
     narration: { width: 260, height: 130 },
     storyboard: { width: 280, height: 180 },
+    // v3 — ShotPlanner replaces Beats+Screenplay+Storyboard. Slightly wider
+    // so the audio-policy + recurring-motif summary line fits.
+    shotPlanner: { width: 300, height: 180 },
+    // v3 — NarrationWriter sits between ShotPlanner and Scenes.
+    narrationWriter: { width: 260, height: 150 },
     filming: { width: 260, height: 140 },
     // Scenes sit in their own dagre rank each (sequential chain off
     // Storyboard), so width is the dominant cost — narrower scenes let
@@ -111,26 +121,54 @@ export function buildPipelineGraph(state: PipelineState): BuildGraphResult {
         };
     };
 
-    // ── Linear chain: Pitch → [Research?] → Screenplay → Narration → Storyboard ──
-    // Research is optional and only inserted when state.research is set —
-    // when it's there, the Pitch→Screenplay edge gets routed through it.
-    nodes.push(makeStageNode('pitch'));
-    if (state.research) nodes.push(makeStageNode('research'));
-    nodes.push(makeStageNode('screenplay'));
-    nodes.push(makeStageNode('narration'));
-    nodes.push(makeStageNode('storyboard'));
-
+    // ── Linear chain depends on pipelineVersion ───────────────────────────
+    //
+    // v2: Pitch → [Research?] → [Beats?] → Screenplay → Narration → Storyboard
+    // v3: Pitch → [Research?] → ShotPlanner → NarrationWriter
+    //
+    // v3 hides the v2 chain entirely — ShotPlanner subsumes BeatPlanner +
+    // Screenplay + Director, and NarrationWriter replaces the monolithic
+    // Narration. Per-shot TTS still produces audio downstream but doesn't
+    // get its own node (it's part of "filming" / scene-level work).
+    const isV3 = state.pipelineVersion === 'v3';
     const slot = (k: keyof PipelineState) =>
         (state as unknown as Record<string, { state: string }>)[k]?.state;
 
+    nodes.push(makeStageNode('pitch'));
+    if (state.research) nodes.push(makeStageNode('research'));
+
+    let prevLinear = 'pitch';
     if (state.research) {
-        pushEdge(edges, 'pitch', 'research', slot('research') === 'in_production');
-        pushEdge(edges, 'research', 'screenplay', slot('screenplay') === 'in_production');
-    } else {
-        pushEdge(edges, 'pitch', 'screenplay', slot('screenplay') === 'in_production');
+        pushEdge(edges, prevLinear, 'research', slot('research') === 'in_production');
+        prevLinear = 'research';
     }
-    pushEdge(edges, 'screenplay', 'narration', slot('narration') === 'in_production');
-    pushEdge(edges, 'narration', 'storyboard', slot('storyboard') === 'in_production');
+
+    let upstreamOfScenes: string;
+    if (isV3) {
+        nodes.push(makeStageNode('shotPlanner'));
+        nodes.push(makeStageNode('narrationWriter'));
+        pushEdge(edges, prevLinear, 'shotPlanner', slot('shotPlanner') === 'in_production');
+        pushEdge(
+            edges,
+            'shotPlanner',
+            'narrationWriter',
+            slot('narrationWriter') === 'in_production'
+        );
+        upstreamOfScenes = 'narrationWriter';
+    } else {
+        if (state.beats) nodes.push(makeStageNode('beats'));
+        nodes.push(makeStageNode('screenplay'));
+        nodes.push(makeStageNode('narration'));
+        nodes.push(makeStageNode('storyboard'));
+        if (state.beats) {
+            pushEdge(edges, prevLinear, 'beats', slot('beats') === 'in_production');
+            prevLinear = 'beats';
+        }
+        pushEdge(edges, prevLinear, 'screenplay', slot('screenplay') === 'in_production');
+        pushEdge(edges, 'screenplay', 'narration', slot('narration') === 'in_production');
+        pushEdge(edges, 'narration', 'storyboard', slot('storyboard') === 'in_production');
+        upstreamOfScenes = 'storyboard';
+    }
 
     // ── Branching: scene nodes if shot plan is known, else single Filming counter ──
     const useSceneNodes = state.scenes.length > 0;
@@ -154,7 +192,7 @@ export function buildPipelineGraph(state: PipelineState): BuildGraphResult {
         // NodeDetailSheet can do a stable array lookup; the BE-provided
         // `scene.index` is preserved on the slot itself for display
         // ("Scene 01", etc.).
-        let prevId = 'storyboard';
+        let prevId = upstreamOfScenes;
         state.scenes.forEach((scene, i) => {
             const id = `scene-${i}`;
             nodeSizeOverrides[id] = NODE_SIZES.scene;
@@ -176,20 +214,23 @@ export function buildPipelineGraph(state: PipelineState): BuildGraphResult {
             `e-${prevId}-finalCut`
         );
     } else {
-        // Legacy fallback: Storyboard → Filming counter → Final Cut
+        // Legacy fallback: upstream → Filming counter → Final Cut.
+        // On v2 the upstream is Storyboard; on v3 it's NarrationWriter (when
+        // no shot plan reached the FE for some reason, e.g. mid-planning).
         nodes.push(makeStageNode('filming'));
         nodes.push(makeStageNode('finalCut'));
-        pushEdge(edges, 'storyboard', 'filming', slot('filming') === 'in_production');
+        pushEdge(edges, upstreamOfScenes, 'filming', slot('filming') === 'in_production');
         pushEdge(edges, 'filming', 'finalCut', slot('finalCut') === 'in_production');
     }
 
     // ── Optional parallel branches: Talent + Score (Phase 3) ─────────────
-    // Both branch off Storyboard and converge at Final Cut, running in
-    // parallel to the scene chain. Hidden when not configured. PipelineFlow
-    // positions them on a secondary row beneath the scene strip.
+    // Both branch off the upstream-of-scenes node (Storyboard on v2 /
+    // NarrationWriter on v3) and converge at Final Cut, running in parallel
+    // to the scene chain. Hidden when not configured. PipelineFlow positions
+    // them on a secondary row beneath the scene strip.
     if (state.talent) {
         nodes.push(makeStageNode('talent'));
-        pushEdge(edges, 'storyboard', 'talent', state.talent.state === 'in_production');
+        pushEdge(edges, upstreamOfScenes, 'talent', state.talent.state === 'in_production');
         pushEdge(
             edges,
             'talent',
@@ -199,7 +240,7 @@ export function buildPipelineGraph(state: PipelineState): BuildGraphResult {
     }
     if (state.score) {
         nodes.push(makeStageNode('score'));
-        pushEdge(edges, 'storyboard', 'score', state.score.state === 'in_production');
+        pushEdge(edges, upstreamOfScenes, 'score', state.score.state === 'in_production');
         pushEdge(
             edges,
             'score',

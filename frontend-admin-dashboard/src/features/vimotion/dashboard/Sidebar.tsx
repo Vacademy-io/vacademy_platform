@@ -1,12 +1,24 @@
 import { useNavigate } from '@tanstack/react-router';
 import { forwardRef } from 'react';
-import { Clapperboard, FolderOpen, LogOut, Palette, Scissors, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
+import {
+    Clapperboard,
+    FolderOpen,
+    LogOut,
+    Palette,
+    Scissors,
+    UserSquare2,
+    Users,
+    Wand2,
+    Coins,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
 import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useStudioName } from './hooks/useStudioName';
 import { HelpMenu } from '../tour/HelpMenu';
+import { useVimotionRole } from '../auth/useVimotionRole';
+import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 import type { DashboardTab } from './tabsConfig';
 
 interface SidebarProps {
@@ -15,37 +27,76 @@ interface SidebarProps {
     onTabChange: (tab: DashboardTab) => void;
 }
 
-const NAV_ITEMS: { id: DashboardTab; label: string; Icon: typeof Clapperboard }[] = [
+interface SidebarContentProps extends SidebarProps {
+    onNavigate?: () => void;
+}
+
+type NavItem = {
+    id: DashboardTab;
+    label: string;
+    Icon: typeof Clapperboard;
+    adminOnly?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
     { id: 'create', label: 'Create', Icon: Wand2 },
     { id: 'recent', label: 'Recent', Icon: Clapperboard },
     { id: 'reels', label: 'Reels', Icon: Scissors },
     { id: 'assets', label: 'Assets', Icon: FolderOpen },
     { id: 'avatars', label: 'Avatars', Icon: UserSquare2 },
     { id: 'brand-kits', label: 'Brand Kits', Icon: Palette },
+    { id: 'team', label: 'Team', Icon: Users, adminOnly: true },
 ];
 
 export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
+    return (
+        <aside
+            data-tour="vim-sidebar"
+            className="hidden w-60 shrink-0 flex-col border-r border-neutral-200 bg-white md:flex"
+        >
+            <SidebarContent
+                instituteId={instituteId}
+                activeTab={activeTab}
+                onTabChange={onTabChange}
+            />
+        </aside>
+    );
+}
+
+export function SidebarContent({
+    instituteId,
+    activeTab,
+    onTabChange,
+    onNavigate,
+}: SidebarContentProps) {
     const navigate = useNavigate();
     const studioName = useStudioName(instituteId);
     const credits = useAiCreditsQuery(!!instituteId);
+    const { isAdmin } = useVimotionRole();
+    const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
     const handleLogout = () => {
         removeCookiesAndLogout();
         navigate({ to: '/vim/login' });
     };
 
+    const handleTabClick = (id: DashboardTab) => {
+        onTabChange(id);
+        onNavigate?.();
+    };
+
     return (
-        <aside
-            data-tour="vim-sidebar"
-            className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-white"
-        >
+        <div className="flex h-full flex-col">
             {/* Brand + studio name */}
             <div className="flex items-center gap-2.5 p-5">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                    <Sparkles className="size-4 text-primary-500" />
+                    <VimotionLogoMark size={20} className="text-neutral-900" />
                 </div>
                 <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold leading-tight text-neutral-900">
+                    <p
+                        className="truncate text-sm font-semibold leading-tight text-neutral-900"
+                        title={studioName.data ?? undefined}
+                    >
                         {studioName.data ?? 'Vimotion'}
                     </p>
                     <p className="text-xs text-neutral-500">Studio</p>
@@ -55,17 +106,17 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
             {/* Nav */}
             <nav className="flex-1 px-3">
                 <ul className="space-y-0.5">
-                    {NAV_ITEMS.map(({ id, label, Icon }) => {
+                    {navItems.map(({ id, label, Icon }) => {
                         const active = activeTab === id;
                         return (
                             <li key={id}>
                                 <button
                                     type="button"
                                     data-tour={`vim-sidebar-${id}`}
-                                    onClick={() => onTabChange(id)}
+                                    onClick={() => handleTabClick(id)}
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
-                                        'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                                        'flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
                                         active
                                             ? 'bg-neutral-900 text-white'
                                             : 'text-neutral-700 hover:bg-neutral-100'
@@ -88,19 +139,20 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                         popoverAlign="end"
                         popoverSideOffset={12}
                         trigger={<CreditsCardTrigger data={credits.data} />}
+                        hideTopUp={!isAdmin}
                     />
                 )}
                 <HelpMenu />
                 <button
                     type="button"
                     onClick={handleLogout}
-                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+                    className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
                 >
                     <LogOut className="size-4" />
                     Log out
                 </button>
             </div>
-        </aside>
+        </div>
     );
 }
 

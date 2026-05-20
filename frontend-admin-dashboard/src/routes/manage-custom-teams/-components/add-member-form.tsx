@@ -21,6 +21,7 @@ import {
     getAllRoles,
     addSubOrgTeamMember,
     listAccessibleGrants,
+    getScopedInvites,
 } from '../-services/custom-team-services';
 import { fetchBatchesByIds } from '@/routes/admin-package-management/-services/package-service';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -97,16 +98,39 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
 
     // Fetch Roles. In subOrg mode, system roles are hidden — sub-org admins can only assign
     // custom roles to their team members.
-    const SYSTEM_ROLE_NAMES = ['ADMIN', 'TEACHER', 'STUDENT', 'EVALUATOR', 'COURSE CREATOR', 'ASSESSMENT CREATOR'];
+    const SYSTEM_ROLE_NAMES = ['ADMIN', 'TEACHER', 'STUDENT', 'EVALUATOR', 'CONTENT CREATOR', 'ASSESSMENT CREATOR'];
     const { data: rolesRaw = [] } = useQuery({
         queryKey: ['roles'],
         queryFn: getAllRoles,
         staleTime: 1000 * 60 * 5,
         enabled: open,
     });
-    const roles = mode === 'subOrg'
+    // In subOrg mode, also fetch the sub-org's invites to pull the ALLOWED_TEAM_ROLES
+    // allow-list (configured at sub-org creation or via the parent-admin PATCH endpoint).
+    // The allow-list further trims the available roles. Empty list = no restriction.
+    const { data: subOrgInvitesForRoles = [] } = useQuery<any[]>({
+        queryKey: ['sub-org-scoped-invites-for-roles', subOrgId],
+        queryFn: () => getScopedInvites(subOrgId!),
+        enabled: open && mode === 'subOrg' && !!subOrgId,
+        staleTime: 1000 * 60,
+    });
+    const allowedTeamRoles: string[] | null = (() => {
+        if (mode !== 'subOrg') return null;
+        for (const inv of subOrgInvitesForRoles as any[]) {
+            const list = inv?.allowed_team_roles;
+            if (Array.isArray(list) && list.length > 0) return list;
+        }
+        return null;
+    })();
+
+    const rolesAfterSystemFilter = mode === 'subOrg'
         ? (rolesRaw || []).filter((r: any) => !SYSTEM_ROLE_NAMES.includes(String(r.name || '').toUpperCase()))
         : (rolesRaw || []);
+    const roles = allowedTeamRoles
+        ? rolesAfterSystemFilter.filter((r: any) =>
+              allowedTeamRoles.some((n) => n.toLowerCase() === String(r.name || '').toLowerCase())
+          )
+        : rolesAfterSystemFilter;
 
     const instituteId = getCurrentInstituteId();
 
@@ -290,7 +314,7 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] w-[95vw] sm:max-w-[720px] md:max-w-[900px] lg:max-w-[1100px]">
+            <DialogContent className="flex max-h-[90vh] w-[95vw] flex-col overflow-hidden sm:max-w-[640px]">
                 <DialogHeader>
                     <DialogTitle>Add New Member</DialogTitle>
                     <DialogDescription>
@@ -470,7 +494,10 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                                             />
                                         </div>
                                         <div className="rounded-md border">
-                                            <ScrollArea className="h-[250px] p-3">
+                                            {/* max-h instead of fixed h so the area
+                                                shrinks to fit when only one or two PSes
+                                                are available (the sub-org-admin common case). */}
+                                            <ScrollArea className="max-h-[220px] p-3">
                                                 {isLoadingSessions ? (
                                                     <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
                                                         <Loader2 className="h-4 w-4 animate-spin" />

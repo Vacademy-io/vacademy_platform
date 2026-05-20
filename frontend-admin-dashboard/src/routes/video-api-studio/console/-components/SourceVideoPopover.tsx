@@ -139,7 +139,11 @@ export function SourceVideoPopover({
                     )}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[320px] p-3" align="start">
+            <PopoverContent
+                className="w-[calc(100vw-2rem)] max-w-[320px] p-3"
+                align="start"
+                collisionPadding={16}
+            >
                 <div className="space-y-3">
                     <div>
                         <p className="text-xs font-semibold">Source videos</p>

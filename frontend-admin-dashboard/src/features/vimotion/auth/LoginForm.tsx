@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ArrowRight, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,6 +19,9 @@ import {
 import { setAuthorizationCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { vimotionLogin } from '../api/signup';
+import { VimotionLogoMark } from '../brand/VimotionLogoMark';
+import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
+import { useVimotionNativeShell } from '../native/useVimotionNativeShell';
 import { OutputShowcase } from './OutputShowcase';
 
 const loginSchema = z.object({
@@ -29,6 +32,8 @@ const loginSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
+    useVimotionDocumentChrome();
+    useVimotionNativeShell();
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
 
@@ -61,14 +66,17 @@ export function LoginForm() {
     const onSubmit = (values: LoginValues) => login.mutate(values);
 
     return (
-        <div className="grid min-h-screen w-screen grid-cols-1 bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <OutputShowcase tagline="Sign back in. Your studio is exactly how you left it." />
+        <div className="pt-safe pb-safe grid min-h-screen w-screen grid-cols-1 bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <OutputShowcase
+                tagline="Sign back in. Your studio is exactly how you left it."
+                className="order-last lg:order-first"
+            />
 
             <section className="flex min-h-screen flex-col">
                 {/* Mobile-only top bar with the wordmark */}
                 <div className="flex items-center gap-2 px-6 pt-6 lg:hidden">
                     <div className="flex size-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                        <Sparkles className="size-4 text-primary-500" />
+                        <VimotionLogoMark size={18} className="text-neutral-900" />
                     </div>
                     <span className="text-lg font-semibold tracking-tight text-neutral-900">
                         Vimotion

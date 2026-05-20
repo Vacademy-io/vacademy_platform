@@ -9,9 +9,10 @@ This service handles:
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -36,6 +37,21 @@ from ..schemas.ai_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ResolvedModel:
+    """One row of the resolved (stage → model) map for a video run.
+
+    Returned by `AIModelsService.get_stage_model_map(...)`. The pipeline reads
+    `model_id` to drive each LLM call; `fallback_model_id` is consumed by
+    `OpenRouterClient` when the primary model errors; `source` lands in the
+    cost-event record so forensics can answer "did the user override land?".
+    """
+    stage: str
+    model_id: str
+    fallback_model_id: Optional[str]
+    source: str  # "matrix" | "user_default" | "user_per_stage"
 
 
 class AIModelsService:
@@ -302,6 +318,136 @@ class AIModelsService:
             recommended_models=recommended_models,
             all_compatible_models=all_compatible,
         )
+
+    def get_default_model_id_for_use_case(
+        self, use_case: str, *, prefer_free: bool = False
+    ) -> Optional[str]:
+        """Fast lookup: return just the default model_id string for a use_case.
+
+        Reads `ai_model_defaults` and falls back to the highest-scoring active
+        model whose `recommended_for` array contains the use_case. Returns
+        None if nothing matches — callers should apply their own hard fallback.
+
+        prefer_free=True returns the free_tier_model_id first (for free-tier
+        institutes that should not be billed for premium regen models).
+        """
+        defaults_query = text("""
+            SELECT default_model_id, fallback_model_id, free_tier_model_id
+            FROM ai_model_defaults
+            WHERE use_case = :use_case
+        """)
+        row = self.db.execute(defaults_query, {"use_case": use_case}).fetchone()
+        if row:
+            if prefer_free and row.free_tier_model_id:
+                return row.free_tier_model_id
+            if row.default_model_id:
+                return row.default_model_id
+            if row.fallback_model_id:
+                return row.fallback_model_id
+
+        # No row in ai_model_defaults — pick the top-scored recommended model.
+        rec_query = text("""
+            SELECT model_id FROM ai_models
+            WHERE :use_case = ANY(recommended_for) AND is_active = TRUE
+            ORDER BY quality_score DESC, speed_score DESC
+            LIMIT 1
+        """)
+        rec_row = self.db.execute(rec_query, {"use_case": use_case}).fetchone()
+        return rec_row.model_id if rec_row else None
+
+    def get_stage_model_map(
+        self,
+        *,
+        use_case: str,
+        quality_tier: str,
+        overrides: Optional["ModelOverrides"] = None,  # noqa: F821 — forward ref to schemas.video_generation
+    ) -> Dict[str, "ResolvedModel"]:
+        """Resolve the (stage_id → ResolvedModel) map for a video run.
+
+        Reads `ai_model_stage_assignments` once for the (use_case, quality_tier)
+        slice, then layers user overrides on top per-stage:
+
+          - per_stage[stage] takes precedence if the row's user_overridable=true
+          - default applies to all user_overridable stages otherwise
+          - admin matrix row is the floor; pinned stages (user_overridable=false)
+            ignore overrides entirely
+
+        Returns {stage_id: ResolvedModel(model_id, fallback_model_id, source)}.
+        `source` is one of "matrix" / "user_default" / "user_per_stage" — used
+        by `cost_event_tracker` to forensic-audit whether the user override
+        actually landed at runtime.
+
+        On DB-read failure (table not yet migrated, transient error) returns an
+        empty dict — callers should treat that as "fall back to the legacy
+        single-model resolution" so a missing matrix doesn't crash the run.
+        """
+        rows_query = text("""
+            SELECT stage_id, model_id, fallback_model_id, user_overridable
+            FROM ai_model_stage_assignments
+            WHERE use_case = :use_case
+              AND quality_tier = :quality_tier
+              AND is_active = TRUE
+        """)
+        try:
+            rows = self.db.execute(
+                rows_query,
+                {"use_case": use_case, "quality_tier": quality_tier},
+            ).fetchall()
+        except Exception as exc:
+            logger.warning(
+                "ai_model_stage_assignments lookup failed (%s); "
+                "caller will fall back to legacy resolution",
+                exc,
+            )
+            return {}
+
+        # Pull override fields defensively. `overrides` can be either:
+        #   (a) a pydantic `ModelOverrides` instance (new-gen path);
+        #   (b) a plain dict (resume/retry path — JSON-deserialized from
+        #       `user_selections.model_overrides` on the video record).
+        # We avoid `getattr` on dicts (Python silently returns dict methods
+        # for matching attr names like `.get`/`.keys`/etc.). Branch on type.
+        user_default: Optional[str] = None
+        per_stage_picks: Dict[str, str] = {}
+        if overrides is not None:
+            if isinstance(overrides, dict):
+                _default_raw = overrides.get("default")
+                _per_stage_raw = overrides.get("per_stage")
+            else:
+                _default_raw = getattr(overrides, "default", None)
+                _per_stage_raw = getattr(overrides, "per_stage", None)
+            if isinstance(_default_raw, str) and _default_raw.strip():
+                user_default = _default_raw.strip()
+            if isinstance(_per_stage_raw, dict):
+                per_stage_picks = {
+                    str(k): str(v).strip()
+                    for k, v in _per_stage_raw.items()
+                    if isinstance(v, str) and v.strip()
+                }
+
+        result: Dict[str, ResolvedModel] = {}
+        for row in rows:
+            stage_id = row.stage_id
+            admin_model = row.model_id
+            fallback = row.fallback_model_id
+            overridable = bool(row.user_overridable)
+
+            model_id = admin_model
+            source = "matrix"
+            if overridable:
+                per_pick = per_stage_picks.get(stage_id)
+                if per_pick:
+                    model_id, source = per_pick, "user_per_stage"
+                elif user_default:
+                    model_id, source = user_default, "user_default"
+
+            result[stage_id] = ResolvedModel(
+                stage=stage_id,
+                model_id=model_id,
+                fallback_model_id=fallback,
+                source=source,
+            )
+        return result
 
     def _get_model_summary(self, model_id: str) -> Optional[AIModelSummary]:
         """Get a model summary by ID."""

@@ -13,6 +13,8 @@ import {
     RefreshCw,
 } from 'lucide-react';
 import { HistoryItem } from '../-services/video-generation';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../-utils/credits';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -55,6 +57,9 @@ export function HistorySidebar({
     onPageChange,
     isLoadingHistory,
 }: HistorySidebarProps) {
+    // History badges show the run's USD cost in credit form using the
+    // live USD→credits rate. Falls back to the seed 150× when offline.
+    const ratio = useEffectiveCreditRatio();
     const getStatusIcon = (status: HistoryItem['status']) => {
         switch (status) {
             case 'pending':
@@ -86,7 +91,7 @@ export function HistorySidebar({
     /* ── Collapsed icon strip ── */
     if (isCollapsed) {
         return (
-            <div className="flex h-full w-full flex-col items-center gap-1 py-2">
+            <div className="flex size-full flex-col items-center gap-1 py-2">
                 {/* Expand toggle */}
                 <button
                     onClick={onToggleCollapse}
@@ -115,7 +120,9 @@ export function HistorySidebar({
                         onClick={() => onSelect(item)}
                         title={item.prompt}
                         className={`flex size-9 items-center justify-center rounded-md transition-colors hover:bg-muted ${
-                            selectedId === item.video_id ? 'bg-violet-50 ring-1 ring-violet-200' : ''
+                            selectedId === item.video_id
+                                ? 'bg-violet-50 ring-1 ring-violet-200'
+                                : ''
                         }`}
                     >
                         {getStatusIcon(item.status)}
@@ -205,11 +212,17 @@ export function HistorySidebar({
                                                     {item.options.model.split('-')[0]}
                                                 </span>
                                             )}
-                                            {item.status === 'completed' && item.token_usage?.estimated_cost_usd != null && (
-                                                <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                                                    ${item.token_usage.estimated_cost_usd.toFixed(2)}
-                                                </span>
-                                            )}
+                                            {item.status === 'completed' &&
+                                                item.token_usage?.estimated_cost_usd != null && (
+                                                    <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                                        {formatCredits(
+                                                            usdToCredits(
+                                                                item.token_usage.estimated_cost_usd,
+                                                                ratio
+                                                            )
+                                                        )}
+                                                    </span>
+                                                )}
                                         </div>
                                         {item.status === 'failed' && onRetry && (
                                             <Button

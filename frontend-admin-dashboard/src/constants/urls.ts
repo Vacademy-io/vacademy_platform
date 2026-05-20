@@ -143,6 +143,7 @@ export const BATCHES_SUMMARY = `${BASE_URL}/admin-core-service/institute/v1/batc
 
 export const ADMIN_DETAILS_URL = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const GET_STUDENTS = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v2/all`;
+export const GET_CONTACTS_LIST = `${BASE_URL}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_STUDENTS_CSV = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v1/all-csv`;
 
@@ -158,6 +159,7 @@ export const STUDENT_CSV_UPLOAD_URL = `${BASE_URL}/admin-core-service/institute/
 export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/admin/get-student-report`;
 export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/admin/participants/get-report-detail`;
 export const GET_INSTITUTE_USERS = `${BASE_URL}/auth-service/v1/user-roles/users-of-status`;
+export const GET_USER_ROLES_COUNT = `${BASE_URL}/auth-service/v1/user-roles/user-roles-count`;
 export const GET_USER_AUTOSUGGEST = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
 export const INVITE_USERS_URL = `${BASE_URL}/auth-service/v1/user-invitation/invite`;
 export const INVITE_TEACHERS_URL = `${BASE_URL}/admin-core-service/institute/v1/faculty/assign-subjects-and-batches`;
@@ -250,6 +252,7 @@ export const BULK_ADD_COURSES = `${BASE_URL}/admin-core-service/course/v1/bulk-a
 export const DELETE_COURSE = `${BASE_URL}/admin-core-service/course/v1/delete-courses`;
 export const UPDATE_COURSE = `${BASE_URL}/admin-core-service/course/v1/update-course-details`;
 export const COPY_COURSE_CONTENT = `${BASE_URL}/admin-core-service/course/v1/copy-content`;
+export const COPY_CONTENT_LINEAGE = `${BASE_URL}/admin-core-service/course/v1/copy-lineage`;
 
 // Teacher Course Approval Workflow URLs
 export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-courses/detailed/v2`;
@@ -431,6 +434,24 @@ export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sess
 export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
 export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
 
+// "Process Recording" / "Transcript Ready" flow — kicks off Whisper transcription
+// for a specific BBB recording and polls for terminal state. Path-keyed by
+// scheduleId + recordingId so admin-core can locate the recording in O(1).
+//
+// LOCAL-TESTING NOTE: routes to LOCAL_ADMIN_CORE_BASE (http://localhost:8072)
+// because Layer 1 transcription only lives on locally-running admin-core right
+// now. Swap to `${BASE_URL}/...` once the backend ships to stage/prod.
+export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/transcribe`;
+
+// Layer 3 — Create Assessment from a completed recording transcript.
+// Same local-testing routing as above.
+export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
+
+export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
+
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
 
@@ -460,6 +481,12 @@ export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;
 
+// Notification Hub (overview + recent incoming activity)
+export const NOTIFICATION_HUB_BASE = `${BASE_URL}/notification-service/v1/hub`;
+
+// Email Inbox (conversations / messages / search / reply / status)
+export const EMAIL_INBOX_BASE = `${BASE_URL}/notification-service/v1/email-inbox`;
+
 // WhatsApp Template Manager
 export const WHATSAPP_TEMPLATE_BASE = `${NOTIFICATION_SERVICE_BASE}/whatsapp-templates`;
 
@@ -482,6 +509,11 @@ export const SAVE_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-op
 export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-option/get-payment-options`;
 export const MAKE_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-option/make-default-payment-option`;
 export const DELETE_PAYMENT_OPTION_URL = SAVE_PAYMENT_OPTION;
+
+// Payment plan markdown (Offer Price)
+export const APPLY_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/apply`;
+export const RESET_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/reset`;
+export const LOOKUP_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/lookup`;
 
 export const ANALYTICS_USER_ACTIVITY = `${BASE_URL}/auth-service/v1/analytics/user-activity`;
 export const ANALYTICS_ACTIVE_USERS_REALTIME = `${BASE_URL}/auth-service/v1/analytics/active-users/real-time`;
@@ -583,6 +615,12 @@ export const SUB_ORG_TEAM_ADD = `${BASE_URL}/admin-core-service/sub-org/v1/team/
 export const SUB_ORG_TEAM_REMOVE = `${BASE_URL}/admin-core-service/sub-org/v1/team/remove`;
 export const SUB_ORG_TEAM_ACCESSIBLE = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-sub-orgs`;
 export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-grants`;
+export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
+// Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
+export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
+// Invoices (per user) — used by the sub-org analytics dashboard
+export const GET_INVOICES_BY_USER = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
 
 // Instructor Copilot
 export const INSTRUCTOR_COPILOT_BASE = `${BASE_URL}/admin-core-service/instructor-copilot/v1`;

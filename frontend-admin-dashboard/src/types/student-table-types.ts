@@ -15,6 +15,8 @@ export interface StudentFilterRequest {
     type_ids?: string[];
     destination_package_session_ids?: string[];
     level_ids?: string[];
+    enroll_invite_ids?: string[];
+    audience_ids?: string[];
     [key: string]: any; // Allow dynamic custom field properties like customFieldId0, customFieldValues0
 }
 
@@ -83,6 +85,13 @@ export interface StudentTable {
     tnc_accepted?: boolean | null;
     tnc_file_id?: string | null;
     tnc_accepted_date?: string | number | null;
+    // True for audience-only respondents (user filled an audience form but isn't enrolled).
+    // ssigm-derived fields (status, batch, expiry, enrollment_number, etc.) come back null.
+    is_audience_only?: boolean | null;
+    // Every package_session_id the user is enrolled in at this institute, latest first.
+    // The row's `package_session_id` is the latest one; side-view tabs that fetch
+    // batch-scoped data should iterate this list to cover all enrollments.
+    all_package_session_ids?: string[];
 }
 
 export interface StudentListResponse {

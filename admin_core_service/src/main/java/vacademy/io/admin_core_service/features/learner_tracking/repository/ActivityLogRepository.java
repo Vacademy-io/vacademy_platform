@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_tracking.repository;
 
+
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -259,7 +261,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.assignmentSlideTracked vt
-            WHERE al.userId = :userId AND al.slideId = :slideId
+            WHERE (:userId IS NULL OR :userId = '' OR al.userId = :userId)
+              AND al.slideId = :slideId
             """)
     Page<ActivityLog> findActivityLogsWithAssignmentSlide(@Param("userId") String userId,
             @Param("slideId") String slideId,
@@ -307,13 +310,30 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             SELECT s.user_id AS userId,
                    s.full_name AS fullName,
                    SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) AS totalTimeSpent,
-                   MAX(a.updated_at) AS lastActive
+                   MAX(a.updated_at) AS lastActive,
+                   CASE
+                     WHEN COUNT(ast.id) = 0 THEN NULL
+                     WHEN BOOL_OR(
+                            (ast.marks IS NOT NULL AND ast.marks > 0)
+                            OR ast.feedback IS NOT NULL
+                            OR ast.checked_file_id IS NOT NULL
+                          ) THEN 'REVIEWED'
+                     ELSE 'PENDING'
+                   END AS reviewStatus
             FROM activity_log a
             JOIN student s ON a.user_id = s.user_id
+            LEFT JOIN assignment_slide_tracked ast ON ast.activity_id = a.id
             WHERE a.slide_id = :slideId
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC
-            """, nativeQuery = true)
+             """,
+            countQuery = """
+            SELECT COUNT(DISTINCT a.user_id)
+            FROM activity_log a
+            JOIN student s ON a.user_id = s.user_id
+            WHERE a.slide_id = :slideId
+            """,
+            nativeQuery = true)
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
 
     @Query(value = """

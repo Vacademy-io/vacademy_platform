@@ -1,10 +1,17 @@
 import { PipelineFlow } from './PipelineFlow';
 import { PipelinePanel } from './PipelinePanel';
-import type { PipelineState } from './-utils/derive-pipeline-state';
+import type { PipelineEventLogEntry, PipelineState } from './-utils/derive-pipeline-state';
 
 interface PipelineLayoutProps {
     state: PipelineState;
     apiKey?: string;
+    /**
+     * In-memory SSE event log from the live session, used by the Developer /
+     * Audit drawer to show the chronological pipeline path. Absent on
+     * history-loaded runs (the audit drawer synthesizes a coarse path from
+     * `state` instead).
+     */
+    eventLog?: PipelineEventLogEntry[];
     /**
      * Cancel an in-flight production. Wired to the console's `abortRef` —
      * surfaced from the right panel only when the run is `in_production`.
@@ -38,11 +45,18 @@ interface PipelineLayoutProps {
  * Left 2/3 = React Flow production diagram. Right 1/3 = stages list,
  * production budget, asset URLs, actions.
  */
-export function PipelineLayout({ state, apiKey, onAbort, onRetry, onEdit }: PipelineLayoutProps) {
+export function PipelineLayout({
+    state,
+    apiKey,
+    eventLog,
+    onAbort,
+    onRetry,
+    onEdit,
+}: PipelineLayoutProps) {
     return (
-        <div className="flex size-full min-h-[600px] flex-col gap-4 xl:flex-row">
+        <div className="flex size-full min-h-0 flex-col gap-3 sm:gap-4 xl:min-h-[600px] xl:flex-row">
             {/* Left: flow diagram (2/3 on desktop) */}
-            <div className="flex min-h-[480px] flex-1 flex-col rounded-xl border bg-card shadow-sm xl:basis-2/3">
+            <div className="flex min-h-[320px] flex-1 flex-col rounded-xl border bg-card shadow-sm sm:min-h-[400px] xl:min-h-[480px] xl:basis-2/3">
                 <header className="flex items-start justify-between gap-2 border-b px-4 py-3">
                     <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -53,7 +67,7 @@ export function PipelineLayout({ state, apiKey, onAbort, onRetry, onEdit }: Pipe
                         </h2>
                     </div>
                 </header>
-                <div className="relative min-h-[480px] flex-1">
+                <div className="relative min-h-[320px] flex-1 sm:min-h-[400px] xl:min-h-[480px]">
                     <PipelineFlow state={state} apiKey={apiKey} />
                 </div>
             </div>
@@ -63,6 +77,7 @@ export function PipelineLayout({ state, apiKey, onAbort, onRetry, onEdit }: Pipe
                 <PipelinePanel
                     state={state}
                     apiKey={apiKey}
+                    eventLog={eventLog}
                     onAbort={onAbort}
                     onRetry={onRetry}
                     onEdit={onEdit}

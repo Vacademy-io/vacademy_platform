@@ -26,13 +26,194 @@ import sys
 import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+
+# ── PHASE B MODULE-LOAD BANNER (2026-05-14 v3) ─────────────────────────────
+# Confirms in deployed-pod logs that the latest automation_pipeline.py is
+# loaded (vs a stale .pyc bytecode cache). If the line below DOES NOT appear
+# at app startup, the running process is reading bytecode that was compiled
+# from an older source. Fix: nuke __pycache__ in the deployed image and
+# restart the pod. Remove these diag prints once Phase B is verified live.
+print("🧪 [PHASE_B v3] automation_pipeline module loaded — TTS-deferral path is COMPILED IN")
 
 import urllib.error
 import urllib.error
 import urllib.request
 import time
 import functools
+from contextvars import ContextVar
+
+
+# ── Cost-tracking ContextVars (Pillar 1) ──────────────────────────────────
+# Set by call-sites that wrap an LLM call (regen / retry path). Read inside
+# OpenRouterClient.chat() and stamped onto each recorded cost event.
+# Default phase="base" covers the normal first-pass flow without any wrapping.
+# Stage helps identify *which* sub-phase emitted the call (e.g.
+# "vision_review_shot_5" vs "shot_html_seg_3") for the per-event breakdown.
+_llm_phase: ContextVar[str] = ContextVar("_llm_phase", default="base")
+_llm_stage: ContextVar[str] = ContextVar("_llm_stage", default="unknown")
+
+
+# ── V200 stage routing: normalize runtime stage strings to taxonomy IDs ──
+# Call sites set `_llm_stage` to descriptive runtime strings like
+# "brand_asset_regen_shot_3" or "shot_html_seg_5". Those map to canonical
+# `PipelineStage` enum values via this normalizer so the per-stage
+# model-resolution layer can look up the right matrix row.
+#
+# Returns None when no mapping applies — caller falls back to the model
+# chain / default model. Keep this list aligned with the taxonomy in
+# `app/constants/pipeline_stages.py`.
+
+def _normalize_stage_to_taxonomy(stage: str) -> Optional[str]:
+    """Map a runtime `_llm_stage` ContextVar string to a `PipelineStage` ID."""
+    if not stage:
+        return None
+    s = stage.lower()
+    # Order matters: more-specific prefixes first
+    if s.startswith("shot_planning") or s == "shot_planner":
+        return "shot_planner"
+    if s.startswith("narration_writing") or s == "narration_writer":
+        return "narration_writer"
+    if s.startswith("act_planner"):
+        return "act_planner"
+    if s.startswith("beat_planner"):
+        return "beat_planner"
+    # NOTE: vision_review_regen prompts the same Pro reviewer model — they're
+    # part of the pinned vision-review quality gate, not the generic
+    # regen_html bucket. Keeping them on the pinned model means the corrective
+    # pass cannot be user-overridden to a cheap model that would mask defects.
+    if s.startswith("vision_review_regen") or s.startswith("vision_corrective"):
+        return "vision_review"
+    if (
+        s.startswith("brand_asset_regen")
+        or s.startswith("bbox_lint_regen")
+        or s.startswith("bbox_regen")
+        or s.startswith("html_repair")
+        or s.startswith("animation_validator_regen")
+        or s.startswith("anim_density_regen")
+    ):
+        return "regen_html"
+    if s.startswith("vision_review"):  # detection-only
+        return "vision_review"
+    if (
+        s.startswith("shot_html")
+        or s.startswith("per_shot_html")
+        or s.startswith("html_seg")
+    ):
+        return "per_shot_html"
+    if s.startswith("director"):
+        return "director"
+    if s.startswith("script_review") or "two_pass" in s:
+        return "script_review"
+    if s.startswith("script"):
+        return "script_generation"
+    if s in ("subject_extraction", "entity_extraction") or "named_entit" in s:
+        return "entity_extraction"
+    if s.startswith("cultural_context") or s.startswith("region_inference"):
+        return "cultural_context"
+    if s.startswith("shot_decompose") or s.startswith("decompose"):
+        return "shot_decomposer"
+    if s.startswith("host_description") or s.startswith("set_description"):
+        return "host_description"
+    if s.startswith("headline") or s.startswith("thumbnail_headline"):
+        return "headline_thumbnail"
+    if s.startswith("image_prompt_enhancement") or s == "image_prompt":
+        return "image_prompt_enhancement"
+    if s.startswith("stock_video_ranking") or s == "stock_ranking":
+        return "stock_video_ranking"
+    return None
+
+
+def _extract_visual_intent_block(prompt_text: Optional[str]) -> Optional[str]:
+    """Pillar 2.2 — pull the user's "VISUAL APPROACH" prose out of the raw prompt.
+
+    Heuristic — looks for an explicit section header (case-insensitive match
+    on "VISUAL APPROACH" or "VISUAL DIRECTION" or "VISUAL STYLE") and returns
+    the paragraphs from that header to the next ALL-CAPS header (next
+    section). Falls back to None when no such section exists — the caller
+    treats None as "no extra prose to inject" so well-structured prompts
+    without explicit sections aren't penalised.
+
+    Why a separate extractor rather than always passing the whole prompt:
+    the prompt is also fed to the Script Writer and other earlier stages;
+    duplicating the full prose in the Director's user-message section
+    bloats tokens. Passing only the directive paragraphs keeps the cost
+    proportional to the user's actual intent.
+    """
+    if not prompt_text or not isinstance(prompt_text, str):
+        return None
+    import re as _re
+    # Match a section header line (ALL CAPS, with optional trailing colon).
+    # Case-insensitive match on the headers we know users write.
+    pattern = _re.compile(
+        r"^[ \t]*(VISUAL\s+(?:APPROACH|DIRECTION|STYLE|TREATMENT))\s*:?\s*$",
+        _re.IGNORECASE | _re.MULTILINE,
+    )
+    m = pattern.search(prompt_text)
+    if not m:
+        return None
+    # Capture from the header line forward until the next ALL-CAPS section
+    # header (≥2 caps words, max 60 chars on a line, no trailing prose).
+    end_pattern = _re.compile(
+        r"^[ \t]*([A-Z][A-Z\s/_\-]{4,60})\s*:?\s*$",
+        _re.MULTILINE,
+    )
+    start_idx = m.end()
+    # Find the next ALL-CAPS header AFTER our match (skip the current header).
+    next_match = end_pattern.search(prompt_text, pos=start_idx)
+    block = prompt_text[m.start():(next_match.start() if next_match else len(prompt_text))]
+    block = block.strip()
+    # Empty or trivial sections aren't worth injecting
+    if len(block) < 40:
+        return None
+    return block
+
+
+# BPM extraction patterns. The Director writes music prompts in natural
+# language with hints like "~84 bpm", "around 72 bpm", "(118 bpm)", etc.
+# We parse the first plausible value out of all chunk prompts and average
+# if multiple are present. Returns None when nothing matches — the cue
+# beat-snap pass then no-ops (cues keep their raw times).
+_BPM_PATTERNS: List[re.Pattern] = [
+    re.compile(r"(?:^|[^0-9])(?:~|around|approximately|approx\.?\s*|at\s+)?\s*"
+               r"(\d{2,3})\s*bpm\b", re.IGNORECASE),
+    re.compile(r"(?:^|[^0-9])(\d{2,3})\s*(?:beats?\s*per\s*minute|bpm)", re.IGNORECASE),
+]
+
+
+def _extract_bpm_from_music_plan(plan: Optional[Dict[str, Any]]) -> Optional[float]:
+    """Pull a numeric BPM hint out of a music_plan dict. Looks at every
+    chunk's `timestamped_prompt` and the top-level `overall_mood` /
+    `overall_genre` text. Averages all unique values found. Returns None
+    when nothing parses to a plausible BPM (40–200)."""
+    if not isinstance(plan, dict):
+        return None
+    text_blobs: List[str] = []
+    for key in ("overall_mood", "overall_genre", "bed_prompt", "audio_mood"):
+        v = plan.get(key)
+        if isinstance(v, str):
+            text_blobs.append(v)
+    for chunk in (plan.get("chunks") or []):
+        if isinstance(chunk, dict):
+            tp = chunk.get("timestamped_prompt")
+            if isinstance(tp, str):
+                text_blobs.append(tp)
+    found: List[int] = []
+    for blob in text_blobs:
+        for pat in _BPM_PATTERNS:
+            for m in pat.finditer(blob):
+                try:
+                    v = int(m.group(1))
+                except (ValueError, IndexError):
+                    continue
+                if 40 <= v <= 200:
+                    found.append(v)
+    if not found:
+        return None
+    # Use median to shrug off outliers from incidental numbers nearby.
+    found.sort()
+    median = found[len(found) // 2]
+    return float(median)
 
 
 class PipelineCancelled(Exception):
@@ -530,6 +711,17 @@ _SCRIPT_RANGES: dict[str, tuple[int, int]] = {
 # ---------------------------------------------------------------------------
 # Quality tier configuration
 # ---------------------------------------------------------------------------
+# Single source of truth for the per-video Veo cost cap. Imported here
+# (rather than hardcoded) so the FastAPI pre-flight balance check in
+# `routers/external_video_generation.py` and the pipeline's runtime
+# `AiVideoCostTracker` never silently disagree on the limit.
+try:
+    from app.services.ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
+except ImportError:
+    # Fallback when `app/` isn't on path (legacy / standalone). Keep the
+    # numeric default in lockstep with `ai_video_constants.py`.
+    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 1.50
+
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
         "script_temperature": 0.5,
@@ -546,6 +738,16 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # Use cheap flash model for all LLM calls in this tier
         "preferred_script_model": "google/gemini-3-flash-preview",
         "preferred_shot_model": "google/gemini-3-flash-preview",
+        # Per-shot TTS migration flag (Phase 0). Off everywhere by default; the
+        # legacy monolithic TTS path remains live. Flip true on a tier to opt
+        # into per-shot TTS once the implementation lands and verifies.
+        "tts_per_shot_enabled": True,
+        # BeatPlanner (Phase 1) feature flag. Off everywhere by default; the
+        # legacy Script-Generator-emits-beats path remains canonical until
+        # the full BeatPlanner-as-input refactor lands.
+        "beat_planner_enabled": True,
+        # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
+        "ai_video_eligible": False,
     },
     "standard": {
         "script_temperature": 0.5,
@@ -572,6 +774,14 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.40,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": True,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": True,
+        # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
+        "ai_video_eligible": False,
     },
     "premium": {
         "script_temperature": 0.6,
@@ -593,6 +803,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_enabled": True,
         "sound_max_cues_per_shot": 1,
         "sound_max_cues_per_video": 10,
+        # Fresh-generation SFX (cassetteai) on real GSAP events. Without
+        # this premium falls back to the static library which produces
+        # the UI-button/multimedia-mouse sounds we worked to eliminate.
+        "sfx_generation_enabled": True,
+        "audio_density_mode": "normal",
         # Prefer stock; Director runs on main model, script+shots use flash
         "stock_preference": "stock_first",
         "preferred_script_model": "google/gemini-3-flash-preview",
@@ -601,6 +816,14 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.50,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": True,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": True,
+        # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
+        "ai_video_eligible": False,
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -631,6 +854,12 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "director_few_shot": True,
         "shot_animation_validator": True,
         "min_animated_elements": 4,  # ultra: looser than super_ultra's 6
+        # Deterministic post-render bounding-box lint (Tier 2, 2026-05). Walks
+        # the rendered shadow DOM and reports text/media that crosses the
+        # canvas edge — the only non-probabilistic check for the TEXT_CLIPPED
+        # class. Closes the loop the LLM vision reviewer leaves open (see
+        # vid_1778774930857_w8cwa1y audit: clipped headline silently shipped).
+        "shot_bbox_check": True,
         "shot_pack_enabled": True,
         "shot_templates_enabled": True,
         # Skill library (number_counter, typewriter_text, ring_progress, ...) is
@@ -650,12 +879,46 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 20,
         "background_music_enabled": True,
         "background_music_default_volume": 0.10,
+        "sfx_generation_enabled": True,
+        "audio_density_mode": "normal",
         # Use stock where available; AI for hero/conceptual shots
         "stock_preference": "stock_first",
         # Vision reviewer — see "standard" tier comment.
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.60,
         "vision_review_max_regens_pct": 30,
+        # Pillar 2.8 — kill regen passes that produce zero quality lift today.
+        # Detection (review_shot LLM) still runs and gets reported in
+        # cost_breakdown.json + vision_review.json; the corrective regen LLM
+        # call is what's disabled. Met-Gala evidence: 11 reviewed shots →
+        # 0 regen-improved → ~$0.85/run spent for no quality lift. Re-enable
+        # only after the regen prompt is reworked + offline-eval validated.
+        "vision_review_regen_enabled": False,
+        # Same rationale for the animation-density validator: regen ships
+        # "best attempt" but never actually fixes the back-half-motion check.
+        # Detection stays; regen LLM call is gated by this knob.
+        "anim_validator_regen_enabled": False,
+        # Pillar 2.4 — shot HTML shared-preamble dedup. When True, the per-
+        # shot system prompt tells the LLM NOT to re-emit the SVG <defs> /
+        # font @import / brand palette CSS / text-safety rules (renderer
+        # pre-injects all four), AND a post-LLM Python stripper scrubs any
+        # boilerplate the LLM emits anyway. Saves ~30% of completion tokens
+        # per shot when honored. Default False so we can run an A/B before
+        # flipping on for ultra. Renderer-side preamble injection lives in a
+        # follow-up plan (see plan file).
+        "shot_html_shared_preamble_enabled": False,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": True,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": True,
+        # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier, but still
+        # gated on per-run user opt-in via AdvancedSettings.ai_video_enabled.
+        # The eligible flag controls whether the toggle is exposed in the UI;
+        # the request-time enable flag controls whether Veo actually fires.
+        "ai_video_eligible": True,
+        "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -689,17 +952,31 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "motion_density_enforcement": True,
         "director_motion_bias": True,
         "min_animated_elements": 6,
+        # See ultra tier comment — same deterministic bbox lint enabled here.
+        "shot_bbox_check": True,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 3,
         "sound_max_cues_per_video": 40,
         "background_music_enabled": True,
         "background_music_default_volume": 0.10,
+        "sfx_generation_enabled": True,
+        "audio_density_mode": "normal",
         # Use stock where available; AI for motion-biased hero shots that need precise visuals
         "stock_preference": "stock_first",
         # Vision reviewer — see "standard" tier comment.
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.60,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": True,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": True,
+        # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier (see ultra
+        # for the eligible-vs-enabled distinction).
+        "ai_video_eligible": True,
+        "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
     },
 }
 
@@ -1030,6 +1307,27 @@ class OpenRouterClient:
         self.use_prompt_cache = use_prompt_cache
         # Tracks the model used in the last successful chat() call (for cost reporting)
         self.current_model: str = default_model
+        # Optional cost-event tracker (Pillar 1 — per-run balance sheet). Set by
+        # the pipeline post-construction via `client.cost_events = tracker`. When
+        # present, each successful chat() call records a `kind="llm"` event
+        # stamped with the current phase/stage ContextVar values. Pricing is
+        # NOT computed here (the existing per-stage `outputs["token_usage"]`
+        # aggregation drives credit deduction); cost_usd defaults to 0.0 and
+        # the post-run aggregator (`video_generation_service`) joins to the
+        # ai_models table for pricing if needed.
+        self.cost_events: Optional[Any] = None  # cost_event_tracker.CostEventTracker
+
+        # V200 per-stage routing. Populated by VideoGenerationPipeline at
+        # construction time from `ai_model_stage_assignments` (one entry per
+        # canonical PipelineStage ID). Values are `(model_id, source)` tuples
+        # so each cost event can attribute the choice to "matrix" /
+        # "user_default" / "user_per_stage". When non-empty AND the caller
+        # didn't pass an explicit `model=`, chat() resolves the model by
+        # mapping the `_llm_stage` ContextVar through
+        # `_normalize_stage_to_taxonomy(...)` and looking up the result.
+        # An empty map means "fall through to the existing model_chain /
+        # default_model" — perfect no-op behavior for the rollout window.
+        self.stage_model_map: Dict[str, Tuple[str, str]] = {}
 
         self.model_chain = self._fetch_models()
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
@@ -1041,21 +1339,36 @@ class OpenRouterClient:
         }
 
     def _fetch_models(self) -> list[str]:
-        models = []
+        """Build the per-call fallback model chain from `ai_model_defaults`.
+
+        Calls `AIModelsService.get_models_for_use_case("video")` directly via
+        a short-lived DB session — replacing the legacy self-HTTP call to
+        `/models/v2/use-case/video` which was wasteful (network + port
+        assumptions) AND fragile (timed out behind LB routing on deploys
+        where `/models/v2` wasn't mounted on the same hostname).
+
+        Returns `recommended_models[].model_id` in order, with
+        `free_tier_model.model_id` appended as a final fallback when the
+        recommended list is empty. Returns `[]` on any DB failure — callers
+        treat empty as "use my `default_model`".
+        """
+        models: list[str] = []
         try:
-            api_base = os.environ.get("AI_SERVICE_BASE_URL", "http://localhost:8077/ai-service")
-            url = f"{api_base}/models/v2/use-case/video"
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as res:
-                if res.status == 200:
-                    data = json.loads(res.read().decode("utf-8"))
-                    for m in data.get("recommended_models", []):
-                        if m.get("model_id"):
-                            models.append(m["model_id"])
-                    if not models and data.get("free_tier_model", {}).get("model_id"):
-                        models.append(data["free_tier_model"]["model_id"])
+            from app.db import db_session as _db_ctx
+            from app.services.ai_models_service import AIModelsService
+            with _db_ctx() as _db:
+                resp = AIModelsService(_db).get_models_for_use_case("video")
+            for m in (getattr(resp, "recommended_models", None) or []):
+                _mid = getattr(m, "model_id", None)
+                if _mid:
+                    models.append(_mid)
+            if not models:
+                _free = getattr(resp, "free_tier_model", None)
+                _free_mid = getattr(_free, "model_id", None) if _free else None
+                if _free_mid:
+                    models.append(_free_mid)
         except Exception as e:
-            print(f"Warning: Failed to fetch dynamic models from registry: {e}")
+            print(f"Warning: Failed to load model chain from registry: {e}")
         return models
 
     @retry_with_backoff(max_retries=4, initial_delay=2.0, exceptions=(urllib.error.URLError, RuntimeError))
@@ -1067,13 +1380,32 @@ class OpenRouterClient:
         max_tokens: int = 2000,
         response_format: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Dict[str, Any]]:
-        # Use provided model or fall back to chain/default
+        # Use provided model, then stage-routed model, then chain, then default.
+        # Stage routing (V200): when no explicit model is passed AND the
+        # caller's `_llm_stage` ContextVar maps to a taxonomy entry that has a
+        # row in `self.stage_model_map`, use that model. Stamps `_source` on
+        # the cost event so forensics can attribute the choice.
+        _stage_routed_source = ""
         if model:
             models_to_try = [model]
-        elif self.model_chain:
-            models_to_try = self.model_chain
         else:
-            models_to_try = [self.default_model]
+            stage_routed: Optional[str] = None
+            if self.stage_model_map:
+                _runtime_stage = _llm_stage.get()
+                _canonical = _normalize_stage_to_taxonomy(_runtime_stage)
+                if _canonical:
+                    _entry = self.stage_model_map.get(_canonical)
+                    if isinstance(_entry, tuple) and len(_entry) == 2:
+                        stage_routed, _stage_routed_source = _entry[0], (_entry[1] or "matrix")
+                    elif isinstance(_entry, str) and _entry:
+                        # Legacy flat-string callers — source unknown.
+                        stage_routed, _stage_routed_source = _entry, "matrix"
+            if stage_routed:
+                models_to_try = [stage_routed]
+            elif self.model_chain:
+                models_to_try = self.model_chain
+            else:
+                models_to_try = [self.default_model]
 
         # Apply prompt caching: wrap system message content in cache_control array
         if self.use_prompt_cache:
@@ -1108,6 +1440,7 @@ class OpenRouterClient:
                     headers=self.headers,
                     method="POST",
                 )
+                _t_start = time.perf_counter()
                 with urllib.request.urlopen(request, timeout=120) as response:
                     raw = response.read().decode("utf-8")
                     # Parse JSON response and return content
@@ -1125,6 +1458,23 @@ class OpenRouterClient:
                         usage["cache_read_input_tokens"] = cache_read
                         usage["cache_creation_input_tokens"] = cache_write
                     self.current_model = model_to_use
+
+                    # Pillar 1 — per-event cost tracking. Phase/stage come from
+                    # ContextVars set by the caller (default "base"/"unknown").
+                    # Failures don't raise — observability must not break the run.
+                    if self.cost_events is not None:
+                        try:
+                            self.cost_events.record_llm(
+                                stage=_llm_stage.get(),
+                                model=model_to_use,
+                                usage=usage,
+                                phase=_llm_phase.get(),
+                                duration_ms=int((time.perf_counter() - _t_start) * 1000),
+                                source=_stage_routed_source,
+                            )
+                        except Exception:
+                            pass
+
                     return content, usage
             except Exception as exc:
                 if isinstance(exc, urllib.error.HTTPError):
@@ -1527,11 +1877,53 @@ class VideoGenerationPipeline:
         serper_api_keys: str = DEFAULT_SERPER_API_KEYS,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         quality_tier: str = "ultra",
+        stage_model_map: Optional[Dict[str, Any]] = None,
     ) -> None:
         if not openrouter_key:
             raise ValueError("OpenRouter API key is required (set OPENROUTER_API_KEY or pass --openrouter-key).")
         self.script_client = OpenRouterClient(openrouter_key, script_model)
         self.html_client = OpenRouterClient(openrouter_key, html_model)
+
+        # Per-stage model routing (V200 — DB-backed). When the service layer
+        # resolved a non-empty map from `ai_model_stage_assignments`, each LLM
+        # call site reads its model via `self._resolve_stage_model(stage_id)`
+        # which returns the matrix-resolved (or user-overridden) model_id.
+        # An empty map (feature flag off, DB miss, legacy caller) returns None
+        # at every lookup so `OpenRouterClient.chat(model=None)` falls through
+        # to its default — zero-risk no-op for the rollout window.
+        # Normalize the stage map to {stage_id: (model_id, source)} so callers
+        # can pass either the legacy flat string form or the new tuple form.
+        # `source` is the provenance string from `ResolvedModel.source`
+        # (matrix / user_default / user_per_stage); flat-string callers get
+        # the empty-string sentinel.
+        self._stage_model_map: Dict[str, Tuple[str, str]] = {}
+        for _sid, _val in (stage_model_map or {}).items():
+            if isinstance(_val, tuple) and len(_val) == 2:
+                self._stage_model_map[_sid] = (str(_val[0]), str(_val[1] or ""))
+            elif isinstance(_val, str):
+                self._stage_model_map[_sid] = (_val, "")
+        if self._stage_model_map:
+            # Both clients consult this map on every chat() call when no
+            # explicit `model=` is passed by the caller — the `_llm_stage`
+            # ContextVar's value is normalized to a taxonomy ID and looked up.
+            self.script_client.stage_model_map = self._stage_model_map
+            self.html_client.stage_model_map = self._stage_model_map
+            _example = next(iter(self._stage_model_map.items()))
+            print(
+                f"🎯 Stage routing enabled — {len(self._stage_model_map)} "
+                f"stage(s) mapped (e.g. {_example[0]}={_example[1][0]}"
+                f"{(' [' + _example[1][1] + ']') if _example[1][1] else ''})"
+            )
+
+        # Pillar 1 — per-run cost balance sheet. Each LLM call goes through one
+        # of the two clients above; we attach a single shared tracker so events
+        # from both flows land in the same log. Tracker is rebuilt per run() so
+        # multiple runs on the same pipeline instance don't cross-contaminate.
+        from cost_event_tracker import CostEventTracker
+        self._cost_events: "CostEventTracker" = CostEventTracker()
+        self.script_client.cost_events = self._cost_events
+        self.html_client.cost_events = self._cost_events
+
         self.voice_id = voice_id
         self.voice_model = voice_model
         self.runs_dir = runs_dir
@@ -1614,20 +2006,27 @@ class VideoGenerationPipeline:
 
     @staticmethod
     def _get_default_branding() -> Dict[str, Any]:
-        """Return default Vacademy branding configuration."""
+        """Return the default branding fallback.
+
+        All three sections (intro / outro / watermark) default to `enabled: False`
+        — the codebase is multi-tenant, so a non-Vacademy institute should never
+        see Vacademy branding leaked through this fallback. The Vacademy HTML is
+        kept in the dict (off-by-default) so Vacademy itself can flip the
+        toggles on if it wants the historical look; other tenants ignore it.
+        """
         return {
             "intro": {
-                "enabled": True,
+                "enabled": False,
                 "duration_seconds": 3.0,
                 "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:linear-gradient(160deg, #ffffff 0%, #f8f8fa 50%, #ffffff 100%);'><h1 style='color:#1a1a1a; font-size:64px; font-family:Inter,sans-serif; font-weight:300; letter-spacing:6px; margin:0; text-transform:uppercase;'>Vacademy</h1><div style='width:48px; height:1px; background:rgba(0,0,0,0.12); margin:20px 0;'></div><p style='color:rgba(0,0,0,0.35); font-size:16px; font-family:Inter,sans-serif; font-weight:400; letter-spacing:3px; text-transform:uppercase;'>Learn Smarter</p></div>"
             },
             "outro": {
-                "enabled": True,
+                "enabled": False,
                 "duration_seconds": 4.0,
                 "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#ffffff;'><p style='color:rgba(0,0,0,0.4); font-size:15px; font-family:Inter,sans-serif; font-weight:400; letter-spacing:4px; text-transform:uppercase; margin:0 0 24px 0;'>Thank you for watching</p><div style='width:32px; height:1px; background:rgba(0,0,0,0.1); margin:0 0 24px 0;'></div><p style='color:rgba(0,0,0,0.2); font-size:13px; font-family:Inter,sans-serif; font-weight:300; letter-spacing:2px;'>Powered by Vacademy</p></div>"
             },
             "watermark": {
-                "enabled": True,
+                "enabled": False,
                 "position": "top-right",
                 "max_width": 200,
                 "max_height": 80,
@@ -1853,6 +2252,356 @@ class VideoGenerationPipeline:
             return bool(override)
         return bool(self._tier_config.get("background_music_enabled", False))
 
+    def _resolve_stage_model(self, stage: str) -> Optional[str]:
+        """Return the resolved model_id for a pipeline stage, or None.
+
+        Reads `self._stage_model_map` (populated by the V200 stage-routing
+        layer when the feature flag is on). Returns None when the stage isn't
+        mapped — every LLM call site passes the result as `model=` to
+        `OpenRouterClient.chat(...)`, which falls through to its default
+        model on None. So an empty map is a perfect no-op (rollout safety).
+
+        Accepts `str` rather than `PipelineStage` to keep call sites flexible
+        — every caller can pass the raw stage string literal that already
+        encodes its `_llm_stage` ContextVar value.
+        """
+        if not self._stage_model_map:
+            return None
+        entry = self._stage_model_map.get(stage)
+        if entry is None:
+            return None
+        # entry is (model_id, source) tuple
+        return entry[0] if isinstance(entry, tuple) else entry
+
+    def _snap_cues_to_beat(
+        self,
+        entries: List[Dict[str, Any]],
+        bpm: Optional[float],
+        *,
+        window_s: float = 0.12,
+    ) -> int:
+        """B2 — beat-snap cue absolute times to the nearest beat within
+        ±`window_s` of the Director-emitted BPM. Returns count snapped.
+
+        Treats t=0 as beat 0 (phase=0). This is a coarse assumption —
+        Lyria isn't guaranteed to start on the downbeat — but for cues
+        that already land roughly on a beat (within 120ms), snapping
+        sharpens rhythmic feel without risking large displacement that
+        would desync from the visual event.
+
+        Cues outside the window are left untouched. Transition cues
+        (which must land sample-accurately on the visual cut) are NOT
+        snapped — they have a no_natural_offset constraint upstream.
+        """
+        if not bpm or bpm <= 0:
+            return 0
+        beat_s = 60.0 / float(bpm)
+        snapped = 0
+        for entry in entries:
+            entry_start = float(entry.get("start", 0.0))
+            for cue in entry.get("sound_cues") or []:
+                role = (cue.get("role") or "").lower()
+                if role.startswith("transition_"):
+                    continue  # never displace transitions
+                try:
+                    t_rel = float(cue.get("t", 0.0))
+                except (TypeError, ValueError):
+                    continue
+                abs_t = entry_start + t_rel
+                # Nearest beat to abs_t.
+                beat_idx = round(abs_t / beat_s)
+                beat_t = beat_idx * beat_s
+                delta = beat_t - abs_t
+                if abs(delta) <= window_s and abs(delta) > 0.005:
+                    # Apply the shift in cue-relative space.
+                    new_t = max(0.0, t_rel + delta)
+                    cue["t"] = new_t
+                    snapped += 1
+        return snapped
+
+    def _run_audio_mix_pass(
+        self,
+        *,
+        run_dir: "Path",
+        narration_path: "Path",
+        entries: List[Dict[str, Any]],
+        video_id: str,
+        audio_duration: float,
+    ) -> None:
+        """Compose VO + music + SFX + transition stingers into a single
+        broadcast-LUFS mastered audio file, then atomically swap it in
+        as the new `narration.mp3`.
+
+        This is the entry point for the "Apple-keynote tier" audio mix
+        added in the music-library upgrade. The mixer module
+        (`audio_mixer.py`) builds an ffmpeg filter graph that handles
+        sidechain ducking, layer placement, and loudnorm in one pass.
+
+        Atomic-swap protocol:
+          1. Render `final_mix.mp3` next to narration.
+          2. On success: move narration.mp3 → narration_unmixed.mp3 (backup);
+             move final_mix.mp3 → narration.mp3.
+          3. Clear `self._background_music_track` and per-entry
+             `sound_cues` so the timeline JSON / render worker don't
+             double-attach layers already baked into the new narration.
+          4. On any failure: no swap, original narration.mp3 stays, the
+             timeline ships with VO + (separately-attached) music + SFX
+             — i.e. legacy behavior. The render does NOT abort.
+        """
+        # Imports are deferred so this module doesn't pay startup cost
+        # on free-tier renders that skip audio mixing entirely.
+        from pathlib import Path as _PathL
+        try:
+            from audio_mixer import (  # type: ignore
+                MixSpec, build_mix,
+            )
+            from sfx_palette_planner import (  # type: ignore
+                enrich_cues as _enrich_sfx_palette,
+                resolve_mood as _resolve_sfx_mood,
+            )
+        except Exception as _imp_err:
+            print(f"⚠️ Audio mix skipped — module import failed: {_imp_err}")
+            return
+
+        if not narration_path or not _PathL(narration_path).exists():
+            print(f"⚠️ Audio mix skipped — narration not found: {narration_path}")
+            return
+
+        # ── 1. Refresh SFX palette via cassetteai (opt-in, tier-gated) ─
+        # Each cue's URL gets replaced with a fresh cassetteai-generated
+        # WAV that we UPLOAD TO S3 immediately. The S3 URL goes back on
+        # the cue dict and ships in the timeline JSON so the editor +
+        # render worker can fetch the SFX independently of narration.mp3.
+        #
+        # Architecture (post-3b): SFX is NOT baked into narration.mp3
+        # anymore. The local audio_mix_pass only mixes VO + music. SFX
+        # mixing is delegated to the render worker which already has
+        # working SFX-with-ducking logic in worker.py and uses the
+        # public S3 URLs we set here.
+        sfx_palette_counts: Dict[str, int] = {}
+        _script_for_mood: Any = (
+            getattr(self, "_current_script_plan", None)
+            or getattr(self, "_current_script_text", None)
+        )
+
+        # Build an S3 uploader closure so sfx_palette_planner can publish
+        # each generated WAV at a public URL. Pattern mirrors the
+        # vision-review uploader below at line ~20100. When boto3 / creds
+        # aren't available, falls back to None and the planner emits local
+        # file paths (safe for tests / dev where no S3 is configured).
+        _sfx_s3_uploader: Optional[Callable[[bytes, str], str]] = None
+        try:
+            import boto3 as _boto3_sfx
+            _sfx_s3 = _boto3_sfx.client(
+                "s3",
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+            )
+            _sfx_bucket = os.environ.get(
+                "AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public",
+            )
+
+            def _upload_sfx(data: bytes, key: str) -> str:
+                _sfx_s3.put_object(
+                    Bucket=_sfx_bucket,
+                    Key=key,
+                    Body=data,
+                    ContentType="audio/wav",
+                )
+                return f"https://{_sfx_bucket}.s3.amazonaws.com/{key}"
+
+            _sfx_s3_uploader = _upload_sfx
+        except Exception as _s3_err:
+            print(f"⚠️ SFX S3 uploader unavailable ({_s3_err}) — "
+                  f"cues will use local paths (editor visibility limited)")
+
+        try:
+            sfx_palette_counts = _enrich_sfx_palette(
+                entries,
+                script=_script_for_mood,
+                tier_config=self._tier_config,
+                cost_tracker=getattr(self, "_cost_events", None),
+                run_dir=run_dir,
+                video_id=video_id,
+                s3_uploader=_sfx_s3_uploader,
+            )
+        except Exception as _se:
+            print(f"⚠️ SFX palette enrichment errored (non-fatal): {_se}")
+        n_stingers = (sfx_palette_counts.get("transition_whoosh", 0)
+                      + sfx_palette_counts.get("transition_riser", 0))
+
+        # ── 2. Resolve music local path (download from S3 if needed) ──
+        music_local: Optional[Path] = None
+        bgm_track = getattr(self, "_background_music_track", None)
+        if isinstance(bgm_track, dict) and bgm_track.get("url"):
+            music_local = self._download_music_for_mix(
+                bgm_track["url"], run_dir,
+            )
+            if music_local is None:
+                print(f"⚠️ Could not localize music URL — mix proceeds VO+SFX only")
+
+        # ── 2b. Beat-snap cues to music BPM (B2) ───────────────────
+        # Only trusted when the music provider follows tempo tightly.
+        # Lyria-3 does; Lyria-2 and fal-elevenlabs sound-effects do NOT
+        # — snapping cues to a wrong beat grid would shift them away
+        # from the visual event and make the mix feel worse. We gate
+        # on `provider` and narrow the window to 80ms to limit damage
+        # when BPM is off by a few BPM.
+        _bpm = (bgm_track or {}).get("bpm") if isinstance(bgm_track, dict) else None
+        _provider = (bgm_track or {}).get("provider", "") if isinstance(bgm_track, dict) else ""
+        # Trusted = Lyria 3 family (lyria-3-pro-preview etc.). The
+        # provider string may be "lyria" (resolver name) or a model id
+        # like "lyria-3-pro-preview" — accept both forms that mean Lyria 3.
+        _bpm_trusted = bool(_bpm) and (
+            "lyria-3" in _provider.lower()
+            or _provider.lower() == "lyria"  # auto-resolved → default model is lyria-3
+        )
+        if _bpm_trusted:
+            n_snapped = self._snap_cues_to_beat(entries, float(_bpm), window_s=0.08)
+            if n_snapped:
+                print(f"🥁 Beat-snap: {n_snapped} cues aligned to {_bpm:.0f} bpm")
+        elif _bpm:
+            print(f"🥁 Beat-snap skipped: provider={_provider} (BPM hint not trustworthy)")
+
+        # ── 3. Count SFX (for logging only — they are NOT mixed here) ──
+        # Architectural change (2026-05, "3b"): SFX is no longer baked
+        # into narration.mp3. We keep the cues with their S3 URLs in
+        # the timeline JSON so the editor can see + edit + remove them,
+        # and the render worker mixes them at render time from the same
+        # URLs (worker.py:170 already has working SFX+sidechain logic).
+        # Only VO + MUSIC are mixed locally — music is intentionally
+        # NOT exposed as a discrete editor track (different granularity).
+        _sfx_cue_count = 0
+        for entry in entries:
+            for cue in (entry.get("sound_cues") or []):
+                if (cue.get("url") or "").strip():
+                    _sfx_cue_count += 1
+
+        if music_local is None:
+            print(
+                f"ℹ️ Audio mix skipped — no music to bake; "
+                f"{_sfx_cue_count} SFX cues remain in timeline for worker mix"
+            )
+            return
+
+        # ── 4. Build mix spec (VO + MUSIC only — no SFX) ──────────
+        music_vol = 0.10
+        if isinstance(bgm_track, dict):
+            try:
+                music_vol = float(bgm_track.get("volume", 0.10))
+            except (TypeError, ValueError):
+                pass
+
+        try:
+            _mix_mood = _resolve_sfx_mood(script=_script_for_mood)
+        except Exception:
+            _mix_mood = "default"
+
+        spec = MixSpec(
+            vo_path=_PathL(narration_path),
+            video_duration_s=max(0.5, float(audio_duration)),
+            music_path=music_local,
+            music_volume=music_vol,
+            sfx_cues=[],       # ← SFX deliberately omitted, see comment above
+            stinger_cues=[],   # ← same
+            enable_ducking=True,  # music ducks under VO
+            enable_loudnorm=True,
+            reverb_mood=_mix_mood,
+        )
+
+        n_fresh_sfx = sum(sfx_palette_counts.values())
+        print(
+            f"🎚  Local audio mix: vo + music (no-SFX bake) "
+            f"| SFX in timeline: {_sfx_cue_count} cues "
+            f"({'fresh' if n_fresh_sfx else 'static'} palette: "
+            f"{sfx_palette_counts or 'static-lib'}) "
+            f"mood={_mix_mood}"
+        )
+
+        result = build_mix(spec, run_dir=run_dir, output_filename="final_mix.mp3")
+        if not result.ok or not result.output_path:
+            print(
+                f"⚠️ Audio mix failed (layers_used={result.layers_used}): "
+                f"{result.error[:200]}"
+            )
+            return
+
+        # ── 5. Atomic swap: final_mix.mp3 becomes the new narration ──
+        try:
+            backup_path = run_dir / "narration_unmixed.mp3"
+            if backup_path.exists():
+                backup_path.unlink()
+            _PathL(narration_path).rename(backup_path)
+            result.output_path.rename(_PathL(narration_path))
+        except OSError as _swap_err:
+            print(f"⚠️ Audio mix swap failed: {_swap_err} — reverting")
+            try:
+                if not _PathL(narration_path).exists():
+                    backup_path.rename(_PathL(narration_path))
+            except OSError:
+                pass
+            return
+
+        # ── 6. Null out the MUSIC track only ──────────────────────
+        # Music is baked into narration.mp3 — clearing the music_track
+        # prevents the render worker from double-attaching it.
+        #
+        # SFX cues stay in entries — they ARE the editor's view of SFX
+        # and the worker mixes them from their public S3 URLs.
+        self._background_music_track = None
+
+        # Cost-ledger entry for the music side.
+        try:
+            tracker = getattr(self, "_cost_events", None)
+            if tracker is not None and isinstance(bgm_track, dict):
+                tracker.record_anomaly(
+                    f"audio-mix: vo+music baked into narration. "
+                    f"layers={result.layers_used} sfx_in_timeline={_sfx_cue_count}"
+                )
+        except Exception:
+            pass
+
+        print(
+            f"✅ Audio mix complete — narration.mp3 has vo+music; "
+            f"{_sfx_cue_count} SFX cues ship in timeline for worker mix"
+        )
+
+    def _download_music_for_mix(
+        self, music_url: str, run_dir: "Path",
+    ) -> Optional["Path"]:
+        """Download a remote music URL to `run_dir/_mix_music.mp3` so the
+        local audio_mixer can read it. Returns the local Path on success
+        or None on any failure (mixer degrades to VO + SFX)."""
+        if not music_url:
+            return None
+        # Check if it's already a local path
+        from pathlib import Path as _PathL
+        p = _PathL(music_url)
+        if p.exists():
+            return p
+        if not music_url.startswith(("http://", "https://")):
+            return None
+        local = run_dir / "_mix_music.mp3"
+        try:
+            req = urllib.request.Request(
+                music_url,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if resp.status != 200:
+                    print(f"⚠️ Music download HTTP {resp.status}: {music_url[:80]}")
+                    return None
+                data = resp.read()
+            if not data or len(data) < 1024:
+                print(f"⚠️ Music download tiny ({len(data)}B): {music_url[:80]}")
+                return None
+            local.write_bytes(data)
+            return local
+        except Exception as e:
+            print(f"⚠️ Music download error: {e}")
+            return None
+
     def _check_stop(self) -> None:
         """Raise ``PipelineCancelled`` if the cooperative stop flag has been
         set by the cancel endpoint. Called at safe checkpoints — between
@@ -1898,6 +2647,17 @@ class VideoGenerationPipeline:
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
         visual_preferences: Optional[Dict[str, Any]] = None,
+        # AI video (Phase 3b): per-run opt-in, ultra+ only. Tier eligibility is
+        # gated by `QUALITY_TIERS[tier]["ai_video_eligible"]`; passing
+        # ai_video_enabled=True on an ineligible tier downgrades to False with a
+        # warning rather than failing, so the rest of the run still works.
+        ai_video_enabled: bool = False,
+        ai_video_audio_enabled: bool = False,
+        # Institute identity — used to bind the AI video ledger writer so
+        # Veo charges land as `USAGE_DEDUCTION` rows on the right institute.
+        # None ⇒ ledger writes are skipped (legacy / standalone runs that
+        # don't go through the credit-aware service entrypoint).
+        institute_id: Optional[str] = None,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
@@ -1906,6 +2666,36 @@ class VideoGenerationPipeline:
         # `self._check_stop()` without threading the parameter through every
         # call site. None disables checking entirely (legacy / tests).
         self._stop_event = stop_event
+
+        # Pillar 1 — reset per-run cost-event log so successive run() calls on
+        # the same pipeline instance don't cross-contaminate. The new tracker
+        # is re-attached to both LLM clients so events from this run land in
+        # the fresh log.
+        try:
+            from cost_event_tracker import CostEventTracker
+            self._cost_events = CostEventTracker()
+            self.script_client.cost_events = self._cost_events
+            self.html_client.cost_events = self._cost_events
+        except Exception as _ce:
+            # Observability is best-effort — never block a run on tracker init.
+            print(f"⚠️ Cost-event tracker init failed: {_ce}")
+        # ISO timestamp + video_id stashed for the final build_report() call.
+        from datetime import datetime as _dt, timezone as _tz
+        self._run_started_at = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        self._run_video_id = run_name or resume_run or "unknown"
+
+        # Pillar 2.2 — stash the RAW prompt so the Director (and ShotPlanner
+        # under v3) can re-extract the user's "VISUAL APPROACH" prose without
+        # having to thread base_prompt through every helper. The Script
+        # Writer mutates / rewords the prompt; the original prose is the
+        # source of truth for visual intent.
+        self._user_prompt_raw = base_prompt or ""
+        # Pillar 3 — placeholder for reference-asset pre-fetch results. The
+        # prefetcher populates this list after entity extraction; downstream
+        # consumers (Director / ShotPlanner) read it via `getattr`.
+        # Defaults to empty list so the no-prefetch case is a no-op.
+        if not hasattr(self, "_reference_assets") or self._reference_assets is None:
+            self._reference_assets = []
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
         self.video_height = video_height
@@ -2015,6 +2805,14 @@ class VideoGenerationPipeline:
         self._vision_review_ship_original: int = 0
         self._vision_review_issue_codes: Dict[str, int] = {}
         self._vision_review_skipped_count: int = 0  # all-cause skips (tier off, worker down, deterministic shot type, ...)
+        # Prior-shot thumbnail cache for BG_DISCONTINUITY check (rubric v3, 2026-05).
+        # Keyed by shot_idx; stores the mid-frame PNG bytes of each reviewed shot.
+        # Best-effort under parallel shot processing — if shot N-1 hasn't reviewed
+        # yet when shot N enters review, the cross-shot check is silently skipped
+        # via the `has_prior_shot_reference=False` path. Plain dict is GIL-safe
+        # for single-key get/set; if we ever serialize this across processes the
+        # access pattern will need a lock.
+        self._review_thumbnails: Dict[int, bytes] = {}
         # Banner is emitted once per run on first call to _review_shot_visually
         # so engineers can tell at a glance whether the feature is active and
         # whether the render worker is reachable. Without this, every silent
@@ -2068,6 +2866,21 @@ class VideoGenerationPipeline:
         # Cap one audio-overrun regen per video (Fix 1f).
         self._audio_regen_attempted: bool = False
 
+        # Runtime pipeline-version attribution — what actually ran for this
+        # video. v3 is always selected up front (`_pipeline_v3_enabled()`
+        # is True), but if ShotPlanner/NarrationWriter raise, the except
+        # path inside `_run_v3_shot_planning` falls back to v2 BeatPlanner→
+        # Director→segment-HTML. This flag distinguishes the two for cost
+        # forensics + audit-panel accuracy.
+        #
+        # Values:
+        #   "v3"                       — clean v3 run, ShotPlanner+NarrationWriter both succeeded
+        #   "v3_with_v2_fallback"      — v3 errored, v2 chain ran as the internal safety net
+        # cost_event_tracker.build_report() reads this; the service layer
+        # writes it to `user_selections.runtime_pipeline_version` post-run
+        # so the FE can disambiguate intent ("v3") from runtime.
+        self._v3_runtime_status: str = "v3"
+
         # Host plan (from HostPlannerService — runs in pre-script preamble).
         # When enabled=True, downstream stages branch:
         #   • script LLM       → 1st-person directive (Change 7)
@@ -2079,6 +2892,183 @@ class VideoGenerationPipeline:
         # read the same dict for the Director and per-shot HTML calls.
         # None / empty / all-auto → no behavior change anywhere downstream.
         self._visual_preferences: Dict[str, Any] = visual_preferences or {}
+
+        # ── AI video per-run state (Phase 3b) ──────────────────────────
+        # Two gates must agree to actually fire Veo: tier eligibility
+        # (`ai_video_eligible` from QUALITY_TIERS) AND per-run user opt-in
+        # (`ai_video_enabled` from the request). When the run-level flag is
+        # set but the tier is ineligible, we downgrade to False with a
+        # warning rather than rejecting the run — the user's other options
+        # are still valid, AI video just doesn't fire.
+        _tier_ai_eligible = bool(self._tier_config.get("ai_video_eligible"))
+        if ai_video_enabled and not _tier_ai_eligible:
+            print(
+                f"⚠️  ai_video_enabled=true on tier '{self._quality_tier}' which is "
+                f"not eligible — downgrading to disabled for this run. Use ultra "
+                f"or super_ultra to enable AI video."
+            )
+            ai_video_enabled = False
+            ai_video_audio_enabled = False
+        # Audio implies enabled — defensive normalization in case a caller
+        # sets audio without enabling AI video itself.
+        if ai_video_audio_enabled and not ai_video_enabled:
+            ai_video_audio_enabled = False
+        self._ai_video_run_enabled: bool = bool(ai_video_enabled)
+        self._ai_video_audio_run_enabled: bool = bool(ai_video_audio_enabled)
+        self._fal_veo_client = None
+        self._ai_video_cost_tracker = None
+        self._ai_video_ledger = None
+        if self._ai_video_run_enabled:
+            # Lazy-import the client + tracker so a run without AI video pays
+            # no import cost. Any failure here (import error, missing key)
+            # downgrades the run to non-AI rather than crash — same posture as
+            # the tier-ineligible branch above.
+            #
+            # Import paths:
+            #   - `app.services.fal_veo_client` is canonical; works when the
+            #     FastAPI server has `ai_service/` as its working dir (so
+            #     `app/` is a top-level package).
+            #   - `ai_video_orchestrator` lives inside `app/ai-video-gen-main/`
+            #     which is hyphenated and therefore NOT importable as a Python
+            #     package. The directory IS on sys.path (inserted by the
+            #     service before constructing this pipeline) so a bare
+            #     `import ai_video_orchestrator` works.
+            # Two-path import — mirrors the same pattern in
+            # `ai_video_orchestrator.py`. We need to accept BOTH:
+            #   • FastAPI server: cwd = `ai_service/`, so `app/` is a
+            #     top-level package → `app.services.fal_veo_client` works.
+            #   • Standalone runner / test harness: only `app/services/`
+            #     is on sys.path, so `app.services.*` raises
+            #     ModuleNotFoundError but a bare `fal_veo_client` works.
+            # The previous code only tried the first path, so any run
+            # outside the FastAPI server disabled AI video with a
+            # confusing error.
+            FalVeoClient = None
+            get_fal_api_key_from_env = None
+            AiVideoCostTracker = None
+            _imp_err: Optional[Exception] = None
+            try:
+                from app.services.fal_veo_client import (  # type: ignore
+                    FalVeoClient, get_fal_api_key_from_env,
+                )
+            except (ModuleNotFoundError, ImportError) as _err1:
+                try:
+                    from fal_veo_client import (  # type: ignore[no-redef]
+                        FalVeoClient, get_fal_api_key_from_env,
+                    )
+                except (ModuleNotFoundError, ImportError) as _err2:
+                    # Path 3 — direct file load from the known relative location.
+                    # `app/services/` may not be on sys.path at all (only
+                    # `app/ai-video-gen-main/` is, for the orchestrator). We
+                    # know this file's location, so compute the sibling
+                    # `services/fal_veo_client.py` path and load it via
+                    # importlib. Register the loaded module in `sys.modules`
+                    # under both names so the subsequent
+                    # `from app.services.fal_veo_client import …` in
+                    # `ai_video_orchestrator.py` (and `ai_video_composer.py`)
+                    # also succeeds — otherwise the pipeline init passes but
+                    # the orchestrator's per-shot runtime imports re-fail.
+                    import importlib.util as _ilu
+                    import sys as _sys
+                    from pathlib import Path as _Path
+                    _err3: Optional[Exception] = None
+                    try:
+                        _this_file = _Path(__file__).resolve()
+                        # this file lives in app/ai-video-gen-main/, sibling
+                        # of app/services/. Two parents up + services/ +
+                        # fal_veo_client.py is the canonical location.
+                        _fal_path = _this_file.parent.parent / "services" / "fal_veo_client.py"
+                        if not _fal_path.exists():
+                            raise FileNotFoundError(str(_fal_path))
+                        _spec = _ilu.spec_from_file_location(
+                            "fal_veo_client", _fal_path
+                        )
+                        if _spec is None or _spec.loader is None:
+                            raise ImportError(f"spec_from_file_location returned None for {_fal_path}")
+                        _mod = _ilu.module_from_spec(_spec)
+                        # Register BEFORE exec so any internal self-reference
+                        # resolves. Also alias under `app.services.fal_veo_client`
+                        # so future `from app.services.fal_veo_client import …`
+                        # works without re-loading.
+                        _sys.modules["fal_veo_client"] = _mod
+                        _sys.modules["app.services.fal_veo_client"] = _mod
+                        _spec.loader.exec_module(_mod)
+                        FalVeoClient = _mod.FalVeoClient
+                        get_fal_api_key_from_env = _mod.get_fal_api_key_from_env
+                        print(
+                            f"   ℹ️  fal_veo_client loaded from disk: {_fal_path}"
+                        )
+                    except Exception as _err3_:
+                        _err3 = _err3_
+                        # Surface ALL THREE paths' errors so debugging shows
+                        # everything that was tried.
+                        _imp_err = _err3
+                        print(
+                            f"⚠️  AI video enabled but fal_veo_client import failed:"
+                            f"\n      tried `app.services.fal_veo_client` → {type(_err1).__name__}: {_err1}"
+                            f"\n      tried `fal_veo_client`              → {type(_err2).__name__}: {_err2}"
+                            f"\n      tried direct file load              → {type(_err3).__name__}: {_err3}"
+                            f"\n      hint: ensure ai_service/app/services/fal_veo_client.py exists,"
+                            f"\n            or that ai_service/ is on sys.path"
+                            f"\n      disabling AI video."
+                        )
+                        self._ai_video_run_enabled = False
+                        self._ai_video_audio_run_enabled = False
+            if _imp_err is None and self._ai_video_run_enabled:
+                try:
+                    from ai_video_orchestrator import AiVideoCostTracker
+                except (ModuleNotFoundError, ImportError) as _err3:
+                    print(
+                        f"⚠️  AI video enabled but ai_video_orchestrator "
+                        f"import failed ({type(_err3).__name__}: {_err3}); "
+                        f"hint: ai_service/app/ai-video-gen-main/ must be on "
+                        f"sys.path. Disabling AI video."
+                    )
+                    self._ai_video_run_enabled = False
+                    self._ai_video_audio_run_enabled = False
+            if self._ai_video_run_enabled:
+                _fal_key = get_fal_api_key_from_env()
+                if not _fal_key:
+                    print("⚠️  AI video enabled but FAL_API_KEY is not set; disabling.")
+                    self._ai_video_run_enabled = False
+                    self._ai_video_audio_run_enabled = False
+                else:
+                    self._fal_veo_client = FalVeoClient(_fal_key)
+                    _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
+                    self._ai_video_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+                    # Credit ledger writer. Bound to (institute_id, run_name)
+                    # — every Veo charge from this run lands as a
+                    # USAGE_DEDUCTION row with batch_id=run_name, so the
+                    # existing `refund_video_credits(video_id)` net-zeros
+                    # on pipeline-level failure without any change there.
+                    # Disabled (no-op) when institute_id is None.
+                    self._ai_video_ledger = None
+                    try:
+                        from app.services.ai_video_ledger import AiVideoLedger
+                        self._ai_video_ledger = AiVideoLedger(
+                            institute_id=institute_id,
+                            video_id=run_name,
+                        )
+                        if self._ai_video_ledger.enabled:
+                            print(
+                                f"💳 AI video credit ledger enabled "
+                                f"(institute={institute_id}, video_id={run_name})"
+                            )
+                        else:
+                            print(
+                                "⚠️  AI video credit ledger disabled "
+                                "(missing institute_id or video_id)"
+                            )
+                    except ImportError as _led_err:
+                        print(
+                            f"⚠️  AI video ledger import failed ({_led_err}); "
+                            f"Veo charges will not land in credit_transactions."
+                        )
+                    print(
+                        f"🎬 AI video enabled (tier={self._quality_tier}, audio="
+                        f"{'on' if self._ai_video_audio_run_enabled else 'off'}, "
+                        f"cap=${_cap:.2f})"
+                    )
 
         # When enabled=False (default): pipeline behaves identically to today.
         self._host_plan: Dict[str, Any] = host_plan or {}
@@ -2503,138 +3493,298 @@ class VideoGenerationPipeline:
         if do_script:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
-            print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
-            self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
-                                  "message": "Writing script..."})
-            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
-            script_plan = script_out["result"]
-            _script_usage = script_out.get("usage", {})
-            accumulate_usage(_script_usage)
 
-            # Word-budget validation: cheap planners often ignore the duration
-            # cap in the prompt. Validate after the draft and regen once if
-            # over budget by >15%. Skipped when user-authored (verbatim takes
-            # priority over duration matching).
-            if (
-                content_type == "VIDEO"
-                and not getattr(self, "_user_had_script", False)
-            ):
+            # Pre-parse target_duration → seconds so BeatPlanner (which runs
+            # BEFORE the script-budget validation block at line ~2700 that
+            # also computes this) gets the actual user-requested duration
+            # rather than the 150s fallback. The full validation block below
+            # still runs for the post-script word-count check; this is just
+            # an earlier read of the same target_duration string.
+            try:
+                import re as _re_dur_pre
+                _td_lo_pre = (target_duration or "").lower().strip()
+                _nums_pre = [float(n) for n in _re_dur_pre.findall(r"[\d.]+", _td_lo_pre)]
+                if _nums_pre:
+                    if "second" in _td_lo_pre:
+                        _pre_target_s = sum(_nums_pre) / len(_nums_pre)
+                    else:
+                        _pre_target_s = (sum(_nums_pre) / len(_nums_pre)) * 60.0
+                    self._target_seconds = float(_pre_target_s)
+            except Exception:
+                pass  # validation block below will fill in a safe default
+
+            # ── v3 dispatch (ShotPlanner-first) ──────────────────────
+            # v3 is the only supported pipeline (v2 deprecated). Populates
+            # `script_plan` from ShotPlanner + NarrationWriter output,
+            # persists `shot_plan.json`, and short-circuits the v2
+            # BeatPlanner + _draft_script + reviews + bridge below via
+            # `_v3_done=True`. On v3 LLM failure, the except path falls
+            # through to the v2 chain as an internal safety-net only —
+            # not user-selectable.
+            _v3_done = False
+            self._v3_shot_plan = None  # cleared every script-stage entry
+            if self._pipeline_v3_enabled():
+                _v3_target_s = float(getattr(self, "_target_seconds", 0) or 0)
+                if _v3_target_s <= 0:
+                    _v3_target_s = 150.0
+                # Mutable container that `_run_v3_shot_planning` writes into
+                # phase-by-phase. If NarrationWriter raises after ShotPlanner
+                # already incurred real LLM cost, the caller can still bill
+                # the institute by reading this dict — without it the
+                # ShotPlanner tokens would be silently dropped.
+                _v3_partial_usage: Dict[str, Any] = {}
                 try:
-                    import re as _re_dur
-                    # Parse target_duration → seconds (mirrors _derive_pacing_style).
-                    _td_lower = (target_duration or "").lower().strip()
-                    _nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _td_lower)]
-                    if _nums:
-                        if "second" in _td_lower:
-                            _target_seconds = sum(_nums) / len(_nums)
-                        else:
-                            _target_seconds = (sum(_nums) / len(_nums)) * 60.0
-                    else:
-                        _target_seconds = 150.0  # 2.5min fallback
-                    # Stash for the audio-overrun safety net at TTS time
-                    # (Fix 1f) — needs target_seconds + the resolved wps.
-                    self._target_seconds = float(_target_seconds)
-
-                    # Pull script text out of various shapes.
-                    _draft_text = ""
-                    if isinstance(script_plan, dict):
-                        _draft_text = (
-                            script_plan.get("script_text")
-                            or (script_plan.get("plan") or {}).get("script")
-                            or ""
-                        )
-                    _word_count = len(str(_draft_text).split())
-                    # Per-voice WPS so Sarvam Indian voices (~1.55 wps) don't
-                    # get a 2.6-wps script. Falls through provider-default →
-                    # 2.0 global default for unknown voices.
-                    _wps_for_budget = _resolve_voice_wps(
-                        getattr(self, "_tts_provider_resolved", None) or self._tts_provider,
-                        getattr(self, "_tts_voice_id_resolved", None) or self._tts_voice_id,
+                    print(f"🆕 Pipeline v3 — ShotPlanner-first ({run_dir.name}) [{_v3_target_s:.0f}s target]")
+                    _v3_script_plan, _v3_shot_plan_dict, _v3_usage = self._run_v3_shot_planning(
+                        base_prompt,
+                        run_dir,
+                        target_duration_s=_v3_target_s,
+                        target_audience=target_audience,
+                        language=language,
+                        content_type=content_type,
+                        partial_usage=_v3_partial_usage,
                     )
-                    _voice_label_log = (
-                        f"{getattr(self, '_tts_provider_resolved', None) or self._tts_provider}"
-                        f":{getattr(self, '_tts_voice_id_resolved', None) or self._tts_voice_id or '_default'}"
-                    )
-                    _target_words = max(20, int(_target_seconds * _wps_for_budget))
-                    _budget_max = int(_target_words * 1.15)
+                    script_plan = _v3_script_plan
+                    accumulate_usage(_v3_usage)
+                    _v3_done = True
                     print(
-                        f"📏 Script word-count check: {_word_count} words / "
-                        f"{_target_words} target ({int(_target_seconds)}s × {_wps_for_budget:.2f} wps × 1.15 cap = {_budget_max}) "
-                        f"[voice={_voice_label_log}]"
+                        f"✅ Pipeline v3 complete — {len(_v3_shot_plan_dict.get('shots') or [])} shots, "
+                        f"{_v3_usage.get('prompt_tokens', 0) + _v3_usage.get('completion_tokens', 0)} tokens"
                     )
-                    if _word_count > _budget_max:
-                        # Regen once with an explicit cut directive prepended.
-                        _cut_to = max(20, int(_target_words * 0.95))
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "script_done",
+                        "message": "Shot plan + narration ready (v3)",
+                        "token_delta": {
+                            "prompt_tokens": _v3_usage.get("prompt_tokens", 0),
+                            "completion_tokens": _v3_usage.get("completion_tokens", 0),
+                        },
+                        "cumulative_tokens": dict(total_usage),
+                    })
+                except Exception as _v3_err:
+                    print(
+                        f"⚠️ Pipeline v3 failed "
+                        f"({type(_v3_err).__name__}: {_v3_err}) — falling back to v2"
+                    )
+                    self._v3_shot_plan = None  # html stage must NOT think v3 succeeded
+                    # Mark runtime as v2-fallback so cost events + audit panel
+                    # accurately reflect what actually ran. Cleared back to
+                    # "v3" only by a successful re-run; a partial-failed run
+                    # stays flagged forever (correct attribution).
+                    self._v3_runtime_status = "v3_with_v2_fallback"
+                    # Bill whatever LLM work completed before the failure so
+                    # we don't silently eat ShotPlanner cost on NarrationWriter
+                    # parse failures.
+                    _partial_tokens = (
+                        int(_v3_partial_usage.get("prompt_tokens", 0) or 0)
+                        + int(_v3_partial_usage.get("completion_tokens", 0) or 0)
+                    )
+                    if _partial_tokens > 0:
+                        accumulate_usage(_v3_partial_usage)
                         print(
-                            f"⚠️ Script over budget ({_word_count} > {_budget_max}). "
-                            f"Regenerating with hard cap = {_cut_to} words (Fix J)."
+                            f"   📊 Charged partial v3 usage to institute: "
+                            f"{_partial_tokens} tokens "
+                            f"(prompt={_v3_partial_usage.get('prompt_tokens', 0)}, "
+                            f"completion={_v3_partial_usage.get('completion_tokens', 0)})"
                         )
-                        _retry_prompt = (
-                            f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
-                            f"was {_word_count} words for a {int(_target_seconds)}s target — "
-                            f"that exceeds the duration budget. The TTS voice for this run "
-                            f"({_voice_label_log}) paces at ~{_wps_for_budget:.2f} words/sec, "
-                            f"so {_word_count} words renders ~{_word_count / max(_wps_for_budget, 0.1):.0f}s of audio. "
-                            f"Rewrite the narration with a HARD CAP of {_cut_to} words. "
-                            f"Cut filler, examples, and any sentence that doesn't directly "
-                            f"serve the core message. Quality over quantity.\n\n"
-                            f"---\n\n{base_prompt}"
+
+            # ── BeatPlanner (Phase 1, opt-in) ─────────────────────────
+            # When `beat_planner_enabled` is set on the tier, run an explicit
+            # beat-planning LLM call BEFORE Script Generator. The beats land
+            # on `self._beats_v2_plan` for telemetry + future Director
+            # consumption. Script Generator still owns narration writing
+            # this round — full BeatPlanner-as-input refactor is deferred.
+            # Failure is non-fatal: log and continue (legacy Script
+            # Generator path remains the source of truth).
+            #
+            # Gated on `not _v3_done`: when v3 succeeds, BeatPlanner is
+            # redundant (its duty is folded into ShotPlanner's prompt).
+            self._beats_v2_plan = None
+            if not _v3_done and self._tier_config.get("beat_planner_enabled"):
+                try:
+                    from beat_planner import plan_beats, BeatPlanError
+                    self._emit_progress({"type": "sub_stage", "sub_stage": "beats_planning",
+                                          "message": "Planning beats from intent..."})
+                    # Target duration was pre-parsed above; fall through to
+                    # 150s default only if parsing failed (malformed input).
+                    _bp_target_s = float(getattr(self, "_target_seconds", 0) or 0)
+                    if _bp_target_s <= 0:
+                        _bp_target_s = 150.0  # 2.5min default — matches script-budget fallback
+                    _bp_result = plan_beats(
+                        prompt=base_prompt,
+                        target_duration_s=_bp_target_s,
+                        target_audience=target_audience,
+                        language=language,
+                        content_type=content_type,
+                        tier=self._quality_tier,
+                        llm_chat=self.script_client.chat,
+                        visual_preferences=getattr(self, "_visual_preferences", None) or None,
+                        ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
+                    )
+                    self._beats_v2_plan = _bp_result
+                    accumulate_usage(_bp_result.get("usage", {}) or {})
+                    _beats_count = len(_bp_result.get("beats") or [])
+                    print(f"📊 BeatPlanner: {_beats_count} beats planned ({_bp_target_s:.0f}s target)")
+                    # Persist to run_dir for resume / debugging. Beats are a
+                    # planning artifact, not load-bearing for the legacy
+                    # script path, so write failure is non-fatal.
+                    try:
+                        (run_dir / "beats_v2.json").write_text(
+                            json.dumps({
+                                "beats": _bp_result.get("beats") or [],
+                                "wpm": _bp_result.get("wpm"),
+                                "usage": _bp_result.get("usage") or {},
+                            }, indent=2),
+                            encoding="utf-8",
                         )
-                        try:
-                            _retry_out = self._draft_script(
-                                _retry_prompt, run_dir,
-                                language=language,
-                                target_audience=target_audience,
-                                target_duration=target_duration,
-                                content_type=content_type,
-                            )
-                            _retry_plan = _retry_out.get("result")
-                            _retry_usage = _retry_out.get("usage", {})
-                            accumulate_usage(_retry_usage)
-                            # Validate the retry — if it's STILL over, ship it
-                            # anyway (avoid infinite regen loops). Log the result.
-                            _retry_text = ""
-                            if isinstance(_retry_plan, dict):
-                                _retry_text = (
-                                    _retry_plan.get("script_text")
-                                    or (_retry_plan.get("plan") or {}).get("script")
-                                    or ""
-                                )
-                            _retry_words = len(str(_retry_text).split())
-                            print(
-                                f"📏 Script regen result: {_retry_words} words "
-                                f"(was {_word_count}, cap {_budget_max})."
-                            )
-                            if _retry_plan and _retry_words <= _budget_max:
-                                script_plan = _retry_plan
-                            elif _retry_plan and _retry_words < _word_count:
-                                # Improved but still over — keep the better version.
-                                script_plan = _retry_plan
-                                print("⚠️ Retry still over budget but improved; using retry version.")
+                    except Exception:
+                        pass
+                    self._emit_progress({"type": "sub_stage", "sub_stage": "beats_done",
+                                          "message": f"Planned {_beats_count} beats",
+                                          "beat_count": _beats_count})
+                except BeatPlanError as _bp_err:
+                    print(f"   ⚠️ BeatPlanner failed ({_bp_err}); falling through to legacy script path")
+                except Exception as _bp_err:
+                    print(f"   ⚠️ BeatPlanner skipped ({type(_bp_err).__name__}: {_bp_err})")
+
+            # ── v2: monolithic ScriptGenerator + word-budget validation ──
+            # Skipped when v3 already populated `script_plan` from
+            # ShotPlanner + NarrationWriter above (the new path doesn't
+            # need a separate script LLM call).
+            if not _v3_done:
+                print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
+                self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
+                                      "message": "Writing script..."})
+                script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
+                script_plan = script_out["result"]
+                _script_usage = script_out.get("usage", {})
+                accumulate_usage(_script_usage)
+
+                # Word-budget validation: cheap planners often ignore the duration
+                # cap in the prompt. Validate after the draft and regen once if
+                # over budget by >15%. Skipped when user-authored (verbatim takes
+                # priority over duration matching).
+                if (
+                    content_type == "VIDEO"
+                    and not getattr(self, "_user_had_script", False)
+                ):
+                    try:
+                        import re as _re_dur
+                        # Parse target_duration → seconds (mirrors _derive_pacing_style).
+                        _td_lower = (target_duration or "").lower().strip()
+                        _nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _td_lower)]
+                        if _nums:
+                            if "second" in _td_lower:
+                                _target_seconds = sum(_nums) / len(_nums)
                             else:
-                                print("⚠️ Retry failed to improve; keeping original draft.")
-                        except Exception as _retry_err:
-                            print(f"⚠️ Word-budget regen failed (non-fatal): {_retry_err}")
-                    else:
-                        print(f"✅ Script within budget ({_word_count} ≤ {_budget_max} words).")
-                except Exception as _wb_err:
-                    print(f"⚠️ Word-budget validation failed (non-fatal): {_wb_err}")
-            self._emit_progress({
-                "type": "sub_stage", "sub_stage": "script_done",
-                "message": "Script ready",
-                "token_delta": {
-                    "prompt_tokens": _script_usage.get("prompt_tokens", 0),
-                    "completion_tokens": _script_usage.get("completion_tokens", 0),
-                },
-                "cumulative_tokens": dict(total_usage),
-            })
+                                _target_seconds = (sum(_nums) / len(_nums)) * 60.0
+                        else:
+                            _target_seconds = 150.0  # 2.5min fallback
+                        # Stash for the audio-overrun safety net at TTS time
+                        # (Fix 1f) — needs target_seconds + the resolved wps.
+                        self._target_seconds = float(_target_seconds)
+
+                        # Pull script text out of various shapes.
+                        _draft_text = ""
+                        if isinstance(script_plan, dict):
+                            _draft_text = (
+                                script_plan.get("script_text")
+                                or (script_plan.get("plan") or {}).get("script")
+                                or ""
+                            )
+                        _word_count = len(str(_draft_text).split())
+                        # Per-voice WPS so Sarvam Indian voices (~1.55 wps) don't
+                        # get a 2.6-wps script. Falls through provider-default →
+                        # 2.0 global default for unknown voices.
+                        _wps_for_budget = _resolve_voice_wps(
+                            getattr(self, "_tts_provider_resolved", None) or self._tts_provider,
+                            getattr(self, "_tts_voice_id_resolved", None) or self._tts_voice_id,
+                        )
+                        _voice_label_log = (
+                            f"{getattr(self, '_tts_provider_resolved', None) or self._tts_provider}"
+                            f":{getattr(self, '_tts_voice_id_resolved', None) or self._tts_voice_id or '_default'}"
+                        )
+                        _target_words = max(20, int(_target_seconds * _wps_for_budget))
+                        _budget_max = int(_target_words * 1.15)
+                        print(
+                            f"📏 Script word-count check: {_word_count} words / "
+                            f"{_target_words} target ({int(_target_seconds)}s × {_wps_for_budget:.2f} wps × 1.15 cap = {_budget_max}) "
+                            f"[voice={_voice_label_log}]"
+                        )
+                        if _word_count > _budget_max:
+                            # Regen once with an explicit cut directive prepended.
+                            _cut_to = max(20, int(_target_words * 0.95))
+                            print(
+                                f"⚠️ Script over budget ({_word_count} > {_budget_max}). "
+                                f"Regenerating with hard cap = {_cut_to} words (Fix J)."
+                            )
+                            _retry_prompt = (
+                                f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
+                                f"was {_word_count} words for a {int(_target_seconds)}s target — "
+                                f"that exceeds the duration budget. The TTS voice for this run "
+                                f"({_voice_label_log}) paces at ~{_wps_for_budget:.2f} words/sec, "
+                                f"so {_word_count} words renders ~{_word_count / max(_wps_for_budget, 0.1):.0f}s of audio. "
+                                f"Rewrite the narration with a HARD CAP of {_cut_to} words. "
+                                f"Cut filler, examples, and any sentence that doesn't directly "
+                                f"serve the core message. Quality over quantity.\n\n"
+                                f"---\n\n{base_prompt}"
+                            )
+                            try:
+                                _retry_out = self._draft_script(
+                                    _retry_prompt, run_dir,
+                                    language=language,
+                                    target_audience=target_audience,
+                                    target_duration=target_duration,
+                                    content_type=content_type,
+                                )
+                                _retry_plan = _retry_out.get("result")
+                                _retry_usage = _retry_out.get("usage", {})
+                                accumulate_usage(_retry_usage)
+                                # Validate the retry — if it's STILL over, ship it
+                                # anyway (avoid infinite regen loops). Log the result.
+                                _retry_text = ""
+                                if isinstance(_retry_plan, dict):
+                                    _retry_text = (
+                                        _retry_plan.get("script_text")
+                                        or (_retry_plan.get("plan") or {}).get("script")
+                                        or ""
+                                    )
+                                _retry_words = len(str(_retry_text).split())
+                                print(
+                                    f"📏 Script regen result: {_retry_words} words "
+                                    f"(was {_word_count}, cap {_budget_max})."
+                                )
+                                if _retry_plan and _retry_words <= _budget_max:
+                                    script_plan = _retry_plan
+                                elif _retry_plan and _retry_words < _word_count:
+                                    # Improved but still over — keep the better version.
+                                    script_plan = _retry_plan
+                                    print("⚠️ Retry still over budget but improved; using retry version.")
+                                else:
+                                    print("⚠️ Retry failed to improve; keeping original draft.")
+                            except Exception as _retry_err:
+                                print(f"⚠️ Word-budget regen failed (non-fatal): {_retry_err}")
+                        else:
+                            print(f"✅ Script within budget ({_word_count} ≤ {_budget_max} words).")
+                    except Exception as _wb_err:
+                        print(f"⚠️ Word-budget validation failed (non-fatal): {_wb_err}")
+                self._emit_progress({
+                    "type": "sub_stage", "sub_stage": "script_done",
+                    "message": "Script ready",
+                    "token_delta": {
+                        "prompt_tokens": _script_usage.get("prompt_tokens", 0),
+                        "completion_tokens": _script_usage.get("completion_tokens", 0),
+                    },
+                    "cumulative_tokens": dict(total_usage),
+                })
 
             # Two-pass script review (Premium/Ultra tiers).
             # Skipped when the user supplied an explicit script — the review LLM
             # rewrites narration into "marketing-friendly" copy, which destroys
             # the user's verbatim text. User-authored mode is detected at
             # _draft_script time and surfaced via self._user_had_script.
-            if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
+            # Also skipped on v3: ShotPlanner+NarrationWriter already produce
+            # the final per-shot narration; a second review pass is redundant.
+            if not _v3_done and self._tier_config.get("two_pass_script") and content_type == "VIDEO":
                 if getattr(self, "_user_had_script", False):
                     print(
                         "✋ Skipping two-pass script review — user-authored prompt detected, "
@@ -2652,6 +3802,72 @@ class VideoGenerationPipeline:
                             script_plan["plan"],
                             script_plan.get("script_text", ""),
                         )
+
+            # ── BeatPlanner → Director bridge (v2) ─────────────────────
+            # When BeatPlanner ran successfully (above, before _draft_script),
+            # enrich script_plan.beat_outline with v2 planning fields
+            # (`duration_estimate_s`, `intent_role`, `narration_hint`) so the
+            # Director plans shots informed by beat-level pacing. The script
+            # text the TTS speaks still comes from _draft_script — beats are
+            # a planning frame, not the narration source.
+            #
+            # Strategy: MERGE when beat counts match (preserve Script's
+            # `visual_idea` / `emotion` / `key_terms` richness); OVERRIDE
+            # only when counts diverge (BeatPlanner is then the planning
+            # source of truth since the Script's outline can't be aligned).
+            if getattr(self, "_beats_v2_plan", None):
+                try:
+                    from beat_planner import to_script_plan_beat_outline
+                    _v2_outline = to_script_plan_beat_outline(
+                        self._beats_v2_plan.get("beats") or []
+                    )
+                    if _v2_outline:
+                        if not isinstance(script_plan.get("plan"), dict):
+                            script_plan["plan"] = {}
+                        _script_outline = script_plan["plan"].get("beat_outline") or []
+                        _v2_only_keys = (
+                            "duration_estimate_s",
+                            "intent_role",
+                            "narration_hint",
+                        )
+                        if (
+                            isinstance(_script_outline, list)
+                            and len(_script_outline) == len(_v2_outline)
+                        ):
+                            # MERGE path — zip per index, keep Script's rich
+                            # fields, layer v2 fields on top.
+                            merged: List[Dict[str, Any]] = []
+                            for s_beat, v_beat in zip(_script_outline, _v2_outline):
+                                if not isinstance(s_beat, dict):
+                                    s_beat = {}
+                                m = dict(s_beat)
+                                for k in _v2_only_keys:
+                                    if k in v_beat:
+                                        m[k] = v_beat[k]
+                                # Backfill visual_type when Script's was blank.
+                                if not (m.get("visual_type") or "").strip():
+                                    vt = (v_beat.get("visual_type") or "").strip()
+                                    if vt:
+                                        m["visual_type"] = vt
+                                merged.append(m)
+                            script_plan["plan"]["beat_outline"] = merged
+                            print(
+                                f"📊 BeatPlanner bridge: merged v2 fields into "
+                                f"{len(merged)} script beats"
+                            )
+                        else:
+                            # OVERRIDE path — counts diverged. Use v2 outline
+                            # as the planning frame; Director adapts.
+                            script_plan["plan"]["beat_outline"] = _v2_outline
+                            print(
+                                f"📊 BeatPlanner bridge: replaced script "
+                                f"beat_outline ({len(_script_outline)} → {len(_v2_outline)} v2 beats)"
+                            )
+                except Exception as _bridge_err:
+                    print(
+                        f"   ⚠️ BeatPlanner→Director bridge failed "
+                        f"({type(_bridge_err).__name__}: {_bridge_err}) — falling back to script-generated outline"
+                    )
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -2660,19 +3876,119 @@ class VideoGenerationPipeline:
                 plan_data = json.loads(plan_path.read_text())
             else:
                 plan_data = {}
-            
+
             script_plan = {
                 "plan": plan_data,
                 "script_path": script_path,
                 "script_text": script_path.read_text(),
             }
 
+            # ── v3 resume detection ───────────────────────────────────
+            # On RESUME (do_script=False) the v3 dispatch in the do_script=True
+            # branch never fires. If the prior run was v3, `shot_plan.json` is
+            # on disk (downloaded from S3 in video_generation_service.py).
+            # Detect that here so the TTS-defer gate + html-stage Director-skip
+            # both see a consistent v3 state, regardless of which tier flags
+            # are set. Without this, free/standard v3 resumes silently fall
+            # back to monolithic TTS and the v3 shot plan is wasted.
+            _v3_resume_plan_path = run_dir / "shot_plan.json"
+            if _v3_resume_plan_path.exists():
+                try:
+                    _v3_resume_plan = json.loads(_v3_resume_plan_path.read_text())
+                    if (
+                        isinstance(_v3_resume_plan, dict)
+                        and isinstance(_v3_resume_plan.get("shots"), list)
+                        and _v3_resume_plan["shots"]
+                    ):
+                        self._v3_shot_plan = _v3_resume_plan
+                        script_plan["_v3"] = True
+                        print(
+                            f"♻️  v3 resume — loaded shot_plan.json "
+                            f"({len(_v3_resume_plan['shots'])} shots) from disk; "
+                            f"per-shot TTS will be used."
+                        )
+                except Exception as _v3r_err:
+                    print(
+                        f"⚠️ shot_plan.json read failed on resume "
+                        f"({type(_v3r_err).__name__}: {_v3r_err}) — falling back to v2 behavior"
+                    )
+
         # Content types that produce no audio (purely visual)
         NO_AUDIO_TYPES = {"SLIDES"}
 
         # Only proceed to TTS if we are not stopping before it
         if self.STAGE_INDEX["tts"] < stop_idx:
-            if do_tts:
+            # ── Phase B: v2 TTS deferral ──────────────────────────────
+            # On v2 (`tts_per_shot_enabled`) for VIDEO runs, defer all TTS
+            # work to the html stage where it can run AFTER Director plans
+            # shots. The TTS stage becomes a no-op + sub_stage signal; the
+            # html stage produces per-shot mp3s → concat → narration.mp3.
+            # Service tolerates missing narration.mp3 at TTS-stage exit
+            # (the upload loop skips missing files) AND the html-stage
+            # upload list re-uploads narration.mp3 (line 1514 of
+            # video_generation_service.py), so the external API contract
+            # is preserved: narration.mp3 lands in S3 by end-of-html-stage.
+            #
+            # Gated on (a) the run will REACH the html stage (`do_html`) so
+            # per-shot TTS actually fires, and (b) the tier runs Director
+            # (`use_director`) — free/standard tiers have no Director plan
+            # to slice narration by, so per-shot TTS has nothing to consume.
+            # Both fallbacks run the legacy monolithic _synthesize_voice.
+            # ── PHASE B DIAGNOSTIC (2026-05-14 v3) ─────────────────────
+            # Unique banner so we can verify in deployed-pod logs whether
+            # this exact code path is loaded vs a stale .pyc / older image.
+            # Prints every value the gate reads so we can see which one
+            # falsifies it. Remove once stable on prod.
+            _gate_diag = {
+                "do_tts": bool(do_tts),
+                "tts_per_shot_enabled": self._tier_config.get("tts_per_shot_enabled"),
+                "use_director": self._tier_config.get("use_director"),
+                "do_html": bool(do_html),
+                "content_type": content_type,
+                "in_NO_AUDIO_TYPES": content_type in NO_AUDIO_TYPES,
+                "quality_tier": self._quality_tier,
+                "tier_config_keys_sample": sorted(
+                    [k for k in (self._tier_config or {}).keys() if "tts" in k or "director" in k or "beat" in k]
+                ),
+            }
+            print(f"🧪 [PHASE_B v3 GATE DIAG] {_gate_diag}")
+
+            # v3 path: ShotPlanner already populated shots with narration_text.
+            # We defer TTS so per-shot synthesis runs inside the html stage
+            # (same code path as v2 deferred TTS, just reading shot.narration_text
+            # from a ShotPlanner-authored plan instead of a Director-sliced one).
+            _v3_in_play = bool(
+                isinstance(script_plan, dict) and script_plan.get("_v3")
+                and getattr(self, "_v3_shot_plan", None)
+            )
+            _v2_tts_deferred = (
+                do_tts
+                and do_html
+                and content_type == "VIDEO"
+                and content_type not in NO_AUDIO_TYPES
+                and (
+                    _v3_in_play
+                    or (
+                        self._tier_config.get("tts_per_shot_enabled")
+                        and self._tier_config.get("use_director")
+                    )
+                )
+            )
+            print(f"🧪 [PHASE_B v3 GATE RESULT] _v2_tts_deferred = {_v2_tts_deferred} (v3_in_play={_v3_in_play})")
+            if _v2_tts_deferred:
+                print("🗣️  TTS deferred to html stage (v2 per-shot path)")
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "tts_deferred",
+                    "message": "Voice recording deferred — Director picks shots first",
+                })
+                tts_outputs = {
+                    "audio_path": None,
+                    "response_json": None,
+                    "tts_character_count": 0,
+                    "deferred_to_html": True,
+                }
+            elif do_tts:
                 self._emit_progress({"type": "sub_stage", "sub_stage": "tts_generating",
                                       "message": "Generating voice narration..."})
                 tts_outputs = self._synthesize_voice(
@@ -2809,7 +4125,14 @@ class VideoGenerationPipeline:
 
         # Only proceed to WORDS if we are not stopping before it
         if self.STAGE_INDEX["words"] < stop_idx:
-            if do_words:
+            # On v2 the words derivation is also deferred — we stitch word
+            # timings out of per-shot TTS outputs during concat in the html
+            # stage. Skip _parse_timestamps cleanly; `words` stays empty and
+            # Director runs without word-snapping (already supported).
+            if do_words and tts_outputs.get("deferred_to_html"):
+                print("🔤 Word timings deferred to html stage (v2 per-shot path)")
+                word_outputs = {"words_json": None, "words_csv": None}
+            elif do_words:
                 print("🔤 Deriving word timings ...")
                 word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
             elif content_type not in NO_AUDIO_TYPES:
@@ -2848,6 +4171,10 @@ class VideoGenerationPipeline:
                 print("🎨 Designing Visual Style Guide ...")
                 # Stash script text for the Sound Planner's topic-aware palette.
                 self._current_script_text = str(script_plan.get("script_text", "") or "")
+                # Keep the full script_plan dict around for downstream
+                # audio passes that need richer fields (audio_mood, music_plan,
+                # etc.) than the raw script_text string carries.
+                self._current_script_plan = script_plan
                 style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
@@ -2866,7 +4193,9 @@ class VideoGenerationPipeline:
                 # Vision-review persistence runs before _process_stock_videos
                 # because the latter strips `_vision_review` from each entry.
                 self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
-                html_segments, stock_usage = self._process_stock_videos(html_segments)
+                # Bug 1: pass run_dir so the AI-video-on Veo rescue path can
+                # invoke `orchestrate_ai_video_shot` for stock-miss recovery.
+                html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
             else:
                 # STANDARD VIDEO FLOW
@@ -2915,6 +4244,27 @@ class VideoGenerationPipeline:
                     if _seg_audio_dur > 0:
                         print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
 
+                # ── Phase B: estimate audio_duration on v2 deferred path ──
+                # Director's call site below gates on `_seg_audio_dur > 0`.
+                # Without an estimate, Director would be skipped on every v2
+                # run. Use BeatPlanner beats' duration_estimate_s when
+                # available; otherwise fall back to self._target_seconds.
+                if _seg_audio_dur <= 0 and tts_outputs.get("deferred_to_html"):
+                    _bp_plan = getattr(self, "_beats_v2_plan", None)
+                    if _bp_plan and (_bp_plan.get("beats") or []):
+                        try:
+                            _seg_audio_dur = sum(
+                                float(b.get("duration_estimate_s") or 0.0)
+                                for b in _bp_plan["beats"]
+                            )
+                        except Exception:
+                            _seg_audio_dur = 0.0
+                    if _seg_audio_dur <= 0:
+                        _seg_audio_dur = float(getattr(self, "_target_seconds", 0) or 0.0)
+                    if _seg_audio_dur <= 0:
+                        _seg_audio_dur = 30.0  # last-ditch — keep Director firing
+                    print(f"   ℹ️  Estimated audio duration (v2 pre-TTS): {_seg_audio_dur:.1f}s")
+
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
                 max_segments = getattr(self, '_max_segments', 12)
@@ -2946,9 +4296,25 @@ class VideoGenerationPipeline:
                             glossary.append({"term": term, "time": seg["start"]})
                 self._current_glossary = glossary
 
+                # ── Phase B v3 segment-derivation tolerance ──────────────
+                # On the Phase B path (TTS deferred to HTML stage), `words`
+                # is empty at this point so `_segment_words` returns []. But
+                # segments aren't actually used when a Director plan exists
+                # — they're the legacy fallback for free/standard tiers.
+                # Don't crash here: Director will run shortly and produce
+                # the real shot plan. If Director ALSO fails, the v2 fallback
+                # path (monolithic TTS + segment regen) at line ~3678 will
+                # rebuild segments from real words.
+                _phase_b_deferred = tts_outputs.get("deferred_to_html") is True
                 if not segments:
-                    raise RuntimeError("Failed to derive segments from narration.")
-                
+                    if _phase_b_deferred and self._tier_config.get("use_director"):
+                        print(
+                            f"   ℹ️  Phase B path: skipping empty-segments check "
+                            f"(words deferred — Director will produce the shot plan)"
+                        )
+                    else:
+                        raise RuntimeError("Failed to derive segments from narration.")
+
                 print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
 
                 # ── Pipelined HTML + image generation ─────────────────────────────────
@@ -3008,6 +4374,22 @@ class VideoGenerationPipeline:
                                 img_source_e = source_match_e.group(1).lower()
                             provider_match_e = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                             stock_provider_e = provider_match_e.group(1).lower() if provider_match_e else ""
+
+                            # Fix 2 + Fix 3: auto-bind to brand asset or
+                            # Pillar-3 prefetched URL when the prompt warrants it.
+                            # See `_maybe_bind_tag_to_reference` docstring.
+                            _bound_tag_e, _bound_src_e, _bound_url_e, _bind_label_e = (
+                                self._maybe_bind_tag_to_reference(full_tag, prompt_e, img_source_e)
+                            )
+                            _reference_url_e = ""
+                            if _bind_label_e:
+                                print(
+                                    f"    🏷️  Auto-bound (early-pipeline, {_bind_label_e}): "
+                                    f"{prompt_e[:50]} → {_bound_url_e[:80]}"
+                                )
+                                full_tag = _bound_tag_e
+                                img_source_e = _bound_src_e
+                                _reference_url_e = _bound_url_e
                             task_e = {
                                 "entry": entry,
                                 "full_tag": full_tag,
@@ -3015,6 +4397,7 @@ class VideoGenerationPipeline:
                                 "seg_idx": id(entry),
                                 "img_source": img_source_e,
                                 "stock_provider": stock_provider_e,
+                                "reference_url": _reference_url_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
                             with _early_image_lock:
@@ -3028,7 +4411,61 @@ class VideoGenerationPipeline:
                 # generate HTML per-shot with focused prompts. Falls back to
                 # segment-based flow on failure.
                 _director_plan = None
-                if self._tier_config.get("use_director") and content_type == "VIDEO":
+
+                # v3 short-circuit: ShotPlanner already produced the shot plan
+                # during the script stage. Use it directly — skip Director entirely.
+                # Resume parity: also try to load `shot_plan.json` from disk
+                # so a v3 run that crashed mid-html can pick up where it left off.
+                _v3_plan_in_memory = getattr(self, "_v3_shot_plan", None)
+                _v3_plan_on_disk = None
+                if _v3_plan_in_memory is None and content_type == "VIDEO":
+                    _shot_plan_ckpt = run_dir / "shot_plan.json"
+                    if _shot_plan_ckpt.exists():
+                        try:
+                            _candidate = json.loads(_shot_plan_ckpt.read_text())
+                            if (
+                                isinstance(_candidate, dict)
+                                and isinstance(_candidate.get("shots"), list)
+                                and _candidate["shots"]
+                            ):
+                                _v3_plan_on_disk = _candidate
+                        except Exception as _ck_err:
+                            print(f"⚠️ shot_plan.json checkpoint unreadable: {_ck_err}")
+                _active_v3_plan = _v3_plan_in_memory or _v3_plan_on_disk
+                if _active_v3_plan and content_type == "VIDEO":
+                    _director_plan = _active_v3_plan
+                    # Defensive: run AudioPolicyPlanner to fill in any missing
+                    # audio_policy on resume-loaded plans (idempotent).
+                    try:
+                        from audio_policy_planner import plan_audio_policy
+                        plan_audio_policy(
+                            _director_plan["shots"],
+                            ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                            mute_tts_on_source_clips=getattr(self, "_mute_tts_on_source_clips", False),
+                        )
+                    except Exception as _ap_err:
+                        print(f"   ⚠️ AudioPolicyPlanner normalize failed on v3 plan ({_ap_err})")
+                    # Cache back for any later html-stage reads.
+                    self._v3_shot_plan = _director_plan
+                    _src = "memory" if _v3_plan_in_memory else "shot_plan.json checkpoint"
+                    print(f"♻️  Using v3 shot plan from {_src} ({len(_director_plan['shots'])} shots) — Director skipped")
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "director_done",
+                        "message": f"Shot plan from v3 ({len(_director_plan['shots'])} shots)",
+                        "shot_count": len(_director_plan["shots"]),
+                        "from_checkpoint": _v3_plan_in_memory is None,
+                        "v3": True,
+                        "shots_summary": [
+                            {"shot_index": s.get("shot_index", i),
+                             "shot_type": s.get("shot_type", ""),
+                             "duration_s": round(float(s.get("end_time", 0) or 0) - float(s.get("start_time", 0) or 0), 2),
+                             "start_time": s.get("start_time", 0),
+                             "end_time": s.get("end_time", 0),
+                             "narration_excerpt": (s.get("narration_text") or s.get("narration_excerpt") or "")[:80]}
+                            for i, s in enumerate(_director_plan["shots"])
+                        ],
+                    })
+                if _director_plan is None and self._tier_config.get("use_director") and content_type == "VIDEO":
                     # Checkpoint: load existing Director plan on resume (avoids re-running 2 LLM calls)
                     _director_ckpt = run_dir / "director_plan.json"
                     if _director_ckpt.exists():
@@ -3036,6 +4473,24 @@ class VideoGenerationPipeline:
                             _ckpt_plan = json.loads(_director_ckpt.read_text())
                             if _ckpt_plan and _ckpt_plan.get("shots"):
                                 _director_plan = _ckpt_plan
+                                # Resume parity: also run AudioPolicyPlanner on
+                                # checkpoint-loaded plans, since plans saved
+                                # before this fix landed have no audio_policy
+                                # field. Idempotent — re-running on a plan
+                                # that already has audio_policy preserves it.
+                                try:
+                                    from audio_policy_planner import plan_audio_policy
+                                    plan_audio_policy(
+                                        _ckpt_plan["shots"],
+                                        ai_video_audio_enabled=getattr(
+                                            self, "_ai_video_audio_run_enabled", False
+                                        ),
+                                        mute_tts_on_source_clips=getattr(
+                                            self, "_mute_tts_on_source_clips", False
+                                        ),
+                                    )
+                                except Exception as _ap_err:
+                                    print(f"   ⚠️ AudioPolicyPlanner skipped on resume ({_ap_err})")
                                 print(f"♻️  Loaded Director plan from checkpoint ({len(_ckpt_plan['shots'])} shots)")
                                 self._emit_progress({
                                     "type": "sub_stage", "sub_stage": "director_done",
@@ -3069,6 +4524,29 @@ class VideoGenerationPipeline:
                             )
                             _dir_usage = director_usage
                             accumulate_usage(_dir_usage)
+                            # ── AudioPolicyPlanner (Phase 2a stub) ──
+                            # Bug fix: the orchestrator's audio gate reads
+                            # `shot["audio_policy"]` but no code path ever
+                            # SET this field until now — so the audio toggle
+                            # was a no-op end-to-end. Call the planner once
+                            # per Director plan to materialize the policy
+                            # decision onto every shot. Quiescent (≤50ms)
+                            # when AI video audio isn't enabled.
+                            if _director_plan and _director_plan.get("shots"):
+                                try:
+                                    from audio_policy_planner import plan_audio_policy
+                                    plan_audio_policy(
+                                        _director_plan["shots"],
+                                        ai_video_audio_enabled=getattr(
+                                            self, "_ai_video_audio_run_enabled", False
+                                        ),
+                                        mute_tts_on_source_clips=getattr(
+                                            self, "_mute_tts_on_source_clips", False
+                                        ),
+                                        log_fn=print,
+                                    )
+                                except Exception as _ap_err:
+                                    print(f"   ⚠️ AudioPolicyPlanner skipped ({_ap_err}) — defaulting all shots to narration_only")
                             if _director_plan and _director_plan.get("shots"):
                                 self._emit_progress({
                                     "type": "sub_stage", "sub_stage": "director_done",
@@ -3093,6 +4571,73 @@ class VideoGenerationPipeline:
                         else:
                             print("⚠️ Audio duration unknown — skipping Director stage")
 
+                # ── Host injection (post-hoc) ──────────────────────────────
+                # The user's host_pct config doesn't reliably flow into either:
+                #   • v3 ShotPlanner (no host_pct parameter at all)
+                #   • Resumed plans (Director was skipped — no chance to apply)
+                #   • Even fresh v2 Director output when shot_type rules
+                #     ("VIDEO_HERO stays host_present=false") zero out coverage.
+                # The injector runs against ANY shot plan (v2 or v3, fresh or
+                # cached) and stamps host_present + host_layout + host_image_prompt
+                # to meet the host_pct target. Idempotent — Director-emitted
+                # placements are preserved; we only top up missing ones.
+                if (
+                    _director_plan
+                    and _director_plan.get("shots")
+                    and self._host_enabled
+                    and self._host_type == "avatar"
+                    and self._host_pct > 0
+                ):
+                    try:
+                        from host_injector import (
+                            inject_host_presence,
+                            compute_no_host_indices_from_prompt,
+                        )
+                        _is_portrait_inj = (self.video_height or 1080) > (self.video_width or 1920)
+                        _n_shots = len(_director_plan["shots"])
+                        # Fix A — v3 ShotPlanner never populates
+                        # `_user_authored_no_host_indices` (only v2 Director's
+                        # prep does). Re-scan the base prompt here so deny-list
+                        # works regardless of which planner ran.
+                        _deny_attr = set(
+                            getattr(self, "_user_authored_no_host_indices", []) or []
+                        )
+                        _deny_scan = set(compute_no_host_indices_from_prompt(
+                            getattr(self, "_base_prompt", "") or ""
+                        ))
+                        _valid_range = set(range(_n_shots))
+                        _deny_inj = (_deny_attr | _deny_scan) & _valid_range
+                        # Per-source counts for diagnostic logging (so "why
+                        # was deny=[3] ignored?" can be traced to which input
+                        # produced it).
+                        _deny_attr_valid = _deny_attr & _valid_range
+                        _deny_scan_valid = _deny_scan & _valid_range
+                        _injected = inject_host_presence(
+                            _director_plan["shots"],
+                            host_pct=self._host_pct,
+                            is_portrait=_is_portrait_inj,
+                            no_host_indices=_deny_inj,
+                            default_host_image_prompt=(
+                                (self._host_plan.get("avatar") or {}).get("details_prompt")
+                                or None
+                            ),
+                        )
+                        _total_host = sum(
+                            1 for _s in _director_plan["shots"] if _s.get("host_present")
+                        )
+                        print(
+                            f"🎙️ Host injector: pct={self._host_pct}% "
+                            f"target_total={_total_host}/{_n_shots} shots "
+                            f"(newly_added={_injected}, "
+                            f"deny={sorted(_deny_inj) or '[]'} "
+                            f"[attr:{len(_deny_attr_valid)}, scan:{len(_deny_scan_valid)}])"
+                        )
+                    except Exception as _inj_err:
+                        # Belt-and-braces: never block render on injection
+                        # failure. AvatarBatch will skip the host stage when
+                        # no shots are marked, same as before.
+                        print(f"⚠️ Host injector errored (non-fatal): {_inj_err}")
+
                 # ── Thumbnail batch (Vimotion) ─────────────────────────────
                 # Fire 4 Seedream calls in a background daemon thread the
                 # moment the Director plan is finalised. Soft-fails; never
@@ -3113,11 +4658,154 @@ class VideoGenerationPipeline:
                             director_plan=_director_plan,
                             run_name=run_name,
                             run_dir=run_dir,
+                            # The user's raw prompt is the most authoritative
+                            # topic signal — carries cultural/regional cues
+                            # (e.g. "UPSC coaching", "Telangana farmers")
+                            # that downstream layers (script → Director →
+                            # shot prompts) often dilute. We pass it through
+                            # so the thumbnail layer can anchor both headline
+                            # and visuals to the actual topic.
+                            base_prompt=base_prompt,
                         )
                     except Exception as _tb_err:
                         print(f"   ⚠️ Could not start thumbnail batch: {_tb_err}")
 
                 if _director_plan and _director_plan.get("shots"):
+                    # ── Phase B: v2 per-shot TTS (after Director, before avatar) ──
+                    # Director plan is final and AudioPolicyPlanner has set
+                    # `audio_policy` per shot. Now produce per-shot narration
+                    # MP3s, concat into master narration.mp3, and reconcile
+                    # shot timings from the actual audio durations.
+                    # Skipped when tts_outputs already has audio_path (legacy
+                    # v1 path, or v2 resume where narration.mp3 exists on disk).
+                    if (
+                        tts_outputs.get("deferred_to_html")
+                        and content_type == "VIDEO"
+                    ):
+                        try:
+                            self._run_per_shot_tts_v2(
+                                _director_plan["shots"],
+                                run_dir,
+                                tts_outputs,
+                                language=language,
+                                voice_gender=voice_gender,
+                                tts_provider=tts_provider,
+                                voice_id=voice_id,
+                            )
+                            # Credit accounting: per-shot TTS char count is
+                            # stashed on tts_outputs by `_run_per_shot_tts_v2`;
+                            # forward to the run-level usage accumulator.
+                            _v2_chars = int(tts_outputs.get("tts_character_count") or 0)
+                            if _v2_chars > 0:
+                                accumulate_usage({"tts_character_count": _v2_chars})
+                            # Refresh words + seg_audio_dur from concat result.
+                            try:
+                                _v2_raw = tts_outputs.get("response_json")
+                                # ── Phase B v3: derive flat word list from stitched raw ──
+                                # `_concat_master_narration` writes a custom shape
+                                # `{metadata, word_entries, shot_offsets}` to narration_raw.json.
+                                # `_load_words` is a one-liner json.loads — it would return that
+                                # dict and downstream code would iterate it as strings (the keys),
+                                # blowing up later in _shot_task with
+                                # `'str' object has no attribute 'get'`. So we build a flat list
+                                # of `{word, start, end}` dicts directly from `word_entries`,
+                                # assign it to `words`, AND persist it to narration.words.json
+                                # (the legacy WORDS-stage output that downstream code expects).
+                                _flat_words: List[Dict[str, Any]] = []
+                                if _v2_raw and Path(str(_v2_raw)).exists():
+                                    try:
+                                        _words_json_path = run_dir / "narration.words.json"
+                                        _words_csv_path = run_dir / "narration.words.csv"
+                                        _stitched_raw = json.loads(
+                                            Path(str(_v2_raw)).read_text(encoding="utf-8")
+                                        )
+                                        _word_entries = _stitched_raw.get("word_entries") or []
+                                        _flat_words = [
+                                            {
+                                                "word": w.get("word", ""),
+                                                "start": float(w.get("start") or 0.0),
+                                                "end": float(w.get("end") or 0.0),
+                                            }
+                                            for w in _word_entries
+                                            if isinstance(w, dict) and w.get("word")
+                                        ]
+                                        _words_json_path.write_text(
+                                            json.dumps(_flat_words, ensure_ascii=False),
+                                            encoding="utf-8",
+                                        )
+                                        # CSV: word,start,end header-less, same as parse_timestamps.py
+                                        _csv_lines = [f'"{w["word"]}",{w["start"]:.3f},{w["end"]:.3f}'
+                                                      for w in _flat_words]
+                                        _words_csv_path.write_text("\n".join(_csv_lines), encoding="utf-8")
+                                        word_outputs = {
+                                            "words_json": _words_json_path,
+                                            "words_csv": _words_csv_path,
+                                        }
+                                        # CRITICAL: assign the flat list to `words` — this is what
+                                        # `_generate_html_per_shot` receives. Without this, the
+                                        # outer `words` stays as `[]` from the Phase B init at L3211
+                                        # OR (if a prior buggy load ran) becomes the stitched dict
+                                        # whose keys iterate as strings.
+                                        words = _flat_words
+                                        print(
+                                            f"   📝 v2 word timings written: "
+                                            f"{_words_json_path} ({len(_flat_words)} words)"
+                                        )
+                                    except Exception as _wj_err:
+                                        print(
+                                            f"   ⚠️ Failed to write narration.words.json "
+                                            f"after v2 concat: {_wj_err}"
+                                        )
+                                _v2_audio = tts_outputs.get("audio_path")
+                                if _v2_audio and Path(str(_v2_audio)).exists():
+                                    try:
+                                        _probe = subprocess.run(
+                                            ["ffprobe", "-v", "quiet", "-show_entries",
+                                             "format=duration", "-of",
+                                             "default=noprint_wrappers=1:nokey=1",
+                                             str(_v2_audio)],
+                                            capture_output=True, text=True, timeout=10,
+                                        )
+                                        _seg_audio_dur = float((_probe.stdout or "0").strip() or 0.0)
+                                    except Exception:
+                                        pass
+                            except Exception as _refresh_err:
+                                print(f"   ⚠️ v2 words/audio refresh failed: {_refresh_err}")
+                        except Exception as _v2_tts_err:
+                            # Per-shot TTS failure on v2 is recoverable IF the
+                            # legacy monolithic TTS can run as fallback. Try
+                            # once; if it succeeds the run continues.
+                            print(
+                                f"   ⚠️ v2 per-shot TTS failed "
+                                f"({type(_v2_tts_err).__name__}: {_v2_tts_err}) — "
+                                f"falling back to monolithic TTS"
+                            )
+                            try:
+                                _fallback = self._synthesize_voice(
+                                    script_plan["script_path"],
+                                    run_dir,
+                                    language=language,
+                                    voice_gender=voice_gender,
+                                    tts_provider=tts_provider,
+                                    voice_id=voice_id,
+                                )
+                                tts_outputs["audio_path"] = _fallback.get("audio_path")
+                                tts_outputs["response_json"] = _fallback.get("response_json")
+                                tts_outputs["deferred_to_html"] = False
+                                _fb_chars = _fallback.get("tts_character_count", 0)
+                                tts_outputs["tts_character_count"] = _fb_chars
+                                accumulate_usage({"tts_character_count": _fb_chars})
+                                # Re-derive words from monolithic raw json
+                                _w_out = self._parse_timestamps(
+                                    _fallback.get("response_json"), run_dir
+                                )
+                                if _w_out.get("words_json"):
+                                    words = self._load_words(_w_out["words_json"])
+                            except Exception as _fb_err:
+                                print(f"   ❌ Monolithic TTS fallback also failed: {_fb_err}")
+                                # Re-raise — the run can't proceed without audio
+                                raise
+
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
 
@@ -3157,6 +4845,76 @@ class VideoGenerationPipeline:
                             "message": "host.type='raw' is not implemented yet; rendering without host",
                         })
 
+                    # ── v3 audio-overrun safety net ─────────────────────
+                    # v2's script-stage overrun check (line ~3825) doesn't
+                    # fire on v3 because there's no monolithic TTS at script
+                    # time. Detect it here, after per-shot TTS produced the
+                    # stitched master, and rerun NarrationWriter once at the
+                    # measured-wpm × 0.95 if we overshot >25%. Capped at one
+                    # regen per video via `self._audio_regen_attempted`.
+                    # Gated on the v3 path being active — v2-Phase-B already
+                    # uses Director which is too expensive to re-run here.
+                    if (
+                        _active_v3_plan
+                        and content_type == "VIDEO"
+                        and _director_plan is self._v3_shot_plan
+                        and tts_outputs.get("audio_path")
+                    ):
+                        _regen = self._v3_check_audio_overrun_and_regen(
+                            shot_plan=_director_plan,
+                            tts_outputs=tts_outputs,
+                            audio_duration=float(_seg_audio_dur or 0.0),
+                            target_duration_s=float(getattr(self, "_target_seconds", 0) or 0),
+                            words=words or [],
+                            run_dir=run_dir,
+                            language=language,
+                            voice_gender=voice_gender,
+                            tts_provider=tts_provider,
+                            voice_id=voice_id,
+                            target_audience=target_audience,
+                        )
+                        if _regen:
+                            _new_words = _regen.get("words") or []
+                            _new_dur = float(_regen.get("audio_duration") or 0.0)
+                            if _new_words:
+                                words = _new_words
+                            if _new_dur > 0:
+                                _seg_audio_dur = _new_dur
+                            _extra_chars = int(_regen.get("extra_tts_chars") or 0)
+                            if _extra_chars > 0:
+                                accumulate_usage({"tts_character_count": _extra_chars})
+                            _nw_usage = _regen.get("nw_usage") or {}
+                            if _nw_usage:
+                                accumulate_usage(_nw_usage)
+
+                    # ── Late emphasis_map build (post per-shot TTS) ──────
+                    # v2 builds emphasis_map inside `_run_director` from the
+                    # monolithic Whisper output. Two paths skip that build:
+                    #   (1) v3 — `_run_director` never runs.
+                    #   (2) v2 Phase-B — Director runs in script stage with
+                    #       words=[] because TTS is deferred to html stage.
+                    # In both cases `_emphasis_map` is empty when the per-shot
+                    # HTML LLM reads it, so narrator-stress visual highlights
+                    # never land. Once per-shot TTS has run and `words` is the
+                    # stitched word list, build it here. Idempotent — skips
+                    # when a non-empty map already exists (v2 monolithic path).
+                    if (
+                        self._tier_config.get("director_emphasis_map")
+                        and words
+                        and not getattr(self, "_emphasis_map", "")
+                    ):
+                        try:
+                            from director_prompts import build_emphasis_map as _build_em
+                            self._emphasis_map = _build_em(words) or ""
+                            if self._emphasis_map:
+                                print(
+                                    f"   📍 emphasis_map built post-TTS "
+                                    f"({len(words)} words → {self._emphasis_map.count(chr(10)) + 1} lines)"
+                                )
+                        except Exception as _em_err:
+                            print(f"   ⚠️ emphasis_map late build failed (non-fatal): {_em_err}")
+                            self._emphasis_map = getattr(self, "_emphasis_map", "") or ""
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
@@ -3170,6 +4928,56 @@ class VideoGenerationPipeline:
                     )
                 else:
                     # Fallback: segment-based flow (free/standard, or Director failed)
+                    # ── Phase B safety net ────────────────────────────
+                    # If TTS was deferred for v2 but Director didn't produce
+                    # a plan (failure/empty), run the legacy monolithic TTS
+                    # now — otherwise the run would proceed with no audio.
+                    # Also re-derive words so segment-based HTML gen sees
+                    # real word timings instead of the empty stub.
+                    if tts_outputs.get("deferred_to_html") and content_type == "VIDEO":
+                        print(
+                            "   ⚠️ v2 TTS deferred but Director plan empty — "
+                            "running monolithic TTS fallback so the run can ship"
+                        )
+                        try:
+                            _fb = self._synthesize_voice(
+                                script_plan["script_path"],
+                                run_dir,
+                                language=language,
+                                voice_gender=voice_gender,
+                                tts_provider=tts_provider,
+                                voice_id=voice_id,
+                            )
+                            tts_outputs["audio_path"] = _fb.get("audio_path")
+                            tts_outputs["response_json"] = _fb.get("response_json")
+                            tts_outputs["deferred_to_html"] = False
+                            _fb_chars = int(_fb.get("tts_character_count") or 0)
+                            tts_outputs["tts_character_count"] = _fb_chars
+                            if _fb_chars > 0:
+                                accumulate_usage({"tts_character_count": _fb_chars})
+                            # Re-derive words so the segment loop can use them
+                            try:
+                                _w_out = self._parse_timestamps(
+                                    _fb.get("response_json"), run_dir
+                                )
+                                if _w_out.get("words_json"):
+                                    words = self._load_words(_w_out["words_json"])
+                            except Exception as _wd_err:
+                                print(f"   ⚠️ words re-derive failed: {_wd_err}")
+                            # Rebuild segments now that we have real words.
+                            if beat_outline and len(beat_outline) >= 2 and words:
+                                segments = self._segment_words_by_beats(
+                                    words, beat_outline, max_segments=max_segments,
+                                    audio_duration=_seg_audio_dur or 0,
+                                )
+                            elif words:
+                                segments = self._segment_words(
+                                    words, audio_duration=_seg_audio_dur or 0,
+                                )
+                        except Exception as _fb_err:
+                            print(f"   ❌ Monolithic TTS fallback failed: {_fb_err}")
+                            raise
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(segments)} segments...",
@@ -3279,7 +5087,8 @@ class VideoGenerationPipeline:
                 # Vision-review persistence runs before _process_stock_videos
                 # because the latter strips `_vision_review` from each entry.
                 self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
-                html_segments, stock_usage = self._process_stock_videos(html_segments)
+                # Bug 1: see twin call site for run_dir rationale.
+                html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
 
             # ── Background music (Lyria) ──
@@ -3308,6 +5117,7 @@ class VideoGenerationPipeline:
                         audio_duration=float(_seg_audio_dur),
                         video_id=run_name or run_dir.name,
                         run_dir=run_dir,
+                        cost_tracker=getattr(self, "_cost_events", None),
                         progress_callback=self._progress_callback,
                     )
                     if _music_result and _music_result.get("url"):
@@ -3315,6 +5125,21 @@ class VideoGenerationPipeline:
                             self._background_music_volume_override
                             if self._background_music_volume_override is not None
                             else float(self._tier_config.get("background_music_default_volume", 0.10))
+                        )
+                        # Best-effort BPM extraction from the music_plan
+                        # prompts so the SFX-snap pass can beat-align cues
+                        # (Phase B2). Cheap regex parse — no extra deps.
+                        _bpm = _extract_bpm_from_music_plan(_music_plan_to_use)
+                        # Provider drives whether we TRUST the BPM enough
+                        # to snap cues. Lyria-3 follows tempo tightly;
+                        # Lyria-2 and fal-elevenlabs do not — snapping to
+                        # a wrong beat grid would make things WORSE than
+                        # not snapping. The audio mix pass checks this
+                        # before invoking _snap_cues_to_beat.
+                        _music_provider = (
+                            _music_result.get("provider")
+                            or _music_result.get("model")
+                            or ""
                         )
                         self._background_music_track = {
                             "id": "background-music",
@@ -3324,8 +5149,14 @@ class VideoGenerationPipeline:
                             "delay": 0.0,
                             "fadeIn": 2.0,
                             "fadeOut": 3.0,
+                            "bpm": _bpm,
+                            "provider": str(_music_provider),
                         }
-                        print(f"🎼 Background music ready: {_music_result['url']}")
+                        print(
+                            f"🎼 Background music ready: {_music_result['url']}"
+                            + (f" (bpm≈{_bpm}, provider={_music_provider})"
+                               if _bpm else "")
+                        )
                 except Exception as _mus_err:
                     print(f"⚠️ Background music generation failed: {_mus_err}")
                     # Curated-bed fallback. Picks a royalty-free track from the
@@ -3367,6 +5198,30 @@ class VideoGenerationPipeline:
                     f"(content_type={content_type}, has_music_plan="
                     f"{bool(_music_plan_to_use)}, audio_dur={_seg_audio_dur:.1f}s)"
                 )
+
+            # ── Audio mix pass ────────────────────────────────────────
+            # Compose narration + (optional) music underbed + SFX cues
+            # + transition stingers into ONE mastered audio file. The
+            # mixer applies sidechain ducking (music under VO) and
+            # LUFS normalization to broadcast standard (-16 LUFS).
+            #
+            # When the mix succeeds we ATOMICALLY swap:
+            #   narration.mp3                 → narration_unmixed.mp3  (backup)
+            #   final_mix.mp3 (mastered)      → narration.mp3
+            # And we NULL OUT self._background_music_track + per-entry
+            # sound_cues so the timeline JSON / render worker doesn't
+            # double-attach the music & SFX layers that are already
+            # baked into the swapped narration.mp3.
+            #
+            # On any failure the original narration.mp3 stays in place
+            # and the timeline ships unchanged (legacy behavior).
+            self._run_audio_mix_pass(
+                run_dir=run_dir,
+                narration_path=audio_path,
+                entries=html_segments,
+                video_id=run_name or run_dir.name,
+                audio_duration=float(_seg_audio_dur or 0.0),
+            )
 
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(
@@ -3424,10 +5279,65 @@ class VideoGenerationPipeline:
                 # Use preset based on background_type
                 preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
                 render_bg_color = preset["background"]
-            
-            
+
+            # ── Phase 5: silence master narration during intrinsic-audio shots ──
+            # When a shot is AI_VIDEO_HERO + ai_video_audio=true, the Veo MP4
+            # carries its own audio AND the browser plays it (orchestrator
+            # emitted <video> unmuted). Without this pass the user hears
+            # narration AND Veo audio simultaneously during those windows.
+            #
+            # Pipeline-wide consequence: many downstream consumers read
+            # narration.mp3 by NAME (S3 upload, editor playback,
+            # avatar_video pipeline, etc.). To make those see the muted
+            # version, we ATOMIC-SWAP after a successful mute — the muted
+            # file becomes narration.mp3 and the original is preserved as
+            # narration_unmuted.mp3 for resume/debugging.
+            _final_audio_path = tts_outputs.get("audio_path") or audio_path
+            try:
+                from ai_video_orchestrator import mute_master_narration_for_intrinsic_shots
+                _intrinsic_entries = []
+                if timeline_path and Path(timeline_path).exists():
+                    try:
+                        _timeline_data = json.loads(Path(timeline_path).read_text())
+                        _intrinsic_entries = _timeline_data.get("entries", []) or []
+                    except Exception:
+                        _intrinsic_entries = []
+                if _intrinsic_entries and _final_audio_path and Path(_final_audio_path).exists():
+                    _mute_result = mute_master_narration_for_intrinsic_shots(
+                        _intrinsic_entries, Path(_final_audio_path), log_fn=print,
+                    )
+                    if _mute_result.get("processed"):
+                        # Atomic swap: muted sidecar → narration.mp3,
+                        # original narration.mp3 → narration_unmuted.mp3.
+                        # Ensures S3 upload + editor preview see the muted
+                        # version without ALL downstream consumers needing
+                        # to know about the sidecar path.
+                        _master = Path(_final_audio_path)
+                        _sidecar = Path(_mute_result["output"])
+                        _backup = _master.with_name(
+                            f"{_master.stem}_unmuted{_master.suffix}"
+                        )
+                        try:
+                            if _master.exists():
+                                _master.replace(_backup)
+                            _sidecar.replace(_master)
+                            print(
+                                f"   🔁 Swapped narration: muted → {_master.name}, "
+                                f"original preserved as {_backup.name}"
+                            )
+                        except Exception as _swap_err:
+                            # Swap failure: ship with the original; render
+                            # will have narration+Veo collision but won't
+                            # crash. The mute sidecar still exists for
+                            # forensic comparison.
+                            print(f"   ⚠️ narration atomic swap failed ({_swap_err}); shipping unmuted")
+            except Exception as _mute_err:
+                # Mute step is purely additive — failure should never block
+                # render. We ship with the original narration in that case.
+                print(f"   ⚠️ intrinsic-audio mute skipped ({type(_mute_err).__name__}: {_mute_err})")
+
             video_path = self._render_video(
-                audio_path=tts_outputs.get("audio_path") or audio_path,
+                audio_path=_final_audio_path,
                 timeline_path=timeline_path,
                 words_json_path=word_outputs.get("words_json") or words_json,
                 run_dir=run_dir,
@@ -3449,6 +5359,137 @@ class VideoGenerationPipeline:
               f"{total_usage.get('image_count', 0)} images, "
               f"{total_usage.get('tts_character_count', 0):,} TTS chars")
 
+        # Phase 7: AI video telemetry summary — write a per-run JSON with cost
+        # tally, segment counts, and fallback stats so the service layer can
+        # surface the data in the run summary / DB without poking around in
+        # individual entry fields. No-op when AI video wasn't enabled.
+        try:
+            _av_tracker = getattr(self, "_ai_video_cost_tracker", None)
+            if _av_tracker is not None:
+                _av_summary = _av_tracker.summary()
+                # Merge with per-entry AI video counts so the consumer gets
+                # both the run-level circuit-breaker view AND per-shot detail.
+                # Inline <aivideo> counts aren't broken out per-entry (they
+                # live in composer telemetry that isn't pushed to the
+                # timeline) — the tracker's shots_completed total already
+                # rolls them into the run-level view.
+                _av_chain_calls = 0
+                _av_single_calls = 0
+                # Iterate entries to count chain / single hits. We look at
+                # timeline.json since that's the authoritative final state
+                # (entries with _ai_video_* fields).
+                try:
+                    if timeline_path and Path(timeline_path).exists():
+                        _tl = json.loads(Path(timeline_path).read_text())
+                        for _e in _tl.get("entries", []) or []:
+                            if _e.get("_shot_type") == "AI_VIDEO_HERO":
+                                _segs = _e.get("_ai_video_segments") or []
+                                if isinstance(_segs, list) and len(_segs) > 1:
+                                    _av_chain_calls += 1
+                                else:
+                                    _av_single_calls += 1
+                except Exception:
+                    pass
+                # Credit-side parity fields — derived from the ledger's
+                # running totals when AI video credits were active.
+                # Kept ALONGSIDE the USD fields (not as a replacement) so
+                # internal accounting and audit can still cross-check USD
+                # vs credit numbers. The FE / sales-facing surfaces read
+                # the credit fields; backend logs keep both.
+                _av_ledger = getattr(self, "_ai_video_ledger", None)
+                _cap_credits = 0.0
+                _spent_credits = 0.0
+                _remaining_credits = 0.0
+                if _av_ledger is not None and getattr(_av_ledger, "enabled", False):
+                    try:
+                        _spent_credits = float(_av_ledger.net_credits)
+                        # Cap in credits is derived from the USD cap × live
+                        # ratio. Resolve via a short-lived session so we
+                        # use the same rate the ledger used at charge time.
+                        try:
+                            from app.db import db_session as _db_ctx
+                            from app.services.credit_rate_service import CreditRateService
+                            with _db_ctx() as _db:
+                                _ratio = float(CreditRateService(_db).get_effective_ratio())
+                            _cap_credits = float(_av_summary.get("cap_usd") or 0.0) * _ratio
+                            _remaining_credits = max(0.0, _cap_credits - _spent_credits)
+                        except Exception:
+                            # Rate lookup failure is non-fatal — leave
+                            # credit-side cap/remaining at 0 and trust
+                            # the USD fields. Spent_credits is still
+                            # authoritative from the ledger's own state.
+                            pass
+                    except Exception:
+                        pass
+                _av_summary.update({
+                    "ai_video_enabled": bool(getattr(self, "_ai_video_run_enabled", False)),
+                    "ai_video_audio_enabled": bool(getattr(self, "_ai_video_audio_run_enabled", False)),
+                    "single_shot_count": _av_single_calls,
+                    "chain_shot_count": _av_chain_calls,
+                    "cap_credits": round(_cap_credits, 4),
+                    "spent_credits": round(_spent_credits, 4),
+                    "remaining_credits": round(_remaining_credits, 4),
+                    # Inline tag counts are aggregated into shots_completed
+                    # already; we record the run-level numbers and let the
+                    # consumer drill into entries for per-shot detail.
+                })
+                (run_dir / "ai_video_summary.json").write_text(
+                    json.dumps(_av_summary, indent=2), encoding="utf-8"
+                )
+                print(
+                    f"🎬 AI video summary: "
+                    f"{_av_summary['shots_completed']} completed, "
+                    f"{_av_summary['shots_failed']} failed, "
+                    f"{_av_summary['shots_skipped_circuit_breaker']} cap-skipped, "
+                    f"${_av_summary['spent_usd']:.2f}/${_av_summary['cap_usd']:.2f} spent "
+                    f"({_av_summary['spent_credits']:.1f}/{_av_summary['cap_credits']:.1f} credits)"
+                )
+        except Exception as _av_sum_err:
+            # Telemetry write must never fail the run.
+            print(f"   ⚠️ AI video summary write failed (non-fatal): {_av_sum_err}")
+
+        # ── Join the thumbnail daemon before returning ────────────────────
+        # The thumbnail batch is a daemon thread fired right after the
+        # Director plan completes. For a typical LLM-per-shot HTML stage it
+        # finishes well within the stage's wall-clock. But for a
+        # template-only HTML stage the stage can return in under 30s — fast
+        # enough to outrun the 4-Seedream-call batch. Joining briefly here
+        # guarantees the thread's `thumbnails_ready` event makes it onto the
+        # SSE queue before the service stops draining. Never blocks more
+        # than the timeout; the daemon flag handles the worst case.
+        _tt = getattr(self, "_thumbnail_thread", None)
+        if _tt is not None and _tt.is_alive():
+            try:
+                _tt.join(timeout=60.0)
+            except Exception:
+                pass
+
+        # Pillar 1 — emit per-run cost breakdown. Built from the event log the
+        # tracker has been accumulating across every chat() call this run.
+        # Errors here MUST NOT fail the run; observability is best-effort.
+        cost_breakdown: Optional[Dict[str, Any]] = None
+        try:
+            cost_breakdown = self._cost_events.build_report(
+                video_id=getattr(self, "_run_video_id", "unknown"),
+                tier=self._quality_tier,
+                # Reflects what actually ran: "v3" on clean runs, or
+                # "v3_with_v2_fallback" when ShotPlanner/NarrationWriter
+                # errored and the internal v2 safety net fired.
+                pipeline_version=getattr(self, "_v3_runtime_status", "v3"),
+                run_started_at=getattr(self, "_run_started_at", None),
+            )
+            # Also persist alongside the timeline so resume detection / debug
+            # can read it without re-querying. video_generation_service
+            # additionally uploads it as a top-level S3 artifact.
+            try:
+                (run_dir / "cost_breakdown.json").write_text(
+                    json.dumps(cost_breakdown, indent=2), encoding="utf-8"
+                )
+            except Exception as _werr:
+                print(f"⚠️ Could not persist cost_breakdown.json locally: {_werr}")
+        except Exception as _cerr:
+            print(f"⚠️ Cost breakdown build failed: {_cerr}")
+
         return {
             "run_dir": run_dir,
             "script_path": script_plan["script_path"],
@@ -3461,6 +5502,7 @@ class VideoGenerationPipeline:
             "avatar_video_path": avatar_video_path,
             "video_path": video_path,
             "token_usage": total_usage,
+            "cost_breakdown": cost_breakdown,
         }
 
     # --- Script generation -------------------------------------------------
@@ -3711,6 +5753,7 @@ class VideoGenerationPipeline:
                     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                     temperature=self._tier_config.get("script_temperature", 0.5),
                     max_tokens=_max_tokens,
+                    model=self._resolve_stage_model("script_generation"),
                 )
                 data = _extract_json_blob(raw)
                 break  # Success
@@ -3982,6 +6025,7 @@ class VideoGenerationPipeline:
                 ],
                 temperature=0.5,
                 max_tokens=32000,
+                model=self._resolve_stage_model("script_review"),
             )
             reviewed = _extract_json_blob(raw)
 
@@ -4073,6 +6117,7 @@ class VideoGenerationPipeline:
                 ],
                 temperature=0.3,
                 max_tokens=8000,
+                model=self._resolve_stage_model("regen_html"),
             )
             if _usage:
                 total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
@@ -4094,14 +6139,22 @@ class VideoGenerationPipeline:
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
     @retry_with_backoff(max_retries=3, initial_delay=2.0)
     def _synthesize_voice(
-        self, 
+        self,
         script_path: Path,
         run_dir: Path,
         language: str = "English",
         voice_gender: str = "female",
         tts_provider: str = "standard",
         voice_id: Optional[str] = None,
+        output_audio_path: Optional[Path] = None,
+        output_response_json: Optional[Path] = None,
     ) -> Dict[str, Any]:
+        # output_audio_path / output_response_json (Phase 0 per-shot TTS): when
+        # provided, route the synthesized MP3 + raw JSON to these paths instead
+        # of the legacy `narration.mp3` / `narration_raw.json` in run_dir. Used
+        # by `_synthesize_voice_for_shot` to produce shot-scoped TTS without
+        # clobbering the master-narration files. Existing callers pass None
+        # and get the legacy behavior unchanged.
         # Map new tier names to internal provider keys
         # "standard" → edge, "premium" → sarvam (Indian) or google (global)
         # Legacy values "edge"/"google" still supported for backward compatibility
@@ -4142,8 +6195,8 @@ class VideoGenerationPipeline:
         import edge_tts
         from edge_tts import submaker
 
-        response_json = run_dir / "narration_raw.json"
-        audio_path = run_dir / "narration.mp3"
+        response_json = output_response_json if output_response_json is not None else (run_dir / "narration_raw.json")
+        audio_path = output_audio_path if output_audio_path is not None else (run_dir / "narration.mp3")
         script_text = script_path.read_text().strip()
 
         # --- Sarvam AI TTS Path (premium, Indian languages) ---
@@ -4475,6 +6528,888 @@ class VideoGenerationPipeline:
                 raise e
         
         return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
+
+    # --- Per-shot TTS support helpers (Phase 0) ----------------------------
+    @staticmethod
+    def _normalize_word_entry(w: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Coerce a single word entry into {word, start, end} (floats, seconds).
+        Returns None if `w` is malformed."""
+        if not isinstance(w, dict):
+            return None
+        try:
+            start_v = w.get("start")
+            end_v = w.get("end")
+            start = float(start_v) if start_v is not None else 0.0
+            end = float(end_v) if end_v is not None else start
+        except (TypeError, ValueError):
+            return None
+        token = w.get("word")
+        if token is None:
+            token = w.get("text")
+        return {
+            "word": str(token) if token is not None else "",
+            "start": start,
+            "end": end,
+        }
+
+    @staticmethod
+    def _sarvam_chars_to_words(
+        chars: List[str], starts: List[float], ends: List[float]
+    ) -> List[Dict[str, Any]]:
+        """Aggregate Sarvam's character-level alignment into word-level entries.
+        Sarvam writes `alignment.{characters, character_start_times_seconds,
+        character_end_times_seconds}` — a flat per-character stream. Group
+        runs of non-space chars into one word with start=first char's start
+        and end=last char's end."""
+        if not (len(chars) == len(starts) == len(ends)) or not chars:
+            return []
+        out: List[Dict[str, Any]] = []
+        buf: List[str] = []
+        word_start: Optional[float] = None
+        last_end: Optional[float] = None
+        for c, s, e in zip(chars, starts, ends):
+            try:
+                s_f = float(s)
+                e_f = float(e)
+            except (TypeError, ValueError):
+                continue
+            c_str = str(c) if c is not None else ""
+            if c_str.isspace() or c_str == "":
+                if buf and word_start is not None and last_end is not None:
+                    out.append({
+                        "word": "".join(buf),
+                        "start": round(word_start, 3),
+                        "end": round(last_end, 3),
+                    })
+                buf = []
+                word_start = None
+                last_end = None
+                continue
+            if word_start is None:
+                word_start = s_f
+            buf.append(c_str)
+            last_end = e_f
+        if buf and word_start is not None and last_end is not None:
+            out.append({
+                "word": "".join(buf),
+                "start": round(word_start, 3),
+                "end": round(last_end, 3),
+            })
+        return out
+
+    @classmethod
+    def _read_per_shot_words(cls, raw_json_path: Path) -> List[Dict[str, Any]]:
+        """Read a per-shot TTS raw_json file and return normalized word entries.
+
+        Provider-aware: handles all three formats `_synthesize_voice` can
+        produce:
+          - Edge / Whisper fallback: {word_entries: [...]} dict
+          - Google: top-level [...] list
+          - Sarvam: {alignment: {characters, character_start_times_seconds,
+                                 character_end_times_seconds}}
+        Returns [] on any parse error or unrecognized shape so the concat
+        step degrades gracefully (silent gap in word timings) instead of
+        crashing the whole regen call.
+        """
+        try:
+            raw = json.loads(Path(raw_json_path).read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        # Google: top-level list of word entries
+        if isinstance(raw, list):
+            return [w for w in (cls._normalize_word_entry(x) for x in raw) if w is not None]
+        if not isinstance(raw, dict):
+            return []
+        # Edge / Whisper: {word_entries: [...]}
+        we = raw.get("word_entries")
+        if isinstance(we, list):
+            return [w for w in (cls._normalize_word_entry(x) for x in we) if w is not None]
+        # Sarvam: {alignment: {...}}
+        align = raw.get("alignment")
+        if isinstance(align, dict):
+            chars = align.get("characters") or []
+            starts = align.get("character_start_times_seconds") or []
+            ends = align.get("character_end_times_seconds") or []
+            if isinstance(chars, list) and isinstance(starts, list) and isinstance(ends, list):
+                return cls._sarvam_chars_to_words(chars, starts, ends)
+        # Last-ditch: {words: [...]}
+        ws = raw.get("words")
+        if isinstance(ws, list):
+            return [w for w in (cls._normalize_word_entry(x) for x in ws) if w is not None]
+        return []
+
+    @staticmethod
+    def _coerce_shot_index(value: Any, fallback: int) -> int:
+        """Best-effort int coercion for a shot_index field. Accepts int, str
+        digits ('3'), and floats; falls back to `fallback` on None / nonsense."""
+        if isinstance(value, bool):  # bool is an int subtype — exclude it explicitly
+            return fallback
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return fallback
+        if isinstance(value, str):
+            try:
+                return int(value.strip())
+            except (TypeError, ValueError):
+                return fallback
+        return fallback
+
+    # --- Per-shot TTS (Phase 0) --------------------------------------------
+    # These two helpers wrap `_synthesize_voice` to produce shot-scoped TTS
+    # files instead of one monolithic narration.mp3. Used by:
+    #   (a) the editor's per-shot re-narrate endpoint, which needs to
+    #       regenerate one shot's audio without touching the rest
+    #   (b) Phase 2+ pipeline runs (when `tts_per_shot_enabled` flips true on
+    #       a tier) that produce per-shot MP3s then concat into the master
+    # Outputs live at `<run_dir>/tts/shot_{idx:03d}.mp3` and
+    # `<run_dir>/tts/shot_{idx:03d}_raw.json`. The legacy
+    # `<run_dir>/narration.mp3` is rebuilt by `_concat_master_narration`.
+    def _synthesize_voice_for_shot(
+        self,
+        shot_idx: int,
+        narration_text: str,
+        run_dir: Path,
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Synthesize TTS for ONE shot.
+
+        Writes `narration_text` to a temp script file, invokes
+        `_synthesize_voice` with shot-scoped output paths, and returns a dict
+        with the produced paths. Empty/whitespace-only `narration_text`
+        short-circuits: returns a record marked `skipped=True` so the caller
+        (concat helper) can insert a silent gap of the appropriate duration.
+
+        Caller is responsible for choosing `narration_text` for the shot —
+        typically by slicing the master script by word timings or by reading
+        the shot's beat-level narration field. This helper does not introspect
+        shot dicts; it just takes text.
+        """
+        narration_text = (narration_text or "").strip()
+        if not narration_text:
+            return {
+                "shot_idx": shot_idx,
+                "skipped": True,
+                "reason": "empty_narration",
+                "mp3_path": None,
+                "raw_json_path": None,
+                "char_count": 0,
+            }
+
+        tts_dir = run_dir / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+        shot_script_path = tts_dir / f"shot_{shot_idx:03d}_script.txt"
+        shot_audio_path = tts_dir / f"shot_{shot_idx:03d}.mp3"
+        shot_raw_json = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+        shot_script_path.write_text(narration_text, encoding="utf-8")
+
+        tts_result = self._synthesize_voice(
+            shot_script_path,
+            run_dir,
+            language=language,
+            voice_gender=voice_gender,
+            tts_provider=tts_provider,
+            voice_id=voice_id,
+            output_audio_path=shot_audio_path,
+            output_response_json=shot_raw_json,
+        )
+        return {
+            "shot_idx": shot_idx,
+            "skipped": False,
+            "mp3_path": tts_result.get("audio_path", shot_audio_path),
+            "raw_json_path": tts_result.get("response_json", shot_raw_json),
+            "char_count": tts_result.get("tts_character_count", len(narration_text)),
+        }
+
+    def _synthesize_voice_per_shot(
+        self,
+        shot_plan: List[Dict[str, Any]],
+        run_dir: Path,
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+        narration_key: str = "narration_text",
+    ) -> List[Dict[str, Any]]:
+        """Loop `_synthesize_voice_for_shot` across every shot in shot_plan.
+
+        `narration_key` is the dict key used to pull a shot's narration text —
+        defaults to "narration_text". Shots whose value at that key is empty
+        or missing are recorded as `skipped` (no MP3 produced; concat fills
+        with silence equal to `shot_duration_s` if present, else 0).
+
+        Returns a list of per-shot result dicts in the same order as
+        shot_plan. Each result carries `shot_idx` (echoed from shot["shot_index"]
+        or the loop index as fallback), `mp3_path`, `raw_json_path`,
+        `char_count`, and `skipped`/`reason` flags.
+        """
+        outputs: List[Dict[str, Any]] = []
+        for loop_idx, shot in enumerate(shot_plan):
+            shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
+            narration_text = shot.get(narration_key) or ""
+            try:
+                duration_s = float(shot.get("shot_duration_s") or shot.get("duration_s") or 0.0)
+            except (TypeError, ValueError):
+                duration_s = 0.0
+            # Isolate per-shot failures — one bad TTS call must not kill the
+            # batch. The concat helper turns failed shots into silent gaps so
+            # downstream timing is preserved.
+            try:
+                result = self._synthesize_voice_for_shot(
+                    shot_idx=shot_idx,
+                    narration_text=narration_text,
+                    run_dir=run_dir,
+                    language=language,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider,
+                    voice_id=voice_id,
+                )
+            except Exception as tts_err:
+                print(f"⚠️  Per-shot TTS failed for shot {shot_idx}: {tts_err}")
+                result = {
+                    "shot_idx": shot_idx,
+                    "skipped": True,
+                    "reason": f"tts_error: {type(tts_err).__name__}",
+                    "mp3_path": None,
+                    "raw_json_path": None,
+                    "char_count": 0,
+                }
+            result["intended_duration_s"] = duration_s
+            outputs.append(result)
+        return outputs
+
+    def _concat_master_narration(
+        self,
+        per_shot_outputs: List[Dict[str, Any]],
+        run_dir: Path,
+        output_audio_path: Optional[Path] = None,
+        output_raw_json: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """Concat per-shot TTS MP3s into a single master narration + stitched
+        word-timings JSON. Skipped shots become silent gaps of their
+        `intended_duration_s`.
+
+        Output paths default to `<run_dir>/narration.mp3` and
+        `<run_dir>/narration_raw.json` (the legacy paths) so the rest of the
+        pipeline can consume them unchanged.
+
+        Returns: {audio_path, raw_json_path, total_duration_s, shot_offsets[]}
+        where shot_offsets carries each shot's `{shot_idx, start_s, dur_s,
+        skipped}` — the editor needs this to align UI sentence regions when
+        only one shot was re-narrated.
+        """
+        import subprocess as _sp
+
+        if not per_shot_outputs:
+            raise RuntimeError("_concat_master_narration called with no per-shot outputs")
+
+        master_audio_path = output_audio_path if output_audio_path is not None else (run_dir / "narration.mp3")
+        master_raw_json = output_raw_json if output_raw_json is not None else (run_dir / "narration_raw.json")
+        tts_dir = run_dir / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+
+        # ── 1. Materialize silence MP3s for skipped shots ─────────────────
+        # We re-encode the whole concat list at the end, so silence files just
+        # need to be valid MP3 of the right duration. Cache by duration so
+        # repeat runs reuse them.
+        silence_cache: Dict[str, Path] = {}
+        def _silence_mp3(duration_s: float) -> Path:
+            dur_key = f"{max(0.05, duration_s):.3f}"
+            if dur_key in silence_cache:
+                return silence_cache[dur_key]
+            silence_path = tts_dir / f"silence_{dur_key.replace('.', '_')}s.mp3"
+            if not silence_path.exists():
+                cmd = [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                    "-t", dur_key,
+                    "-c:a", "libmp3lame", "-q:a", "4",
+                    str(silence_path),
+                ]
+                _r = _sp.run(cmd, capture_output=True, text=True)
+                if _r.returncode != 0 or not silence_path.exists():
+                    raise RuntimeError(
+                        f"ffmpeg silence generation failed for {duration_s:.3f}s: "
+                        f"{_r.stderr.strip() if _r.stderr else 'no stderr'}"
+                    )
+            silence_cache[dur_key] = silence_path
+            return silence_path
+
+        # ── 2. Build concat list + per-shot offsets ───────────────────────
+        # Use ffprobe to get the ACTUAL duration of each per-shot MP3 (the
+        # intended duration is the planner's estimate; real TTS may run
+        # longer/shorter and downstream needs the truth).
+        def _probe_duration(path: Path) -> float:
+            try:
+                _r = _sp.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return float((_r.stdout or "0").strip() or 0.0)
+            except Exception:
+                # Last-ditch: mutagen
+                try:
+                    from mutagen.mp3 import MP3 as _MP3
+                    return float(_MP3(str(path)).info.length)
+                except Exception:
+                    return 0.0
+
+        concat_list_path = tts_dir / "master_concat_list.txt"
+        concat_lines: List[str] = []
+        shot_offsets: List[Dict[str, Any]] = []
+        cum_offset = 0.0
+        for out in per_shot_outputs:
+            shot_idx = self._coerce_shot_index(out.get("shot_idx"), 0)
+            try:
+                intended_dur = float(out.get("intended_duration_s") or 0.0)
+            except (TypeError, ValueError):
+                intended_dur = 0.0
+            if out.get("skipped"):
+                # Skipped shot → silent gap of intended duration. Falls back to
+                # 0.5s when no duration was provided (a placeholder that
+                # downstream timing reconciliation should overwrite).
+                target_dur = intended_dur if intended_dur > 0 else 0.5
+                silence_path = _silence_mp3(target_dur)
+                # Probe the silence file's REAL duration — ffmpeg may produce a
+                # file that differs by a few ms from the requested duration, and
+                # cum_offset must track real audio time for downstream word
+                # offsets to line up.
+                real_dur = _probe_duration(silence_path) or target_dur
+                concat_lines.append(f"file '{silence_path.absolute()}'")
+                shot_offsets.append({
+                    "shot_idx": shot_idx, "start_s": round(cum_offset, 3),
+                    "dur_s": round(real_dur, 3), "skipped": True,
+                    "reason": out.get("reason"),
+                })
+                cum_offset += real_dur
+                continue
+            mp3_path = out.get("mp3_path")
+            if not mp3_path or not Path(mp3_path).exists():
+                # Failed shot — treat as silence so the timeline doesn't shift.
+                target_dur = intended_dur if intended_dur > 0 else 0.5
+                silence_path = _silence_mp3(target_dur)
+                real_dur = _probe_duration(silence_path) or target_dur
+                concat_lines.append(f"file '{silence_path.absolute()}'")
+                shot_offsets.append({
+                    "shot_idx": shot_idx, "start_s": round(cum_offset, 3),
+                    "dur_s": round(real_dur, 3), "skipped": True, "reason": "missing_mp3",
+                })
+                cum_offset += real_dur
+                continue
+            real_dur = _probe_duration(Path(mp3_path))
+            concat_lines.append(f"file '{Path(mp3_path).absolute()}'")
+            shot_offsets.append({
+                "shot_idx": shot_idx, "start_s": round(cum_offset, 3),
+                "dur_s": round(real_dur, 3), "skipped": False,
+            })
+            cum_offset += real_dur
+
+        concat_list_path.write_text("\n".join(concat_lines), encoding="utf-8")
+
+        # ── 3. Run ffmpeg concat → master narration.mp3 ───────────────────
+        # Re-encode (not stream-copy) because per-shot MP3s may come from
+        # different providers (Edge/Google/Sarvam) with different sample rates
+        # and encoding params. Re-encoding to a uniform 44.1kHz stereo MP3
+        # guarantees a clean concat at the cost of one extra encode pass.
+        master_audio_path.parent.mkdir(parents=True, exist_ok=True)
+        concat_cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_path),
+            "-c:a", "libmp3lame", "-q:a", "4",
+            "-ar", "44100", "-ac", "2",
+            str(master_audio_path),
+        ]
+        _r = _sp.run(concat_cmd, capture_output=True, text=True)
+        if _r.returncode != 0 or not master_audio_path.exists():
+            raise RuntimeError(
+                f"ffmpeg concat failed: {_r.stderr.strip() if _r.stderr else 'no stderr'}"
+            )
+
+        # ── 4. Stitch per-shot word timings → master narration_raw.json ───
+        # Each per-shot raw_json may be in one of three provider formats:
+        #   - Edge / Whisper: {word_entries: [{word, start, end}, ...]}  (dict)
+        #   - Google:         [{word, start, end}, ...]                  (list)
+        #   - Sarvam:         {alignment: {characters, character_start_times_seconds,
+        #                                  character_end_times_seconds}}
+        # `_read_per_shot_words` normalizes all three to a flat list. Offset
+        # each entry by its shot's start_s and concatenate. Skipped shots
+        # contribute no words (silent gap).
+        master_words: List[Dict[str, Any]] = []
+        for out, offset_rec in zip(per_shot_outputs, shot_offsets):
+            if out.get("skipped"):
+                continue
+            raw_path = out.get("raw_json_path")
+            if not raw_path or not Path(raw_path).exists():
+                continue
+            words = self._read_per_shot_words(Path(raw_path))
+            try:
+                offset = float(offset_rec.get("start_s") or 0.0)
+            except (TypeError, ValueError):
+                offset = 0.0
+            for w in words:
+                master_words.append({
+                    "word": w["word"],
+                    "start": round(w["start"] + offset, 3),
+                    "end": round(w["end"] + offset, 3),
+                })
+
+        master_payload = {
+            "metadata": {
+                "tts_provider": "per_shot_concat",
+                "total_duration_s": round(cum_offset, 3),
+                "shot_count": len(per_shot_outputs),
+                "concat_source": "per_shot_v1",
+            },
+            "word_entries": master_words,
+            "shot_offsets": shot_offsets,
+        }
+        master_raw_json.write_text(json.dumps(master_payload), encoding="utf-8")
+
+        return {
+            "audio_path": master_audio_path,
+            "raw_json_path": master_raw_json,
+            "total_duration_s": cum_offset,
+            "shot_offsets": shot_offsets,
+        }
+
+    # --- Phase B: v2 per-shot TTS orchestrator + reconciliation ------------
+    def _run_per_shot_tts_v2(
+        self,
+        shots: List[Dict[str, Any]],
+        run_dir: Path,
+        tts_outputs: Dict[str, Any],
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+    ) -> None:
+        """v2 TTS orchestrator: per-shot synthesis → concat → reconcile.
+
+        Runs INSIDE the html stage, after the Director plan finalizes and
+        AudioPolicyPlanner has assigned `audio_policy` per shot. Side-effects:
+
+        - Writes `<run_dir>/tts/shot_NNN.mp3` and `_raw.json` per shot
+        - Concats into `<run_dir>/narration.mp3` and `narration_raw.json`
+          (same paths as the legacy monolithic TTS — downstream consumers
+          read these by name)
+        - Mutates `tts_outputs` in place with new audio_path / response_json
+          / tts_character_count, and clears `deferred_to_html`
+        - Mutates `shots` in place via `_reconcile_shot_timings_after_tts`
+          so `start_time` / `end_time` / `shot_duration_s` reflect actual
+          MP3 durations rather than Director estimates
+
+        Emits sub_stage events: `tts_shot_start` / `tts_shot_done` per
+        shot, `narration_concat_start` / `narration_concat_done` around
+        the ffmpeg concat, and a summary `tts_done`.
+        """
+        if not shots:
+            raise RuntimeError("_run_per_shot_tts_v2 called with empty shot plan")
+
+        # Build per-shot input list. Each shot gets a `_v2_narration_text`
+        # field set from `narration_excerpt` UNLESS audio_policy is
+        # intrinsic_only (in which case Veo provides the audio and master
+        # narration is silent in that window — empty string → silent gap).
+        _v2_shots: List[Dict[str, Any]] = []
+        for s in shots:
+            s_copy = dict(s)
+            policy = s_copy.get("audio_policy", "narration_only")
+            if policy == "intrinsic_only":
+                s_copy["_v2_narration_text"] = ""
+            else:
+                s_copy["_v2_narration_text"] = (
+                    s_copy.get("narration_excerpt")
+                    or s_copy.get("narration_text")
+                    or ""
+                )
+            try:
+                _dur = float(s_copy.get("end_time", 0) or 0) - float(
+                    s_copy.get("start_time", 0) or 0
+                )
+            except (TypeError, ValueError):
+                _dur = 0.0
+            s_copy["shot_duration_s"] = max(_dur, 0.0)
+            _v2_shots.append(s_copy)
+
+        total_shots = len(_v2_shots)
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "tts_generating",
+            "message": f"Recording narration for {total_shots} shots...",
+            "shot_count": total_shots,
+        })
+
+        # ── Per-shot TTS loop with progress events ────────────────────
+        per_shot_outputs: List[Dict[str, Any]] = []
+        total_chars = 0
+        for loop_idx, shot in enumerate(_v2_shots):
+            shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
+            narration_text = shot.get("_v2_narration_text") or ""
+            self._emit_progress({
+                "type": "sub_stage",
+                "sub_stage": "tts_shot_start",
+                "shot_index": shot_idx,
+                "shot_count": total_shots,
+                "loop_index": loop_idx,
+            })
+            try:
+                result = self._synthesize_voice_for_shot(
+                    shot_idx=shot_idx,
+                    narration_text=narration_text,
+                    run_dir=run_dir,
+                    language=language,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider,
+                    voice_id=voice_id,
+                )
+            except Exception as tts_err:
+                print(f"   ⚠️ Per-shot TTS failed for shot {shot_idx}: {tts_err}")
+                result = {
+                    "shot_idx": shot_idx,
+                    "skipped": True,
+                    "reason": f"tts_error: {type(tts_err).__name__}",
+                    "mp3_path": None,
+                    "raw_json_path": None,
+                    "char_count": 0,
+                }
+            result["intended_duration_s"] = float(shot.get("shot_duration_s") or 0.0)
+            per_shot_outputs.append(result)
+            total_chars += int(result.get("char_count") or 0)
+            self._emit_progress({
+                "type": "sub_stage",
+                "sub_stage": "tts_shot_done",
+                "shot_index": shot_idx,
+                "shot_count": total_shots,
+                "loop_index": loop_idx,
+                "skipped": bool(result.get("skipped")),
+                "char_count": result.get("char_count") or 0,
+            })
+
+        # ── Concat → master narration.mp3 ────────────────────────────
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_concat_start",
+            "message": "Stitching master narration...",
+            "shot_count": total_shots,
+        })
+        concat = self._concat_master_narration(per_shot_outputs, run_dir)
+        master_audio_path = concat["audio_path"]
+        master_raw_json = concat["raw_json_path"]
+        total_dur = float(concat.get("total_duration_s") or 0.0)
+        shot_offsets = concat.get("shot_offsets") or []
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_concat_done",
+            "audio_path": str(master_audio_path),
+            "total_duration_s": total_dur,
+            "shot_count": total_shots,
+        })
+
+        # ── Reconcile shot timings from actual MP3 durations ─────────
+        self._reconcile_shot_timings_after_tts(shots, shot_offsets)
+
+        # ── Attach per-shot S3 URLs to each shot ─────────────────────
+        # The service's upload loop posts `<run_dir>/tts/` as a directory
+        # to `s3://{bucket}/ai-videos/{video_id}/per_shot_tts/` (see html
+        # stage upload list in video_generation_service.py). The URL is
+        # deterministic from {bucket, video_id, shot_idx}, so we can
+        # pre-compute it here — by the time the timeline / director_plan
+        # land in S3, these URLs are valid. Editor reads them directly
+        # off the shot dict for per-shot audio playback + regeneration
+        # without an extra S3-listing round trip.
+        self._attach_per_shot_audio_urls(
+            shots=shots,
+            per_shot_outputs=per_shot_outputs,
+            shot_offsets=shot_offsets,
+            run_dir=run_dir,
+        )
+
+        # ── Update tts_outputs so downstream consumers see real audio ─
+        tts_outputs["audio_path"] = master_audio_path
+        tts_outputs["response_json"] = master_raw_json
+        tts_outputs["tts_character_count"] = total_chars
+        tts_outputs["deferred_to_html"] = False
+
+        # Track TTS character count for credit deduction (mirrors the
+        # legacy monolithic path's accumulate_usage call).
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "tts_done",
+            "message": f"Per-shot narration ready ({total_dur:.1f}s, {total_chars} chars)",
+            "tts_character_count": total_chars,
+            "shot_count": total_shots,
+        })
+        print(
+            f"   ✅ v2 per-shot TTS complete: {total_shots} shots, "
+            f"{total_dur:.1f}s total, {total_chars} chars"
+        )
+
+    def _attach_per_shot_audio_urls(
+        self,
+        shots: List[Dict[str, Any]],
+        per_shot_outputs: List[Dict[str, Any]],
+        shot_offsets: List[Dict[str, Any]],
+        run_dir: Path,
+    ) -> None:
+        """Annotate each shot with predictable S3 URLs for its per-shot TTS
+        artifacts. The service's html-stage upload list pushes `<run_dir>/tts/`
+        to `ai-videos/{video_id}/per_shot_tts/`, so URLs are deterministic
+        from {bucket, video_id, shot_idx}.
+
+        Fields added per shot:
+          - `audio_url`        — `s3://.../per_shot_tts/shot_NNN.mp3`
+          - `audio_words_url`  — `s3://.../per_shot_tts/shot_NNN_raw.json`
+          - `audio_script_url` — `s3://.../per_shot_tts/shot_NNN_script.txt`
+          - `audio_duration_s` — actual MP3 duration (post-reconcile)
+          - `audio_skipped`    — True for intrinsic_only / empty-narration shots
+
+        For shots where TTS was skipped (intrinsic_only or empty narration),
+        only `audio_skipped: True` and `audio_duration_s` are set — no S3
+        URLs since no mp3 was produced.
+
+        Mutates `shots` in place. Safe to call when video_id / bucket are
+        missing (logs a warning, leaves URL fields unset — local paths
+        remain on per_shot_outputs for editor consumption in local dev).
+        """
+        if len(shots) != len(per_shot_outputs):
+            print(
+                f"   ⚠️ per-shot URL attach: shot count {len(shots)} != "
+                f"output count {len(per_shot_outputs)} — skipping"
+            )
+            return
+
+        # Bucket name resolution mirrors the vision-review uploader's
+        # pattern (line ~16005). For environments where the public bucket
+        # differs, prefer the env override.
+        import os as _os_psv
+        bucket = (
+            _os_psv.environ.get("AWS_S3_PUBLIC_BUCKET")
+            or _os_psv.environ.get("AWS_BUCKET_NAME")
+            or "vacademy-media-storage-public"
+        )
+        video_id = getattr(self, "_current_video_id", None) or run_dir.name
+        if not video_id:
+            print("   ⚠️ per-shot URL attach: no video_id — skipping URL annotation")
+            return
+
+        _base = f"https://{bucket}.s3.amazonaws.com/ai-videos/{video_id}/per_shot_tts"
+
+        for shot, out, off in zip(shots, per_shot_outputs, shot_offsets):
+            try:
+                shot_idx = self._coerce_shot_index(
+                    out.get("shot_idx", shot.get("shot_index")), 0
+                )
+                dur = float(off.get("dur_s") or 0.0)
+            except Exception:
+                continue
+            shot["audio_duration_s"] = round(dur, 3)
+            if out.get("skipped"):
+                shot["audio_skipped"] = True
+                shot["audio_skip_reason"] = out.get("reason") or "skipped"
+                # Don't set URLs — no mp3 was uploaded for this shot.
+                continue
+            shot["audio_skipped"] = False
+            shot["audio_url"] = f"{_base}/shot_{shot_idx:03d}.mp3"
+            shot["audio_words_url"] = f"{_base}/shot_{shot_idx:03d}_raw.json"
+            shot["audio_script_url"] = f"{_base}/shot_{shot_idx:03d}_script.txt"
+
+    @staticmethod
+    def _reconcile_shot_timings_after_tts(
+        shots: List[Dict[str, Any]],
+        shot_offsets: List[Dict[str, Any]],
+    ) -> None:
+        """Update each shot's `start_time` / `end_time` / `shot_duration_s`
+        from actual TTS MP3 durations (via `_concat_master_narration` offsets).
+
+        Director plans shots from beat-level duration estimates; per-shot TTS
+        produces the real durations. Without reconciliation, shot boundaries
+        could drift by 0.5–2s per shot, accumulating to large mismatches by
+        the end of a 30-shot run. Mutates `shots` in place.
+
+        Falls through cleanly when shot count and offset count diverge (a
+        shot may have been dropped or split between planning and TTS) —
+        in that case logs and leaves Director-estimated timings alone.
+        """
+        if not shots or not shot_offsets:
+            return
+        if len(shots) != len(shot_offsets):
+            print(
+                f"   ⚠️ reconcile: shot count {len(shots)} != offset count "
+                f"{len(shot_offsets)} — skipping reconciliation"
+            )
+            return
+        _drift_max = 0.0
+        for s, off in zip(shots, shot_offsets):
+            try:
+                start = float(off.get("start_s") or 0.0)
+                dur = float(off.get("dur_s") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            old_start = float(s.get("start_time", 0) or 0)
+            old_end = float(s.get("end_time", 0) or 0)
+            new_start = round(start, 3)
+            new_end = round(start + dur, 3)
+            drift = max(abs(new_start - old_start), abs(new_end - old_end))
+            _drift_max = max(_drift_max, drift)
+            s["start_time"] = new_start
+            s["end_time"] = new_end
+            s["shot_duration_s"] = round(dur, 3)
+        if _drift_max > 0.5:
+            print(
+                f"   ⏱️ reconcile: max shot drift {_drift_max:.2f}s "
+                f"(Director estimate → actual TTS)"
+            )
+
+    def regen_shot_narration(
+        self,
+        shot_plan: List[Dict[str, Any]],
+        target_shot_idx: int,
+        new_narration_text: str,
+        run_dir: Path,
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+        narration_key: str = "narration_text",
+    ) -> Dict[str, Any]:
+        """Public-API entry for editor 're-narrate this shot'.
+
+        Re-TTSes ONE shot identified by `target_shot_idx`, reuses cached
+        per-shot MP3s for every other shot, then rebuilds the master
+        `narration.mp3` + `narration_raw.json` via `_concat_master_narration`.
+
+        Inputs:
+          - `shot_plan`: the current shot list (each shot has `shot_index`,
+            `narration_text`, optionally `shot_duration_s`)
+          - `target_shot_idx`: which shot's narration changed
+          - `new_narration_text`: the new text for that shot (may be empty —
+            becomes a silent gap in the master)
+          - `run_dir`: video's run directory; per-shot MP3s live under
+            `<run_dir>/tts/shot_{idx:03d}.mp3`
+
+        Returns a dict carrying the rebuilt master paths + shot offsets so
+        the caller can re-upload to S3 and patch the timeline. Other shots'
+        per-shot MP3s are reused from disk; only the target shot incurs a
+        Veo/TTS call.
+
+        Idempotent on no-op edits: if `new_narration_text` matches the
+        cached script at `<run_dir>/tts/shot_{N}_script.txt`, the cached
+        MP3 is reused (no TTS call).
+        """
+        target_idx = self._coerce_shot_index(target_shot_idx, -1)
+        if target_idx < 0:
+            raise ValueError(f"regen_shot_narration: invalid target_shot_idx {target_shot_idx!r}")
+        per_shot_outputs: List[Dict[str, Any]] = []
+        tts_dir = run_dir / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+
+        for loop_idx, shot in enumerate(shot_plan):
+            shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
+            try:
+                duration_s = float(shot.get("shot_duration_s") or shot.get("duration_s") or 0.0)
+            except (TypeError, ValueError):
+                duration_s = 0.0
+
+            if shot_idx == target_idx:
+                narration_text = (new_narration_text or "").strip()
+                # Idempotency: skip TTS if cached script matches the new text
+                cached_script = tts_dir / f"shot_{shot_idx:03d}_script.txt"
+                cached_mp3 = tts_dir / f"shot_{shot_idx:03d}.mp3"
+                cached_raw = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+                cache_hit = (
+                    narration_text
+                    and cached_script.exists()
+                    and cached_mp3.exists()
+                    and cached_raw.exists()
+                    and cached_script.read_text(encoding="utf-8").strip() == narration_text
+                )
+                if cache_hit:
+                    result = {
+                        "shot_idx": shot_idx,
+                        "skipped": False,
+                        "mp3_path": cached_mp3,
+                        "raw_json_path": cached_raw,
+                        "char_count": len(narration_text),
+                        "intended_duration_s": duration_s,
+                        "cache_hit": True,
+                    }
+                else:
+                    try:
+                        result = self._synthesize_voice_for_shot(
+                            shot_idx=shot_idx,
+                            narration_text=narration_text,
+                            run_dir=run_dir,
+                            language=language,
+                            voice_gender=voice_gender,
+                            tts_provider=tts_provider,
+                            voice_id=voice_id,
+                        )
+                    except Exception as tts_err:
+                        print(f"⚠️  regen TTS failed for target shot {shot_idx}: {tts_err}")
+                        # Target-shot TTS failure: re-raise so caller knows the
+                        # edit didn't take. The cached files (if any) remain
+                        # intact, so the editor can retry without losing prior
+                        # state. We don't ship silence for the target — that
+                        # would silently produce the wrong audio.
+                        raise
+                    result["intended_duration_s"] = duration_s
+                per_shot_outputs.append(result)
+                continue
+
+            # Non-target shots: reuse cached per-shot MP3 if it exists; else
+            # synth fresh (first-run case for a video that hasn't been editor-
+            # rebuilt yet). The first regen on a v1-pipeline video will cost
+            # one TTS call per shot — subsequent regens are single-shot.
+            cached_mp3 = tts_dir / f"shot_{shot_idx:03d}.mp3"
+            cached_raw = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+            if cached_mp3.exists() and cached_raw.exists():
+                per_shot_outputs.append({
+                    "shot_idx": shot_idx,
+                    "skipped": False,
+                    "mp3_path": cached_mp3,
+                    "raw_json_path": cached_raw,
+                    "char_count": len((shot.get(narration_key) or "").strip()),
+                    "intended_duration_s": duration_s,
+                    "cache_hit": True,
+                })
+            else:
+                narration_text = (shot.get(narration_key) or "").strip()
+                # Non-target shots: isolate failures (silence fallback) so a
+                # single bad shot doesn't kill the whole regen.
+                try:
+                    result = self._synthesize_voice_for_shot(
+                        shot_idx=shot_idx,
+                        narration_text=narration_text,
+                        run_dir=run_dir,
+                        language=language,
+                        voice_gender=voice_gender,
+                        tts_provider=tts_provider,
+                        voice_id=voice_id,
+                    )
+                except Exception as tts_err:
+                    print(f"⚠️  regen TTS failed for non-target shot {shot_idx}: {tts_err}")
+                    result = {
+                        "shot_idx": shot_idx,
+                        "skipped": True,
+                        "reason": f"tts_error: {type(tts_err).__name__}",
+                        "mp3_path": None,
+                        "raw_json_path": None,
+                        "char_count": 0,
+                    }
+                result["intended_duration_s"] = duration_s
+                per_shot_outputs.append(result)
+
+        concat_result = self._concat_master_narration(per_shot_outputs, run_dir)
+        concat_result["per_shot_outputs"] = per_shot_outputs
+        concat_result["target_shot_idx"] = target_idx
+        return concat_result
 
     # --- Sarvam AI TTS (premium, Indian languages) -------------------------
     def _synthesize_voice_sarvam(
@@ -5263,26 +8198,58 @@ class VideoGenerationPipeline:
         """
         palette = style_guide.get("palette", {}) or {}
         is_portrait = height > width
-        # Font scale — portrait pushes display type larger relative to viewport
-        # because reels hold attention on a single text block, not a layout grid.
-        if is_portrait:
+        # Font scale — pull from the 4-bucket `_CANVAS_TIER_RULES` table in
+        # shot_type_cards (portrait_720 / portrait_1080 / landscape_720 /
+        # landscape_1080). That same table feeds the per-shot LLM's TEXT BOUND
+        # BOX + FONT-SIZE CEILING rules, so deterministic templates and
+        # LLM-emitted shots now share a single typography source of truth.
+        # Previously this branch was binary portrait/landscape with caps
+        # that exceeded the LLM-path rules by 2-3× — templates emitted
+        # headlines the LLM was explicitly forbidden to emit.
+        try:
+            from shot_type_cards import _CANVAS_TIER_RULES, _canvas_bucket
+            _bucket = _canvas_bucket(width, height)
+            _rules = _CANVAS_TIER_RULES[_bucket]
+            # _rules[tier] = (char_cap, font_px_ceiling, clamp_str). We want the
+            # clamp string. `_CANVAS_TIER_RULES` only standardises 5 tiers;
+            # `caption` and `micro` are template-only keys — map both to `label`
+            # so small annotation text in templates renders at the same scale as
+            # label-sized text in the LLM path. Templates can still override
+            # with explicit clamps when they need a distinct caption size.
             font_scale = {
-                "display": "9rem",
-                "h1": "5.5rem",
-                "h2": "3.25rem",
-                "body": "1.9rem",
-                "caption": "1.35rem",
-                "micro": "1.05rem",
+                "display": _rules["display"][2],
+                "h1":      _rules["h1"][2],
+                "h2":      _rules["h2"][2],
+                "body":    _rules["body"][2],
+                "caption": _rules["label"][2],
+                "label":   _rules["label"][2],
+                "micro":   _rules["label"][2],
             }
-        else:
-            font_scale = {
-                "display": "8rem",
-                "h1": "4.5rem",
-                "h2": "2.75rem",
-                "body": "1.75rem",
-                "caption": "1.2rem",
-                "micro": "0.95rem",
-            }
+        except Exception as _fs_err:
+            # Defensive — if shot_type_cards changes shape, fall back to caps
+            # that approximate the HD bucket for the current orientation so
+            # templates still render rather than crashing the run.
+            print(f"[shot_pack] canvas-rules import failed ({_fs_err}); using static fallback")
+            if is_portrait:
+                font_scale = {
+                    "display": "clamp(2.5rem, min(13vw, 7.5vh), 9rem)",
+                    "h1":      "clamp(2rem, min(10vw, 5.8vh), 7rem)",
+                    "h2":      "clamp(1.4rem, min(6.3vw, 3.5vh), 4.25rem)",
+                    "body":    "clamp(1.05rem, min(3vw, 1.7vh), 2rem)",
+                    "caption": "clamp(0.85rem, 1.7vmin, 1.1rem)",
+                    "label":   "clamp(0.85rem, 1.7vmin, 1.1rem)",
+                    "micro":   "clamp(0.85rem, 1.7vmin, 1.1rem)",
+                }
+            else:
+                font_scale = {
+                    "display": "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)",
+                    "h1":      "clamp(2rem, min(6vw, 10.7vh), 7.25rem)",
+                    "h2":      "clamp(1.5rem, min(4vw, 7vh), 4.75rem)",
+                    "body":    "clamp(1rem, min(1.7vw, 3vh), 2rem)",
+                    "caption": "clamp(0.9rem, 1.2vmin, 1.25rem)",
+                    "label":   "clamp(0.9rem, 1.2vmin, 1.25rem)",
+                    "micro":   "clamp(0.9rem, 1.2vmin, 1.25rem)",
+                }
         safe_area = "4%" if is_portrait else "6%"
         return {
             "color_tokens": {
@@ -5347,6 +8314,666 @@ class VideoGenerationPipeline:
             "id_prefix": "s{shot_idx}_",  # Shot code replaces {shot_idx} at inject time
         }
 
+    @staticmethod
+    def _build_continuity_brief(
+        shots: List[Dict[str, Any]],
+        shot_idx: int,
+        recurring_motifs: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Build a cross-shot continuity brief for the per-shot LLM (Tier 4 L1 fix).
+
+        The per-shot LLM is stateless — each shot is a fresh call with no
+        memory of the prior or next shot. This block injects a small text
+        summary (≤300 tokens) so the LLM can:
+          1. Match the prior shot's background_treatment / palette posture.
+          2. Land in an exit pose the next shot can pick up from.
+          3. Honor `recurring_motifs` declared at the Director plan level so
+             brand elements (logo, watermark, accent bars) appear at consistent
+             screen positions across the timeline.
+
+        Pure function. Uses only Director-plan fields we already have — no
+        rendering pass, no extra LLM call. Returns "" when the video has
+        only one shot.
+        """
+        if not shots or shot_idx < 0 or shot_idx >= len(shots) or len(shots) <= 1:
+            return ""
+
+        lines: List[str] = [
+            "**CROSS-SHOT CONTINUITY BRIEF** — read once, then design with this in mind.",
+        ]
+
+        # ── PRIOR SHOT — what this shot must continue from ──
+        if shot_idx > 0:
+            prior = shots[shot_idx - 1] or {}
+            prior_type = (prior.get("shot_type") or "").upper() or "?"
+            prior_bg = prior.get("background_treatment") or "brand_solid"
+            prior_visual = (prior.get("visual_description") or "").strip()
+            if len(prior_visual) > 120:
+                prior_visual = prior_visual[:120].rsplit(" ", 1)[0] + "…"
+
+            # End pose heuristic — Director plan doesn't have a structured
+            # end_pose field, so synthesize from the most informative bit
+            # available: last text_element > last animation_strategy beat >
+            # tail of narration_excerpt. This is approximate; the goal is
+            # "enough hint to design a graceful continuation", not "exact
+            # pixel state at last frame".
+            end_pose = ""
+            _texts = prior.get("text_elements")
+            if isinstance(_texts, list) and _texts:
+                end_pose = str(_texts[-1])
+            if not end_pose:
+                _anim = (prior.get("animation_strategy") or "").strip()
+                if "," in _anim:
+                    end_pose = _anim.rsplit(",", 1)[-1].strip()
+                elif _anim:
+                    end_pose = _anim
+            if not end_pose:
+                _narr = (prior.get("narration_excerpt") or "").strip()
+                _tail = " ".join(_narr.split()[-6:])
+                if _tail:
+                    end_pose = f"…{_tail}"
+            if len(end_pose) > 100:
+                end_pose = end_pose[:100].rsplit(" ", 1)[0] + "…"
+
+            lines += [
+                "",
+                f"PRIOR SHOT (shot {shot_idx}):",
+                f"  - type: {prior_type}",
+                f"  - background_treatment: {prior_bg}",
+            ]
+            if prior_visual:
+                lines.append(f"  - visual: {prior_visual}")
+            if end_pose:
+                lines.append(f"  - end pose: {end_pose}")
+            lines.append(
+                "  Match prior's `background_treatment` (≤2 distinct per video) and pick up "
+                "visually where it left off."
+            )
+
+        # ── NEXT SHOT INTENT — what this shot must lead into ──
+        if shot_idx < len(shots) - 1:
+            nxt = shots[shot_idx + 1] or {}
+            next_type = (nxt.get("shot_type") or "").upper() or "?"
+
+            opens_with = ""
+            _texts_n = nxt.get("text_elements")
+            if isinstance(_texts_n, list) and _texts_n:
+                opens_with = str(_texts_n[0])
+            if not opens_with:
+                _anim_n = (nxt.get("animation_strategy") or "").strip()
+                if "," in _anim_n:
+                    opens_with = _anim_n.split(",", 1)[0].strip()
+                elif _anim_n:
+                    opens_with = _anim_n
+            if not opens_with:
+                _narr_n = (nxt.get("narration_excerpt") or "").strip()
+                _head = " ".join(_narr_n.split()[:6])
+                if _head:
+                    opens_with = _head + "…"
+            if len(opens_with) > 100:
+                opens_with = opens_with[:100].rsplit(" ", 1)[0] + "…"
+
+            lines += [
+                "",
+                f"NEXT SHOT (shot {shot_idx + 2}):",
+                f"  - type: {next_type}",
+            ]
+            if opens_with:
+                lines.append(f"  - opens with: {opens_with}")
+            lines.append(
+                "  Land in an exit pose this next shot can pick up from cleanly — don't end on "
+                "screen-full of unrelated content that has to be wiped away."
+            )
+
+        # ── RECURRING MOTIFS — brand elements at consistent screen positions ──
+        if recurring_motifs:
+            applicable: List[str] = []
+            current_bg = shots[shot_idx].get("background_treatment", "")
+            for m in recurring_motifs[:5]:  # cap to avoid token bloat
+                if not isinstance(m, dict):
+                    continue
+                when = (m.get("when_visible") or "").lower()
+                # Cheap conditional skip: motifs declared off media_hero shots
+                if "except media_hero" in when and current_bg == "media_hero":
+                    continue
+                desc = (m.get("description") or "").strip()
+                pos = (m.get("screen_position") or "").strip()
+                if not (desc or pos):
+                    continue
+                line = f"  - {desc}"
+                if pos:
+                    line += f" — position: {pos}"
+                applicable.append(line)
+            if applicable:
+                lines += [
+                    "",
+                    "RECURRING MOTIFS (must appear at consistent screen positions across shots):",
+                    *applicable,
+                    "  Place these at their declared positions; never reinvent where the logo sits.",
+                ]
+
+        return "\n".join(lines)
+
+    # Shot types where bbox-lint is not useful or not actionable:
+    #   SOURCE_CLIP / IMAGE_CLIP / AI_VIDEO_HERO — no LLM HTML to regen.
+    #   KINETIC_TEXT — pipeline-built from word timings, no LLM HTML to regen.
+    _BBOX_LINT_SKIP_SHOT_TYPES = frozenset({
+        "SOURCE_CLIP", "IMAGE_CLIP", "AI_VIDEO_HERO", "KINETIC_TEXT",
+    })
+
+    # Lazy-inheritance defaults for the per-shot `background_treatment` field
+    # (Tier 3, 2026-05). Used by _run_director when the Director omits the
+    # field — conservative shot-type-derived mapping so cross-shot continuity
+    # is preserved without forcing the Director to set it on every shot.
+    # Media-hero shot types map to `media_hero` (the media IS the background);
+    # all others map to flat / textured / gradient brand-bg by content density.
+    _SHOT_TYPE_BG_TREATMENT_DEFAULT = {
+        # Media-hero: the visible media fills the canvas. Covers every
+        # shot_type from SHOT_TYPE_CARDS where stock/AI/source media is
+        # the dominant background, plus split-screen and cutout assets.
+        "VIDEO_HERO":       "media_hero",
+        "IMAGE_HERO":       "media_hero",
+        "IMAGE_SPLIT":      "media_hero",
+        "IMAGE_CLIP":       "media_hero",
+        "SOURCE_CLIP":      "media_hero",
+        "AI_VIDEO_HERO":    "media_hero",
+        "ANIMATED_ASSET":   "media_hero",   # cutouts on a bg the LLM chooses; treat as hero
+        # Brand-textured: data-rich shots benefit from halftone/dotgrid overlay.
+        "DATA_STORY":       "brand_textured",
+        "PROCESS_STEPS":    "brand_textured",
+        "INFOGRAPHIC_SVG":  "brand_textured",
+        "EQUATION_BUILD":   "brand_textured",
+        "ANNOTATION_MAP":   "brand_textured",
+        "TEXT_DIAGRAM":     "brand_textured",
+        "ARTICLE_FOCUS":    "brand_textured",
+        # Brand-gradient: world-changes-around-the-subject pattern.
+        "PRODUCT_HERO":     "brand_gradient",
+        # Brand-solid: flat brand bg for typography / device chrome / connective.
+        "KINETIC_TITLE":    "brand_solid",
+        "KINETIC_TEXT":     "brand_solid",
+        "LOWER_THIRD":      "brand_solid",
+        "DEVICE_MOCKUP":    "brand_solid",
+    }
+
+    def _bbox_lint_pick_timestamps(self, duration_s: float) -> List[float]:
+        """Pick timestamps for the deterministic bbox lint.
+
+        Two-frame coverage: mid-shot (after entry animations settle) and near-
+        end (catches text that settled to a position that overflows). Single
+        timestamp would miss the steady-state-then-overflow case where a slow
+        Ken Burns push moves text past the edge at t≈0.9*dur but it was inside
+        at t≈0.5*dur. Three timestamps would catch more but is 50% more cost
+        for diminishing returns at this rubric level.
+        """
+        dur = max(1.0, float(duration_s))
+        # Early-mid: after typical entry tweens (delay ≤ 0.8s, duration ≤ 1.0s).
+        t_mid = max(0.6, min(dur * 0.5, dur - 0.4))
+        # Near-end: before any transition-out tween (renderer applies those to
+        # #shot-root, not to in-shot elements, so this is normally safe).
+        t_late = max(t_mid + 0.2, dur - 0.25)
+        return [round(t_mid, 2), round(t_late, 2)]
+
+    def _build_bbox_corrective_prompt(
+        self,
+        violations: List[Dict[str, Any]],
+        canvas_w: int,
+        canvas_h: int,
+    ) -> str:
+        """Compose the corrective user message for a bbox-lint-driven regen.
+
+        The regen LLM gets the exact selectors + text + bounding rects + canvas
+        size. The directive is intentionally concrete (demote tier / break /
+        max-width) so the LLM has 3 acknowledged escapes rather than freewheeling.
+        """
+        lines = [
+            "Your previous shot HTML had text/media that OVERFLOWED the canvas. This is a "
+            "deterministic check from a headless-Chromium bounding-box walk — not a vision-model "
+            "interpretation. Every element listed below had a `getBoundingClientRect()` that crossed "
+            f"the canvas edge (canvas is strictly {canvas_w}×{canvas_h}, 0-indexed, no overflow tolerated).",
+            "",
+            "Offending elements:",
+        ]
+        for v in violations[:6]:
+            r = v.get("rect") or {}
+            sel = str(v.get("selector") or "?")
+            txt = str(v.get("text") or "")
+            t = float(v.get("t") or 0)
+            kind = "media" if v.get("is_media") else "text"
+            txt_preview = f' "{txt[:50]}{"…" if len(txt) > 50 else ""}"' if txt else ""
+            lines.append(
+                f"  - [{kind}] {sel}{txt_preview} at t={t:.2f}s — "
+                f"rect=(l={r.get('l', '?'):.0f}, t={r.get('t', '?'):.0f}, "
+                f"r={r.get('r', '?'):.0f}, b={r.get('b', '?'):.0f})"
+            )
+        lines += [
+            "",
+            "Fix the overflow by applying ONE OR MORE of these techniques:",
+            "  1. Demote the font tier by one level (display → h1 → h2 → body) on the overflowing element.",
+            "  2. Break the headline into two lines: change `white-space:nowrap` to allow wrap, OR insert a `<br>` at a natural break.",
+            "  3. Add `max-width:88%; word-break:keep-all; hyphens:none` to the container so long words shrink in scale before they clip.",
+            "  4. If the element is a media element (img/svg), constrain `width` and `height` so the bounding rect stays inside the canvas.",
+            "",
+            "Keep the same shot_pack tokens, the same animation_strategy, and the same narration sync. "
+            "Return only the JSON shot object.",
+        ]
+        return "\n".join(lines)
+
+    # Shot types that CAN host a reference asset embed via <img data-img-source="reference">.
+    # Text-only shot types are excluded — they're not designed to render <img>.
+    _BRAND_ASSET_HOSTABLE_SHOT_TYPES = frozenset({
+        "VIDEO_HERO", "IMAGE_HERO", "IMAGE_SPLIT", "IMAGE_CLIP",
+        "PRODUCT_HERO", "ANIMATED_ASSET", "ANNOTATION_MAP",
+        "INFOGRAPHIC_SVG", "DEVICE_MOCKUP",
+    })
+
+    def _shot_requires_brand_asset(
+        self,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        total_shots: int,
+    ) -> bool:
+        """Return True when this shot is required to embed a user-uploaded
+        reference asset (logo, product photo, brand mark).
+
+        Required when (a) the run has reference assets AND (b) this is the
+        intro (shot 0) OR the close (last shot) OR a shot tagged
+        `role:"product_proof"`. Text-only shot types are skipped because they
+        can't host an `<img>` element.
+        """
+        # No reference assets uploaded? Nothing to enforce.
+        _ref_ctx = getattr(self, "_reference_context", None)
+        _ref_images: List[Any] = []
+        if isinstance(_ref_ctx, dict):
+            _ref_images = _ref_ctx.get("embeddable_images") or []
+        if not _ref_images:
+            return False
+
+        shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
+        if shot_type not in self._BRAND_ASSET_HOSTABLE_SHOT_TYPES:
+            return False
+
+        # Role-based requirement: intro, outro, or product_proof.
+        role = (shot.get("role") or "").strip().lower()
+        if role == "product_proof":
+            return True
+        if shot_idx == 0:
+            return True
+        if total_shots > 0 and shot_idx == total_shots - 1:
+            return True
+        return False
+
+    @staticmethod
+    def _html_has_reference_asset_embed(html: str) -> bool:
+        """Regex check for at least one `<img data-img-source="reference"...>` tag.
+
+        Tolerates single OR double quotes around the attribute value to match
+        the prompt's permissive examples; matches with arbitrary leading
+        attributes inside the `<img>` tag so attribute order doesn't matter.
+        """
+        if not html:
+            return False
+        # `<img ... data-img-source="reference" ...>` or `data-img-source='reference'`
+        return bool(re.search(
+            r"""<img\b[^>]*\bdata-img-source\s*=\s*["']\s*reference\s*["'][^>]*>""",
+            html,
+            re.IGNORECASE,
+        ))
+
+    def _lint_shot_brand_asset(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        total_shots: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Post-render assertion: when this shot is required to embed a
+        user-uploaded reference asset (intro / outro / product_proof) and the
+        rendered HTML doesn't contain `<img data-img-source="reference" ...>`,
+        fire ONE corrective regen with concrete embed guidance.
+
+        Returns a telemetry record dict with optional `regen_html`, or None
+        when no enforcement is required for this shot.
+
+        Mirrors the shape of `_lint_shot_bbox` so call-site telemetry stays
+        consistent: pre-state captured in record; ship-original-on-regression
+        policy; regen via the same chat-history pattern as the density and
+        bbox lints.
+        """
+        if not self._shot_requires_brand_asset(shot, shot_idx, total_shots):
+            return None
+
+        self._emit_shot_substage(shot_idx, "brand_asset", "Checking brand asset…")
+
+        if self._html_has_reference_asset_embed(html):
+            print(f"   🏷️  Shot {shot_idx + 1}: brand-asset embed PRESENT (required shot)")
+            return {
+                "shipped": "original",
+                "had_embed_pre": True,
+                "had_embed_post": True,
+                "regen_html": None,
+            }
+
+        # Required but missing — fire one corrective regen.
+        self._emit_shot_regen(
+            shot_idx, "brand_asset", attempt=1,
+            verdict="fail", reason="reference asset missing from HTML",
+        )
+        # Build a directive that points the LLM at the BRAND ANCHOR block
+        # already in the prompt history.
+        _ref_ctx = getattr(self, "_reference_context", None) or {}
+        _embeds = _ref_ctx.get("embeddable_images") or []
+        _example_url = ""
+        if _embeds:
+            _first = _embeds[0]
+            if isinstance(_first, dict):
+                _example_url = (_first.get("s3_url") or _first.get("url") or "").strip()
+
+        _role_label = "intro" if shot_idx == 0 else ("close" if shot_idx == total_shots - 1 else "product_proof")
+        print(
+            f"   🏷️  Shot {shot_idx + 1} ({_role_label}): brand-asset embed MISSING — firing corrective regen"
+        )
+
+        corrective_lines = [
+            f"This shot is the {_role_label} of the video and MUST embed at least one user-provided "
+            "brand/reference asset. Your previous output did NOT include any "
+            "`<img data-img-source=\"reference\" ...>` tag.",
+            "",
+            "The user uploaded brand assets — they were surfaced earlier in this prompt under the "
+            "🏷️ BRAND ANCHOR block. Embed at least one of them like this:",
+            "",
+            (
+                f'  <img data-img-source="reference" data-reference-url="{_example_url}" '
+                f'data-img-prompt="<short alt>" src="placeholder.png" />'
+                if _example_url else
+                '  <img data-img-source="reference" data-reference-url="<url from BRAND ANCHOR>" '
+                'data-img-prompt="<short alt>" src="placeholder.png" />'
+            ),
+            "",
+            "The `src=\"placeholder.png\"` is REQUIRED — the pipeline rewrites it to the actual "
+            "asset URL after generation. Place the brand image in the composition where it serves "
+            "the narrative — for intros, a hero placement; for closes, near a CTA / outro card.",
+            "Keep the same shot_pack tokens, narration sync, and animation_strategy. Return only "
+            "the JSON shot object.",
+        ]
+        corrective = "\n".join(corrective_lines)
+
+        record: Dict[str, Any] = {
+            "shipped": "original",
+            "had_embed_pre": False,
+            "had_embed_post": False,
+            "role_label": _role_label,
+            "regen_html": None,
+        }
+
+        # Pillar 1 — stamp this corrective LLM call as phase=regen.
+        _phase_tok = _llm_phase.set("regen")
+        _stage_tok = _llm_stage.set(f"brand_asset_regen_shot_{shot_idx}")
+        try:
+            try:
+                raw2, usage2 = self.html_client.chat(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                        {"role": "user", "content": corrective},
+                    ],
+                    temperature=0.4,
+                    max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                )
+            except Exception as exc:
+                print(f"   ⚠️ Shot {shot_idx + 1} brand-asset regen failed ({exc}) — shipping original")
+                record["regen_error"] = str(exc)
+                return record
+        finally:
+            _llm_phase.reset(_phase_tok)
+            _llm_stage.reset(_stage_tok)
+
+        data2 = _extract_json_blob(raw2)
+        html2 = (data2 or {}).get("html", "")
+        if usage2:
+            usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
+            usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+
+        if not html2:
+            record["regen_error"] = "regen returned empty html"
+            return record
+
+        candidate = self._sanitize_html_content(html2)
+        _duration_s = max(0.5, end_time - start_time)
+        candidate = self._clamp_entry_animations(candidate, _duration_s)
+        record["regen_html_attempt"] = candidate
+
+        if self._html_has_reference_asset_embed(candidate):
+            record["regen_html"] = candidate
+            record["had_embed_post"] = True
+            record["shipped"] = "regen"
+            print(f"   ✅ Shot {shot_idx + 1} brand-asset regen PASSED — shipping regen")
+        else:
+            record["shipped"] = "original"
+            record["reason"] = "regen still missing reference embed — reverting"
+            print(f"   ⏪ Shot {shot_idx + 1} brand-asset regen NO BETTER — shipping original")
+
+        return record
+
+    def _lint_shot_bbox(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Deterministic post-render overflow check.
+
+        Fires AFTER the regex density validator (cheap) but BEFORE the LLM
+        vision review (expensive). Walks the rendered shadow DOM via the render
+        worker's POST /bbox-check; if any visible text or media element crosses
+        the canvas edge, fires ONE corrective regen and re-lints. Ship-original-
+        on-regression policy mirrors the density validator.
+
+        Returns a telemetry record dict (with optional `regen_html` for the
+        caller to substitute), or None when the lint was skipped.
+
+        Never raises — every failure path returns None (skip) so the shot ships.
+        """
+        if not self._tier_config.get("shot_bbox_check"):
+            return None
+
+        shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
+        if shot_type in self._BBOX_LINT_SKIP_SHOT_TYPES:
+            return None
+
+        duration_s = float(end_time - start_time)
+        if duration_s < 1.5:
+            # Mirrors vision-review skip; sub-1.5s shots are too short for the
+            # entry animation to have settled — high false-positive rate.
+            return None
+
+        # Emit the render-worker-gates banner once per run. Without this,
+        # bbox-lint silently skips when RENDER_SERVER_URL is unset and the
+        # user has no signal that Tier 2 isn't actually running. Banner is
+        # shared with vision review (same flag), so whichever gate fires
+        # first triggers it.
+        self._vision_review_emit_banner_once()
+
+        # Lazy import — keeps module load fast for free-tier runs.
+        try:
+            from shot_screenshot_service import ShotScreenshotClient, ScreenshotClientError
+        except ImportError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1}: bbox-lint SKIPPED — screenshot module not importable: {exc}")
+            return None
+
+        client = getattr(self, "_screenshot_client", None)
+        if client is None:
+            client = ShotScreenshotClient()
+            self._screenshot_client = client
+        if not client.is_configured:
+            # Banner already explained why (RENDER_SERVER_URL unset). Returning
+            # None keeps the shot shipping unaffected; the banner is the only
+            # signal that bbox-lint isn't actually running.
+            return None
+
+        self._emit_shot_substage(shot_idx, "bbox_lint", "Bounding-box check…")
+        timestamps = self._bbox_lint_pick_timestamps(duration_s)
+        canvas_w = int(getattr(self, "video_width", 1920))
+        canvas_h = int(getattr(self, "video_height", 1080))
+        bg = str(
+            shot.get("background")
+            or shot.get("bg")
+            or ((getattr(self, "_current_style_guide", None) or {}).get("palette") or {}).get("background")
+            or "#0a0e27"
+        )
+
+        try:
+            violations = client.check_shot_bbox(
+                html=html,
+                width=canvas_w,
+                height=canvas_h,
+                timestamps=timestamps,
+                background=bg,
+            )
+        except ScreenshotClientError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1}: bbox-lint SKIPPED — render worker /bbox-check failed: {exc}")
+            return None
+
+        record: Dict[str, Any] = {
+            "shipped": "original",
+            "pre_violations": [
+                {
+                    "t": v.t, "selector": v.selector, "rect": dict(v.rect),
+                    "text": v.text, "is_media": v.is_media,
+                }
+                for v in violations
+            ],
+            "canvas_w": canvas_w,
+            "canvas_h": canvas_h,
+            "timestamps": list(timestamps),
+            "regen_html": None,
+        }
+
+        if not violations:
+            # Pass — shot fits the canvas. Most common path; print only when verbose.
+            print(f"   📐 Shot {shot_idx + 1}: bbox-lint PASSED ({len(timestamps)} timestamps clean)")
+            return record
+
+        # Build the corrective directive with concrete selector + rect info.
+        _codes = ",".join(v.selector for v in violations[:3])
+        print(
+            f"   📐 Shot {shot_idx + 1}: bbox-lint FOUND {len(violations)} overflow(s) "
+            f"[{_codes}{'…' if len(violations) > 3 else ''}] — firing corrective regen"
+        )
+        self._emit_shot_regen(
+            shot_idx, "bbox", attempt=1,
+            verdict="fail", reason=f"{len(violations)} overflow violations",
+        )
+
+        corrective = self._build_bbox_corrective_prompt(
+            record["pre_violations"], canvas_w, canvas_h,
+        )
+
+        # On regression we ship original by leaving record["regen_html"]=None;
+        # the caller substitutes html only when regen_html is set, so the
+        # original is implicitly preserved without an explicit snapshot.
+        # Pillar 1 — stamp this call as a regen for the cost balance sheet.
+        _phase_tok = _llm_phase.set("regen")
+        _stage_tok = _llm_stage.set(f"bbox_lint_regen_shot_{shot_idx}")
+        try:
+            try:
+                raw2, usage2 = self.html_client.chat(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                        {"role": "user", "content": corrective},
+                    ],
+                    temperature=0.4,
+                    max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                )
+            except Exception as exc:
+                print(f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen failed ({exc}) — shipping original")
+                record["regen_error"] = str(exc)
+                return record
+        finally:
+            _llm_phase.reset(_phase_tok)
+            _llm_stage.reset(_stage_tok)
+
+        data2 = _extract_json_blob(raw2)
+        html2 = (data2 or {}).get("html", "")
+        if usage2:
+            usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
+            usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+
+        if not html2:
+            record["regen_error"] = "regen returned empty html"
+            return record
+
+        candidate = self._sanitize_html_content(html2)
+        candidate = self._clamp_entry_animations(candidate, duration_s)
+        record["regen_html_attempt"] = candidate
+
+        # Re-lint the regen candidate. Three outcomes — match density validator
+        # semantics so the call-site telemetry shape is consistent.
+        try:
+            violations2 = client.check_shot_bbox(
+                html=candidate,
+                width=canvas_w,
+                height=canvas_h,
+                timestamps=timestamps,
+                background=bg,
+            )
+        except ScreenshotClientError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen re-check failed ({exc}) — shipping original")
+            record["regen_error"] = f"regen re-check failed: {exc}"
+            return record
+
+        record["post_violations"] = [
+            {
+                "t": v.t, "selector": v.selector, "rect": dict(v.rect),
+                "text": v.text, "is_media": v.is_media,
+            }
+            for v in violations2
+        ]
+
+        if not violations2:
+            record["regen_html"] = candidate
+            record["shipped"] = "regen"
+            print(f"   ✅ Shot {shot_idx + 1} bbox-lint regen PASSED — shipping regen")
+        elif len(violations2) >= len(violations):
+            record["shipped"] = "original"
+            record["reason"] = (
+                f"regen had {len(violations2)} violations vs {len(violations)} original — reverting"
+            )
+            print(
+                f"   ⏪ Shot {shot_idx + 1} bbox-lint regen NO BETTER "
+                f"({len(violations)} → {len(violations2)}) — shipping original"
+            )
+        else:
+            record["regen_html"] = candidate
+            record["shipped"] = "regen"
+            record["reason"] = (
+                f"regen reduced violations {len(violations)} → {len(violations2)} — best attempt shipped"
+            )
+            print(
+                f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen IMPROVED "
+                f"({len(violations)} → {len(violations2)}) — shipping best attempt"
+            )
+
+        return record
+
     def _validate_shot_animation_density(
         self,
         html: str,
@@ -5408,6 +9035,40 @@ class VideoGenerationPipeline:
         # flag it even if the min threshold is low.
         if tween_count == 0 and "animation" not in html.lower():
             issues.append("no GSAP animations or CSS @keyframes found at all")
+
+        # ── Second-beat motion (Tier 3, 2026-05) ──
+        # Every shot ≥3s should have at least one tween firing in the back half
+        # (delay ≥ 0.55 × duration). Without this, shots fade in then sit —
+        # canvas reads as a still frame for the latter half. This was the
+        # recurring "feels like a slideshow" symptom in the May 2026 audit.
+        #
+        # We reuse the delay_pattern from the sync_point block above when it's
+        # already computed; otherwise recompute. Lenient on short shots (entry-
+        # only motion is fine when the shot itself is short).
+        _shot_duration_s = end_time - start_time
+        if _shot_duration_s >= 3.0:
+            try:
+                _delay_pattern = re.compile(r"delay\s*:\s*([0-9]*\.?[0-9]+)")
+                _all_delays = [float(m) for m in _delay_pattern.findall(html)]
+            except (re.error, ValueError):
+                _all_delays = []
+            _back_half_threshold = 0.55 * _shot_duration_s
+            _max_delay = max(_all_delays) if _all_delays else 0.0
+            # Allow a tween that fires before the threshold IF it has a very
+            # long duration that EXTENDS into the back half — e.g. a
+            # `delay:0.5, duration:5.0` Ken Burns starts early but covers the
+            # whole shot. Currently the cheapest proxy is "any delay+duration
+            # sum crosses the threshold"; we don't parse durations here to keep
+            # this regex-only, so we accept this as a known false-positive:
+            # the corrective regen prompt explicitly mentions "delayed reveals
+            # OR motion that crosses into the back half" so a Ken Burns shot
+            # can satisfy it by adding any cheap late tween.
+            if _max_delay < _back_half_threshold:
+                issues.append(
+                    f"no back-half motion (max GSAP delay {_max_delay:.2f}s < "
+                    f"{_back_half_threshold:.2f}s = 0.55 × {_shot_duration_s:.1f}s shot duration) — "
+                    f"add at least one tween that fires in the back half so the shot doesn't stare"
+                )
 
         # ── Anti-pattern checks (Track C) ──
         # Cheap planner models (gemini-flash variants) occasionally ignore
@@ -5479,37 +9140,83 @@ class VideoGenerationPipeline:
     # IMAGE_CLIP shows user-uploaded imagery — vision review treats off-brand
     # photos as low-quality and would regenerate the HTML, losing the image
     # URL injected by the IMAGE_CLIP post-processor (see L10334+).
-    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({"KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "IMAGE_CLIP"})
+    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({
+        "KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "IMAGE_CLIP",
+        # AI_VIDEO_HERO (Phase 3b): the visible content is the Veo model's
+        # MP4, not LLM-emitted HTML — reviewing the empty <video> wrapper is
+        # meaningless. Veo's own `safety_tolerance` + `auto_fix` are the
+        # content gates here.
+        "AI_VIDEO_HERO",
+    })
 
     def _vision_review_emit_banner_once(self) -> None:
-        """Emit a once-per-run banner showing the configured state of vision
-        review. Quiet skip paths are the #1 reason 'no entries in the case
-        bank' goes undiagnosed — this banner makes the configuration visible
-        at run start so engineers can tell ENABLED-but-unreachable from
-        legitimately-disabled-by-tier from never-actually-fired.
+        """Emit a once-per-run banner showing the configured state of every
+        render-worker-dependent gate (vision review + bbox-lint).
+
+        Quiet skip paths are the #1 reason "no entries in the case bank"
+        and "Tier 1+2 gates inactive" go undiagnosed in dev/test environments.
+        This banner makes the configuration visible at run start so engineers
+        can tell ENABLED-but-unreachable from legitimately-disabled-by-tier
+        from never-actually-fired.
+
+        Called from BOTH `_lint_shot_bbox` and `_review_shot_visually` — whichever
+        gate fires first emits the banner; subsequent calls are no-ops via the
+        `_vision_review_banner_shown` flag (kept that name for backward
+        compatibility with existing log greps; it's really a "render-worker
+        gates" banner now, not vision-review-only).
         """
         if self._vision_review_banner_shown:
             return
         self._vision_review_banner_shown = True
-        tier_on = bool(self._tier_config.get("shot_vision_review"))
-        if not tier_on:
-            print(f"   🔍 Vision review: DISABLED (tier={self._quality_tier})")
+        vision_on = bool(self._tier_config.get("shot_vision_review"))
+        bbox_on = bool(self._tier_config.get("shot_bbox_check"))
+
+        # When NEITHER gate is enabled at this tier, log a single quiet line.
+        if not vision_on and not bbox_on:
+            print(f"   🔍 Render-worker gates: DISABLED at tier={self._quality_tier} (neither vision review nor bbox-lint enabled)")
             return
-        cap = self._tier_config.get("vision_review_run_cost_cap_usd", 0.15)
+
         url = os.environ.get("RENDER_SERVER_URL", "")
         key_set = bool(os.environ.get("RENDER_SERVER_KEY", ""))
+
+        # LOUD warning when the URL is unset but the tier has gates enabled.
+        # Without RENDER_SERVER_URL, every shot silently skips and the user
+        # has no idea Tier 1+2 quality checks aren't running. The previous
+        # single-line warning was easy to miss in long pipeline logs;
+        # surrounded by ▔ bars and emphatic emoji it now stands out.
         if not url:
-            print(
-                f"   🔍 Vision review: tier flag ON (tier={self._quality_tier}) but "
-                f"RENDER_SERVER_URL is UNSET — every shot will skip silently. "
-                f"Set RENDER_SERVER_URL on the AI service env to enable."
-            )
+            _enabled = []
+            if vision_on:
+                _enabled.append("vision review")
+            if bbox_on:
+                _enabled.append("bbox-lint")
+            _gates_str = " + ".join(_enabled)
+            print("")
+            print("   ▔" * 28)
+            print(f"   ⚠️  ⚠️  ⚠️   RENDER WORKER NOT CONFIGURED  ⚠️  ⚠️  ⚠️")
+            print(f"   Tier {self._quality_tier} has these gates ENABLED: {_gates_str}")
+            print(f"   But RENDER_SERVER_URL is UNSET — every shot will skip silently.")
+            print(f"   ALL post-render quality checks are inactive for this run.")
+            print(f"   FIX: set RENDER_SERVER_URL (and RENDER_SERVER_KEY) on the AI service env.")
+            print("   ▔" * 28)
+            print("")
             return
-        print(
-            f"   🔍 Vision review: ENABLED (tier={self._quality_tier}, "
-            f"model=google/gemini-2.5-pro, cap=${cap:.2f}/run, "
-            f"target={url}, key={'set' if key_set else 'UNSET'})"
-        )
+
+        # Healthy path: gates configured, render worker reachable.
+        cap = self._tier_config.get("vision_review_run_cost_cap_usd", 0.15)
+        _enabled_lines: List[str] = []
+        if vision_on:
+            _enabled_lines.append(
+                f"      • Vision review: model=google/gemini-2.5-pro, cap=${cap:.2f}/run"
+            )
+        if bbox_on:
+            _enabled_lines.append(
+                f"      • Bbox-lint: deterministic (Chromium getBoundingClientRect walk)"
+            )
+        print(f"   🔍 Render-worker gates ENABLED (tier={self._quality_tier}):")
+        for ln in _enabled_lines:
+            print(ln)
+        print(f"      target={url}, key={'set' if key_set else 'UNSET'}")
 
     def _vision_review_pick_timestamps(self, duration_s: float) -> List[float]:
         """Pick screenshot timestamps for one shot. Three frames (early/middle/exit)
@@ -5589,6 +9296,7 @@ class VideoGenerationPipeline:
             self._vision_review_skipped_count += 1
             return None
 
+        self._emit_shot_substage(shot_idx, "vision_review", "Reviewing rendered shot…")
         timestamps = self._vision_review_pick_timestamps(duration_s)
         canvas = "portrait" if getattr(self, "video_width", 1920) < getattr(self, "video_height", 1080) else "landscape"
 
@@ -5625,6 +9333,12 @@ class VideoGenerationPipeline:
         # Resolve the actual brand palette (hex values) — shot_pack stores
         # CSS var refs which the vision model can't compare against pixels.
         _palette = (getattr(self, "_current_style_guide", None) or {}).get("palette") or {}
+
+        # BG_DISCONTINUITY (rubric v3) reads against the prior shot's mid-frame.
+        # Best-effort lookup — missing key (parallel shot order, first shot,
+        # prior shot skipped review) silently degrades to "no cross-shot check".
+        _prior_thumb = self._review_thumbnails.get(shot_idx - 1)
+
         review = review_shot(
             screenshots=screenshots_pre,
             shot=shot,
@@ -5633,8 +9347,23 @@ class VideoGenerationPipeline:
             timestamps=[float(t) for t in timestamps],
             host_meta=host_meta,
             palette=_palette,
+            prior_shot_screenshot=_prior_thumb,
             llm_chat=self.html_client.chat,
+            # Preserve the legacy Pro safety net when stage routing is off
+            # (_resolve_stage_model returns None on empty map). Vision review
+            # has always been Pro and that's the matrix default too — admins
+            # can flip via SQL but the BE never silently downgrades.
+            model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro",
         )
+
+        # Cache this shot's mid-frame so the next shot can BG_DISCONTINUITY-check
+        # against it. The middle screenshot is the representative thumbnail —
+        # entry transitions are mid-flight at frame 0; exit overlays may dominate
+        # frame N-1. We store regardless of pass/fail so the cache stays warm
+        # even for shots that errored out of full review.
+        if screenshots_pre:
+            _mid_idx = len(screenshots_pre) // 2
+            self._review_thumbnails[shot_idx] = screenshots_pre[_mid_idx]
 
         # Tally cost on the run-level accumulator regardless of outcome.
         self._vision_review_run_cost_usd = (
@@ -5691,11 +9420,36 @@ class VideoGenerationPipeline:
         }
 
         # Severity-3 → fire one corrective regen, then re-screenshot + re-review.
-        if review.get("severity_max", 0) >= 3 and review.get("issues"):
+        # Pillar 2.8 — gated by tier knob. When `vision_review_regen_enabled`
+        # is False (default on ultra after Met-Gala audit), detection still
+        # runs and issues are persisted, but the corrective LLM call is
+        # skipped. Net: save ~$0.85/run while shipping the same output the
+        # regen would have rejected anyway.
+        if (
+            review.get("severity_max", 0) >= 3
+            and review.get("issues")
+            and self._tier_config.get("vision_review_regen_enabled", True)
+        ):
+            _issue_codes = ",".join(
+                str(i.get("code") or i.get("type") or "issue")
+                for i in (review.get("issues") or [])[:3]
+            )
+            self._emit_shot_regen(
+                shot_idx, "vision", attempt=1,
+                verdict="fail",
+                reason=f"severity {review.get('severity_max')} [{_issue_codes}]",
+            )
             corrective = self._build_vision_corrective_prompt(
                 review.get("issues") or [],
                 html=html,
             )
+            # Pillar 1 — stamp the corrective LLM call as phase=regen so it
+            # lands in the regen bucket of cost_breakdown.json. The reset
+            # happens whether the chat() call succeeds OR raises; any
+            # subsequent chat() inside the post-processing block (e.g. the
+            # internal `review_shot` LLM call) is back to default phase=base.
+            _phase_tok = _llm_phase.set("regen")
+            _stage_tok = _llm_stage.set(f"vision_review_regen_shot_{shot_idx}")
             try:
                 raw2, usage2 = self.html_client.chat(
                     messages=[
@@ -5707,6 +9461,16 @@ class VideoGenerationPipeline:
                     temperature=0.4,
                     max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
                 )
+            except Exception as _re_exc:
+                _llm_phase.reset(_phase_tok)
+                _llm_stage.reset(_stage_tok)
+                print(f"   ⚠️ Shot {shot_idx + 1} vision corrective regen failed: {_re_exc}")
+                record["shipped"] = "ship_original"
+                record["regen_error"] = str(_re_exc)
+                return record
+            _llm_phase.reset(_phase_tok)
+            _llm_stage.reset(_stage_tok)
+            try:
                 data2 = _extract_json_blob(raw2)
                 html2 = (data2 or {}).get("html", "")
                 if usage2:
@@ -5751,8 +9515,20 @@ class VideoGenerationPipeline:
                             timestamps=[float(t) for t in timestamps],
                             host_meta=host_meta,
                             palette=_palette,
+                            prior_shot_screenshot=_prior_thumb,
                             llm_chat=self.html_client.chat,
+                            # Preserve the legacy Pro safety net when stage routing is off
+            # (_resolve_stage_model returns None on empty map). Vision review
+            # has always been Pro and that's the matrix default too — admins
+            # can flip via SQL but the BE never silently downgrades.
+            model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro",
                         )
+                        # If regen ships, overwrite the cached thumbnail with
+                        # the post-regen mid-frame so the next shot's
+                        # BG_DISCONTINUITY check reads against what actually
+                        # shipped — not the rejected first-pass HTML.
+                        if screenshots_post:
+                            self._review_thumbnails[shot_idx] = screenshots_post[len(screenshots_post) // 2]
                         self._vision_review_run_cost_usd += float(review2.get("cost_usd") or 0.0)
                         record["issues_post"] = list(review2.get("issues") or [])
                         record["severity_max_post"] = int(review2.get("severity_max") or 0)
@@ -6030,6 +9806,7 @@ class VideoGenerationPipeline:
                 temperature=0.55,
                 max_tokens=min(8000, self._tier_config.get("director_max_tokens", 20000)),
                 response_format={"type": "json_object"},
+                model=self._resolve_stage_model("act_planner"),
             )
         except Exception as exc:
             print(f"   ⚠️ Act Planner failed: {exc} — shot planner will run without an act plan")
@@ -6450,10 +10227,666 @@ class VideoGenerationPipeline:
         shot.pop("template_params", None)
         shot.pop("video_query", None)
 
+    # ─────────────────────────────────────────────────────────────────────
+    # v3 pipeline — ShotPlanner runs BEFORE the script; NarrationWriter
+    # authors per-shot text. Replaces BeatPlanner → ScriptGenerator →
+    # Director chain with one upfront planning stage. v3 is now the only
+    # user-selectable mode; the v2 BeatPlanner→Director→segment-HTML chain
+    # remains inside `_run_v3_shot_planning`'s except path as an internal
+    # safety-net fallback for ShotPlanner/NarrationWriter failures only.
+    # See: docs/ai_content/AI_VIDEO_ARCHITECTURE_CHANGES.md "Pipeline Reorder v3"
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _pipeline_v3_enabled(self) -> bool:
+        """v3 is the only supported pipeline. Always True.
+
+        Kept as a method (rather than inlining `True` at each call site) so
+        the ~14 gates that read `self._pipeline_v3_enabled()` don't churn.
+        Previously this consulted `PIPELINE_VERSION` env + per-tier
+        `pipeline_version` config — both surfaces removed because they had
+        silent-fallback paths that could downgrade a v3-pinned run to v2
+        when the lazy import or env read misbehaved on cold start.
+        """
+        return True
+
+    def _v3_aspect_label(self) -> str:
+        """Derive ShotPlanner's `image_ratio` input from instance state.
+        Returns "16:9" for landscape or "9:16" for portrait — matches the
+        format `shot_planner.build_shot_planner_user_prompt` expects."""
+        try:
+            w = int(getattr(self, "video_width", 1920) or 1920)
+            h = int(getattr(self, "video_height", 1080) or 1080)
+        except (TypeError, ValueError):
+            w, h = 1920, 1080
+        return "9:16" if w < h else "16:9"
+
+    def _v3_collect_reference_assets(self) -> List[Dict[str, Any]]:
+        """Shape `_reference_context` (uploaded assets bag) AND the Pillar 3
+        web-prefetched references (`self._reference_assets`) into the
+        compact dict-of-dicts shape ShotPlanner expects:
+          Brand uploads:    [{kind, name, description}, ...]
+          Web pre-fetches:  [{name, kind, image_url, source, title?}, ...]
+        Both flavours coexist in the returned list — ShotPlanner's
+        prompt-builder dispatches by `image_url` presence (see
+        shot_planner.build_shot_planner_user_prompt). Empty list when
+        nothing applies — that's the "no BRAND ANCHOR + no entities" path.
+        """
+        assets: List[Dict[str, Any]] = []
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        if isinstance(ref_ctx, dict):
+            # `embeddable_images` covers logos / brand marks; description holds
+            # the LLM-extracted "what is this" summary.
+            for img in (ref_ctx.get("embeddable_images") or [])[:8]:
+                if not isinstance(img, dict):
+                    continue
+                assets.append({
+                    "kind": "image",
+                    "name": img.get("name") or img.get("filename") or "asset",
+                    "description": img.get("description") or img.get("caption") or "",
+                })
+            # Source video (single, when present) — surface so ShotPlanner can
+            # pick SOURCE_CLIP shots.
+            src_clip = ref_ctx.get("source_clip")
+            if isinstance(src_clip, dict):
+                assets.append({
+                    "kind": "source_video",
+                    "name": src_clip.get("name") or "source.mp4",
+                    "description": str(src_clip.get("transcript") or src_clip.get("description") or "")[:200],
+                })
+        # Pillar 3 — append pre-fetched web references for named entities.
+        # These have `image_url` set; the prompt-builder distinguishes them
+        # from brand uploads by that key.
+        for ra in (getattr(self, "_reference_assets", []) or []):
+            if isinstance(ra, dict) and ra.get("image_url"):
+                assets.append(ra)
+        return assets
+
+    def _v3_source_clip_available(self) -> bool:
+        """True when the user uploaded a source video that ShotPlanner is
+        allowed to slice via shot_type=SOURCE_CLIP."""
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        return bool(isinstance(ref_ctx, dict) and ref_ctx.get("source_clip"))
+
+    def _v3_article_screenshots(self) -> Optional[List[Dict[str, Any]]]:
+        """Surface scrape_url article screenshots for ARTICLE_FOCUS shots.
+        Returns None when no scrape happened (so ShotPlanner's user prompt
+        marks ARTICLE_FOCUS as unavailable)."""
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        if not isinstance(ref_ctx, dict):
+            return None
+        scrape = ref_ctx.get("scrape_url") or {}
+        if not isinstance(scrape, dict):
+            return None
+        screenshots = scrape.get("screenshots") or scrape.get("screenshot_inventory")
+        if not isinstance(screenshots, list) or not screenshots:
+            return None
+        out: List[Dict[str, Any]] = []
+        for sc in screenshots[:10]:
+            if not isinstance(sc, dict):
+                continue
+            out.append({
+                "id": sc.get("id") or sc.get("screenshot_id"),
+                "label": sc.get("label") or sc.get("description") or sc.get("alt") or "",
+            })
+        return out or None
+
+    def _v3_write_derived_script_artifacts(
+        self,
+        shot_plan: Dict[str, Any],
+        run_dir: Path,
+    ) -> Tuple[Path, str, List[Dict[str, Any]]]:
+        """Persist v3 artifacts:
+          - `shot_plan.json` (the full normalized plan — the v3 source of truth)
+          - `script.txt` (derived concat of per-shot narration_text — kept for
+            legacy consumers: S3 upload bundle, editor reference, render server logs)
+          - `beat_outline` (derived from shot_plan for the legacy script_plan
+            envelope so downstream code that reads `plan.beat_outline` still
+            works without v3 awareness)
+
+        Returns (script_path, script_text, beat_outline).
+        """
+        # Persist the full shot plan
+        try:
+            (run_dir / "shot_plan.json").write_text(
+                json.dumps(shot_plan, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as _wp_err:
+            print(f"   ⚠️ Could not persist shot_plan.json: {_wp_err}")
+
+        # Derive script.txt from per-shot narration_text. Skipped shots
+        # (intrinsic_only) contribute nothing — the audio gap is silent in
+        # the rendered master narration too.
+        narration_parts: List[str] = []
+        beat_outline: List[Dict[str, Any]] = []
+        for s in shot_plan.get("shots", []):
+            if not isinstance(s, dict):
+                continue
+            text = (s.get("narration_text") or "").strip()
+            if text:
+                narration_parts.append(text)
+            beat_outline.append({
+                "label": f"Shot {int(s.get('shot_index') or 0)}",
+                "narration": text,
+                "visual_type": "",  # legacy field; not used by v3 consumers
+                "duration_estimate_s": float(s.get("duration_estimate_s") or 0.0),
+                "intent_role": s.get("intent_role") or "",
+                "narration_hint": bool(text),
+            })
+        script_text = "\n\n".join(narration_parts).strip()
+        script_path = run_dir / "script.txt"
+        try:
+            script_path.write_text(script_text, encoding="utf-8")
+        except Exception as _ws_err:
+            print(f"   ⚠️ Could not persist derived script.txt: {_ws_err}")
+        return script_path, script_text, beat_outline
+
+    def _v3_check_audio_overrun_and_regen(
+        self,
+        *,
+        shot_plan: Dict[str, Any],
+        tts_outputs: Dict[str, Any],
+        audio_duration: float,
+        target_duration_s: float,
+        words: List[Dict[str, Any]],
+        run_dir: Path,
+        language: str,
+        voice_gender: str,
+        tts_provider: str,
+        voice_id: Optional[str],
+        target_audience: str,
+    ) -> Optional[Dict[str, Any]]:
+        """v3 counterpart to v2's audio-overrun safety net (line ~3825).
+
+        When per-shot TTS output overshoots target_duration_s by >25%, the
+        TTS voice is slower than the 150-wpm default ShotPlanner assumed.
+        Rerun NarrationWriter once at the empirically-measured wpm × 0.95,
+        regenerate per-shot TTS on the tightened narration, then refresh the
+        master narration + word timings. Caller updates `words` and
+        `_seg_audio_dur` from the return value.
+
+        Returns:
+          None when no regen ran (no overrun, already attempted, missing
+          inputs, or regen failed — caller keeps original audio).
+          {"words", "audio_duration", "extra_tts_chars", "nw_usage"} on
+          successful regen.
+
+        Capped at one regen per video via `self._audio_regen_attempted`.
+        """
+        if self._audio_regen_attempted:
+            return None
+        if target_duration_s <= 0 or audio_duration <= 0:
+            return None
+        if getattr(self, "_user_had_script", False):
+            # User-supplied script can't be machine-rewritten — would discard
+            # their wording. Same rule as v2's safety net.
+            return None
+        overshoot = audio_duration / target_duration_s
+        if overshoot <= 1.25:
+            return None
+
+        n_words = sum(1 for w in (words or []) if w)
+        if n_words <= 0:
+            return None
+        measured_wps = n_words / audio_duration
+        measured_wpm = measured_wps * 60.0
+        # Floor at 60 wpm to keep the regen prompt sane on pathological voices
+        target_wpm = max(60.0, measured_wpm * 0.95)
+
+        self._audio_regen_attempted = True
+        print(
+            f"   📐 v3 audio-overrun: {audio_duration:.1f}s vs "
+            f"{target_duration_s:.0f}s target ({overshoot:.2f}×); "
+            f"measured ≈{measured_wpm:.0f} wpm → NarrationWriter regen at "
+            f"{target_wpm:.0f} wpm × 0.95"
+        )
+
+        regen_note = (
+            f"⚠️ URGENT REVISION REQUIRED: the previous narration rendered as "
+            f"{audio_duration:.1f}s of audio for a {target_duration_s:.0f}s "
+            f"target ({overshoot:.2f}× overrun). The chosen TTS voice paces "
+            f"at ~{measured_wpm:.0f} wpm, slower than the default 150 wpm "
+            f"this plan budgeted for. Rewrite EVERY narrated shot at a "
+            f"tighter word budget that fits the shot's duration at this "
+            f"voice's measured pace. Cut filler, trim qualifiers, drop "
+            f"redundant examples — keep meaning, lose length. Do NOT change "
+            f"shot order, shot_index, or audio_policy."
+        )
+
+        try:
+            from narration_writer import write_narration, NarrationWriteError
+        except Exception as _ie:
+            print(f"   ⚠️ NarrationWriter import failed during regen: {_ie}")
+            return None
+
+        tier_cfg = self._tier_config if isinstance(self._tier_config, dict) else {}
+        nw_model = (
+            self._resolve_stage_model("narration_writer")
+            or tier_cfg.get("narration_writer_model")
+            or tier_cfg.get("shot_planner_model")
+            or tier_cfg.get("director_model")
+            or getattr(self.script_client, "model", None)
+        )
+        brand_brief = self._extract_brand_brief() or {}
+        brand_voice = brand_brief.get("voice") if isinstance(brand_brief, dict) else None
+
+        try:
+            nw_result = write_narration(
+                shot_plan=shot_plan,
+                llm_chat=self.script_client.chat,
+                model=nw_model,
+                target_duration_s=target_duration_s,
+                target_audience=target_audience,
+                language=language,
+                brand_voice=brand_voice,
+                wpm_override=target_wpm,
+                regen_note=regen_note,
+            )
+        except NarrationWriteError as _nw_err:
+            print(f"   ⚠️ v3 overrun NarrationWriter regen unparseable: {_nw_err}")
+            return None
+        except Exception as _nw_err:
+            print(f"   ⚠️ v3 overrun NarrationWriter regen failed: {_nw_err}")
+            return None
+
+        # Persist the rewritten plan so a resume picks up the regen narration
+        try:
+            (run_dir / "shot_plan.json").write_text(
+                json.dumps(shot_plan, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as _wp:
+            print(f"   ⚠️ Could not re-persist shot_plan.json after regen: {_wp}")
+
+        # Drop stale per-shot TTS artifacts so the rerun doesn't reuse them.
+        # `_run_per_shot_tts_v2` writes shot_NNN.{mp3,json,txt} into run_dir/tts.
+        try:
+            _tts_dir = run_dir / "tts"
+            if _tts_dir.exists():
+                for _f in _tts_dir.iterdir():
+                    if _f.is_file():
+                        try:
+                            _f.unlink()
+                        except Exception:
+                            pass
+        except Exception as _td_err:
+            print(f"   ⚠️ Could not clean per-shot TTS dir for regen: {_td_err}")
+
+        # Rerun per-shot TTS. Update the caller's tts_outputs in place so
+        # downstream code (audio mixing, S3 upload bundle) reads the regen
+        # audio path without further plumbing.
+        new_tts: Dict[str, Any] = {"deferred_to_html": True}
+        try:
+            self._run_per_shot_tts_v2(
+                shot_plan["shots"],
+                run_dir,
+                new_tts,
+                language=language,
+                voice_gender=voice_gender,
+                tts_provider=tts_provider,
+                voice_id=voice_id,
+            )
+        except Exception as _ts_err:
+            print(f"   ⚠️ v3 per-shot TTS rerun after regen failed: {_ts_err}; keeping original audio")
+            return None
+
+        # Overwrite caller's tts_outputs so consumers (audio mixing, etc.)
+        # see the regen artifacts.
+        for _k, _v in new_tts.items():
+            tts_outputs[_k] = _v
+
+        # Rebuild flat words + probe new audio duration
+        new_words: List[Dict[str, Any]] = []
+        new_audio_dur = 0.0
+        try:
+            _raw_path = new_tts.get("response_json")
+            if _raw_path and Path(str(_raw_path)).exists():
+                _stitched = json.loads(Path(str(_raw_path)).read_text(encoding="utf-8"))
+                _word_entries = _stitched.get("word_entries") or []
+                new_words = [
+                    {
+                        "word": w.get("word", ""),
+                        "start": float(w.get("start") or 0.0),
+                        "end": float(w.get("end") or 0.0),
+                    }
+                    for w in _word_entries
+                    if isinstance(w, dict) and w.get("word")
+                ]
+                try:
+                    (run_dir / "narration.words.json").write_text(
+                        json.dumps(new_words, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+            _audio_p = new_tts.get("audio_path")
+            if _audio_p and Path(str(_audio_p)).exists():
+                _probe = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries",
+                     "format=duration", "-of",
+                     "default=noprint_wrappers=1:nokey=1", str(_audio_p)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                new_audio_dur = float((_probe.stdout or "0").strip() or 0.0)
+        except Exception as _post_err:
+            print(f"   ⚠️ v3 overrun-regen post-processing failed: {_post_err}")
+
+        extra_chars = int(new_tts.get("tts_character_count") or 0)
+        if new_audio_dur > 0:
+            print(
+                f"   ✅ v3 audio-overrun regen complete: {new_audio_dur:.1f}s "
+                f"(was {audio_duration:.1f}s, target {target_duration_s:.0f}s)"
+            )
+        return {
+            "words": new_words,
+            "audio_duration": new_audio_dur,
+            "extra_tts_chars": extra_chars,
+            "nw_usage": nw_result.get("usage") or {},
+        }
+
+    @staticmethod
+    def _v3_accumulate_partial_usage(target: Dict[str, Any], src: Dict[str, Any]) -> None:
+        """Merge LLM usage from a single phase into a partial-usage dict.
+        Used by `_run_v3_shot_planning` so that if NarrationWriter raises
+        AFTER ShotPlanner succeeded, the caller can still bill the institute
+        for the ShotPlanner cost rather than losing it silently."""
+        if not isinstance(src, dict):
+            return
+        for k in ("prompt_tokens", "completion_tokens", "input_tokens", "output_tokens"):
+            try:
+                target[k] = int(target.get(k, 0) or 0) + int(src.get(k, 0) or 0)
+            except (TypeError, ValueError):
+                continue
+
+    def _run_v3_shot_planning(
+        self,
+        base_prompt: str,
+        run_dir: Path,
+        *,
+        target_duration_s: float,
+        target_audience: str,
+        language: str,
+        content_type: str,
+        partial_usage: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        """v3 entry point — runs ShotPlanner + NarrationWriter, persists
+        artifacts, and returns the data downstream code needs.
+
+        Returns a tuple of:
+          1. `script_plan` — legacy-shaped dict for backward compat with the
+             rest of `run()`: keys = `script_path`, `script_text`, `plan`
+             (with `script`, `beat_outline`), plus `_v3=True` marker.
+          2. `shot_plan` — the full normalized v3 plan dict (also written to
+             disk as `shot_plan.json`). Caller stashes on `self._v3_shot_plan`
+             so the html stage uses it directly instead of running Director.
+          3. `usage` — token usage dict summed across both LLM calls.
+
+        `partial_usage` (optional): a mutable dict the caller passes in to
+        capture LLM tokens *as they accrue*, phase by phase. If NarrationWriter
+        raises after ShotPlanner billed real tokens, the caller can still
+        bill the institute by reading `partial_usage` — without this,
+        partial-failure usage was silently lost (the exception propagated
+        before the return-value accumulation could fire).
+
+        Raises any ShotPlanError / NarrationWriteError unchanged — caller
+        decides whether to fall back to v2 or surface as a hard run failure.
+        """
+        from shot_planner import plan_shots, ShotPlanError
+        from narration_writer import write_narration, NarrationWriteError
+
+        # ── 1. ShotPlanner ─────────────────────────────────────────────
+        tier_config = self._tier_config if isinstance(self._tier_config, dict) else {}
+        # V200 stage routing wins over the legacy tier_cfg keys (which are
+        # read-but-empty today). Falls back to tier_cfg → script_client default
+        # when the stage map is empty (rollout flag off, DB miss).
+        shot_planner_model = (
+            self._resolve_stage_model("shot_planner")
+            or tier_config.get("shot_planner_model")
+            or tier_config.get("director_model")
+            or getattr(self.script_client, "model", None)
+        )
+        ai_video_cost_cap = float(tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+        brand_brief = self._extract_brand_brief() or {}
+
+        # Pillar 3 — eager reference-asset prefetch (mirrors the v2 path in
+        # `_run_director`). v3 ShotPlanner sees the entity list AND the
+        # pre-fetched URLs in one call; downstream the per-shot HTML LLM
+        # gets `data-img-source="reference"` placeholders the replacer
+        # wires through verbatim. Idempotent — skipped if already populated
+        # by a v2 fallback run earlier in this pipeline instance.
+        if not getattr(self, "_reference_assets", None):
+            try:
+                _serper = getattr(self, "_serper_service", None)
+                if _serper and getattr(_serper, "is_available", False):
+                    _entities = self._extract_named_entities(base_prompt or "")
+                    if _entities:
+                        from reference_prefetcher import prefetch_reference_assets
+                        _vw = getattr(self, "video_width", 1920)
+                        _vh = getattr(self, "video_height", 1080)
+                        _orient = "portrait" if _vw < _vh else "landscape"
+                        # Bug 4a — see twin call site in non-v3 path for rationale.
+                        _cc_v3 = getattr(self, "_cultural_context", None)
+                        _gl_v3 = (getattr(_cc_v3, "gl", None) or "us") if _cc_v3 else "us"
+                        _hl_v3 = (getattr(_cc_v3, "hl", None) or "en") if _cc_v3 else "en"
+                        self._reference_assets = prefetch_reference_assets(
+                            _entities,
+                            _serper,
+                            max_assets=8,
+                            orientation=_orient,
+                            canvas_w=_vw,
+                            canvas_h=_vh,
+                            gl=_gl_v3,
+                            hl=_hl_v3,
+                            cost_tracker=getattr(self, "_cost_events", None),
+                            region_keywords=(
+                                list(getattr(_cc_v3, "extra_stock_keywords", []))
+                                if _cc_v3 else None
+                            ),
+                        )
+            except Exception as _pf_err:
+                print(f"   ⚠️ v3 reference prefetch errored ({_pf_err}); falling back to lazy fetch")
+
+        # Cultural context (same as v2 path — see _run_director for docstring).
+        # Idempotent — only fires if not already computed.
+        self._ensure_cultural_context(
+            base_prompt=base_prompt or "",
+            named_entities=self._extract_named_entities(base_prompt or "") if base_prompt else [],
+            brand_brief=brand_brief or {},
+        )
+
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "shot_planning",
+            "message": "Planning shots from intent...",
+            "quality_tier": self._quality_tier,
+        })
+        # Build the live template catalog + valid-ID whitelist so the
+        # ShotPlanner is grounded in the registry. Without this, the LLM
+        # invents plausible-sounding IDs from its training data
+        # (`image_hero_standard`, `process_3_steps`) which then fail the
+        # composer's lookup. Catalog goes in the user prompt; valid_ids
+        # is also used post-LLM to scrub any survivors.
+        _tmpl_catalog_md = ""
+        _tmpl_valid_ids: Optional[List[str]] = None
+        try:
+            from shot_template_registry import (
+                build_catalog_for_director,
+                get_registry as _tmpl_get_registry,
+            )
+            _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
+            _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
+            _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
+        except Exception as _cat_err:
+            print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
+
+        sp_result = plan_shots(
+            prompt=base_prompt,
+            target_duration_s=target_duration_s,
+            llm_chat=self.script_client.chat,
+            model=shot_planner_model,
+            target_audience=target_audience,
+            language=language,
+            content_type=content_type,
+            tier=self._quality_tier,
+            image_ratio=self._v3_aspect_label(),
+            visual_preferences=getattr(self, "_visual_preferences", None) or None,
+            reference_assets=self._v3_collect_reference_assets() or None,
+            brand_brief=brand_brief or None,
+            ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
+            ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+            ai_video_cost_cap_usd=ai_video_cost_cap,
+            source_clip_available=self._v3_source_clip_available(),
+            article_screenshots=self._v3_article_screenshots(),
+            cultural_context=getattr(self, "_cultural_context", None),
+            template_catalog_md=_tmpl_catalog_md or None,
+            valid_template_ids=_tmpl_valid_ids,
+            include_music_plan=self._is_background_music_enabled(),
+            music_plan_target_duration_s=target_duration_s,
+        )
+        shot_plan_dict = {
+            "shots": sp_result["shots"],
+            "continuity_notes": sp_result.get("continuity_notes", ""),
+            "recurring_motifs": sp_result.get("recurring_motifs") or [],
+            # v3 parity with v2 Director — `music_plan` and `audio_mood`
+            # are read by the html-stage music picker (line ~4851). When
+            # ShotPlanner omits music_plan (LLM dropped the field, or
+            # background music disabled for this run), the picker falls
+            # back to `_build_default_music_plan` exactly like v2 did.
+            "music_plan": sp_result.get("music_plan"),
+            "audio_mood": sp_result.get("audio_mood", ""),
+        }
+        sp_usage = sp_result.get("usage") or {}
+        # Record ShotPlanner tokens NOW — if NarrationWriter raises below,
+        # this is the only place the caller can recover the partial cost.
+        if partial_usage is not None:
+            self._v3_accumulate_partial_usage(partial_usage, sp_usage)
+
+        # ── 2. AudioPolicyPlanner (defensive normalizer) ──────────────
+        # ShotPlanner already emits audio_policy per shot; AudioPolicyPlanner
+        # fills in anything missing AND honors the run-level
+        # mute_tts_on_source_clips toggle (which ShotPlanner doesn't see).
+        try:
+            from audio_policy_planner import plan_audio_policy
+            plan_audio_policy(
+                shot_plan_dict["shots"],
+                ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                mute_tts_on_source_clips=getattr(self, "_mute_tts_on_source_clips", False),
+                log_fn=print,
+            )
+        except Exception as _ap_err:
+            print(f"   ⚠️ AudioPolicyPlanner normalize failed ({_ap_err}); shots keep ShotPlanner values")
+
+        # Build a compact per-shot summary so the FE live-progress view can
+        # render director decisions (audio_policy, background_treatment,
+        # transition_in, intent_role) before HTML generation even starts.
+        # Truncate the narration brief so the JSONB row stays compact.
+        _shots_summary: List[Dict[str, Any]] = []
+        for _i, _s in enumerate(shot_plan_dict["shots"]):
+            if not isinstance(_s, dict):
+                continue
+            _brief = _s.get("narration_brief") or _s.get("narration_text") or ""
+            if isinstance(_brief, str) and len(_brief) > 220:
+                _brief = _brief[:220].rstrip() + "…"
+            _shots_summary.append({
+                "shot_index": _i,
+                "shot_type": _s.get("shot_type"),
+                "intent_role": _s.get("intent_role"),
+                "audio_policy": _s.get("audio_policy"),
+                "background_treatment": _s.get("background_treatment"),
+                "transition_in": _s.get("transition_in"),
+                "duration_estimate_s": _s.get("duration_estimate_s"),
+                "narration_brief": _brief,
+            })
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "shot_planning_done",
+            "message": f"Shot plan ready: {len(shot_plan_dict['shots'])} shots",
+            "shot_count": len(shot_plan_dict["shots"]),
+            "shots_summary": _shots_summary,
+            "recurring_motifs": shot_plan_dict.get("recurring_motifs") or [],
+        })
+
+        # ── 3. NarrationWriter ────────────────────────────────────────
+        narration_writer_model = (
+            self._resolve_stage_model("narration_writer")
+            or tier_config.get("narration_writer_model")
+            or shot_planner_model
+        )
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_writing",
+            "message": "Authoring per-shot narration...",
+        })
+        nw_result = write_narration(
+            shot_plan=shot_plan_dict,
+            llm_chat=self.script_client.chat,
+            model=narration_writer_model,
+            target_duration_s=target_duration_s,
+            target_audience=target_audience,
+            language=language,
+            brand_voice=(brand_brief.get("voice") if isinstance(brand_brief, dict) else None),
+        )
+        nw_usage = nw_result.get("usage") or {}
+        # Record NarrationWriter tokens. (ShotPlanner already recorded above
+        # so partial_usage now equals total usage on success.)
+        if partial_usage is not None:
+            self._v3_accumulate_partial_usage(partial_usage, nw_usage)
+
+        # ── 4. Persist artifacts (shot_plan.json, derived script.txt) ─
+        script_path, script_text, beat_outline = self._v3_write_derived_script_artifacts(
+            shot_plan_dict, run_dir,
+        )
+
+        # ── 5. Legacy-shaped script_plan for backwards compat ─────────
+        # Downstream code (review_script, _run_director context, etc.)
+        # reads `script_plan["plan"]["script"]` + `plan.beat_outline`.
+        # We populate both from the shot plan so the rest of run() keeps
+        # working without v3 awareness. `_v3` flag lets v3-aware code (html
+        # stage Director-skip) detect we already have a shot plan.
+        script_plan: Dict[str, Any] = {
+            "script_path": script_path,
+            "script_text": script_text,
+            "plan": {
+                "script": script_text,
+                "beat_outline": beat_outline,
+            },
+            "_v3": True,
+        }
+
+        # Sum LLM usage across both planning calls
+        usage = {
+            "input_tokens": int(sp_usage.get("input_tokens", 0) or 0)
+                + int(nw_usage.get("input_tokens", 0) or 0),
+            "output_tokens": int(sp_usage.get("output_tokens", 0) or 0)
+                + int(nw_usage.get("output_tokens", 0) or 0),
+            "prompt_tokens": int(sp_usage.get("prompt_tokens", 0) or 0)
+                + int(nw_usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(sp_usage.get("completion_tokens", 0) or 0)
+                + int(nw_usage.get("completion_tokens", 0) or 0),
+            "shot_planner": sp_usage,
+            "narration_writer": nw_usage,
+        }
+
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_writing_done",
+            "message": "Per-shot narration ready",
+            "shot_count": len(shot_plan_dict["shots"]),
+            "token_delta": {
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+            },
+        })
+
+        # Cache for html-stage Director-skip
+        self._v3_shot_plan = shot_plan_dict
+
+        return script_plan, shot_plan_dict, usage
+
     def _run_director(
         self,
         script_plan: Dict[str, Any],
-        words: List[Dict[str, Any]],
+        words: Optional[List[Dict[str, Any]]],
         style_guide: Dict[str, Any],
         run_dir: Path,
         language: str = "English",
@@ -6464,6 +10897,11 @@ class VideoGenerationPipeline:
 
         Returns the parsed director plan dict, or None if the call fails
         (the pipeline will fall back to the segment-based flow).
+
+        On the v2 path (`tts_per_shot_enabled`), Director runs BEFORE TTS, so
+        `words` is None / []. Shot boundary snapping to word timings is
+        skipped — boundaries land on round-second estimates and get
+        reconciled to actual MP3 durations after per-shot TTS completes.
         """
         from director_prompts import (
             DIRECTOR_SYSTEM_PROMPT,
@@ -6592,6 +11030,73 @@ class VideoGenerationPipeline:
             except Exception:
                 pass
 
+        # Pillar 3 — eager reference-asset prefetch. Runs once per video, BEFORE
+        # the Director sees the user prompt. Populates self._reference_assets
+        # (list of {name, kind, image_url, source, title}) consumed downstream
+        # by both v2 Director and v3 ShotPlanner. Idempotent: re-runs on stage
+        # resume just re-populate the same list. Failures are non-fatal — the
+        # pipeline falls back to lazy fetch as before.
+        if _web_search_available and _named_entities:
+            try:
+                from reference_prefetcher import prefetch_reference_assets
+                _orientation = "portrait" if _w < _h else "landscape"
+                # Bug 4a: pass canvas dims + cultural-context gl/hl so the
+                # prefetcher uses Serper's `best_quality_image` (with
+                # orientation filter + dimension cutoffs + host scoring)
+                # instead of the unfiltered `best_image`. Without this,
+                # landscape editorial URLs (Bloomberg, wire-service photos)
+                # were entering `_reference_assets` and shipping on portrait
+                # canvases as vertical crops.
+                _cc_pf = getattr(self, "_cultural_context", None)
+                _gl_pf = (getattr(_cc_pf, "gl", None) or "us") if _cc_pf else "us"
+                _hl_pf = (getattr(_cc_pf, "hl", None) or "en") if _cc_pf else "en"
+                self._reference_assets = prefetch_reference_assets(
+                    _named_entities,
+                    self._serper_service,
+                    max_assets=8,
+                    orientation=_orientation,
+                    canvas_w=_w,
+                    canvas_h=_h,
+                    gl=_gl_pf,
+                    hl=_hl_pf,
+                    cost_tracker=getattr(self, "_cost_events", None),
+                    region_keywords=(
+                        list(getattr(_cc_pf, "extra_stock_keywords", []))
+                        if _cc_pf else None
+                    ),
+                )
+            except Exception as _pf_err:
+                print(f"   ⚠️ Reference prefetch errored ({_pf_err}); falling back to lazy fetch")
+                self._reference_assets = []
+        else:
+            # Either Serper unavailable or no entities found — empty list
+            # signals "no pre-fetched assets" to the Director / ShotPlanner.
+            self._reference_assets = []
+
+        # Cultural / geographic context — derives the run's target region
+        # (india / usa / uk / etc.) so downstream image routing can:
+        #   • bias Serper with the right `gl=` for region-appropriate hits;
+        #   • inject "indian" / regional keywords into stock-search queries;
+        #   • weave cultural descriptors into AI image-gen prompts.
+        # Cheap-first inference: explicit param → brand kit → rule-based on
+        # named entities → LLM (Gemini Flash) → "none". Always sets a value;
+        # `region == "none"` means culture-agnostic (no keyword injection).
+        self._ensure_cultural_context(
+            base_prompt=getattr(self, "_user_prompt_raw", "") or "",
+            named_entities=_named_entities or [],
+            brand_brief=self._extract_brand_brief() or {},
+        )
+
+        # Pillar 2.2 — feed the raw user-prompt "VISUAL APPROACH" prose to
+        # Director so it sees the intent the structured flags can't encode.
+        # Stashed on `self._user_prompt_raw` by run() at startup so the helper
+        # below can read it without threading an extra param through every
+        # `_run_director` caller.
+        _visual_intent = _extract_visual_intent_block(
+            getattr(self, "_user_prompt_raw", None)
+        )
+        _reference_assets = list(getattr(self, "_reference_assets", []) or [])
+
         user_prompt = build_director_user_prompt(
             script_text=script_text,
             beat_outline=beat_outline,
@@ -6616,6 +11121,8 @@ class VideoGenerationPipeline:
             named_entities=_named_entities,
             web_search_available=_web_search_available,
             visual_preferences=getattr(self, "_visual_preferences", None) or None,
+            visual_intent_text=_visual_intent,
+            reference_assets=_reference_assets,
         )
         # Stash for the floor-enforcer post-pass (avoids re-reading scrape artifacts).
         self._director_news_recap_inputs = {
@@ -6869,6 +11376,19 @@ class VideoGenerationPipeline:
             director_system = director_system + SUPER_ULTRA_DIRECTOR_EXTENSION
         if self._is_background_music_enabled():
             director_system = director_system + MUSIC_PLAN_EXTENSION
+        # AI video teaching block (Phase 3b) — only appended when AI video is
+        # enabled for this run, keeping the Director prompt clean otherwise.
+        if getattr(self, "_ai_video_run_enabled", False):
+            try:
+                from director_prompts import build_ai_video_director_block
+                _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
+                director_system = director_system + build_ai_video_director_block(
+                    enabled=True,
+                    audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                    cost_cap_usd=_av_cap,
+                )
+            except Exception as _av_err:
+                print(f"   ⚠️ AI video Director block unavailable ({_av_err}); continuing without AI_VIDEO_HERO instructions")
         # Routing-plan-driven extensions:
         #   • source_clip_priority=high  → strict 60% SOURCE_CLIP rule
         #   • infographic_mode=overlay  → overlay_slots[] shot-spec
@@ -7254,6 +11774,7 @@ class VideoGenerationPipeline:
                     temperature=0.5 if attempt == 0 else 0.3,  # lower temp on retries
                     max_tokens=_next_attempt_tokens,
                     response_format={"type": "json_object"},
+                    model=self._resolve_stage_model("director"),
                 )
                 if attempt_usage:
                     total_usage["prompt_tokens"] += attempt_usage.get("prompt_tokens", 0)
@@ -7386,6 +11907,38 @@ class VideoGenerationPipeline:
             shot.setdefault("complexity_level", "moderate")
             shot.setdefault("overlay", False)
             shot.setdefault("start_word", "")
+            # Lazy inheritance for background_treatment (Tier 3, 2026-05).
+            # Cross-shot continuity contract — Director-set value wins, falls
+            # back to a shot-type-derived default. Without this, per-shot LLMs
+            # invent their own backgrounds and the result is 6 different
+            # palettes in 8 shots (see vid_1778774930857_w8cwa1y audit).
+            _existing_bg = (shot.get("background_treatment") or "").strip().lower()
+            _valid_bg = {"brand_solid", "brand_textured", "brand_gradient", "media_hero"}
+            if _existing_bg not in _valid_bg:
+                _st = (shot.get("shot_type") or "").upper()
+                shot["background_treatment"] = self._SHOT_TYPE_BG_TREATMENT_DEFAULT.get(_st, "brand_solid")
+            else:
+                shot["background_treatment"] = _existing_bg
+
+        # AI_VIDEO_HERO post-Director validation. Runs after shot-type
+        # normalization so we have valid types to inspect. Only fires when
+        # the run is AI-video-enabled — otherwise AI_VIDEO_HERO shots are
+        # downgraded inside `_shot_task`'s bypass anyway. Validator demotes
+        # shots that would waste budget (too short, no fallback set,
+        # consecutive, count over cap, projected cost over cap) BEFORE any
+        # Veo network call so the cost tracker stays honest and the
+        # Director's pacing intent is respected.
+        if getattr(self, "_ai_video_run_enabled", False):
+            self._validate_ai_video_shots(shots)
+
+        # Normalize the top-level recurring_motifs envelope field (Tier 4 L1).
+        # Coerce non-list / non-dict items to empty so downstream consumers
+        # (the per-shot continuity brief builder) can trust the shape.
+        _rm = director_plan.get("recurring_motifs")
+        if not isinstance(_rm, list):
+            director_plan["recurring_motifs"] = []
+        else:
+            director_plan["recurring_motifs"] = [m for m in _rm if isinstance(m, dict)]
 
         # Validate timeline coverage: shots should be sequential and cover full duration
         non_overlay = [s for s in shots if not s.get("overlay")]
@@ -7441,7 +11994,13 @@ class VideoGenerationPipeline:
         if self._tier_config.get("image_continuity_enabled"):
             try:
                 from subject_extractor import extract_subjects as _extract_subjects  # type: ignore
-                mapping, subjects = _extract_subjects(shots, self.html_client.chat)
+                # V200: set the stage ContextVar so the inner chat() call
+                # auto-routes through `entity_extraction` in the stage map.
+                _se_tok = _llm_stage.set("entity_extraction")
+                try:
+                    mapping, subjects = _extract_subjects(shots, self.html_client.chat)
+                finally:
+                    _llm_stage.reset(_se_tok)
                 self._subject_id_for_shot = mapping
                 if subjects:
                     print(
@@ -7535,6 +12094,12 @@ class VideoGenerationPipeline:
                 "ANIMATED_ASSET":  "motion_graphics",
                 "KINETIC_TEXT":    "motion_graphics",
                 "DEVICE_MOCKUP":   "app_ui_mockup",
+                # Phase 3b: AI_VIDEO_HERO maps to the new `ai_video` family so
+                # the realized-vs-declared VisualPreferences telemetry counts
+                # AI video shots correctly. Without this entry the family
+                # tally undercounts ai_video and produces spurious mismatch
+                # warnings on declared=ai_video:high runs.
+                "AI_VIDEO_HERO":   "ai_video",
             }
             _family_counts: Dict[str, int] = {}
             _override_count = 0
@@ -7666,7 +12231,11 @@ class VideoGenerationPipeline:
 
         shot_type = shot.get("shot_type", "")
         # Never split typography-only shots — they are already a single beat.
-        if shot_type in ("KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP"):
+        # AI_VIDEO_HERO is atomic too: the Veo clip is one MP4, and decomposing
+        # it into "sub-shots" would either double-bill the Veo call or produce
+        # mismatched halves. Multi-segment chains (Phase 4) handle long shots
+        # via `ai_video_segments` inside a single shot, not via decomposition.
+        if shot_type in ("KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "AI_VIDEO_HERO"):
             return [shot]
 
         complexity = shot.get("complexity_level", "moderate")
@@ -7706,6 +12275,7 @@ class VideoGenerationPipeline:
                 ],
                 temperature=0.3,
                 max_tokens=1200,
+                model=self._resolve_stage_model("shot_decomposer"),
             )
             data = _extract_json_blob(raw)
         except Exception as exc:
@@ -7737,8 +12307,35 @@ class VideoGenerationPipeline:
         ):
             return [shot]
 
-        # Field inheritance — copy parent context the decomposer didn't set
-        _inherit_keys = ("image_prompt", "video_query", "notes", "overlay", "beat_index")
+        # Field inheritance — copy parent context the decomposer didn't set.
+        # Phase 1/2/3 additions: BeatPlanner emits `visual_type_hint`,
+        # `intent_role`, `narration_hint`, `intended_narration`; AudioPolicyPlanner
+        # emits `audio_policy`; Phase 3 Director emits `ai_video_prompt`,
+        # `ai_video_duration_s`, `ai_video_segments`, `ai_video_audio`. All
+        # must propagate to decomposed sub-shots so downstream stages see
+        # consistent metadata regardless of whether decomposition fired.
+        _inherit_keys = (
+            "image_prompt", "video_query", "notes", "overlay", "beat_index",
+            # Phase 1: BeatPlanner / DefaultShotMapper fields
+            "visual_type_hint", "intent_role", "narration_hint",
+            "intended_narration", "label",
+            # Phase 2: AudioPolicyPlanner fields
+            "audio_policy",
+            # Phase 3: AI video fields (carry across decomposition so each
+            # sub-shot still routes to Veo correctly)
+            "ai_video_prompt", "ai_video_duration_s", "ai_video_segments",
+            "ai_video_audio",
+            # Phase B (v2): per-shot TTS artifacts so decomposed sub-shots
+            # carry their narration audio context forward. The reconciler
+            # rewrites start_time / end_time globally; these per-shot
+            # paths are preserved so editor regen can identify the source.
+            "narration_text", "audio_path", "audio_duration_s",
+            # Phase B per-shot S3 URLs (set by _attach_per_shot_audio_urls
+            # after per-shot TTS uploads). Editor reads these for shot-level
+            # audio playback + regeneration without an S3-listing round trip.
+            "audio_url", "audio_words_url", "audio_script_url",
+            "audio_skipped", "audio_skip_reason",
+        )
         for _ss in (a, b):
             for _k in _inherit_keys:
                 if _k not in _ss and _k in shot:
@@ -8019,13 +12616,16 @@ class VideoGenerationPipeline:
             if not api_key:
                 raise RuntimeError("no API key on script_client")
 
+            # V200: prefer per-stage routing (host_description matrix row);
+            # falls back to the legacy DEFAULT_MODEL constant when the stage
+            # map is empty (rollout flag off or matrix lookup failed).
             from app.constants.models import DEFAULT_MODEL as _ROUTER_MODEL
             raw, _usage = self.script_client.chat(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                model=_ROUTER_MODEL,
+                model=self._resolve_stage_model("host_description") or _ROUTER_MODEL,
                 temperature=0.4,
                 max_tokens=200,
             )
@@ -8191,6 +12791,7 @@ class VideoGenerationPipeline:
                     details_prompt=details_prompt,
                     provider=host_provider,
                     external_avatar_id=external_avatar_id,
+                    orientation=("portrait" if self.video_width < self.video_height else "landscape"),
                 )
             )
         except Exception as e:
@@ -8706,6 +13307,7 @@ class VideoGenerationPipeline:
                     details_prompt=details_prompt,
                     provider="custom",
                     external_avatar_id=None,
+                    orientation=("portrait" if self.video_width < self.video_height else "landscape"),
                 )
             )
         except Exception as e:
@@ -9023,6 +13625,68 @@ class VideoGenerationPipeline:
             all_results.extend(run_results)
 
         return all_results, all_artifacts
+
+    # ------------------------------------------------------------------
+    # AI video — S3 uploader factory (Phase 4b)
+    # ------------------------------------------------------------------
+    def _build_ai_video_uploaders(
+        self,
+    ) -> Optional[Tuple[Callable[["Path"], Optional[str]], Callable[["Path"], Optional[str]]]]:
+        """Construct two upload closures for the chain orchestrator:
+          - `upload_mp4_fn`   : uploads the concatenated chain MP4 → public URL
+          - `upload_frame_fn` : uploads an intermediate last-frame PNG → public URL
+
+        Both bind to the same S3Service (constructed lazily on first call per
+        pipeline instance). Returns None when S3 is unavailable so the caller
+        can degrade gracefully (chain falls back to single-segment).
+
+        Cached on `self._ai_video_s3_service` so subsequent shots in the same
+        run reuse the connection. The cache is reset to a sentinel on init
+        failure so we don't keep retrying.
+        """
+        # Cache slot: None means not yet attempted; False means tried and failed;
+        # an S3Service instance means ready.
+        svc = getattr(self, "_ai_video_s3_service", None)
+        if svc is False:
+            return None
+        if svc is None:
+            # Lazy import — same idiom as avatar batch (line 9986 area).
+            try:
+                import sys as _sys_s3
+                from pathlib import Path as _Path_s3
+                _app_dir = _Path_s3(__file__).parent.parent
+                if str(_app_dir.parent) not in _sys_s3.path:
+                    _sys_s3.path.insert(0, str(_app_dir.parent))
+                from app.services.s3_service import S3Service
+                svc = S3Service()
+            except Exception as _s3_err:
+                print(f"[AI video] ⚠️ S3Service init failed: {_s3_err} — chain disabled")
+                self._ai_video_s3_service = False  # type: ignore[assignment]
+                return None
+            self._ai_video_s3_service = svc
+
+        run_name = getattr(self, "_run_name", None) or "run"
+
+        def _upload_mp4(local_path: "Path") -> Optional[str]:
+            """Upload the concatenated chain MP4. Returns public URL or None."""
+            try:
+                key = f"ai-videos/chains/{run_name}/{local_path.name}"
+                return svc.upload_file(local_path, s3_key=key, content_type="video/mp4")
+            except Exception as up_err:
+                print(f"[AI video] ⚠️ MP4 upload failed for {local_path.name}: {up_err}")
+                return None
+
+        def _upload_frame(local_path: "Path") -> Optional[str]:
+            """Upload an intermediate last-frame PNG (consumed by Veo as
+            image_url for the next chain segment). Returns public URL or None."""
+            try:
+                key = f"ai-videos/chains/{run_name}/frames/{local_path.name}"
+                return svc.upload_file(local_path, s3_key=key, content_type="image/png")
+            except Exception as up_err:
+                print(f"[AI video] ⚠️ frame upload failed for {local_path.name}: {up_err}")
+                return None
+
+        return (_upload_mp4, _upload_frame)
 
     def _run_avatar_batch_sync(
         self,
@@ -9722,6 +14386,7 @@ class VideoGenerationPipeline:
                         details_prompt=details_prompt,
                         provider=host_provider,
                         external_avatar_id=external_avatar_id,
+                        orientation=("portrait" if self.video_width < self.video_height else "landscape"),
                     )
                 )
             except Exception as e:
@@ -10015,7 +14680,9 @@ class VideoGenerationPipeline:
                 + "\n```\n"
                 "Rules:\n"
                 "- COLORS: use only CSS vars from `color_tokens` (var(--brand-primary) etc.). Never hardcode hex.\n"
-                "- TYPOGRAPHY: use `font_scale` values (e.g. `font-size: 9rem` for display). Never pick your own size.\n"
+                "- TYPOGRAPHY: paste `font_scale` values verbatim into `font-size:` "
+                "(they are viewport-relative clamps — e.g. `font-size: clamp(...)`). "
+                "Never substitute a plain rem/px size.\n"
                 "- SPACING: use `spacing` tokens for padding/margin/gap. Use `safe_area` for outer padding.\n"
                 "- EASES: use `ease` tokens in GSAP tweens (ease: 'power3.out' → use `ease_tokens.entry`).\n"
                 "- IDs: prefix every element id with `s{shot_idx}_` (replace {shot_idx} with this shot's index) "
@@ -10078,6 +14745,16 @@ class VideoGenerationPipeline:
             end_time = float(shot.get("end_time", start_time + 8))
             duration = max(1.0, end_time - start_time)
 
+            # Live-progress hint: mark this shot as actively in production at
+            # the html_gen substage. The FE flips the scene card from
+            # "pending" to "in_progress" on this event. Validators below will
+            # emit further substage transitions (bbox / brand_asset / vision).
+            self._emit_shot_substage(
+                shot_idx,
+                "html_gen",
+                f"Generating shot {shot_idx + 1} ({shot_type})",
+            )
+
             # ── Slice D safety net: KINETIC_TEXT incompatible with low/minimal ──
             # The Director was told to forbid KINETIC_TEXT at low/minimal text
             # density (Slice C). Cheap planners ignore long forbid-lists; this
@@ -10092,6 +14769,197 @@ class VideoGenerationPipeline:
                     f"(text_density={_td_shot}; KINETIC_TEXT is text-only by design)"
                 )
                 shot_type = _swap_to
+
+            # ── AI_VIDEO_HERO bypass (Phase 3b, ultra+ only, opt-in) ──
+            # When the Director sets shot_type=AI_VIDEO_HERO AND the run has
+            # AI video enabled, route through fal.ai Veo instead of the
+            # per-shot HTML LLM. On any failure (Veo error, circuit breaker
+            # exhausted, missing prompt), we downgrade shot_type to a
+            # sensible fallback (IMAGE_HERO when video_query is absent,
+            # VIDEO_HERO when present) and fall through to the regular path
+            # — the LLM regenerates the shot without AI_VIDEO_HERO. This
+            # matches the plan's "max 1 regen, ship a non-AI alternative"
+            # fallback policy.
+            if shot_type == "AI_VIDEO_HERO":
+                if not getattr(self, "_ai_video_run_enabled", False):
+                    # Director emitted AI_VIDEO_HERO but the run isn't AI-
+                    # video-enabled (tier-ineligible or user didn't opt in).
+                    # Downgrade silently; this is not a fatal mismatch.
+                    _fallback_st = "VIDEO_HERO" if shot.get("video_query") else "IMAGE_HERO"
+                    print(
+                        f"   ⚠️  {_log_label} AI_VIDEO_HERO requested but run "
+                        f"disabled — falling back to {_fallback_st}"
+                    )
+                    shot_type = _fallback_st
+                    # Keep `shot` dict in sync with the local `shot_type` so
+                    # downstream helpers that re-read `shot["shot_type"]` (e.g.
+                    # template composer, sound planner) see the corrected type.
+                    shot["shot_type"] = _fallback_st
+                else:
+                    # `ai-video-gen-main/` is on sys.path (inserted by the
+                    # service before this pipeline imports), so the direct
+                    # import below is the canonical path. No fallback is
+                    # possible — the directory name has a hyphen so it can
+                    # never be imported as `app.ai_video_orchestrator`.
+                    from ai_video_orchestrator import (
+                        orchestrate_ai_video_shot, orchestrate_ai_video_chain,
+                    )
+                    _av_canvas = "portrait" if _h > _w else "landscape"
+
+                    # Cultural context injection — same idea as stock images
+                    # and stock videos. The Director / per-shot LLM is taught
+                    # to bake cultural descriptors into `ai_video_prompt`, but
+                    # that's the LLM contract, not a guarantee. Veo is highly
+                    # steerable: prepending "Indian subject and india setting"
+                    # to "student studying for exam" materially changes the
+                    # rendered subject. We mutate the shot dict in place so
+                    # both the orchestrator's `prompt=` and the metadata file
+                    # it writes reflect what was actually sent — useful for
+                    # debugging cultural drift in the saved shot_NNN.json.
+                    _cc_av = getattr(self, "_cultural_context", None)
+                    if _cc_av is not None and _cc_av.has_region:
+                        # Parent prompt (single-shot path + chain auto-split path)
+                        _av_parent = (shot.get("ai_video_prompt") or "").strip()
+                        if _av_parent:
+                            shot["ai_video_prompt"] = self._inject_cultural_into_ai_prompt(_av_parent)
+                        # Per-segment prompts (Director-explicit chain path)
+                        _av_segs_in = shot.get("ai_video_segments") or []
+                        if isinstance(_av_segs_in, list) and _av_segs_in:
+                            for _seg in _av_segs_in:
+                                if not isinstance(_seg, dict):
+                                    continue
+                                _sp = (_seg.get("prompt") or "").strip()
+                                if _sp:
+                                    _seg["prompt"] = self._inject_cultural_into_ai_prompt(_sp)
+
+                    # Dispatch single-shot vs chain. Chain when EITHER:
+                    #   - `ai_video_segments` carries >1 entry (Director explicit), OR
+                    #   - `ai_video_duration_s` > 8 (auto-split into 8s chunks)
+                    _av_segs_field = shot.get("ai_video_segments") or []
+                    _av_has_multi_segments = (
+                        isinstance(_av_segs_field, list) and len(_av_segs_field) > 1
+                    )
+                    try:
+                        _av_dur_req = float(shot.get("ai_video_duration_s") or 0.0)
+                    except (TypeError, ValueError):
+                        _av_dur_req = 0.0
+                    _av_use_chain = _av_has_multi_segments or _av_dur_req > 8.0
+
+                    if _av_use_chain:
+                        # Build S3 uploaders for the chain. The chain needs
+                        # two: one for intermediate frames (PNG) that get
+                        # passed back to Veo as image_url for the next
+                        # segment, and one for the concatenated final MP4
+                        # that becomes the shot's video src.
+                        _av_uploaders = self._build_ai_video_uploaders()
+                        if _av_uploaders is None:
+                            # S3 unavailable → can't chain. Fall back to a
+                            # single 8s segment via the simpler path so the
+                            # shot still ships *something* meaningful.
+                            print(
+                                f"   ⚠️  {_log_label} AI_VIDEO_HERO chain "
+                                f"needs S3 but it's unavailable — degrading "
+                                f"to single 8s segment"
+                            )
+                            _av_use_chain = False
+
+                    if _av_use_chain:
+                        _av_upload_mp4, _av_upload_frame = _av_uploaders
+                        _av_result = orchestrate_ai_video_chain(
+                            shot=shot,
+                            shot_idx=shot_idx,
+                            run_dir=run_dir,
+                            veo_client=self._fal_veo_client,
+                            cost_tracker=self._ai_video_cost_tracker,
+                            ledger=getattr(self, "_ai_video_ledger", None),
+                            upload_mp4_fn=_av_upload_mp4,
+                            upload_frame_fn=_av_upload_frame,
+                            canvas=_av_canvas,
+                            run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                            safety_tolerance="3",
+                            log_fn=print,
+                        )
+                    else:
+                        _av_result = orchestrate_ai_video_shot(
+                            shot=shot,
+                            shot_idx=shot_idx,
+                            run_dir=run_dir,
+                            veo_client=self._fal_veo_client,
+                            cost_tracker=self._ai_video_cost_tracker,
+                            ledger=getattr(self, "_ai_video_ledger", None),
+                            canvas=_av_canvas,
+                            run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                            safety_tolerance="3",
+                            log_fn=print,
+                        )
+                    if _av_result.error is None:
+                        # Success — build entry and return, mirroring the
+                        # template-bypass shape so downstream stages see
+                        # consistent structure.
+                        _av_html = self._ensure_fonts(_av_result.html)
+                        _av_entry = {
+                            "start": start_time,
+                            "end": end_time,
+                            "htmlStartX": 0, "htmlStartY": 0,
+                            "htmlEndX": _w, "htmlEndY": _h,
+                            "html": _av_html,
+                            "id": _entry_id,
+                            "index": shot_idx,
+                            "z": shot.get("z", 10),
+                            "_shot_type": "AI_VIDEO_HERO",
+                            "_narration_excerpt": shot.get("narration_excerpt", ""),
+                            "_visual_description": shot.get("visual_description", ""),
+                            # No sound cues for AI video shots (the Veo clip's
+                            # own audio, when enabled, is the sole audio
+                            # source). Empty list mirrors the template-bypass
+                            # entry shape so downstream stages don't branch.
+                            "_skill_audio_events": [],
+                            # AI-video telemetry — kept on the entry so the
+                            # editor sidebar can render cost / segment info
+                            # and Phase 7 polish can aggregate to a run-level
+                            # summary then strip the per-entry copies.
+                            "_ai_video_request_id": _av_result.request_id,
+                            "_ai_video_url": _av_result.video_url,
+                            "_ai_video_cost_usd": _av_result.cost_usd,
+                            "_ai_video_cost_credits": _av_result.cost_credits,
+                            "_ai_video_elapsed_s": _av_result.elapsed_s,
+                            "_ai_video_segments": _av_result.segments,
+                            "_ai_video_audio_on": _av_result.audio_on,
+                        }
+                        if on_segment_done:
+                            try:
+                                on_segment_done([_av_entry])
+                            except Exception:
+                                pass
+                        try:
+                            _cache_path.write_text(
+                                json.dumps({"entries": [_av_entry], "usage": {}}, default=str)
+                            )
+                        except Exception:
+                            pass
+                        return [_av_entry], {}
+                    else:
+                        # Failure — downgrade to a non-AI shot type and fall
+                        # through to the LLM path. The cost tracker already
+                        # refunded the reservation (orchestrator handles it).
+                        _fallback_st = "VIDEO_HERO" if shot.get("video_query") else "IMAGE_HERO"
+                        print(
+                            f"   ⚠️  {_log_label} AI_VIDEO_HERO {_av_result.error_class}: "
+                            f"{_av_result.error} — falling back to {_fallback_st}"
+                        )
+                        shot_type = _fallback_st
+                        # Keep `shot` dict in sync with the local — downstream
+                        # helpers (template composer, sound planner, vision
+                        # reviewer) may re-read `shot["shot_type"]`.
+                        shot["shot_type"] = _fallback_st
+                        # Strip AI-video fields so the LLM doesn't try to use
+                        # them under the new shot_type. Mutating `shot` here
+                        # is safe — the sub-shot decomposer's `_inherit_keys`
+                        # already ran (or didn't fire); downstream sees the
+                        # corrected shape.
+                        for _k in ("ai_video_prompt", "ai_video_duration_s",
+                                   "ai_video_segments", "ai_video_audio"):
+                            shot.pop(_k, None)
 
             # ── Shot template bypass (premium / ultra / super_ultra) ──
             # When the Director sets `template_id` on a shot AND the template
@@ -10178,8 +15046,21 @@ class VideoGenerationPipeline:
             # diverge in composition instead of converging on one templated look.
             _aspirational_prompt = self._quality_tier in ("ultra", "super_ultra")
             system_prompt = build_per_shot_system_prompt(
-                shot_type, _w, _h, aspirational=_aspirational_prompt
+                shot_type, _w, _h,
+                aspirational=_aspirational_prompt,
+                cultural_context=getattr(self, "_cultural_context", None),
             )
+            # Pillar 2.4 — append the "don't re-emit shared preamble" rule
+            # when the tier knob is on. Token cost: ~600 chars in the system
+            # prompt; saving: ~22 KB of completion tokens per shot if LLM
+            # complies. Net win even when LLM only partially complies (the
+            # post-LLM stripper picks up the slack).
+            if self._tier_config.get("shot_html_shared_preamble_enabled"):
+                try:
+                    from shot_type_cards import maybe_append_shared_preamble_rule
+                    system_prompt = maybe_append_shared_preamble_rule(system_prompt, True)
+                except Exception:
+                    pass
 
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
@@ -10194,6 +15075,29 @@ class VideoGenerationPipeline:
                 )
                 if _skill_catalog:
                     system_prompt = system_prompt + "\n\n" + _skill_catalog
+
+            # Phase 6: inline `<aivideo>` teaching block. Conditional on the
+            # run having AI video enabled AND the shot being a non-specialized
+            # composite type (AI_VIDEO_HERO doesn't need the inline tag — it's
+            # already AI-video at the whole-canvas level; KINETIC_TEXT /
+            # SOURCE_CLIP / IMAGE_CLIP don't support arbitrary composite HTML).
+            if (
+                getattr(self, "_ai_video_run_enabled", False)
+                and shot_type not in ("AI_VIDEO_HERO", "KINETIC_TEXT", "KINETIC_TITLE",
+                                      "SOURCE_CLIP", "IMAGE_CLIP")
+            ):
+                try:
+                    from shot_type_cards import build_ai_video_inline_teaching_block
+                    _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
+                    _av_inline_block = build_ai_video_inline_teaching_block(
+                        enabled=True,
+                        audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                        cost_cap_usd=_av_cap,
+                    )
+                    if _av_inline_block:
+                        system_prompt = system_prompt + "\n\n" + _av_inline_block
+                except Exception as _av_block_err:
+                    print(f"   ⚠️ inline <aivideo> teaching block unavailable ({_av_block_err})")
 
             # Filter word timings to this shot's time range
             shot_words = [w for w in words if start_time <= float(w.get("start", 0)) < end_time]
@@ -10281,6 +15185,10 @@ class VideoGenerationPipeline:
                 complexity_level=shot.get("complexity_level", "moderate"),
                 transition_in=transition_in,
                 transition_css_block=transition_css_block,
+                # Director-set per-shot bg treatment (Tier 3, 2026-05). Falls
+                # back to brand_solid if Director omitted it AND lazy-inheritance
+                # didn't set one (defensive default for non-Director paths).
+                background_treatment=shot.get("background_treatment", "brand_solid"),
                 image_prompt_line=image_prompt_line,
                 video_query_line=video_query_line,
                 director_notes=director_notes,
@@ -10334,6 +15242,20 @@ class VideoGenerationPipeline:
             )
             if _shot_vp_block:
                 user_prompt = user_prompt + _shot_vp_block
+
+            # ── Cross-shot CONTINUITY BRIEF (Tier 4 L1, 2026-05) ──
+            # The per-shot LLM is stateless. Without this block, every shot
+            # reinvents brand placement, background treatment, exit pose →
+            # the "6 different backgrounds in 8 shots" symptom from the
+            # vid_1778774930857_w8cwa1y audit. Built from Director-plan fields
+            # we already have (no extra LLM call, no extra screenshot).
+            _continuity_brief = self._build_continuity_brief(
+                shots=shots,
+                shot_idx=shot_idx,
+                recurring_motifs=director_plan.get("recurring_motifs") or [],
+            )
+            if _continuity_brief:
+                user_prompt = user_prompt + "\n\n" + _continuity_brief
 
             # ── Named-entity / web-search / article-screenshot hints ──
             # Gate on shot type — text-heavy shots don't use embedded media so
@@ -10987,6 +15909,12 @@ class VideoGenerationPipeline:
                     start_time=start_time,
                     palette=palette,
                     bg_type=background_type,
+                    # Tier 3+ audit fixes — namespace span IDs by shot_idx so
+                    # multiple KINETIC_TEXT shots per video don't collide; pull
+                    # font/spacing tokens from shot_pack so typography matches
+                    # the rest of the video instead of hardcoded Montserrat 3.4rem.
+                    shot_idx=shot_idx,
+                    shot_pack=getattr(self, "_current_shot_pack", None),
                 )
                 kinetic_html = self._ensure_fonts(kinetic_html)
                 entry = {
@@ -11112,11 +16040,14 @@ class VideoGenerationPipeline:
                         f"<p style='font-family:Inter,sans-serif;font-size:1.15rem;"
                         f"color:rgba(255,255,255,0.72);line-height:1.6;'>{_sbs_desc}</p>"
                         "</div></div>"
-                        "<script>window.addEventListener('load',function(){"
-                        "if(typeof gsap!=='undefined'){"
+                        # IIFE with typeof gsap guard — shadow-DOM safe (see
+                        # SKILLS_AND_TEMPLATES_AUTHORING.md §4: there is no
+                        # shadow-scoped 'load' event, so `addEventListener('load')`
+                        # never fires when shot HTML is mounted in a shadow root).
+                        "<script>(function(){if(typeof gsap==='undefined')return;"
                         "gsap.to('#anno',{opacity:1,x:0,duration:0.55,ease:'power2.out',delay:0.15});"
                         "gsap.from('#vid-panel',{opacity:0,scale:0.96,duration:0.45,ease:'power2.out'});"
-                        "}})</script></body></html>"
+                        "})();</script></body></html>"
                     )
                     _sbs_html = self._ensure_fonts(_sbs_html)
                     if _sbs_src_url:
@@ -11186,6 +16117,7 @@ class VideoGenerationPipeline:
                             8000 if attempt > 0
                             else self._tier_config.get("per_shot_max_tokens", 16000)
                         ),
+                        model=self._resolve_stage_model("per_shot_html"),
                     )
                     # Add this attempt's tokens before JSON parsing so parse failures
                     # are still counted in the cost.
@@ -11198,6 +16130,25 @@ class VideoGenerationPipeline:
                     # _attempt_usage — add whatever partial usage we got.
                     for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                         usage[_k] = usage.get(_k, 0) + _attempt_usage.get(_k, 0)
+                    # Bug 2 (telemetry): on parse failure, capture the LLM's
+                    # raw response so we can see WHY it kept failing. The
+                    # `raw` variable holds the response from html_client.chat
+                    # IF the call succeeded but parsing failed (ValueError
+                    # from _extract_json_blob). For network errors `raw` is
+                    # not defined — guard with locals(). 400-char window
+                    # captures truncation marker / safety-block reason / the
+                    # malformed prefix without flooding logs.
+                    try:
+                        _raw_snippet = locals().get('raw', '')
+                        if _raw_snippet:
+                            _raw_text = str(_raw_snippet)[:400].replace('\n', ' \\n ')
+                            print(
+                                f"   [shot-llm-raw] shot={shot_idx + 1} attempt={attempt + 1}/{max_attempts} "
+                                f"err={type(e).__name__}: {str(e)[:80]} | "
+                                f"raw[:400]={_raw_text!r}"
+                            )
+                    except Exception:
+                        pass  # telemetry must never break the fallback path
                     if attempt == max_attempts - 1:
                         print(f"   ❌ Shot {shot_idx + 1} failed after {max_attempts} attempts: {e}")
                         self._emit_progress({
@@ -11223,26 +16174,58 @@ class VideoGenerationPipeline:
                             _fb_brand = self._extract_brand_brief()
                         except Exception:
                             _fb_brand = {"bg_hex": None, "accent_hex": None, "font_family": None, "raw_brief": ""}
-                        _fb_bg = _fb_brand.get("bg_hex") or "#0D0D0D"
-                        _fb_accent = (
-                            _fb_brand.get("accent_hex")
-                            or (palette or {}).get("accent")
-                            or "#C9A84C"
-                        )
-                        _fb_font = _fb_brand.get("font_family") or "Inter"
-                        # Auto-invert text colour against bg luminance (#XXXXXX).
-                        try:
-                            _hex = _fb_bg.lstrip("#")
-                            _lum = (
-                                int(_hex[0:2], 16) * 299
-                                + int(_hex[2:4], 16) * 587
-                                + int(_hex[4:6], 16) * 114
-                            ) / 1000
-                            _fb_text_color = "#FFFFFF" if _lum < 128 else "#0D0D0D"
-                        except Exception:
-                            _fb_text_color = "#FFFFFF"
+                        # Layered palette inheritance — brand_brief > shot_pack.palette >
+                        # CSS-var-with-hex-fallback. Previously defaulted to charcoal
+                        # #0D0D0D / gold #C9A84C regardless of the run's brand — yielded
+                        # visually jarring fallback shots mid-stream of e.g. cream-bg
+                        # videos (see vid_1778774930857_w8cwa1y shot 3). Now the fallback
+                        # inherits the run's actual palette so it visually continues with
+                        # neighboring shots instead of breaking the eye.
+                        _palette = palette or {}
+                        _sp_pack = getattr(self, "_current_shot_pack", None) or {}
+                        _sp_fonts = _sp_pack.get("font_family") or {}
+                        _fb_bg = _fb_brand.get("bg_hex") or _palette.get("background") or "var(--brand-bg, #f5f0e8)"
+                        _fb_accent = _fb_brand.get("accent_hex") or _palette.get("accent") or "var(--brand-accent, #FF7A1A)"
+                        _fb_font = _fb_brand.get("font_family") or _sp_fonts.get("body") or "Inter"
+                        # Foreground priority: brand_brief.text_hex > palette.text >
+                        # luminance-inverted from a hex bg > CSS var with safe-contrast
+                        # hex fallback. Inversion only fires when we have a hex bg —
+                        # if bg is a `var(...)` reference, fall through to the var.
+                        # NOTE: `_extract_brand_brief()` returns only bg_hex/accent_hex/font_family/raw_brief
+                        # — no `text_hex` today. If a future change adds it, swap in `_fb_brand.get("text_hex") or`
+                        # here. For now, palette.text is the only explicit-text source.
+                        _explicit_text = _palette.get("text")
+                        if _explicit_text:
+                            _fb_text_color = _explicit_text
+                        else:
+                            _hex_bg = _fb_brand.get("bg_hex")
+                            if not _hex_bg:
+                                _pbg = _palette.get("background")
+                                if isinstance(_pbg, str) and _pbg.startswith("#"):
+                                    _hex_bg = _pbg
+                            if _hex_bg:
+                                try:
+                                    _hex = _hex_bg.lstrip("#")
+                                    _lum = (
+                                        int(_hex[0:2], 16) * 299
+                                        + int(_hex[2:4], 16) * 587
+                                        + int(_hex[4:6], 16) * 114
+                                    ) / 1000
+                                    _fb_text_color = "#FFFFFF" if _lum < 128 else "#0D0D0D"
+                                except Exception:
+                                    _fb_text_color = "var(--brand-text, #2a1a0a)"
+                            else:
+                                _fb_text_color = "var(--brand-text, #2a1a0a)"
 
-                        # Multi-source text — never empty.
+                        # Multi-source text. Bug 2: removed the
+                        # `shot_type.replace("_", " ").title()` rung that
+                        # produced literal internal vocabulary like "Kinetic
+                        # Title" on user-facing screens when narration /
+                        # visual_description / text_elements were all empty.
+                        # Now an empty result is allowed and triggers a
+                        # text-less fallback (animated accent rule only)
+                        # below — a tasteful brand-color blip instead of
+                        # leaking internal shot-type names.
                         _text_elems = shot.get("text_elements") or []
                         if isinstance(_text_elems, list):
                             _elem_text = " · ".join(str(e) for e in _text_elems[:2]).strip()
@@ -11252,23 +16235,36 @@ class VideoGenerationPipeline:
                             (shot.get("narration_excerpt") or "").strip()
                             or (shot.get("visual_description") or "").strip()
                             or _elem_text
-                            or shot_type.replace("_", " ").title()
-                            or "Generating..."
+                            or ""  # explicit empty → emit accent-only fallback
                         )[:200]
+                        # Text div only renders when we actually have text;
+                        # otherwise we emit just the accent rule so the shot
+                        # is a visually neutral brand blip (no internal
+                        # vocabulary surfaces to the viewer).
+                        _fb_text_div = (
+                            f"<div style='max-width:88%;text-align:center;font-family:{_fb_font},sans-serif;"
+                            f"font-size:2.4rem;font-weight:700;color:{_fb_text_color};line-height:1.4;opacity:0;' id='fb_t'>"
+                            f"{_fb_text}</div>"
+                        ) if _fb_text else ""
+                        _fb_text_anim = (
+                            "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"
+                        ) if _fb_text else ""
                         _fb_html = (
                             "<div id='shot-root' style='position:relative;width:100%;height:100%;"
                             f"overflow:hidden;background:{_fb_bg};display:flex;align-items:center;"
                             "justify-content:center;padding:6%;'>"
-                            f"<div style='max-width:88%;text-align:center;font-family:{_fb_font},sans-serif;"
-                            f"font-size:2.4rem;font-weight:700;color:{_fb_text_color};line-height:1.4;opacity:0;' id='fb_t'>"
-                            f"{_fb_text}</div>"
+                            f"{_fb_text_div}"
                             f"<div style='position:absolute;bottom:10%;left:50%;transform:translateX(-50%);"
                             f"width:6rem;height:4px;background:{_fb_accent};border-radius:2px;opacity:0;' id='fb_b'></div>"
-                            "<script>window.addEventListener('load',function(){"
-                            "if(typeof gsap!=='undefined'){"
-                            "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"
+                            # IIFE with typeof gsap guard — shadow-DOM safe (see
+                            # SKILLS_AND_TEMPLATES_AUTHORING.md §4). The previous
+                            # `window.addEventListener('load')` wrapper would never
+                            # fire because the fallback HTML is mounted in a shadow
+                            # root, so the fade-in animations silently never ran.
+                            "<script>(function(){if(typeof gsap==='undefined')return;"
+                            f"{_fb_text_anim}"
                             "gsap.to('#fb_b',{opacity:1,duration:0.4,delay:0.4});"
-                            "}})</script></div>"
+                            "})();</script></div>"
                         )
                         _fb_html = self._ensure_fonts(_fb_html)
                         _fb_entry = {
@@ -11309,7 +16305,71 @@ class VideoGenerationPipeline:
                 return [], usage
 
             html = self._sanitize_html_content(html)
+
+            # ── Contract auto-repair (root id + dims + brand bg) ──────────
+            # 2026-05: the LLM consistently violates the root-element rules
+            # spelled out in prompts.py:1704 + shot_type_cards.py:379:
+            #   - must use id="shot-root" (not #s6_shot-root aliases)
+            #   - must have inline style width:100% height:100% position:relative
+            # When violated, the shot renders blank because the root collapses
+            # to 0×0 and the background never paints. This module patches the
+            # contract deterministically (no LLM round-trip). Pure repair —
+            # can only fix known violations, never introduce them. Audit step
+            # below logs remaining violations as warnings (non-blocking).
+            try:
+                from html_contract_repair import (
+                    repair_root_contract,
+                    audit_contract,
+                )
+                html, _contract_fixes = repair_root_contract(html)
+                if _contract_fixes:
+                    print(
+                        f"   🔧 Shot {shot_idx + 1} contract auto-repair: "
+                        f"{_contract_fixes}"
+                    )
+                _contract_warnings = audit_contract(html)
+                if _contract_warnings:
+                    print(
+                        f"   ⚠️  Shot {shot_idx + 1} contract audit "
+                        f"(non-blocking): {_contract_warnings}"
+                    )
+            except Exception as _hcr_err:
+                # Defensive — never let contract repair break a shot. The
+                # existing structural validator below catches gross issues.
+                print(
+                    f"   ⚠️ Shot {shot_idx + 1} contract repair errored "
+                    f"({_hcr_err}); shipping HTML unchanged"
+                )
+
+            # JS call sanitizer — wrap every statement-context call to a
+            # known-optional animation library (anime, annotate,
+            # splitReveal, animateSVG, playSound, …) in a `typeof X !==
+            # 'undefined'` guard. A missing library now becomes a no-op on
+            # that one call instead of throwing ReferenceError and killing
+            # the rest of the script (shot-2-white pattern). gsap.* is
+            # deliberately not in the guard list — GSAP is a hard
+            # dependency; wrapping it would just mask real bugs.
+            try:
+                from js_call_sanitizer import sanitize_optional_calls
+                html = sanitize_optional_calls(html)
+            except Exception as _jcs_err:
+                # Defensive — never let the sanitizer break a shot. Log and
+                # ship the un-sanitized HTML; the CSS visibility safety net
+                # in the harness is the second line of defence.
+                print(f"   ⚠️ Shot {shot_idx + 1} JS sanitizer failed ({_jcs_err}); shipping unsanitized")
+
             html = self._clamp_entry_animations(html, duration)
+
+            # Pillar 2.4 — strip the redundant shared preamble the LLM tends
+            # to re-emit (SVG <defs>, font @imports, brand palette :root, text-
+            # safety reset). Gated by tier knob; default False on every tier.
+            # No-op on shots where the LLM already followed the prompt rule.
+            if self._tier_config.get("shot_html_shared_preamble_enabled"):
+                try:
+                    from shot_type_cards import strip_shared_preamble
+                    html = strip_shared_preamble(html)
+                except Exception as _strip_err:
+                    print(f"   ⚠️ Shared-preamble strip failed on shot {shot_idx + 1}: {_strip_err}")
 
             # ── Skill composer (ultra / super_ultra) ──
             # Scan for <skill data-skill-id=... data-params=...> tags the LLM may
@@ -11328,6 +16388,12 @@ class VideoGenerationPipeline:
                             "canvas_h": _h,
                             "tier": self._quality_tier,
                             "shot_type": shot_type,
+                            # Skills now read font sizes from `shot_pack.font_scale`
+                            # (same table templates use) so deterministic-path text
+                            # respects the canvas-aware caps. `shot_duration` lets
+                            # skills emit a back-half tween at delay≥0.55×duration.
+                            "shot_pack": getattr(self, "_current_shot_pack", None),
+                            "shot_duration": float(duration or 5.0),
                         },
                     )
                     invocations = compose_result.get("invocations", []) or []
@@ -11366,6 +16432,51 @@ class VideoGenerationPipeline:
                 except Exception as _sc_err:
                     print(f"   ⚠️ Skill composer error on shot {shot_idx + 1}: {_sc_err}")
 
+            # ── Inline <aivideo> composer (Phase 6) ──
+            # Scans HTML for <aivideo> tags emitted by the per-shot LLM and
+            # substitutes each with a <video> element backed by a Veo MP4.
+            # Only fires when AI video is enabled for the run; otherwise the
+            # composer is a no-op (it still scans, but the LLM was told not
+            # to emit the tags so the scan finds nothing).
+            #
+            # Order rationale: comes AFTER skill_compose so a future skill
+            # could emit <aivideo> tags that get resolved here on this pass.
+            # Comes BEFORE _ensure_fonts so the inline <video> elements are
+            # in place when font preconnects are computed.
+            #
+            # Failures (Veo error, cap exhausted, missing prompt) fall back
+            # to a CSS gradient placeholder per tag — the shot still ships.
+            if getattr(self, "_ai_video_run_enabled", False) and "<aivideo" in (html or "").lower():
+                try:
+                    from ai_video_composer import compose as _ai_video_compose_fn
+                    _av_inline_result = _ai_video_compose_fn(
+                        html,
+                        ctx={
+                            "shot_index": shot_idx,
+                            "canvas": "portrait" if _h > _w else "landscape",
+                            "audio_policy": shot.get("audio_policy") or "narration_only",
+                        },
+                        veo_client=self._fal_veo_client,
+                        cost_tracker=self._ai_video_cost_tracker,
+                        ledger=getattr(self, "_ai_video_ledger", None),
+                        run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                        safety_tolerance="3",
+                        log_fn=print,
+                    )
+                    html = _av_inline_result.get("html", html)
+                    _av_inline_succeeded = _av_inline_result.get("succeeded", 0)
+                    _av_inline_failed = _av_inline_result.get("failed", 0)
+                    if _av_inline_succeeded or _av_inline_failed:
+                        _av_inline_cost = _av_inline_result.get("cost_usd", 0.0)
+                        _cap_partial = "  ⚠️ partial (cap)" if _av_inline_result.get("circuit_breaker_partial") else ""
+                        print(
+                            f"   🎞️  Shot {shot_idx + 1} inline <aivideo>: "
+                            f"{_av_inline_succeeded} rendered, {_av_inline_failed} fallback"
+                            f"  (${_av_inline_cost:.3f}){_cap_partial}"
+                        )
+                except Exception as _av_err:
+                    print(f"   ⚠️ Inline <aivideo> composer error on shot {shot_idx + 1}: {_av_err}")
+
             # ── Animation density validator + targeted regen (super_ultra only) ──
             # Scans the generated HTML for GSAP tweens and sync-point delays. If the
             # count is below the tier threshold OR the sync points weren't honored,
@@ -11391,6 +16502,23 @@ class VideoGenerationPipeline:
                     "pre_issues": list(issues) if issues else [],
                     "shipped": "original",  # default — overwritten on regen success
                 }
+                # Pillar 2.8 — gate corrective regen by tier knob. Detection
+                # always runs and persists `pre_issues` for telemetry; the LLM
+                # call is what we save when the knob is False (default on ultra).
+                _anim_regen_on = bool(
+                    self._tier_config.get("anim_validator_regen_enabled", True)
+                )
+                if issues and not _anim_regen_on:
+                    print(
+                        f"   ⚠️ Shot {shot_idx + 1} failed validator (regen disabled by tier): "
+                        f"{'; '.join(issues)}"
+                    )
+                    _validator_record["shipped"] = "original"
+                    _validator_record["reason"] = "anim_validator_regen_enabled=False"
+                    _validator_record_for_entry = _validator_record
+                    # Fall through past the corrective regen block by clearing
+                    # `issues` so the legacy `if issues:` branch is skipped.
+                    issues = []
                 if issues:
                     print(f"   ⚠️ Shot {shot_idx + 1} failed validator: {'; '.join(issues)}")
                     # Tailor the corrective message: anti-pattern issues
@@ -11420,6 +16548,22 @@ class VideoGenerationPipeline:
                             "containing text. Stage labels, badges, headlines, callouts — "
                             "all horizontal."
                         )
+                    # Tailored fix for the back-half-motion check — concrete
+                    # GSAP idioms beat abstract "add more motion" guidance.
+                    if any("back-half motion" in i for i in issues):
+                        corrective_parts.append(
+                            "BACK-HALF MOTION: at least ONE GSAP tween MUST fire in the second half of the "
+                            "shot (delay ≥ 0.55 × shot_duration). Add ONE of these idioms that lands "
+                            "naturally in the back half:\n"
+                            "  - A delayed accent reveal: `gsap.to('#accent-bar', {scaleX:1, duration:0.45, "
+                            "delay: <0.6-0.8 × shot_duration>, ease:'expo.out'});`\n"
+                            "  - A number/text crossfade: `gsap.to('#label-a', {opacity:0, duration:0.3, "
+                            "delay: <0.6 × shot_duration>});` paired with `#label-b` fading in.\n"
+                            "  - A background-layer scale-in: `gsap.fromTo('#bg-mark', {scale:0.6, opacity:0}, "
+                            "{scale:1, opacity:1, duration:1.5, delay: <0.55 × shot_duration>});`\n"
+                            "  - A slow-roll counter, watermark crossfade, secondary subject breathing yoyo.\n"
+                            "Anchor the delay on a WORD TIMINGS emphasis word when one falls in the back half."
+                        )
                     corrective_parts.append("Keep the same shot pack tokens. Return only the JSON shot object.")
                     corrective = "\n".join(corrective_parts)
                     # Snapshot the pre-regen HTML so we can revert if regen
@@ -11427,17 +16571,24 @@ class VideoGenerationPipeline:
                     # if regen ALSO fails, the original is more likely closer
                     # to the Director's intent than a desperate second attempt.
                     _html_before_regen = html
+                    # Pillar 1 — stamp this corrective LLM call as phase=regen.
+                    _phase_tok = _llm_phase.set("regen")
+                    _stage_tok = _llm_stage.set(f"anim_validator_regen_shot_{shot_idx}")
                     try:
-                        raw2, usage2 = self.html_client.chat(
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_prompt},
-                                {"role": "assistant", "content": raw[:4000]},
-                                {"role": "user", "content": corrective},
-                            ],
-                            temperature=0.4,  # lower for more faithful regen
-                            max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
-                        )
+                        try:
+                            raw2, usage2 = self.html_client.chat(
+                                messages=[
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": user_prompt},
+                                    {"role": "assistant", "content": raw[:4000]},
+                                    {"role": "user", "content": corrective},
+                                ],
+                                temperature=0.4,  # lower for more faithful regen
+                                max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                            )
+                        finally:
+                            _llm_phase.reset(_phase_tok)
+                            _llm_stage.reset(_stage_tok)
                         data2 = _extract_json_blob(raw2)
                         html2 = data2.get("html", "")
                         if html2:
@@ -11495,11 +16646,54 @@ class VideoGenerationPipeline:
                 if issues:
                     _validator_record_for_entry = _validator_record
 
+            # ── Deterministic post-render bbox lint (Tier 2, 2026-05) ──
+            # Walks the rendered shadow DOM via the render worker's /bbox-check
+            # and reports text/media that crosses the canvas edge. This is the
+            # ONLY non-probabilistic check for TEXT_CLIPPED — the LLM vision
+            # reviewer can fail to flag clipped headlines (see
+            # vid_1778774930857_w8cwa1y audit). Fires BEFORE the vision review
+            # so a corrective regen lands before we pay for vision tokens on a
+            # broken layout.
+            _bbox_lint_record: Optional[Dict[str, Any]] = self._lint_shot_bbox(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                start_time=start_time,
+                end_time=end_time,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+                usage=usage,
+            )
+            if _bbox_lint_record and _bbox_lint_record.get("regen_html"):
+                html = _bbox_lint_record["regen_html"]
+
+            # ── Brand-asset enforcement (Tier 3, 2026-05) ──
+            # When reference assets are present AND this is the intro / outro /
+            # product_proof shot, the HTML MUST embed at least one
+            # <img data-img-source="reference">. Cheap regex check + one
+            # corrective regen. No-op (returns None) on shots that aren't
+            # required to embed, or runs without uploaded assets.
+            _brand_asset_record: Optional[Dict[str, Any]] = self._lint_shot_brand_asset(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                total_shots=total_shots,
+                start_time=start_time,
+                end_time=end_time,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+                usage=usage,
+            )
+            if _brand_asset_record and _brand_asset_record.get("regen_html"):
+                html = _brand_asset_record["regen_html"]
+
             # ── Vision reviewer — sees the rendered frame ──
             # Catches defects the regex validator can't (legibility, face
             # overlap, palette violation, sync drift). Fires AFTER the density
-            # validator so cheap regex catches dead-air shots before we pay
-            # for screenshots. May trigger one corrective regen with a
+            # validator and bbox lint so cheap regex + deterministic checks
+            # land first. May trigger one corrective regen with a
             # ship-original-on-regression policy. Persists every flagged shot
             # to vision_review_cases for prompt-tuning analysis.
             _vision_review_record: Optional[Dict[str, Any]] = self._review_shot_visually(
@@ -11710,6 +16904,22 @@ class VideoGenerationPipeline:
             # Estimate USD cost for this shot (best-effort; None if model pricing unknown)
             _model_id = getattr(self.html_client, 'current_model',
                                 getattr(self.html_client, 'default_model', ''))
+
+            # Stamp the resolved html_model onto every timeline entry produced
+            # by this shot. Read at regen time by `_lookup_shot_html_model` so
+            # "Remake with AI" uses the SAME model that authored the shot,
+            # instead of a generic default. Also written onto the shot record
+            # in the director/shot plan via the same field so resume-from-
+            # checkpoint regen still works.
+            if _model_id:
+                for _e in entries:
+                    if isinstance(_e, dict) and not _e.get("html_model"):
+                        _e["html_model"] = _model_id
+                try:
+                    if isinstance(shot, dict) and not shot.get("html_model"):
+                        shot["html_model"] = _model_id
+                except Exception:
+                    pass
             _shot_cost_usd: float | None = None
             try:
                 from constants.models import get_model_pricing as _gmp  # type: ignore
@@ -11759,6 +16969,21 @@ class VideoGenerationPipeline:
         max_workers = min(8, max(1, total_shots))
 
         print(f"   🎬 Generating HTML for {total_shots} shots (parallel, max {max_workers} workers)...")
+        # ── PHASE B v3 DIAG ───────────────────────────────────────────
+        # Log the type of every entry in shots so we can catch the
+        # '\'str\' object has no attribute \'get\'' bug. If any entry is
+        # not a dict, the Director (or something downstream) is emitting
+        # a non-dict shot — capture which indices and what their content is.
+        _bad_shots = [
+            (i, type(s).__name__, repr(s)[:120])
+            for i, s in enumerate(shots) if not isinstance(s, dict)
+        ]
+        if _bad_shots:
+            print(f"   🧪 [PHASE_B v3] WARNING: {len(_bad_shots)} non-dict shot(s) in plan:")
+            for i, t, r in _bad_shots:
+                print(f"      shot[{i}] is {t}: {r}")
+        else:
+            print(f"   🧪 [PHASE_B v3] all {len(shots)} shots are dict ✓")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map: Dict[Any, int] = {}
@@ -11785,7 +17010,9 @@ class VideoGenerationPipeline:
                         total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
                         total_usage["total_tokens"] += usage.get("total_tokens", 0)
                 except Exception as e:
+                    import traceback as _tb_e
                     print(f"   ❌ Shot {shot_idx + 1} exception: {e}")
+                    print(f"      traceback:\n{_tb_e.format_exc()}")
 
         # Sort by start time
         all_entries.sort(key=lambda x: float(x.get("start", 0)))
@@ -11807,11 +17034,71 @@ class VideoGenerationPipeline:
                 from sound_planner import plan_sounds
                 video_id = getattr(self, "_current_video_id", "") or str(run_dir.name)
                 _script_text = getattr(self, "_current_script_text", "") or ""
+
+                # Resolve mood ONCE here so all downstream audio passes
+                # (sound_planner density, sfx_palette prompts, mixer reverb)
+                # agree on the same value. Director's `audio_mood` field
+                # wins when present; falls back to heuristic.
+                _mood_for_planner = "default"
+                try:
+                    from sfx_palette_planner import resolve_mood as _resolve_mood
+                    _script_for_mood = (
+                        getattr(self, "_current_script_plan", None)
+                        or _script_text
+                    )
+                    _mood_for_planner = _resolve_mood(script=_script_for_mood)
+                except Exception:
+                    pass
+
+                # Shallow-copy tier_config so we can inject audio_mood
+                # without mutating the shared dict (other callers read it).
+                _tc_for_planner = dict(self._tier_config or {})
+                _tc_for_planner["audio_mood"] = _mood_for_planner
+
+                # ── GSAP scanner pass ──────────────────────────────
+                # Parse each shot's generated HTML/JS for on-screen
+                # animation events (typewriter, bar grow, counter tick,
+                # underline draw, button appear, etc.) and attach them
+                # as `entry["_sfx_events"]`. sound_planner Rule A reads
+                # this list as its primary source of cue placement.
+                # This is what makes the audio respond to ACTUAL visual
+                # events instead of marking every transition.
+                try:
+                    from gsap_event_scanner import scan_events as _scan_gsap_events
+                    _gsap_total = 0
+                    _gsap_shots_with_events = 0
+                    for e in all_entries:
+                        html_str = e.get("html") or ""
+                        if not html_str:
+                            e["_sfx_events"] = []
+                            continue
+                        try:
+                            shot_dur = max(
+                                0.5,
+                                float(e.get("end", 0.0)) - float(e.get("start", 0.0)),
+                            )
+                        except (TypeError, ValueError):
+                            shot_dur = 999.0
+                        events = _scan_gsap_events(html_str, shot_duration_s=shot_dur)
+                        e["_sfx_events"] = events
+                        if events:
+                            _gsap_total += len(events)
+                            _gsap_shots_with_events += 1
+                    print(
+                        f"   🎬 GSAP scanner: {_gsap_total} events across "
+                        f"{_gsap_shots_with_events}/{len(all_entries)} shots"
+                    )
+                except Exception as _gsap_err:
+                    print(f"   ⚠️ GSAP scanner error ({_gsap_err}) — "
+                          f"falling through to sync_point-only cueing")
+                    for e in all_entries:
+                        e.setdefault("_sfx_events", [])
+
                 plan_sounds(
                     entries=all_entries,
                     shots=shots,
                     words=words,
-                    tier_config=self._tier_config,
+                    tier_config=_tc_for_planner,
                     video_id=video_id,
                     script_text=_script_text,
                 )
@@ -12201,6 +17488,9 @@ class VideoGenerationPipeline:
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                         temperature=self._tier_config.get("html_temperature", 0.7),
                         max_tokens=self._tier_config.get("html_max_tokens", 24000),
+                        # v2 segment-based HTML fallback path — same canonical
+                        # stage as per-shot HTML for routing purposes.
+                        model=self._resolve_stage_model("per_shot_html"),
                     )
                     data = self._parse_html_response(raw, seg, run_dir)
 
@@ -12353,14 +17643,50 @@ class VideoGenerationPipeline:
         start_time: float,
         palette: Dict[str, Any],
         bg_type: str,
+        *,
+        shot_idx: int = 0,
+        shot_pack: Optional[Dict[str, Any]] = None,
     ) -> str:
         """100% accurate word-sync kinetic typography. Bypasses LLM entirely.
 
         Each word fades/slides in at its exact Whisper-aligned timestamp.
         Called when shot_type == 'KINETIC_TEXT' in super_ultra tier.
+
+        2026-05 audit fixes:
+        - Span IDs now namespaced by shot_idx (`kw{shot_idx}_{i}` instead of
+          `kw{i}`) so multiple KINETIC_TEXT shots in one video don't collide
+          on element IDs.
+        - Background honors `var(--brand-bg)` from shot_pack instead of
+          hardcoded `#000000`/`#ffffff` — matches the rest of the post-Tier-3
+          pipeline (KINETIC_TEXT defaults to `brand_solid` background_treatment).
+        - Font family + scale read from shot_pack tokens when available.
+        - Outer wrapper gets `id="shot-root"` so transitions can target it
+          (matches the rest of the per-shot HTML convention).
         """
-        text_color = palette.get("text", "#ffffff")
-        bg_css = "background:#000000" if bg_type == "black" else "background:#ffffff"
+        text_color = palette.get("text") or "var(--brand-text, #ffffff)"
+        # Background: prefer `var(--brand-bg)` (CSS var set by the harness
+        # from style_guide.palette.background). Fall back to the old hardcoded
+        # mapping only when bg_type is explicit AND no brand-bg can resolve.
+        # `var(--brand-bg)` resolves to the institute's brand color at render
+        # time; using literal hex would have created the "6 different bgs in
+        # 8 shots" bug Tier 3.2 fixes elsewhere.
+        _bg_hardcoded = "#000000" if (bg_type or "").lower() == "black" else "#ffffff"
+        bg_css = f"background:var(--brand-bg, {_bg_hardcoded})"
+
+        # Typography from shot_pack when available, otherwise the legacy
+        # hardcoded values. Keeps cross-shot type-rhythm consistent on the
+        # rare KINETIC_TEXT shots within a video.
+        sp = shot_pack or {}
+        _fonts = sp.get("font_family") or {}
+        _font_family = _fonts.get("heading") or "Montserrat"
+        # h2-tier font scale: at landscape that's `clamp(2rem, min(6vw, 14vh), 10rem)`
+        # — comfortably larger than the previous fixed 3.4rem on big canvases,
+        # but clamps tight on portrait so words don't overflow.
+        _font_scale = sp.get("font_scale") or {}
+        _font_size = _font_scale.get("h2") or "3.4rem"
+        _spacing = sp.get("spacing") or {}
+        _safe = _spacing.get("safe_area") or "6%"
+
         spans: List[str] = []
         triggers: List[str] = []
         for i, w in enumerate(words_in_shot):
@@ -12368,27 +17694,44 @@ class VideoGenerationPipeline:
             if not word:
                 continue
             delay = round(max(0.0, float(w["start"]) - start_time), 3)
+            # Shot-namespaced ID — `kw{shot_idx}_{i}` prevents collisions when
+            # the same video has more than one KINETIC_TEXT shot (super_ultra
+            # allows 2 per video per the Director schema).
+            wid = f"kw{shot_idx}_{i}"
             spans.append(
-                f'<span id="kw{i}" style="opacity:0;display:inline-block;margin:0 6px">{word}</span>'
+                f'<span id="{wid}" style="opacity:0;display:inline-block;margin:0 6px">{word}</span>'
             )
             triggers.append(
-                f'gsap.fromTo("#kw{i}", {{opacity:0,y:20}}, '
+                f'gsap.fromTo("#{wid}", {{opacity:0,y:20}}, '
                 f'{{opacity:1,y:0,duration:0.2,delay:{delay},ease:"power2.out"}});'
             )
         if not spans:
-            return f'<div style="width:100%;height:100%;{bg_css}"></div>'
-        spans_html = "".join(spans)
+            return (
+                f'<div id="shot-root" style="position:relative;width:100%;'
+                f'height:100%;{bg_css};overflow:hidden;"></div>'
+            )
+        # Belt + braces against "STARTSHERE"-class word collisions. The margins
+        # on each inline-block span give visual rhythm; the &nbsp; text node
+        # between them guarantees a real (non-collapsible) whitespace character
+        # so margin-override or `white-space:normal` clashes can't smash words
+        # together. Symptom seen in vid_1778774930857_w8cwa1y: orange accent
+        # word jammed against the preceding word as a single token.
+        spans_html = "&nbsp;".join(spans)
         triggers_js = "\n".join(triggers)
         return (
-            f'<div style="width:100%;height:100%;display:flex;align-items:center;'
-            f'justify-content:center;{bg_css};padding:80px">'
-            f'<div style="font-size:3.4rem;font-family:\'Montserrat\',sans-serif;'
-            f'font-weight:700;line-height:1.9;text-align:center;'
-            f'color:{text_color};max-width:1400px">'
+            f'<div id="shot-root" style="position:relative;width:100%;height:100%;'
+            f'display:flex;align-items:center;justify-content:center;{bg_css};'
+            f'padding:{_safe};overflow:hidden;">'
+            f'<div style="font-size:{_font_size};'
+            f"font-family:'{_font_family}',sans-serif;"
+            f'font-weight:700;line-height:1.4;text-align:center;'
+            f'color:{text_color};max-width:88%;">'
             f'{spans_html}'
             f'</div>'
             f'</div>'
-            f'<script>\n{triggers_js}\n</script>'
+            f'<script>(function(){{if(typeof gsap===\'undefined\')return;\n'
+            f'{triggers_js}\n'
+            f'}})();</script>'
         )
 
     @staticmethod
@@ -13031,9 +18374,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             f"style='position:absolute; inset:0; background:#000000; overflow:hidden;'>{video_tag}</div>"
             f"{slots_html}"
             "</div>"
-            "<script>window.addEventListener('load',function(){"
-            f"if(typeof gsap!=='undefined'){{{anim_js}}}"
-            "})</script>"
+            # IIFE with typeof gsap guard — shadow-DOM safe (see
+            # SKILLS_AND_TEMPLATES_AUTHORING.md §4). Equally valid in a
+            # full document context, so this is a safe upgrade for the
+            # source-clip composite (which may be rendered either way
+            # depending on the SOURCE_CLIP pipeline path).
+            "<script>(function(){if(typeof gsap==='undefined')return;"
+            f"{anim_js}"
+            "})();</script>"
             "</body></html>"
         )
         return self._ensure_fonts(html_doc)
@@ -13748,10 +19096,865 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
         }
 
+    # ── Cultural-context-aware image routing helpers ────────────────────
+    # Used by `_process_image_task_simple` and `process_image_task` to:
+    #   • derive a per-run CulturalContext once (lazy + idempotent)
+    #   • strip AI-style verbiage from Pexels search queries
+    #   • inject regional keywords into stock / web queries
+    #   • re-route stock → web for region-tagged queries (aggressive mode)
+    #   • cascade stock-miss → web → AI-gen on quality failure
+    # Each helper is a pure-ish function that reads self._cultural_context.
+
+    # Regex patterns for stripping AI-style verbiage that pollutes stock search.
+    # Source: Pexels/Pixabay are keyword-based — "realistic cinematic photograph,
+    # Cinematic upward view" returns garbage; "indian student library studying"
+    # returns the actual subject. Applied ONLY to stock queries; AI-gen still
+    # gets the rich descriptive prompt.
+    _PEXELS_STRIP_RE = re.compile(
+        r"("
+        r"\brealistic\s+cinematic\s+photograph,?\s*"
+        r"|\bcinematic\s+photograph\s+of\b"
+        r"|\b(?:realistic|cinematic|dslr|dslr-quality|professional|hyperrealistic)\b,?\s*"
+        r"|\bphotograph\s+of\b\s*"
+        r"|,?\s*(?:no\s+text\s+overlays?|no\s+faces?|aspect[-_\s]?ratio[^,]*|16:9|9:16)\b"
+        r"|,?\s*\{aspect_label\}"
+        r")",
+        re.IGNORECASE,
+    )
+    # Common stop-words and adjective tails that drag down Pexels relevance.
+    _PEXELS_TAIL_NOISE = re.compile(
+        r"\b(?:cinematic|moody|atmospheric|dramatic|stylish|elegant|beautiful|stunning|breathtaking)\b,?\s*",
+        re.IGNORECASE,
+    )
+
+    def _ensure_cultural_context(
+        self,
+        *,
+        base_prompt: str,
+        named_entities: Optional[List[Dict[str, Any]]] = None,
+        brand_brief: Optional[Dict[str, Any]] = None,
+        explicit_region: Optional[str] = None,
+    ) -> None:
+        """Lazily compute and stash the run's CulturalContext.
+
+        Idempotent — first call sets `self._cultural_context`; subsequent calls
+        return immediately. Safe to invoke from multiple entry points (v2
+        Director path, v3 ShotPlanner path, lazy fallback from image task).
+        """
+        if getattr(self, "_cultural_context", None) is not None:
+            return
+        try:
+            from cultural_context import infer_cultural_context
+            ctx = infer_cultural_context(
+                user_prompt=base_prompt or "",
+                named_entities=named_entities or [],
+                brand_brief=brand_brief or {},
+                explicit_region=explicit_region,
+                script_client=getattr(self, "script_client", None),
+            )
+            self._cultural_context = ctx
+            if ctx.has_region:
+                print(
+                    f"🌍 Cultural context: region='{ctx.region}' "
+                    f"(via {ctx.derived_from}, conf={ctx.confidence:.2f}) — "
+                    f"stock keywords: {ctx.extra_stock_keywords}, gl={ctx.gl}"
+                )
+            else:
+                print(f"🌍 Cultural context: none (culture-agnostic content; no region injection)")
+        except Exception as _cc_err:
+            print(f"   ⚠️ Cultural-context inference failed ({_cc_err}); proceeding without region bias")
+            # Sentinel so we don't keep retrying. None means "not computed yet";
+            # an empty CulturalContext means "computed, no region".
+            try:
+                from cultural_context import CulturalContext
+                self._cultural_context = CulturalContext()
+            except Exception:
+                self._cultural_context = None
+
+    # Conservative Veo pricing for the pre-flight validator. Real cost is
+    # resolved later by `fal_veo_client.price_per_call_usd`, but we don't
+    # want to import that just to gate a Director plan. These figures are
+    # the high end of Veo 3.1 Lite pricing (the cheapest supported model)
+    # so a "fits the budget" decision here cannot be more permissive than
+    # the runtime tracker. Net effect: validator is slightly more conservative
+    # than the real tracker, which is the right direction (avoid surprises).
+    _AI_VIDEO_USD_PER_SEC_AUDIO_OFF: float = 0.10
+    _AI_VIDEO_USD_PER_SEC_AUDIO_ON: float = 0.15
+    # Default per-video shot count cap. Acts as a floor on top of the dollar
+    # cap so a Director going wild with cheap shots can't blow the pacing
+    # ratio (visual fatigue from too many AI shots is its own problem,
+    # separate from cost). Configurable via tier_config["ai_video_max_shots"].
+    _AI_VIDEO_DEFAULT_MAX_SHOTS: int = 4
+
+    def _estimate_ai_video_shot_cost_usd(self, shot: Dict[str, Any]) -> float:
+        """Conservative Veo cost estimate for one shot. Uses the worst-case
+        Veo 3.1 Lite per-second price. Returns USD as a float."""
+        try:
+            dur = float(shot.get("ai_video_duration_s") or 0.0)
+        except (TypeError, ValueError):
+            dur = 0.0
+        # Snap to Veo's allowed durations (4/6/8). Below 4 → 4 (Veo min);
+        # above 8 → 8 (single-shot path) OR per-segment for chains.
+        segments = shot.get("ai_video_segments") or []
+        if isinstance(segments, list) and len(segments) > 0:
+            total = 0.0
+            for seg in segments:
+                if not isinstance(seg, dict):
+                    continue
+                try:
+                    sd = float(seg.get("duration_s") or 0.0)
+                except (TypeError, ValueError):
+                    sd = 0.0
+                sd = max(4.0, min(8.0, sd or 8.0))
+                total += sd
+            dur = total
+        else:
+            if dur <= 0:
+                dur = 8.0  # Director didn't set duration — assume max
+            elif dur < 4.0:
+                dur = 4.0
+            # If >8 and no segments, it's the auto-split chain path. Round
+            # up to a multiple of 8 to mirror `_resolve_segments` behaviour.
+            elif dur > 8.0:
+                full = int(dur // 8)
+                rem = dur - full * 8
+                if rem >= 2.0:
+                    full += 1
+                dur = max(8.0, full * 8.0)
+        audio_on = bool(shot.get("ai_video_audio")) and getattr(self, "_ai_video_audio_run_enabled", False)
+        rate = self._AI_VIDEO_USD_PER_SEC_AUDIO_ON if audio_on else self._AI_VIDEO_USD_PER_SEC_AUDIO_OFF
+        return dur * rate
+
+    def _validate_ai_video_shots(self, shots: List[Dict[str, Any]]) -> None:
+        """Pre-flight validator for AI_VIDEO_HERO shots. Demotes shots that
+        would waste budget or break pacing, BEFORE any Veo network call.
+
+        Demotion target:
+          • `VIDEO_HERO` when the shot has a usable `video_query` (best
+            visual continuity — same shape, same stock-search semantics)
+          • `IMAGE_HERO` otherwise (Ken Burns on AI-generated still — still
+            cinematic, no API spend until the per-shot LLM runs)
+
+        Five checks, applied in order:
+
+          1. Sub-4s shots — Veo's minimum is 4s. A 2-3s AI_VIDEO_HERO would
+             cost a full 4s clip for a fraction of the visible window. Waste.
+             Demote unconditionally.
+
+          2. Missing fallback hint — every AI_VIDEO_HERO MUST have a
+             `video_query` so Veo-fail downgrades stay graceful. Director is
+             told this in the prompt, but the LLM forgets. Auto-derive
+             `video_query` from `ai_video_prompt` via the same stripping
+             helper Pexels uses for image queries. No demotion here — the
+             shot keeps AI_VIDEO_HERO, we just guarantee the fallback exists.
+
+          3. Consecutive AI_VIDEO_HERO — hero pacing rule (never two HERO
+             shots back-to-back). Demote the second of any consecutive pair.
+             Ignores overlay shots (they don't break the chain).
+
+          4. Pre-flight budget projection — sum the conservative cost of
+             every surviving AI_VIDEO_HERO. If total > cap, demote shots
+             starting from the LEAST important (middle of the video) until
+             under budget. Hook (shot 0/1) and CTA (last shot) demoted last.
+             Mirrors the runtime circuit breaker but with prioritized
+             demotion instead of fail-on-arrival order.
+
+          5. Hard count cap — `tier_config["ai_video_max_shots"]` (default
+             4). Same priority order as (4): hook + CTA survive, middles
+             demote. Catches the "Director picked 8 cheap shots" case.
+
+        Mutates `shots` in place. Prints a `🎬` line per demotion so the
+        run log shows what got demoted and why.
+        """
+        if not shots:
+            return
+
+        non_overlay = [s for s in shots if not s.get("overlay")]
+        if not non_overlay:
+            return
+
+        def _demote(shot: Dict[str, Any], reason: str) -> None:
+            """Strip AI video fields and pick a sensible fallback shot type."""
+            vq = (shot.get("video_query") or "").strip()
+            if not vq:
+                # Derive from ai_video_prompt before we strip it, so the
+                # demoted shot still has a stock-search query to use.
+                vq = self._strip_ai_image_verbiage(
+                    shot.get("ai_video_prompt") or shot.get("visual_description") or ""
+                )
+                if vq:
+                    shot["video_query"] = vq
+            fallback = "VIDEO_HERO" if vq else "IMAGE_HERO"
+            old = shot.get("shot_type")
+            shot["shot_type"] = fallback
+            # Strip AI video fields so the downstream path doesn't re-trigger
+            # the AI_VIDEO_HERO bypass on resume / regen.
+            for k in (
+                "ai_video_prompt", "ai_video_duration_s", "ai_video_segments",
+                "ai_video_negative_prompt", "ai_video_seed", "ai_video_audio",
+            ):
+                shot.pop(k, None)
+            # IMAGE_HERO needs image_prompt; synthesize one from the visual
+            # description if absent so the per-shot LLM has something to use.
+            if fallback == "IMAGE_HERO" and not (shot.get("image_prompt") or "").strip():
+                shot["image_prompt"] = (
+                    shot.get("visual_description")
+                    or shot.get("narration_excerpt")
+                    or "cinematic hero shot"
+                )
+            print(
+                f"   🎬 AI video demote: shot {shot.get('shot_index', '?')} "
+                f"{old} → {fallback} ({reason})"
+            )
+
+        # ── Check 1: sub-4s demotion ───────────────────────────────────
+        for s in non_overlay:
+            if s.get("shot_type") != "AI_VIDEO_HERO":
+                continue
+            try:
+                dur = float(s.get("end_time", 0)) - float(s.get("start_time", 0))
+            except (TypeError, ValueError):
+                dur = 0.0
+            if dur < 4.0:
+                _demote(s, f"duration {dur:.1f}s < Veo minimum 4s")
+
+        # ── Check 2: enforce video_query fallback (no demotion) ────────
+        for s in non_overlay:
+            if s.get("shot_type") != "AI_VIDEO_HERO":
+                continue
+            if (s.get("video_query") or "").strip():
+                continue
+            derived = self._strip_ai_image_verbiage(
+                s.get("ai_video_prompt") or s.get("visual_description") or ""
+            )
+            if derived:
+                s["video_query"] = derived
+                print(
+                    f"   🎬 AI video: shot {s.get('shot_index', '?')} added "
+                    f"video_query fallback (Director omitted it)"
+                )
+            # If derivation produces nothing, leave the shot alone — the
+            # runtime fallback will land on IMAGE_HERO if Veo fails.
+
+        # ── Check 3: consecutive-hero pacing ───────────────────────────
+        non_overlay_sorted = sorted(
+            non_overlay, key=lambda s: float(s.get("start_time", 0))
+        )
+        prev_was_ai = False
+        for s in non_overlay_sorted:
+            is_ai = s.get("shot_type") == "AI_VIDEO_HERO"
+            if is_ai and prev_was_ai:
+                _demote(s, "consecutive AI_VIDEO_HERO (hero-pacing rule)")
+                prev_was_ai = False  # the demotion broke the chain
+            else:
+                prev_was_ai = is_ai
+
+        # ── Checks 4 + 5: budget projection + count cap ────────────────
+        ai_shots_now = [
+            s for s in non_overlay_sorted if s.get("shot_type") == "AI_VIDEO_HERO"
+        ]
+        if not ai_shots_now:
+            return
+
+        cap_usd = float(
+            self._tier_config.get("ai_video_per_video_cost_cap_usd")
+            or AI_VIDEO_PER_VIDEO_COST_CAP_USD
+        )
+        max_shots = int(
+            self._tier_config.get("ai_video_max_shots")
+            or self._AI_VIDEO_DEFAULT_MAX_SHOTS
+        )
+
+        # Priority order for demotion: keep hook (first non-overlay) + CTA
+        # (last non-overlay) until forced to demote them. Demote middles
+        # first, in reverse-index order (latest middles first — preserves
+        # the earlier mid-video AI shots which usually carry more setup).
+        first_idx = non_overlay_sorted[0].get("shot_index")
+        last_idx = non_overlay_sorted[-1].get("shot_index")
+
+        def _demote_priority(shot: Dict[str, Any]) -> int:
+            si = shot.get("shot_index")
+            if si == first_idx:
+                return 2  # hook — demote last
+            if si == last_idx:
+                return 2  # CTA — demote last
+            return 0      # middle — demote first
+
+        # Hard count cap first (cheaper to evaluate, often the binding constraint).
+        while len(ai_shots_now) > max_shots:
+            # Pick the lowest-priority middle, breaking ties by latest
+            # start_time (later middles less narratively load-bearing).
+            ai_shots_now.sort(
+                key=lambda s: (_demote_priority(s), -float(s.get("start_time", 0)))
+            )
+            victim = ai_shots_now[0]
+            _demote(
+                victim,
+                f"exceeds max shots cap ({max_shots}); demoting lowest-priority middle"
+            )
+            ai_shots_now = ai_shots_now[1:]
+
+        # Budget projection.
+        projected = sum(self._estimate_ai_video_shot_cost_usd(s) for s in ai_shots_now)
+        if projected <= cap_usd:
+            return
+
+        # Sort survivors so we demote middles first (priority=0), CTAs/hooks
+        # last (priority=2). Within same priority, demote latest start first.
+        ai_shots_now.sort(
+            key=lambda s: (_demote_priority(s), -float(s.get("start_time", 0)))
+        )
+        while ai_shots_now and projected > cap_usd:
+            victim = ai_shots_now[0]
+            cost = self._estimate_ai_video_shot_cost_usd(victim)
+            _demote(
+                victim,
+                f"projected ${projected:.2f} > cap ${cap_usd:.2f}; "
+                f"demoting saves ${cost:.2f}"
+            )
+            projected -= cost
+            ai_shots_now = ai_shots_now[1:]
+
+    def _strip_ai_image_verbiage(self, prompt: str) -> str:
+        """Remove AI-style descriptive prefixes/qualifiers from a stock search
+        query. Pexels/Pixabay want short noun-phrase keywords; the LLM tends to
+        emit cinematic AI-gen prose. This trims it to what the stock provider
+        can actually match.
+
+        Idempotent. Never returns empty — falls back to the first 4-6 words of
+        the original if stripping removes everything.
+        """
+        if not prompt:
+            return ""
+        s = self._PEXELS_STRIP_RE.sub(" ", prompt)
+        s = self._PEXELS_TAIL_NOISE.sub(" ", s)
+        # Collapse whitespace, strip leading/trailing commas + spaces.
+        s = re.sub(r"\s+", " ", s).strip(" ,.;:-")
+        # If aggressive stripping wiped the prompt, fall back to first 6 words
+        # of the original (still better than the LLM-style descriptive prose).
+        if len(s) < 4:
+            s = " ".join((prompt or "").split()[:6])
+        # Pexels relevance drops fast past ~8 keywords. Truncate trailing comma
+        # clauses if the remaining query is still long.
+        if "," in s:
+            first_clause = s.split(",", 1)[0].strip()
+            if len(first_clause.split()) >= 3:
+                s = first_clause
+        return s
+
+    # Tokens dropped from subject-keyword extraction. Stopwords + AI-prose
+    # adjectives that frequent the LLM's `img_prompt` but carry no subject
+    # signal. Lower-case match.
+    _SUBJECT_STOPWORDS: Set[str] = {
+        # Common English stopwords.
+        "the", "a", "an", "of", "in", "on", "at", "with", "by", "for",
+        "to", "and", "or", "as", "is", "are", "from", "into", "over",
+        "under", "near", "this", "that", "these", "those", "be", "been",
+        # AI-prose adjectives the LLM keeps emitting.
+        "cinematic", "realistic", "professional", "beautiful", "stunning",
+        "dramatic", "atmospheric", "depth", "field", "shot", "view",
+        "image", "photo", "photograph", "background", "scene", "high",
+        "quality", "detailed", "wide", "close", "up", "cute",
+    }
+
+    def _subject_keywords_from_task(self, task: Dict[str, Any]) -> List[str]:
+        """Distill content-word subject keywords from a Director image task.
+
+        Used by `best_quality_image(subject_keywords=)` to score Serper hits
+        for subject relevance. The exoticindia.com sculpture bug shipped
+        because the host SEO-ranks on `indian + <any visual noun>`; without
+        a subject check, every culturally-correct hit ranks regardless of
+        whether the image shows the requested subject.
+
+        Pipeline:
+          1. Start with `task["img_query"]` (shorter, hand-picked keyword
+             string from the LLM) if present, else strip AI verbiage from
+             `task["prompt"]`.
+          2. Tokenize on whitespace + punctuation.
+          3. Lower-case, drop stopwords + AI-prose adjectives + tokens ≤ 2 chars.
+          4. Drop cultural region words via `CulturalContext.extra_stock_keywords`
+             — they describe geo, not subject (the host filter handles geo).
+          5. Dedupe preserving first-seen order. Cap at 8 keywords to keep
+             relevance matching cheap.
+
+        Returns: lower-cased list of subject keywords. May be empty when the
+        prompt was nothing but cultural + stopword content — in that case
+        `best_quality_image` skips the relevance multiplier (back-compat).
+        """
+        raw = (task.get("img_query") or "").strip()
+        if not raw:
+            raw = self._strip_ai_image_verbiage(task.get("prompt", ""))
+        if not raw:
+            return []
+        # Split on whitespace AND punctuation. Keep apostrophes inside tokens
+        # so possessives don't get truncated mid-word.
+        tokens = re.split(r"[\s,;:\.\-\(\)\[\]\"]+", raw.lower())
+        # Region words from the run's cultural context — these describe geo,
+        # not subject. Lower-cased for matching.
+        cc = getattr(self, "_cultural_context", None)
+        region_words: Set[str] = set()
+        if cc is not None and getattr(cc, "extra_stock_keywords", None):
+            region_words = {w.lower() for w in cc.extra_stock_keywords if w}
+        out: List[str] = []
+        seen: Set[str] = set()
+        for tok in tokens:
+            tok = tok.strip("'\"")
+            if len(tok) < 3:
+                continue
+            if tok in self._SUBJECT_STOPWORDS:
+                continue
+            if tok in region_words:
+                continue
+            if tok in seen:
+                continue
+            seen.add(tok)
+            out.append(tok)
+            if len(out) >= 8:
+                break
+        return out
+
+    def _pexels_query_for(self, prompt: str) -> str:
+        """Build the actual query Pexels gets: stripped + region-tagged.
+
+        Steps:
+          1. Strip AI-style verbiage (the polluting "realistic cinematic
+             photograph, Cinematic upward view of..." prefix).
+          2. Inject the region keyword from `CulturalContext` if not already
+             present — turns "student library" into "indian student library"
+             for India-targeted runs.
+        """
+        cleaned = self._strip_ai_image_verbiage(prompt)
+        cc = getattr(self, "_cultural_context", None)
+        if cc is not None:
+            cleaned = cc.stock_query_with_region(cleaned)
+        return cleaned
+
+    def _aggressive_route_img_source(self, requested: str, query: str) -> str:
+        """Aggressive routing: any culturally-specific query goes web-first.
+
+        Returns one of "reference" | "brand" | "stock" | "web" | "generate".
+
+        Rules:
+          - "reference" / "brand" are LLM/replacer decisions tied to specific
+            assets — never override.
+          - When CulturalContext has a region AND the query has any specificity
+            (≥4 words OR contains the region keyword), prefer "web" over
+            "stock". Stock libraries don't index culturally-tagged subjects
+            well; Google Images does.
+          - When no cultural region OR the query is genuinely generic (≤3
+            common-noun words), keep the LLM's choice — Pexels usually wins
+            on generic queries.
+        """
+        if requested in ("reference", "brand"):
+            return requested
+        cc = getattr(self, "_cultural_context", None)
+        if cc is None or not cc.has_region:
+            return requested or "stock"
+        q = (query or "").strip()
+        word_count = len(q.split())
+        q_lower = q.lower()
+        has_region_kw = any(kw.lower() in q_lower for kw in (cc.extra_stock_keywords or []))
+        # Very short generic queries (≤3 words, no region keyword) → stock.
+        if word_count <= 3 and not has_region_kw:
+            return requested if requested in ("stock", "web", "generate") else "stock"
+        # Anything else with a region → web first (aggressive).
+        if requested == "generate":
+            # Respect the LLM if it explicitly chose generate (e.g. hyper-
+            # specific moments that don't exist in any library).
+            return "generate"
+        return "web"
+
+    def _inject_cultural_into_ai_prompt(self, prompt: str) -> str:
+        """Weave cultural descriptors into an AI image-generation prompt.
+
+        Prepends a short cultural-specificity clause so the AI model renders
+        region-appropriate features and settings. Skipped when CulturalContext
+        has no region or the prompt already mentions the region.
+        """
+        if not prompt:
+            return prompt
+        cc = getattr(self, "_cultural_context", None)
+        if cc is None or not cc.has_region:
+            return prompt
+        p_lower = prompt.lower()
+        if any(kw.lower() in p_lower for kw in (cc.extra_stock_keywords or [])):
+            return prompt
+        # Lead with a short cultural clause; AI image generators give weight
+        # to the FIRST descriptors in the prompt.
+        people = (cc.people_descriptors or [cc.region.title()])[0]
+        return f"{people} subject and {cc.region} setting. {prompt}"
+
+    def _web_search_quality_image(
+        self,
+        query: str,
+        *,
+        canvas_w: int,
+        canvas_h: int,
+        subject_keywords: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Wrapper around Serper's `best_quality_image` that plumbs the run's
+        cultural context for geo bias. Returns the chosen result dict or None
+        (caller cascades to AI-gen on None).
+
+        `subject_keywords` (when supplied) is forwarded so Serper scores hits
+        against the LLM's content words and drops off-subject SEO-trap hosts.
+        """
+        serper = getattr(self, "_serper_service", None)
+        if not serper or not getattr(serper, "is_available", False):
+            return None
+        cc = getattr(self, "_cultural_context", None)
+        gl = (cc.gl if cc and cc.gl else "us")
+        hl = (cc.hl if cc and cc.hl else "en")
+        try:
+            return serper.best_quality_image(
+                query, canvas_w, canvas_h, gl=gl, hl=hl,
+                subject_keywords=subject_keywords,
+            )
+        except Exception as e:
+            print(f"   ⚠️ best_quality_image errored: {e}")
+            return None
+
+    # Per-process cache for image-dimension probes. URLs map to
+    # (width, height) or (None, None) for "probed and unknown".
+    # Bounded eviction keeps memory flat across long runs.
+    _IMG_DIM_CACHE: Dict[str, Tuple[Optional[int], Optional[int]]] = {}
+    _IMG_DIM_CACHE_MAX = 1024
+
+    @classmethod
+    def _probe_image_dimensions(
+        cls, url: str, *, timeout: float = 4.0
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Read width/height of a remote image WITHOUT downloading the full body.
+
+        How: Range-GET the first ~2KB and parse format-specific headers via
+        `struct`. Supports the four formats the pipeline encounters in
+        practice — PNG, JPEG, WebP, GIF. Returns `(None, None)` on any
+        failure (unknown format, network error, malformed header, truncated
+        body) so the caller can treat orientation as "unknown" → skip the
+        orientation check rather than crash.
+
+        Bug 4b: the `data-img-source="reference"` path commits a URL with
+        no orientation enforcement. A landscape Bloomberg URL emitted as
+        a reference URL ships on a portrait canvas cropped to a vertical
+        slice. This probe is the cheap gate before commit — ~50ms per URL
+        when the server supports Range, ~150ms when it doesn't.
+
+        Cached per-process, so re-probes are free.
+        """
+        if not url or not isinstance(url, str):
+            return (None, None)
+        if url.startswith("data:") or url.startswith("file://") or url.startswith("/"):
+            # Local / data URIs — caller already has the bytes if it cares;
+            # probing makes no sense.
+            return (None, None)
+        cached = cls._IMG_DIM_CACHE.get(url)
+        if cached is not None:
+            return cached
+
+        import struct
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Range": "bytes=0-2047",
+        }
+        data = b""
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = resp.read(2048)
+        except Exception:
+            return cls._dim_cache_put(url, (None, None))
+
+        if not data:
+            return cls._dim_cache_put(url, (None, None))
+
+        def _decide(w: Optional[int], h: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
+            return cls._dim_cache_put(url, (w, h))
+
+        # PNG: 8-byte signature + IHDR chunk @ offset 16 carries width / height
+        # as two big-endian uint32s.
+        if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+            try:
+                w, h = struct.unpack(">II", data[16:24])
+                return _decide(int(w), int(h))
+            except Exception:
+                return _decide(None, None)
+
+        # GIF: "GIF87a" / "GIF89a" + logical screen descriptor @ offset 6 with
+        # width / height as two little-endian uint16s.
+        if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
+            try:
+                w, h = struct.unpack("<HH", data[6:10])
+                return _decide(int(w), int(h))
+            except Exception:
+                return _decide(None, None)
+
+        # WebP: "RIFF" .... "WEBP". VP8X chunk variant carries canvas dims as
+        # two 3-byte little-endian fields starting at offset 24.
+        if data[:4] == b"RIFF" and len(data) >= 30 and data[8:12] == b"WEBP":
+            try:
+                chunk_id = data[12:16]
+                if chunk_id == b"VP8X":
+                    w_minus_1 = data[24] | (data[25] << 8) | (data[26] << 16)
+                    h_minus_1 = data[27] | (data[28] << 8) | (data[29] << 16)
+                    return _decide(w_minus_1 + 1, h_minus_1 + 1)
+                if chunk_id == b"VP8 " and len(data) >= 30:
+                    # Lossy keyframe — width / height at offset 26 as little-
+                    # endian uint16, masked to 14 bits.
+                    w = struct.unpack("<H", data[26:28])[0] & 0x3FFF
+                    h = struct.unpack("<H", data[28:30])[0] & 0x3FFF
+                    return _decide(int(w), int(h))
+                if chunk_id == b"VP8L" and len(data) >= 25:
+                    # Lossless: 14-bit dims packed in 5 bytes starting @ offset 21.
+                    b0, b1, b2, b3 = data[21], data[22], data[23], data[24]
+                    w = ((b1 & 0x3F) << 8) | b0
+                    h = ((b3 & 0x0F) << 10) | (b2 << 2) | ((b1 & 0xC0) >> 6)
+                    return _decide(w + 1, h + 1)
+            except Exception:
+                return _decide(None, None)
+
+        # JPEG: scan for the SOF0/1/2 marker (0xFFC0, 0xFFC1, 0xFFC2) which is
+        # immediately followed by 2 bytes of segment length + 1 byte precision
+        # + 2 bytes height + 2 bytes width (all big-endian). The marker rarely
+        # appears in the first 2KB for full-quality JPEGs but consistently
+        # does for the editorial / Bloomberg JPEGs the pipeline encounters.
+        if data[:3] == b"\xff\xd8\xff":
+            try:
+                i = 2
+                while i < len(data) - 9:
+                    if data[i] != 0xFF:
+                        i += 1
+                        continue
+                    marker = data[i + 1]
+                    # Padding fill bytes; advance.
+                    if marker == 0xFF:
+                        i += 1
+                        continue
+                    # SOI / EOI have no length field.
+                    if marker in (0xD8, 0xD9):
+                        i += 2
+                        continue
+                    # SOF0..SOF15 (excluding DHT/DAC/DNL at 0xC4/0xCC/0xDC) carry dims.
+                    if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                        h = struct.unpack(">H", data[i + 5:i + 7])[0]
+                        w = struct.unpack(">H", data[i + 7:i + 9])[0]
+                        return _decide(int(w), int(h))
+                    # Other segments: skip past length-prefixed payload.
+                    seg_len = struct.unpack(">H", data[i + 2:i + 4])[0]
+                    i += 2 + seg_len
+            except Exception:
+                return _decide(None, None)
+
+        # Unknown format / header not in the first 2KB.
+        return _decide(None, None)
+
+    @classmethod
+    def _dim_cache_put(
+        cls, url: str, dims: Tuple[Optional[int], Optional[int]]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Bounded-LRU-ish insert into the dim cache. Pops an arbitrary entry
+        when over capacity; correctness doesn't depend on which we evict."""
+        if len(cls._IMG_DIM_CACHE) >= cls._IMG_DIM_CACHE_MAX:
+            cls._IMG_DIM_CACHE.pop(next(iter(cls._IMG_DIM_CACHE)), None)
+        cls._IMG_DIM_CACHE[url] = dims
+        return dims
+
+    def _reference_url_orientation_ok(self, url: str) -> bool:
+        """True when the URL's image orientation matches the canvas
+        orientation (portrait vs landscape). Returns True when dimensions
+        can't be determined — we'd rather ship a maybe-wrong reference
+        than block a maybe-right one. The runtime broken-image fallback
+        in render_harness still catches actual load failures.
+
+        Used by the reference path (Bug 4b belt-and-braces) to drop
+        landscape URLs being committed against portrait canvases (the
+        Chanakya shot-10 Bloomberg case).
+
+        Logo exemption: square / near-square images (aspect 0.75..1.33)
+        are ALWAYS accepted regardless of canvas orientation. Logos
+        (Vacademy 512×512, brand marks, app icons) are nearly always
+        used as small overlays — watermark in a corner, hero badge at
+        fixed size — not as canvas backgrounds. The orientation gate
+        was designed to catch landscape Bloomberg URLs being committed
+        as full-canvas backgrounds; rejecting logos here causes the
+        replacer to leave `src='placeholder.png'` in the rendered HTML,
+        producing blank shots where the logo should be.
+
+        Small-image exemption: images whose long-side is < 800px are
+        also accepted — they're inset assets (icons, badges, small
+        watermarks), not full-canvas backgrounds, and the renderer
+        sizes them via CSS at their use site.
+        """
+        try:
+            w, h = self._probe_image_dimensions(url)
+        except Exception:
+            return True
+        if not w or not h:
+            return True
+        ar = w / h
+        # Logo / icon exemption — square-ish images skip the gate entirely.
+        # 0.75..1.33 covers perfect squares plus the slight asymmetry
+        # common in real-world logo crops (e.g. 500×450, 480×512).
+        if 0.75 <= ar <= 1.33:
+            return True
+        # Small-asset exemption — small inset images skip too.
+        if max(w, h) < 800:
+            return True
+        canvas_w = int(getattr(self, "video_width", 1920) or 1920)
+        canvas_h = int(getattr(self, "video_height", 1080) or 1080)
+        canvas_portrait = canvas_h > canvas_w
+        img_portrait = h > w
+        if canvas_portrait != img_portrait:
+            return False
+        # Also reject extreme aspect mismatches even when orientation agrees
+        # (e.g. a panoramic 4000×800 image on a landscape 1920×1080 canvas
+        # is technically "landscape" but crops to a thin horizontal strip).
+        # 0.45..2.2 covers all the standard editorial / stock aspect ratios.
+        if canvas_portrait:
+            ar_ok = 0.45 <= ar <= 0.85
+        else:
+            ar_ok = 1.2 <= ar <= 2.4
+        return ar_ok
+
+    # ── Brand-asset + prefetch binding (Fix 2 + Fix 3) ──────────────────
+    # Closes the gap where the per-shot LLM emits `data-img-source="generate"`
+    # for entities the pipeline ALREADY has a real asset for. Two cases:
+    #   • Brand kit logo — uploaded by user, lives in `_reference_context`.
+    #     AI gen would hallucinate a substitute. Wrong.
+    #   • Pillar-3 prefetched entity (Indian Parliament Wikipedia photo, etc.)
+    #     LLM didn't follow the rules and asked AI gen anyway. Wrong.
+    # Both are fixed by rewriting the `<img>` tag at task-build time so the
+    # consumer (process_image_task / _process_image_task_simple) takes the
+    # zero-API "reference" path.
+
+    # Tokens in the LLM's image prompt that signal "this shot is about the brand
+    # itself" — usually paired with the institute / company name. Matches are
+    # case-insensitive substring; conservative because brand assets are
+    # high-fidelity (using one for the wrong shot looks worse than missing it).
+    _BRAND_LOGO_TOKENS = (
+        "logo", "wordmark", "emblem", "insignia", "brand mark", "brand-mark",
+        "institute mark", "academy logo", "company logo", "official mark",
+    )
+
+    def _match_brand_asset_for_prompt(self, prompt: str) -> Optional[str]:
+        """Match an `<img>` prompt against the user's uploaded brand kit.
+
+        Returns the brand image URL when ANY of these is true:
+          • prompt contains one of the brand-logo tokens above (LLM asked for
+            "the logo" / "academy logo" / etc.), AND a brand image is uploaded
+          • prompt explicitly mentions the institute / brand name AND there's
+            a logo-intent token
+
+        Conservative — bare brand-name mentions WITHOUT a logo-intent token
+        don't trigger (the shot might be about the brand's product / story,
+        not the wordmark itself). Returns None on no match.
+        """
+        if not prompt:
+            return None
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        if not isinstance(ref_ctx, dict):
+            return None
+        embeddable = ref_ctx.get("embeddable_images") or []
+        if not isinstance(embeddable, list) or not embeddable:
+            return None
+
+        prompt_lower = prompt.lower()
+        has_logo_intent = any(tok in prompt_lower for tok in self._BRAND_LOGO_TOKENS)
+        if not has_logo_intent:
+            return None
+
+        # Pick the first uploaded brand image — typically the primary logo.
+        for img in embeddable:
+            if not isinstance(img, dict):
+                continue
+            url = (img.get("s3_url") or img.get("url") or "").strip()
+            if url:
+                return url
+        return None
+
+    def _match_prefetched_reference_for_prompt(self, prompt: str) -> Optional[Dict[str, Any]]:
+        """Match an `<img>` prompt against `_reference_assets` (Pillar-3 prefetch).
+
+        Returns the matched entry dict ({name, kind, image_url, source, …})
+        when the prompt mentions a prefetched entity by name. The matching is
+        case-insensitive substring with a 4-char minimum on the entity name
+        to avoid false positives on short common nouns. First match wins.
+        """
+        prefetched = getattr(self, "_reference_assets", None) or []
+        if not isinstance(prefetched, list) or not prefetched:
+            return None
+        if not prompt:
+            return None
+        prompt_lower = prompt.lower()
+        for entry in prefetched:
+            if not isinstance(entry, dict):
+                continue
+            name = (entry.get("name") or "").strip()
+            url = (entry.get("image_url") or entry.get("url") or "").strip()
+            if not name or not url or len(name) < 4:
+                continue
+            if name.lower() in prompt_lower:
+                return entry
+        return None
+
+    def _rewrite_tag_to_reference(self, full_tag: str, url: str) -> str:
+        """Rewrite an `<img>` tag: set `data-img-source="reference"` +
+        `data-reference-url="<url>"`. Strips any existing values for those
+        attributes so the rewrite is idempotent and we don't end up with
+        two conflicting `data-img-source` values on the same tag.
+        """
+        # Drop pre-existing data-img-source / data-reference-url.
+        tag = re.sub(r'\s+data-img-source\s*=\s*["\'][^"\']*["\']', "", full_tag)
+        tag = re.sub(r'\s+data-reference-url\s*=\s*["\'][^"\']*["\']', "", tag)
+        # Escape any quotes that snuck into the URL (defensive — Serper URLs
+        # don't normally have them, but cheap insurance).
+        safe_url = url.replace('"', "%22")
+        injected = f' data-img-source="reference" data-reference-url="{safe_url}"'
+        # Inject just before the closing > or />.
+        if tag.endswith("/>"):
+            return tag[:-2].rstrip() + injected + " />"
+        if tag.endswith(">"):
+            return tag[:-1].rstrip() + injected + ">"
+        return tag + injected
+
+    def _maybe_bind_tag_to_reference(
+        self, full_tag: str, prompt: str, current_img_source: str
+    ) -> tuple:
+        """Try to bind a generate/stock/web tag to a brand asset or prefetched
+        reference URL. Returns (new_full_tag, new_img_source, reference_url,
+        bind_label). When no binding applies, returns the inputs verbatim with
+        bind_label="".
+
+        Skips when the tag is already a reference / brand / article_screenshot
+        — those are LLM-explicit choices the pipeline must honour as-is.
+        """
+        # Don't override explicit LLM choices for asset-tied sources.
+        if current_img_source in ("reference", "brand", "article_screenshot"):
+            return (full_tag, current_img_source, "", "")
+
+        # Brand asset wins over prefetched reference (higher fidelity — user
+        # uploaded the actual logo, vs Wikipedia photo of a named entity).
+        brand_url = self._match_brand_asset_for_prompt(prompt)
+        if brand_url:
+            return (self._rewrite_tag_to_reference(full_tag, brand_url),
+                    "reference", brand_url, "brand")
+
+        pref = self._match_prefetched_reference_for_prompt(prompt)
+        if pref and pref.get("image_url"):
+            url = pref["image_url"]
+            return (self._rewrite_tag_to_reference(full_tag, url),
+                    "reference", url, f"prefetch:{pref.get('name', '?')}")
+
+        return (full_tag, current_img_source, "", "")
+
     def _apply_layout_to_entries(self, entries: List[Dict[str, Any]], seg: Dict[str, Any]) -> None:
         # We now trust the LLM (or default to full screen) for geometry.
         # We only assign index and ensure int types.
-        
+
         entries.sort(key=lambda x: x["start"])
 
         for i, entry in enumerate(entries):
@@ -13795,37 +19998,182 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not prompt:
             return None
 
-        # Stock photo path: try configured providers in order (hint + fallback) before
-        # falling through to AI generation.
-        img_source = task.get("img_source", "generate")
-        if self._tier_config.get("stock_preference") == "stock_only" and img_source == "generate":
-            img_source = "stock"
-        if img_source == "stock":
-            orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-            services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), prompt)
-            for svc in services:
-                provider_name = type(svc).__name__.replace("Service", "")
-                result = svc.search_photos(prompt, orientation=orientation)
-                if result:
-                    print(f"    📷 [pipeline] Stock photo ({provider_name}): {prompt[:60]}...")
+        # Lazy-init cultural context for the run if it wasn't computed during
+        # Director / ShotPlanner (e.g. cached resume from `html` stage). All
+        # downstream routing helpers depend on it being set.
+        if getattr(self, "_cultural_context", None) is None:
+            self._ensure_cultural_context(
+                base_prompt=getattr(self, "_user_prompt_raw", "") or "",
+                named_entities=[],
+                brand_brief=self._extract_brand_brief() or {},
+            )
+
+        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
+        canvas_w = getattr(self, 'video_width', 1920)
+        canvas_h = getattr(self, 'video_height', 1080)
+        orientation = "portrait" if canvas_w < canvas_h else "landscape"
+
+        # ── reference: brand asset or Pillar-3 prefetched URL, zero-API. ──
+        # When the task-build site auto-bound a tag (Fix 2 + Fix 3) it sets
+        # img_source="reference" + reference_url. The task is ready to ship —
+        # no API call, no cascade. Mirrors the same branch in `process_image_task`.
+        # Bug 4b: belt-and-braces orientation probe before commit.
+        requested_source = task.get("img_source", "generate")
+        if requested_source == "reference":
+            _ref_url = (task.get("reference_url") or "").strip()
+            if _ref_url:
+                if self._reference_url_orientation_ok(_ref_url):
+                    print(
+                        f"    🏷️  [pipeline] Brand/reference image for "
+                        f"seg={task.get('seg_idx', '?')}: {_ref_url[:80]}"
+                    )
                     return {
                         "entry":       entry,
                         "full_tag":    full_tag,
-                        "stock_url":   result.get("url", ""),
+                        "stock_url":   _ref_url,
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
+                print(
+                    f"    ⚠️  [pipeline] [reference-orientation-mismatch] "
+                    f"seg={task.get('seg_idx', '?')} url={_ref_url[:80]} → rerouting"
+                )
+                # Reroute to web (Serper enforces orientation) → AI gen if web fails.
+                requested_source = "web" if (
+                    getattr(self, "_serper_service", None)
+                    and getattr(self._serper_service, "is_available", False)
+                ) else "generate"
+            else:
+                # Missing URL — degrade to AI gen rather than crashing the task.
+                requested_source = "generate"
+
+        # Aggressive routing: when the run has a cultural region, route any
+        # query with cultural specificity to WEB first (Serper) instead of
+        # stock. Pexels/Pixabay don't index culturally-tagged subjects well;
+        # Google Images does. Cutouts skip this — they need clean isolated
+        # objects (AI gen is the only good path).
+        if self._tier_config.get("stock_preference") == "stock_only" and requested_source == "generate":
+            requested_source = "stock"
+        img_source = requested_source if is_cutout else self._aggressive_route_img_source(
+            requested_source, prompt
+        )
+
+        # ── Web (Serper) — region-biased, quality-filtered. ────────────────
+        # Reached either because the LLM explicitly asked for it OR because
+        # aggressive routing upgraded a stock task to web. Returns None when
+        # no result clears the dimension/AR/host filters → cascade to stock
+        # below, then to AI gen.
+        if img_source == "web":
+            web_q = (task.get("img_query") or "").strip() or self._strip_ai_image_verbiage(prompt)
+            web_q = (self._cultural_context.stock_query_with_region(web_q)
+                     if getattr(self, "_cultural_context", None) is not None else web_q)
+            subj_kws = self._subject_keywords_from_task(task)
+            hit = self._web_search_quality_image(
+                web_q, canvas_w=canvas_w, canvas_h=canvas_h,
+                subject_keywords=subj_kws,
+            )
+            if hit and hit.get("url"):
+                qs = hit.get("_quality_score", 0.0)
+                src = hit.get("host") or hit.get("source", "")
+                if not self._verify_image_url(hit["url"]):
+                    print(
+                        f"    ⚠️ [pipeline] Web URL failed HEAD (host={src}): "
+                        f"{hit['url'][:80]} → cascading to stock"
+                    )
+                else:
+                    print(
+                        f"    🔎 [pipeline] Web image (Serper, host={src}, score={qs}): {web_q[:60]}..."
+                    )
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   hit["url"],
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
+            # Web filter rejected everything (or candidate URL failed HEAD) —
+            # cascade DIRECTLY to AI gen. Stock photos are skipped at this
+            # tier: when the run has cultural context, AI gen with cultural
+            # prompt injection produces a region-appropriate image far more
+            # reliably than Pexels' bag-of-words match (the same reason we
+            # added must_match_keywords on the stock path). Stock remains as
+            # the post-AI-fail fallback inside `_image_fallback_chain`.
+            print(f"    🔎 [pipeline] Web returned no usable result for '{web_q[:50]}' → cascading to AI gen")
+            img_source = "generate"
+
+        # ── Stock (Pexels / Pixabay) — keyword-cleaned query. ──────────────
+        # Only entered when the LLM explicitly requested stock; web rejections
+        # cascade to AI gen above, not here.
+        if img_source == "stock":
+            stock_q = self._pexels_query_for(prompt)
+            services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), stock_q)
+            # When the run has a cultural context, require results whose alt
+            # text mentions a region keyword. Pexels/Pixabay relevance scoring
+            # is bag-of-words so "Indian student library" can return a generic
+            # student-in-library shot. Filtering rejects those silent
+            # mismatches — caller cascades to web → AI gen, which guarantees
+            # an Indian-context image.
+            _cc_must_match = None
+            _cc = getattr(self, "_cultural_context", None)
+            if _cc is not None and _cc.has_region and _cc.extra_stock_keywords:
+                _cc_must_match = list(_cc.extra_stock_keywords)
+            for svc in services:
+                provider_name = type(svc).__name__.replace("Service", "")
+                result = svc.search_photos(
+                    stock_q, orientation=orientation,
+                    must_match_keywords=_cc_must_match,
+                )
+                if result:
+                    stock_url = result.get("url", "")
+                    if stock_url and not self._verify_image_url(stock_url):
+                        print(
+                            f"    ⚠️ [pipeline] Stock URL failed HEAD ({provider_name}): "
+                            f"{stock_url[:80]} → trying next provider"
+                        )
+                        continue
+                    print(f"    📷 [pipeline] Stock photo ({provider_name}): {stock_q[:60]}")
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   stock_url,
                         "image_bytes": None,
                         "filename":    None,
                         "usage":       {},
                     }
             if services:
-                print(f"    ⚠️  [pipeline] All stock providers failed, falling back to Seedream: {prompt[:50]}...")
+                print(f"    ⚠️  [pipeline] All stock providers missed, cascading to web: {stock_q[:50]}")
+            # Stock returned nothing — try web before falling all the way to AI.
+            if self._cultural_context is not None and self._cultural_context.has_region:
+                # Skip the cascade if we already tried web above.
+                pass
+            else:
+                hit = self._web_search_quality_image(
+                    stock_q, canvas_w=canvas_w, canvas_h=canvas_h,
+                    subject_keywords=self._subject_keywords_from_task(task),
+                )
+                if hit and hit.get("url") and self._verify_image_url(hit["url"]):
+                    print(f"    🔎 [pipeline] Stock-miss → web hit ({hit.get('host','?')}): {stock_q[:50]}")
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   hit["url"],
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
 
-        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
-        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
-        image_bytes, usage_meta = self._call_image_generation_llm(prompt)
+        # ── AI generation — last resort. Cultural context woven into the prompt. ──
+        ai_prompt = prompt if is_cutout else self._inject_cultural_into_ai_prompt(prompt)
+        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {ai_prompt[:60]}...")
+        image_bytes, usage_meta = self._call_image_generation_llm(ai_prompt, is_cutout=is_cutout)
         if not image_bytes:
             # Seedream returned nothing — cascade through Pexels/Pixabay → SVG
             # placeholder so the shot doesn't ship with a broken `placeholder.png`.
-            fb = self._image_fallback_chain(prompt, is_cutout=is_cutout)
+            # skip_ai=True: caller IS the AI-gen-failed branch; the chain
+            # shouldn't loop back into the same generator that just failed.
+            fb = self._image_fallback_chain(prompt, is_cutout=is_cutout, skip_ai=True)
             if fb:
                 return {
                     "entry":       entry,
@@ -13862,40 +20210,225 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "cutout_failed": cutout_failed,
         }
 
+    # Per-process cache of URL → bool. URLs that pass once are pinned True
+    # for the remainder of the render so we don't HEAD them twice. URLs
+    # that fail are pinned False so cascades don't retry the same dead URL.
+    _URL_VERIFY_CACHE: Dict[str, bool] = {}
+    _URL_VERIFY_CACHE_MAX = 1024
+
+    @classmethod
+    def _verify_image_url(cls, url: str, *, timeout: float = 6.0) -> bool:
+        """Probe an image URL with HEAD (falls back to a 0-byte ranged GET).
+
+        Returns True when the URL serves a non-empty image-ish payload at
+        request time. Returns False on:
+          • Any HTTP status >= 400
+          • Connection / DNS / TLS errors
+          • Content-Type not starting with image/ (when reported)
+          • Content-Length == 0 (when reported)
+          • Login / redirect to a login page (heuristic on URL)
+
+        Cheap: HEAD-only by default. Falls back to a Range 0-0 GET when the
+        host doesn't speak HEAD (some CDNs 405 on HEAD). Each URL is probed
+        at most once per process via the class-level cache.
+
+        Why this matters: Serper + Pexels APIs sometimes return URLs that
+        404 / 403 / redirect to a Login page when fetched outside the
+        original session. Without this gate, those URLs reach the renderer
+        and produce silent broken-image icons (no fallback). With it, the
+        caller can immediately cascade to the next provider — or to AI gen.
+        """
+        if not url:
+            return False
+        if url.startswith("data:"):
+            return True  # base64 data URI; always renderable
+        if url.startswith("file://") or url.startswith("/"):
+            return True  # local file; renderer handles file→data conversion
+        # Already-known result
+        cached = cls._URL_VERIFY_CACHE.get(url)
+        if cached is not None:
+            return cached
+
+        def _decide(ok: bool) -> bool:
+            if len(cls._URL_VERIFY_CACHE) >= cls._URL_VERIFY_CACHE_MAX:
+                # Evict an arbitrary entry — order doesn't matter for correctness.
+                cls._URL_VERIFY_CACHE.pop(next(iter(cls._URL_VERIFY_CACHE)), None)
+            cls._URL_VERIFY_CACHE[url] = ok
+            return ok
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+
+        def _check_response(resp) -> bool:
+            try:
+                status = getattr(resp, "status", None) or resp.getcode()
+            except Exception:
+                status = 200
+            if status and status >= 400:
+                return False
+            try:
+                final_url = resp.geturl() or url
+            except Exception:
+                final_url = url
+            final_lower = (final_url or "").lower()
+            if "/login" in final_lower or "accounts/login" in final_lower:
+                return False
+            try:
+                ct = (resp.headers.get("Content-Type") or "").lower()
+            except Exception:
+                ct = ""
+            if ct and not (ct.startswith("image/") or "octet-stream" in ct or "svg" in ct):
+                # text/html etc. = the host is serving an interstitial page,
+                # not the image. Treat as failure even if 200.
+                return False
+            try:
+                cl = int(resp.headers.get("Content-Length") or 0)
+            except Exception:
+                cl = 0
+            if cl == 1 or (ct.startswith("image/") and 0 < cl < 256):
+                # 1x1 tracking pixel / placeholder — not usable content.
+                return False
+            return True
+
+        try:
+            req = urllib.request.Request(url, headers=headers, method="HEAD")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if _check_response(resp):
+                    return _decide(True)
+        except urllib.error.HTTPError as he:
+            if he.code in (403, 404, 410):
+                return _decide(False)
+            # 405 Method Not Allowed → host doesn't speak HEAD; fall through.
+        except Exception:
+            # DNS / timeout / TLS / etc — fall through to ranged GET.
+            pass
+
+        try:
+            range_headers = dict(headers)
+            range_headers["Range"] = "bytes=0-2047"
+            req = urllib.request.Request(url, headers=range_headers, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if _check_response(resp):
+                    # Confirm we actually got bytes (some hosts 200 with empty body).
+                    try:
+                        sample = resp.read(256)
+                    except Exception:
+                        sample = b""
+                    if sample:
+                        return _decide(True)
+        except Exception:
+            pass
+        return _decide(False)
+
     def _image_fallback_chain(
         self,
         prompt: str,
         is_cutout: bool = False,
+        *,
+        skip_ai: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Cascade fallback when Seedream returns no bytes.
+        """Cascade fallback when the primary path can't produce a usable image.
 
-        Order:
-          1. Pexels stock photo (skipped for cutouts — would not have transparency).
+        Main pipeline cascade (in callers):
+            reference → web → AI gen → THIS chain (stock → SVG)
+
+        AI gen is tried in the main path because it's more reliable for
+        culturally-specific shots than Pexels' bag-of-words match. By the
+        time we land here, AI gen has either already been tried and failed
+        (callers pass `skip_ai=True`) or the caller skipped AI gen for a
+        specific reason — in which case stock_fallback's `skip_ai=False`
+        default lets AI gen run as the rescue.
+
+        Order inside this chain:
+          1. Pexels stock photo (each candidate HEAD-verified before commit).
           2. Pixabay stock photo (same).
-          3. Synthesized SVG placeholder using brand palette + prompt text.
-              Always succeeds, so this is also the absolute last resort.
+          3. AI image generation (Recraft/Seedream) — only when `skip_ai=False`.
+          4. Synthesized SVG placeholder. Always succeeds — last resort.
+
+        Cutouts skip steps 1-2 (stock photos rarely have alpha) and go
+        straight to AI gen for transparency support.
 
         Returns a dict matching the result-dict schema used by both
         `_process_image_task_simple` and `process_image_task`:
           - {"stock_url": "..."} for Pexels/Pixabay hits
+          - {"image_bytes": <png_bytes>} for AI-gen success
           - {"image_bytes": <svg_bytes>, "is_svg": True} for the synthesized placeholder
           - None only if synthesis itself fails (should never happen).
         """
-        # Stock fallback (skip for cutouts — stock photos rarely have alpha)
+        # Stock fallback (skip for cutouts — stock photos rarely have alpha).
+        # Each candidate is HEAD-verified so we don't replace one dead URL
+        # with another. If a provider returns an unverifiable URL, fall
+        # through to the next provider rather than commit the bad URL.
+        # Cultural-keyword filter is applied here too — same reason as the
+        # main path: cultural-context runs must not silently ship a generic
+        # off-context image just because Pexels keyword-matched a few words.
         if not is_cutout:
             try:
                 orientation = "portrait" if (
                     getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080)
                 ) else "landscape"
                 services = self._resolve_stock_provider_chain("", prompt)
+                _cc_must_match_fb = None
+                _cc_fb = getattr(self, "_cultural_context", None)
+                if _cc_fb is not None and _cc_fb.has_region and _cc_fb.extra_stock_keywords:
+                    _cc_must_match_fb = list(_cc_fb.extra_stock_keywords)
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
-                    result = svc.search_photos(prompt, orientation=orientation)
-                    if result and result.get("url"):
-                        print(f"    🔄 Image fallback → stock photo ({provider_name}): {prompt[:50]}...")
-                        return {"stock_url": result["url"], "image_bytes": None}
+                    try:
+                        result = svc.search_photos(
+                            prompt, orientation=orientation,
+                            must_match_keywords=_cc_must_match_fb,
+                        )
+                    except Exception as _ee:
+                        print(f"    ⚠️ Stock fallback {provider_name} errored ({_ee})")
+                        continue
+                    url = (result or {}).get("url") or ""
+                    if not url:
+                        continue
+                    if not self._verify_image_url(url):
+                        print(f"    ⚠️ Stock fallback {provider_name} URL failed HEAD: {url[:80]}")
+                        continue
+                    print(f"    🔄 Image fallback → stock photo ({provider_name}): {prompt[:50]}...")
+                    return {"stock_url": url, "image_bytes": None}
             except Exception as e:
-                print(f"    ⚠️ Stock fallback errored ({e}); continuing to synth SVG")
+                print(f"    ⚠️ Stock fallback errored ({e}); continuing")
+
+        # AI image generation — last real-image attempt before SVG placeholder.
+        # Skipped when the caller is _itself_ the AI-gen-failed branch (avoids
+        # recursion). The AI generator is bytes-in-bytes-out so its output
+        # never needs URL verification.
+        if not skip_ai:
+            try:
+                ai_prompt = prompt
+                if not is_cutout:
+                    try:
+                        image_style = getattr(self, '_current_image_style', 'realistic cinematic photograph')
+                        if image_style and image_style.lower() not in ai_prompt.lower():
+                            ai_prompt = f"{image_style}, {ai_prompt}"
+                        ai_prompt = self._inject_cultural_into_ai_prompt(ai_prompt)
+                    except Exception:
+                        pass  # If enhancement fails, send the bare prompt.
+                ai_bytes, _usage = self._call_image_generation_llm(ai_prompt, reference_image_url=None, is_cutout=is_cutout)
+                if ai_bytes:
+                    if is_cutout:
+                        try:
+                            ai_bytes = self._remove_background(ai_bytes)
+                        except Exception:
+                            pass
+                    print(f"    🔄 Image fallback → AI gen ({len(ai_bytes)} bytes): {prompt[:50]}...")
+                    return {"image_bytes": ai_bytes, "is_svg": False}
+            except _ImageGenRateLimitError:
+                # Rate-limit isn't a permanent failure — the executor needs
+                # to see it so the task gets requeued. Don't paper over.
+                raise
+            except Exception as e:
+                print(f"    ⚠️ AI gen fallback errored ({e}); continuing to synth SVG")
 
         # Synth SVG placeholder — cannot fail
         try:
@@ -14107,6 +20640,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 ],
                 temperature=0.6,
                 max_tokens=500,
+                model=self._resolve_stage_model("image_prompt_enhancement"),
             )
             enhanced = enhanced.strip().strip('"').strip("'")
             if len(enhanced) > 30:
@@ -14181,6 +20715,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 # the JSON body. 400 is safely above the observed failure mode.
                 max_tokens=400,
                 response_format={"type": "json_object"},
+                model=self._resolve_stage_model("stock_video_ranking"),
             )
             if _usage:
                 usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
@@ -14223,7 +20758,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # touch this code path.
         repo = None
         try:
-            from app.repositories.vision_review_repository import VisionReviewRepository
+            try:
+                from app.repositories.vision_review_repository import VisionReviewRepository
+            except ImportError:
+                # Module is sometimes loaded with a sys.path that doesn't
+                # include the ai_service root (e.g. the run-from-pipeline
+                # subprocess vs the FastAPI uvicorn worker). The `app/`
+                # package lives at `<service_root>/app`, so injecting
+                # `<service_root>` into sys.path resolves it. `__file__` is
+                # `<service_root>/app/ai-video-gen-main/automation_pipeline.py`
+                # so the service root is `parents[2]`.
+                import sys as _sys_vrr
+                from pathlib import Path as _Path_vrr
+                _service_root_vrr = str(_Path_vrr(__file__).resolve().parents[2])
+                if _service_root_vrr not in _sys_vrr.path:
+                    _sys_vrr.path.insert(0, _service_root_vrr)
+                from app.repositories.vision_review_repository import VisionReviewRepository
             repo = VisionReviewRepository()
         except Exception as exc:
             print(f"   ⚠️ vision-review persistence: repository unavailable ({exc}) — skipping DB writes")
@@ -14425,12 +20975,191 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 print(f"   👁️  Top issues: {top_str}")
             print(f"   👁️  Cost: ${self._vision_review_run_cost_usd:.4f} (cap ${self._tier_config.get('vision_review_run_cost_cap_usd', 0.0):.2f})")
 
-    def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    # Veo-allowed clip durations. Snap-target for the rescue path. Mirrors
+    # `_ALLOWED_DURATIONS_S` in `ai_video_orchestrator.py` — duplicated here
+    # to avoid the import cycle that would happen if we imported the
+    # orchestrator at module top-level.
+    _VEO_RESCUE_ALLOWED_DURATIONS_S = (4, 6, 8)
+
+    def _veo_rescue_video(
+        self,
+        *,
+        query: str,
+        entry: Dict[str, Any],
+        shot_idx_hint: int,
+        run_dir: Path,
+    ) -> Optional[Dict[str, Any]]:
+        """Generate a Veo clip to rescue a stock-video miss (Bug 1, AI-on branch).
+
+        Called from `_process_stock_videos` when initial Pexels/Pixabay
+        cultural-filter search returns nothing AND `_ai_video_run_enabled`.
+        Bypasses the no-filter retry step (which would ship off-context
+        stock); spends ~$0.30-0.80 on a Veo call for a clip that actually
+        matches the cultural query.
+
+        Returns a dict matching the `picked` shape used downstream:
+            `{"url": "<fal cdn URL>", "image": "", "duration": <int>,
+              "_veo_request_id": "...", "_veo_cost_usd": <float>}`
+        Returns None on any failure (Veo error, cap exhaustion, missing
+        client / cost-tracker, import error) — caller cascades to the next
+        rescue step (Serper video → image-still rewrite).
+
+        NEVER raises. Veo orchestrator returns typed results, never
+        exceptions — we just check `.error is None` to decide success.
+
+        Cost accounting: Veo charges flow through the same
+        `_ai_video_cost_tracker` the explicit AI_VIDEO_HERO shots use. By
+        the time `_process_stock_videos` runs, all explicit AI shots are
+        done, so the rescue spends whatever's left of the $1.50 cap.
+        When the cap is exhausted, the orchestrator returns
+        `error_class="CircuitBreakerExhausted"` and we fall through —
+        no money wasted.
+        """
+        # Eligibility checks. Quietly return None on any blocker so the
+        # waterfall can cascade — don't log a noisy warning here.
+        if not getattr(self, "_ai_video_run_enabled", False):
+            return None
+        veo_client = getattr(self, "_fal_veo_client", None)
+        cost_tracker = getattr(self, "_ai_video_cost_tracker", None)
+        if veo_client is None or cost_tracker is None:
+            return None
+        if run_dir is None:
+            return None
+
+        # Late import — orchestrator module isn't always on path during
+        # tests or standalone runs. Mirrors the same two-path import we
+        # added in the pipeline ctor.
+        try:
+            from ai_video_orchestrator import orchestrate_ai_video_shot
+        except Exception as _imp_err:
+            print(f"    ⚠️ Veo rescue: orchestrator import failed ({_imp_err}); skipping")
+            return None
+
+        # Snap shot duration to Veo's allowed 4/6/8s. Prefer the closest
+        # value that doesn't OVERSHOOT the shot's actual on-screen window
+        # — better to loop a 4s clip than have an 8s Veo clip overflow
+        # into the next shot. Default to 4s when the shot doesn't expose
+        # a duration (e.g. when called from the rescue path without
+        # entry start/end metadata).
+        try:
+            shot_dur_s = float(entry.get("end", 0.0)) - float(entry.get("start", 0.0))
+        except (TypeError, ValueError):
+            shot_dur_s = 0.0
+        if shot_dur_s <= 0:
+            shot_dur_s = 4.0
+        # Pick the LARGEST allowed duration <= shot_dur_s (so the clip
+        # doesn't run past the shot's end). If shot is shorter than 4s,
+        # take 4s as the floor (Veo minimum).
+        veo_dur = 4
+        for d in self._VEO_RESCUE_ALLOWED_DURATIONS_S:
+            if d <= shot_dur_s + 0.5:
+                veo_dur = d
+
+        # Build the Veo prompt. The query already has the cultural prefix
+        # (applied earlier by `stock_query_with_region`). We additionally
+        # wrap it in a brief cinematic-shot directive so Veo produces
+        # establishing-shot quality output rather than a static image.
+        # `_inject_cultural_into_ai_prompt` is idempotent — no double-tag
+        # if the query already mentions the region.
+        try:
+            base_prompt = self._inject_cultural_into_ai_prompt(query)
+        except Exception:
+            base_prompt = query
+        # Brief style prefix — matches Veo's prompt patterns and discourages
+        # in-frame text (Veo handles text poorly per the Director prompt).
+        veo_prompt = (
+            f"Cinematic establishing shot. {base_prompt}. "
+            f"Natural motion, atmospheric lighting, no in-frame text, no captions."
+        )
+
+        synthetic_shot: Dict[str, Any] = {
+            "ai_video_prompt": veo_prompt,
+            "ai_video_duration_s": veo_dur,
+            # No audio for rescue clips — keep narration as the audio bed
+            # so the rescue is invisible to the audio mix.
+            "ai_video_audio": False,
+        }
+
+        canvas = (
+            "portrait"
+            if int(getattr(self, "video_width", 1920) or 1920)
+            < int(getattr(self, "video_height", 1080) or 1080)
+            else "landscape"
+        )
+
+        print(
+            f"    🤖 Veo rescue: shot~{shot_idx_hint} dur={veo_dur}s "
+            f"canvas={canvas} prompt={veo_prompt[:80]}..."
+        )
+
+        try:
+            result = orchestrate_ai_video_shot(
+                shot=synthetic_shot,
+                shot_idx=shot_idx_hint,
+                run_dir=run_dir,
+                veo_client=veo_client,
+                cost_tracker=cost_tracker,
+                ledger=getattr(self, "_ai_video_ledger", None),
+                canvas=canvas,
+                run_audio_enabled=False,  # rescue clips are always muted
+                safety_tolerance="3",
+                log_fn=print,
+            )
+        except Exception as _orch_err:
+            # The orchestrator is documented to never raise — but be
+            # defensive in case a future change does. Same cascade
+            # behaviour as a returned error result.
+            print(f"    ⚠️ Veo rescue: orchestrator raised {type(_orch_err).__name__}: {_orch_err}")
+            return None
+
+        if result.error:
+            # Common error classes:
+            #   - CircuitBreakerExhausted (cap exceeded — expected on dense runs)
+            #   - SafetyBlockError (Veo refused the prompt)
+            #   - VeoTimeoutError / VeoTransientError (network)
+            #   - AiVideoSpecError (shouldn't happen — synthetic shot is well-formed)
+            klass = result.error_class or "UnknownError"
+            print(
+                f"    ⚠️ Veo rescue failed ({klass}): {result.error[:120]}; "
+                f"cascading to next rescue step"
+            )
+            return None
+
+        if not result.video_url:
+            # Defensive: success path with empty URL shouldn't happen
+            # but guard against it.
+            return None
+
+        print(
+            f"    ✅ Veo rescue: {veo_dur}s clip in {result.elapsed_s:.1f}s "
+            f"@${result.cost_usd:.3f} → {result.video_url[:80]}"
+        )
+        return {
+            "url": result.video_url,
+            "image": "",  # Veo doesn't return a poster; renderer renders from video
+            "id": None,
+            "duration": veo_dur,
+            "_veo_request_id": result.request_id,
+            "_veo_cost_usd": result.cost_usd,
+        }
+
+    def _process_stock_videos(
+        self,
+        html_segments: List[Dict[str, Any]],
+        run_dir: Optional[Path] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Scan HTML for <video data-video-query='...'> tags, search Pexels, inject URLs.
 
         When `stock_video_ranking` is enabled (super_ultra), fetches 5-6 candidates,
         dedupes against `self._used_pexels_video_ids`, and picks the best match via
         a tiny LLM scoring call. Otherwise uses the legacy first-match path.
+
+        `run_dir` is optional but required for the AI video Veo rescue path
+        (Bug 1, AI-on branch). When AI video is enabled AND `run_dir` is
+        passed, a stock-video miss escalates to `orchestrate_ai_video_shot`
+        for a fresh Veo-generated clip with cultural prompt injection. When
+        `run_dir` is None or AI video is disabled, the rescue cascades to
+        Serper video → image-still rewrite → strip-tag as before.
 
         Always strips internal shot-context fields before returning, even on the
         Pexels-unavailable early-return path, so the timeline JSON stays clean.
@@ -14480,6 +21209,26 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 full_tag = match.group(1)
                 query = match.group(3)
 
+                # Apply cultural context — same pipeline as images. The LLM
+                # is taught to prefix queries with the region descriptor
+                # ("Indian student studying"), but doesn't always follow
+                # through; this prepend is the defensive guard. No-op when
+                # the query already mentions the region or when the run has
+                # no region.
+                cc = getattr(self, "_cultural_context", None)
+                if cc is not None and cc.has_region:
+                    query = cc.stock_query_with_region(query)
+                # Cultural-keyword filter for the stock providers below.
+                # Pexels/Pixabay video relevance is bag-of-words: the LLM's
+                # "Indian student writing exam" query can return a generic
+                # study clip (mostly the off-context candidate). Filtering
+                # rejects those mismatches; the cascade lands on the next
+                # provider, and if none match we emit "No stock video for:"
+                # which the caller already handles by skipping the tag.
+                cc_must_match_v = None
+                if cc is not None and cc.has_region and cc.extra_stock_keywords:
+                    cc_must_match_v = list(cc.extra_stock_keywords)
+
                 provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                 provider_hint = provider_match.group(1).lower() if provider_match else ""
                 source_match_v = re.search(r'data-video-source=["\'](\w+)["\']', full_tag)
@@ -14518,7 +21267,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         # sees a different 6 — breaks the "same top-6 every time"
                         # repetition without dropping into low-relevance pages.
                         candidates = svc.search_video_candidates(
-                            query, orientation=orientation, per_page=24
+                            query, orientation=orientation, per_page=24,
+                            must_match_keywords=cc_must_match_v,
                         )
                         fresh = [c for c in candidates if c.get("id") not in used_ids]
                         pool_full = fresh if fresh else candidates
@@ -14539,14 +21289,149 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             if picked and picked.get("id") is not None:
                                 used_ids.add(picked["id"])
                     else:
-                        picked = svc.search_videos(query, orientation=orientation)
+                        picked = svc.search_videos(
+                            query, orientation=orientation,
+                            must_match_keywords=cc_must_match_v,
+                        )
 
                     if picked:
                         picked_provider = provider_name
                         break
 
+                # Bug 1 — culturally-aware waterfall when initial stock search misses.
+                # Tier order:
+                #   AI video ON branch:
+                #     1. Already tried: Pexels + Pixabay (cultural filter).
+                #     2. Veo rescue — generate the clip with cultural prompt.
+                #        (Skips the no-filter retry — off-context stock is
+                #        worse than a Veo-generated culturally-correct clip
+                #        when the run has paid for AI video capability.)
+                #     3. If Veo fails (cap exhausted / safety block / etc.),
+                #        fall through to the AI-off cascade below.
+                #   AI video OFF branch (and AI-on Veo-failure fall-through):
+                #     2. Retry stock without `must_match_keywords` (the query
+                #        still has cultural prefix from `stock_query_with_region`
+                #        so this isn't a free-for-all — `[off-context]` log).
+                #     3. Serper WEB video search (cultural keywords in query).
+                #     4. STOCK IMAGE rescue: rewrite `<video>` → `<img>` and run
+                #        `_image_fallback_chain` with the cultural-prefixed query.
+                #     5. Strip the `<video>` tag if all rescues fail.
+
+                # AI-on branch: try Veo BEFORE the no-filter retry.
+                # `_veo_rescue_video` returns None when:
+                #   • AI video not enabled (so non-AI runs no-op past this)
+                #   • cap exhausted / Veo error / safety block
+                #   • run_dir wasn't passed (legacy callers)
+                # → caller cascades to the no-filter retry below.
+                if (
+                    not picked
+                    and getattr(self, "_ai_video_run_enabled", False)
+                    and run_dir is not None
+                ):
+                    _veo_pick = self._veo_rescue_video(
+                        query=query,
+                        entry=entry,
+                        shot_idx_hint=entry.get("index", 0) or 0,
+                        run_dir=run_dir,
+                    )
+                    if _veo_pick:
+                        picked = _veo_pick
+                        picked_provider = "Veo [rescue]"
+
+                if not picked and cc_must_match_v:
+                    for svc in services:
+                        provider_name = type(svc).__name__.replace("Service", "")
+                        if use_ranking:
+                            _retry_pool = svc.search_video_candidates(
+                                query, orientation=orientation, per_page=12,
+                                must_match_keywords=None,
+                            )
+                            picked = _retry_pool[0] if _retry_pool else None
+                        else:
+                            picked = svc.search_videos(
+                                query, orientation=orientation,
+                                must_match_keywords=None,
+                            )
+                        if picked:
+                            picked_provider = f"{provider_name} [off-context]"
+                            if picked.get("id") is not None:
+                                used_ids.add(picked["id"])
+                            print(
+                                f"    🎬 Stock video {picked_provider}: {query[:60]} "
+                                f"(cultural retry without must_match)"
+                            )
+                            break
+
                 if not picked:
-                    print(f"    ⚠️ No stock video for: {query[:50]}")
+                    # Serper web video — cultural keywords are already in `query`.
+                    # When AI video is on, we get here only if Veo rescue already
+                    # failed (cap exhausted / safety block / etc.) — falling
+                    # through is fine since something is better than nothing.
+                    _serper = getattr(self, "_serper_service", None)
+                    if _serper and getattr(_serper, "is_available", False):
+                        try:
+                            _serp_hit = _serper.best_video(query)
+                        except Exception as _sv_err:
+                            print(f"    ⚠️ Serper video rescue errored: {_sv_err}")
+                            _serp_hit = None
+                        if _serp_hit and _serp_hit.get("url"):
+                            picked = {
+                                "url": _serp_hit.get("url", ""),
+                                "image": _serp_hit.get("thumbnail_url", ""),
+                                "id": None,
+                                "duration": 0,
+                            }
+                            picked_provider = "Serper"
+                            print(f"    🔎 Serper video rescue: {query[:60]}")
+
+                if not picked:
+                    # STOCK IMAGE rescue: rewrite <video> to <img> and run the
+                    # full image cascade (Serper → Pexels → Pixabay → AI gen →
+                    # SVG placeholder). The shot loses motion but keeps visual
+                    # coverage — much better than blank background.
+                    try:
+                        _img_fb = self._image_fallback_chain(query, is_cutout=False)
+                    except Exception as _ifc_err:
+                        print(f"    ⚠️ Image-still rescue errored: {_ifc_err}")
+                        _img_fb = None
+                    _img_url = (_img_fb or {}).get("stock_url") or ""
+                    if _img_url:
+                        # Build a stand-in <img> tag that matches the visual
+                        # footprint of the original <video>. Pull through any
+                        # style/class/id from the original tag so layered
+                        # CSS (.scrim, .hero-img, etc.) still wires up.
+                        _orig_style = ""
+                        _style_m = re.search(r'style=(["\'])(.*?)\1', full_tag)
+                        if _style_m:
+                            _orig_style = _style_m.group(2)
+                        _orig_class_m = re.search(r'class=(["\'])(.*?)\1', full_tag)
+                        _orig_class = _orig_class_m.group(2) if _orig_class_m else ""
+                        # Default to full-cover when no style was provided.
+                        if "object-fit" not in _orig_style:
+                            _orig_style = (
+                                _orig_style.rstrip(";").rstrip()
+                                + (";" if _orig_style else "")
+                                + "object-fit:cover;"
+                            )
+                        if "width" not in _orig_style:
+                            _orig_style += "width:100%;height:100%;"
+                        _img_tag = (
+                            f'<img src="{_img_url}" '
+                            f'class="{_orig_class}" '
+                            f'style="{_orig_style}" '
+                            f'data-fallback-from="video" '
+                            f'data-original-video-query="{query[:80]}" '
+                            f'alt="visual" />'
+                        )
+                        html = html.replace(full_tag, _img_tag)
+                        replacements_count += 1
+                        print(f"    🖼  stock-image rescue: {query[:60]}")
+                        continue
+                    # All paths failed — strip the <video> tag entirely so the
+                    # shot ships with brand-bg + text overlay only (not a blank
+                    # 100% × 100% block).
+                    html = html.replace(full_tag, '')
+                    print(f"    ⚠️ All video paths failed, stripped tag: {query[:50]}")
                     continue
                 print(f"    🎬 Stock video ({picked_provider}): {query[:60]}...")
 
@@ -14663,6 +21548,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 # in process_image_task without any API call.
                 _refurl_match = re.search(r'data-reference-url=["\']([^"\']+)["\']', full_tag)
                 _reference_url = _refurl_match.group(1).strip() if _refurl_match else ""
+
+                # Auto-bind brand assets / Pillar-3 prefetch (Fix 2 + Fix 3).
+                # If the LLM emitted `data-img-source="generate"` (or "stock"
+                # / "web") for a prompt that mentions our uploaded brand logo
+                # OR a prefetched named entity, rewrite the tag to reference
+                # the asset URL directly. AI gen can't reproduce a real logo
+                # and there's no reason to re-fetch a Parliament photo we
+                # already have. Idempotent on already-bound tags.
+                _bound_tag, _bound_src, _bound_url, _bind_label = self._maybe_bind_tag_to_reference(
+                    full_tag, prompt, img_source
+                )
+                if _bind_label:
+                    print(f"    🏷️  Auto-bound shot ({_bind_label}): {prompt[:50]} → {_bound_url[:80]}")
+                    full_tag = _bound_tag
+                    img_source = _bound_src
+                    _reference_url = _bound_url
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
@@ -14709,28 +21610,45 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # ── reference: user-uploaded brand asset, no API call (Fix 2c) ──
             # The per-shot LLM emits `<img data-img-source="reference"
             # data-reference-url="<s3_url>">` for shots anchored on the
-            # user's brand assets. Returns the URL verbatim — same shape as
-            # article_screenshot. Falls through to AI gen if the URL is
-            # missing (defensive: shouldn't happen, but matches the
-            # article_screenshot pattern).
+            # user's brand assets OR on Pillar-3 prefetched named entities.
+            # Bug 4b: belt-and-braces orientation probe before commit. Even
+            # after Bug 4a (prefetcher uses best_quality_image), other paths
+            # can still produce orientation-mismatched reference URLs:
+            # brand-kit uploads from before the user knew the canvas, manual
+            # URL paste, and `_match_prefetched_reference_for_prompt` rewrites.
+            # Probe the URL; if orientation mismatches the canvas, drop it
+            # and reroute to fresh `web` (Serper) search which DOES enforce
+            # orientation, then fall through to AI gen if that also fails.
             if img_source == "reference":
                 _ref_url_direct = (task.get("reference_url") or "").strip()
                 if _ref_url_direct:
+                    if self._reference_url_orientation_ok(_ref_url_direct):
+                        print(
+                            f"    🏷️  Brand-reference image for seg={task.get('seg_idx', '?')}: "
+                            f"{_ref_url_direct[:80]}..."
+                        )
+                        return {
+                            "entry": task.get("entry"),
+                            "entry_id": id(task.get("entry")),
+                            "full_tag": task.get("full_tag", ""),
+                            "stock_url": _ref_url_direct,
+                            "image_bytes": None,
+                            "filename": None,
+                            "usage": {},
+                        }
                     print(
-                        f"    🏷️  Brand-reference image for seg={task.get('seg_idx', '?')}: "
-                        f"{_ref_url_direct[:80]}..."
+                        f"    ⚠️  [reference-orientation-mismatch] seg={task.get('seg_idx', '?')} "
+                        f"url={_ref_url_direct[:80]} → rerouting to web search"
                     )
-                    return {
-                        "entry": task.get("entry"),
-                        "entry_id": id(task.get("entry")),
-                        "full_tag": task.get("full_tag", ""),
-                        "stock_url": _ref_url_direct,
-                        "image_bytes": None,
-                        "filename": None,
-                        "usage": {},
-                    }
-                # No URL → fall through to AI gen rather than failing.
-                img_source = "generate"
+                    # Reroute: switch source to web so the Serper path picks
+                    # an orientation-correct image with the same prompt.
+                    img_source = "web" if (
+                        getattr(self, "_serper_service", None)
+                        and getattr(self._serper_service, "is_available", False)
+                    ) else "generate"
+                else:
+                    # No URL → fall through to AI gen rather than failing.
+                    img_source = "generate"
 
             # ── article_screenshot: synchronous lookup in scrape_artifacts ──
             # Resolves `data-screenshot-id` against the captured-files manifest
@@ -14775,58 +21693,129 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     and getattr(self._serper_service, 'is_available', False)
                 ) else "generate"
 
-            # ── web: Google Image search via Serper for named entities ──
-            # Falls through to stock then AI gen on no match. Uses the dedicated
-            # `data-img-query` if the per-shot LLM provided one, else the
-            # cinematic-flavoured `data-img-prompt`.
+            # Lazy-init cultural context — same as `_process_image_task_simple`.
+            # All routing helpers below depend on `self._cultural_context`.
+            if getattr(self, "_cultural_context", None) is None:
+                self._ensure_cultural_context(
+                    base_prompt=getattr(self, "_user_prompt_raw", "") or "",
+                    named_entities=[],
+                    brand_brief=self._extract_brand_brief() or {},
+                )
+
+            # Aggressive routing: when CulturalContext.has_region, upgrade
+            # culturally-specific queries from stock → web. Cutouts skip this
+            # (need isolated objects — AI gen is the only good path).
+            _ir_cutout = task.get("is_cutout", False)
+            _ir_prompt = task.get("prompt", "")
+            if not _ir_cutout:
+                img_source = self._aggressive_route_img_source(img_source, _ir_prompt)
+
+            # ── web: Google Image search via Serper, quality-filtered ──
+            # Uses `best_quality_image` (not `best_image`) so we hard-reject
+            # under-sized / wrong-orientation / low-reputation hits, then
+            # re-rank by host quality. The run's CulturalContext supplies
+            # the `gl=` Google geo bias for region-appropriate indexing.
             if img_source == "web":
                 _serper = getattr(self, '_serper_service', None)
                 if _serper and getattr(_serper, 'is_available', False):
-                    orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-                    web_query = (task.get("img_query") or "").strip() or task.get("prompt", "")
+                    canvas_w = getattr(self, 'video_width', 1920)
+                    canvas_h = getattr(self, 'video_height', 1080)
+                    web_query = (task.get("img_query") or "").strip() or self._strip_ai_image_verbiage(_ir_prompt)
+                    cc = getattr(self, "_cultural_context", None)
+                    if cc is not None:
+                        web_query = cc.stock_query_with_region(web_query)
                     try:
-                        _hit = _serper.best_image(web_query, orientation=orientation)
+                        _hit = self._web_search_quality_image(
+                            web_query, canvas_w=canvas_w, canvas_h=canvas_h,
+                            subject_keywords=self._subject_keywords_from_task(task),
+                        )
                     except Exception as _se:
-                        print(f"    ⚠️ Serper image search errored ({_se}); falling through to stock")
+                        print(f"    ⚠️ Serper quality search errored ({_se}); falling through to stock")
                         _hit = None
                     if _hit and _hit.get("url"):
-                        print(
-                            f"    🔎 Web image (Serper, src={_hit.get('source','')}) for "
-                            f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
-                        )
-                        return {
-                            "entry": task.get("entry"),
-                            "entry_id": id(task.get("entry")),
-                            "full_tag": task.get("full_tag", ""),
-                            "stock_url": _hit["url"],
-                            "image_bytes": None,
-                            "filename": None,
-                            "usage": {},
-                        }
-                # Fall through to stock — keeps the existing Pexels/Pixabay behavior.
-                img_source = "stock"
+                        qs = _hit.get("_quality_score", 0.0)
+                        host = _hit.get("host") or _hit.get("source", "")
+                        # HEAD-verify before committing. Serper's blocklist
+                        # filter already drops known-bad hosts, but stale
+                        # CDN URLs / expired tokens / unreachable mirrors
+                        # still slip through. Verifying here lets us cascade
+                        # to AI gen on failure rather than ship a shot that
+                        # renders with a broken-image icon.
+                        if not self._verify_image_url(_hit["url"]):
+                            print(
+                                f"    ⚠️ Web image URL failed HEAD verify (host={host}, "
+                                f"seg={task.get('seg_idx', '?')}): {_hit['url'][:80]} → cascading to AI gen"
+                            )
+                        else:
+                            print(
+                                f"    🔎 Web image (Serper, host={host}, score={qs}) for "
+                                f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
+                            )
+                            return {
+                                "entry": task.get("entry"),
+                                "entry_id": id(task.get("entry")),
+                                "full_tag": task.get("full_tag", ""),
+                                "stock_url": _hit["url"],
+                                "image_bytes": None,
+                                "filename": None,
+                                "usage": {},
+                            }
+                # Web rejected everything → cascade DIRECTLY to AI gen.
+                # AI gen with cultural-prompt injection produces a region-
+                # appropriate image far more reliably than Pexels'
+                # bag-of-words match. Stock remains as the post-AI-fail
+                # fallback inside `_image_fallback_chain`.
+                print(
+                    f"    🔎 Web returned no usable result for "
+                    f"seg={task.get('seg_idx', '?')}: '{web_query[:50]}' → cascading to AI gen"
+                )
+                img_source = "generate"
 
-            # Stock photo path: try configured providers in order (hint + fallback)
-            # before falling through to AI generation.
+            # Stock photo path — keyword-cleaned + region-tagged query.
+            # Only entered when the LLM explicitly requested stock; web
+            # rejections cascade to AI gen above, not here.
             if img_source == "stock":
                 orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-                services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), task["prompt"])
+                stock_q = self._pexels_query_for(task["prompt"])
+                services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), stock_q)
+                # Cultural keyword filter — see comment at the simple-path
+                # call site (~ ln 18207). Required to make Pexels respect
+                # the run's cultural context instead of returning generic
+                # imagery on bag-of-words match.
+                _cc_must_match2 = None
+                _cc2 = getattr(self, "_cultural_context", None)
+                if _cc2 is not None and _cc2.has_region and _cc2.extra_stock_keywords:
+                    _cc_must_match2 = list(_cc2.extra_stock_keywords)
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
-                    result = svc.search_photos(task["prompt"], orientation=orientation)
+                    result = svc.search_photos(
+                        stock_q, orientation=orientation,
+                        must_match_keywords=_cc_must_match2,
+                    )
                     if result:
-                        print(f"    📷 Stock photo ({provider_name}) for seg={task.get('seg_idx', '?')}: {task['prompt'][:60]}...")
+                        stock_url = result.get("url", "")
+                        # HEAD-verify the candidate URL — Pexels/Pixabay
+                        # CDN responses are usually reliable but occasionally
+                        # serve 404s on stale entries. Cascade to the next
+                        # provider on failure rather than commit the bad URL.
+                        if stock_url and not self._verify_image_url(stock_url):
+                            print(
+                                f"    ⚠️ Stock URL failed HEAD ({provider_name}, "
+                                f"seg={task.get('seg_idx', '?')}): {stock_url[:80]} → trying next provider"
+                            )
+                            continue
+                        print(f"    📷 Stock photo ({provider_name}) for seg={task.get('seg_idx', '?')}: {stock_q[:60]}")
                         return {
                             "entry": task.get("entry"),
                             "entry_id": id(task.get("entry")),
                             "full_tag": task.get("full_tag", ""),
-                            "stock_url": result.get("url", ""),
+                            "stock_url": stock_url,
                             "image_bytes": None,
                             "filename": None,
                             "usage": {},
                         }
                 if services:
-                    print(f"    ⚠️  All stock providers failed, falling back to Seedream: {task['prompt'][:50]}...")
+                    print(f"    ⚠️  All stock providers missed, falling back to Seedream: {stock_q[:50]}")
 
             prompt     = task["prompt"]
             idx        = task["seg_idx"]
@@ -14845,6 +21834,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 image_style = getattr(self, '_current_image_style', 'realistic cinematic photograph')
                 if image_style.lower() not in prompt.lower():
                     prompt = f"{image_style}, {prompt}"
+
+                # Weave cultural descriptors when CulturalContext has a region.
+                # AI image generators give weight to the first descriptors, so
+                # leading with "Indian subject and india setting." materially
+                # changes who/where renders. No-op when region is "none".
+                prompt = self._inject_cultural_into_ai_prompt(prompt)
 
             # Subject continuity (ultra+): if this shot is part of a recurring
             # subject AND a reference URL has already been cached from an
@@ -14874,27 +21869,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     if event and event.wait(timeout=120):
                         _ref_url = (self._subject_refs or {}).get(_sub_id)
 
-            # Brand-image fallback (Fix 2d): when there is no recurring-character
-            # subject at all, condition Seedream on the user's first uploaded
-            # brand image. Subject continuity wins when active because:
-            #   - subsequent shots of a recurring subject MUST use the cached ref
-            #     (otherwise the character drifts across shots);
-            #   - the FIRST shot of a recurring subject MUST generate fresh (no
-            #     ref) so it can become the canonical reference — passing the
-            #     brand image here would overwrite that canonical look.
-            # We therefore only apply the brand fallback when `_sub_id` is unset.
+            # Brand-image fallback (Fix 2d, GATED by prompt intent — Bug 3):
+            # when there is no recurring-character subject at all AND the prompt
+            # actually wants brand imagery (logo/wordmark/emblem/etc.), condition
+            # Seedream on the user's first uploaded brand image. Previously this
+            # ran unconditionally and Seedream would composite the brand logo
+            # into UNRELATED content shots — the Chanakya hook (an "Indian
+            # library at pre-dawn" prompt) shipped with the academy logo bleeding
+            # through the i2i output. `_match_brand_asset_for_prompt` returns the
+            # brand URL only when the prompt mentions brand-logo intent; we
+            # reuse it here as the gate so the brand reference is passed ONLY
+            # to brand-intent prompts. Subject continuity still wins when
+            # active (subsequent shots of a recurring subject MUST use the
+            # cached ref to avoid character drift; the FIRST shot MUST generate
+            # fresh so it can become canonical).
             _brand_ref_for_gen: Optional[str] = None
             if not _sub_id and not _ref_url:
-                _ref_for_brand = getattr(self, '_reference_context', None)
-                if isinstance(_ref_for_brand, dict):
-                    _ebi = _ref_for_brand.get('embeddable_images') or []
-                    if isinstance(_ebi, list):
-                        for _bi_first in _ebi[:1]:
-                            if isinstance(_bi_first, dict):
-                                _u = (_bi_first.get('s3_url') or _bi_first.get('url') or '').strip()
-                                if _u:
-                                    _brand_ref_for_gen = _u
-                                    break
+                _brand_ref_for_gen = self._match_brand_asset_for_prompt(prompt)
             _seedream_ref = _ref_url or _brand_ref_for_gen
 
             label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
@@ -14912,7 +21903,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # re-claim or proceed without a reference.
             try:
                 image_bytes, usage_meta = self._call_image_generation_llm(
-                    prompt, reference_image_url=_seedream_ref
+                    prompt, reference_image_url=_seedream_ref, is_cutout=is_cutout
                 )
             except _ImageGenRateLimitError:
                 if _is_first_for_subject and _sub_id:
@@ -14946,7 +21937,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                 # Cascade through Pexels/Pixabay → SVG placeholder so the
                 # `<img>` tag isn't left pointing at the LLM's `placeholder.png`.
-                fb = self._image_fallback_chain(prompt, is_cutout=is_cutout)
+                # skip_ai=True: caller IS the AI-gen-failed branch; the chain
+                # shouldn't loop back into the same generator that just failed.
+                fb = self._image_fallback_chain(prompt, is_cutout=is_cutout, skip_ai=True)
                 if fb:
                     return {
                         "entry_id":   id(task["entry"]),
@@ -15148,6 +22141,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     print(f"    ✅ {src_kind} image for entry {entry_id}: {old_tag[:50]}...")
                 else:
                     # Strategy 2: match by data-img-prompt value
+                    _strategy_2_hit = False
                     pm = re.search(r'data-img-prompt=(["\'])(.*?)\1', old_tag)
                     if pm:
                         pv  = pm.group(2)
@@ -15157,7 +22151,49 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', mt)
                             html    = html.replace(mt, new_tag)
                             replacements_applied += 1
+                            _strategy_2_hit = True
                             print(f"    ✅ {src_kind} image (prompt match): {pv[:30]}...")
+                    # Strategy 3 (B-3 fix): match by the original `<img>` element's
+                    # `id` attribute when both the full-tag and data-img-prompt
+                    # strategies failed. Vision-review / bbox-lint regen often
+                    # rewrites attribute order or strips `data-img-prompt` while
+                    # PRESERVING the element id (LLMs reliably keep selector hooks).
+                    # Without this, Serper-fetched images for regen'd shots are
+                    # dropped silently — the failure that left shot 4 (Beyoncé)
+                    # black in the Met Gala run.
+                    if not _strategy_2_hit and old_tag not in html:
+                        idm = re.search(r'\bid=(["\'])([^"\']+)\1', old_tag)
+                        if idm:
+                            iv = idm.group(2)
+                            pat3 = rf'<img[^>]+\bid=(["\']){re.escape(iv)}\1[^>]*>'
+                            for m in re.finditer(pat3, html):
+                                mt = m.group(0)
+                                # If the regen'd tag already has a non-placeholder
+                                # src (e.g. https://...), leave it alone — the LLM
+                                # may have intentionally swapped the image source.
+                                _src_m = re.search(r'src=["\'](.*?)["\']', mt)
+                                _cur_src = (_src_m.group(1) if _src_m else "").lower()
+                                if _cur_src and not (
+                                    "placeholder" in _cur_src
+                                    or _cur_src.startswith("data:")
+                                    or _cur_src.endswith(".png") and "/" not in _cur_src
+                                ):
+                                    continue
+                                if "src=" in mt:
+                                    new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', mt)
+                                else:
+                                    # Element has no src attribute (LLM emitted a
+                                    # placeholder `<img id="..." data-img-source="web">`
+                                    # without src). Inject src right after the id.
+                                    new_tag = re.sub(
+                                        r'(<img\b)',
+                                        f'\\1 src="{new_src}"',
+                                        mt,
+                                        count=1,
+                                    )
+                                html = html.replace(mt, new_tag)
+                                replacements_applied += 1
+                                print(f"    ✅ {src_kind} image (id-match): #{iv}")
 
             if html != original_html:
                 entry["html"] = html
@@ -15216,21 +22252,120 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         print(f"    🎯 Cached reference for subject '{subject_id}': {url}")
         return url
 
+    @staticmethod
+    def _enforce_image_orientation(
+        image_bytes: bytes,
+        target_orient: str,
+        canvas_w: int,
+        canvas_h: int,
+        prompt_preview: str = "",
+    ) -> bytes:
+        """Verify AI-gen image orientation matches canvas; cover-crop on miss.
+
+        Recraft (via OpenRouter) treats orientation hints in the prompt as
+        suggestions. In i2i mode it especially tends to inherit the reference
+        image's aspect ratio. Result: portrait videos ship with landscape
+        images that get cover-cropped at render time, losing content from
+        either side.
+
+        This helper does that cover-crop UPSTREAM (in our artifact pipeline)
+        so the crop decision is logged, the cropped bytes are the source
+        of truth, and downstream Ken Burns / object-fit:cover sees a
+        canvas-aspect image with the subject (hopefully) centered.
+
+        On any failure (PIL not installed, decode error, bad bytes) the
+        original bytes are returned untouched — orientation enforcement is
+        best-effort, not a hard requirement.
+        """
+        try:
+            from PIL import Image
+            from io import BytesIO
+        except ImportError:
+            return image_bytes
+        try:
+            img = Image.open(BytesIO(image_bytes))
+            img.load()
+        except Exception as e:
+            print(f"    ⚠️  Could not probe AI-gen image dimensions: {e}")
+            return image_bytes
+        img_w, img_h = img.size
+        if not img_w or not img_h:
+            return image_bytes
+        # Classify actual orientation.
+        if img_w < img_h:
+            actual = "portrait"
+        elif img_w > img_h:
+            actual = "landscape"
+        else:
+            actual = "square"
+        if actual == target_orient:
+            # Aspect MAY still not exactly match (e.g. portrait 9:14 vs 9:16).
+            # Compute target aspect vs actual aspect; if within 10%, leave it.
+            try:
+                target_ar = canvas_w / canvas_h
+                img_ar = img_w / img_h
+                if target_ar > 0 and abs(img_ar - target_ar) / target_ar < 0.10:
+                    return image_bytes
+            except ZeroDivisionError:
+                return image_bytes
+        # Mismatch — log and cover-crop.
+        print(
+            f"    [aigen-orientation-mismatch] requested={target_orient} "
+            f"got={actual} {img_w}x{img_h} canvas={canvas_w}x{canvas_h} "
+            f"prompt='{prompt_preview[:60]}' → center-cropping"
+        )
+        try:
+            target_ar = canvas_w / canvas_h
+            img_ar = img_w / img_h
+            if img_ar > target_ar:
+                # Image too wide — crop sides.
+                new_w = max(1, int(round(img_h * target_ar)))
+                left = (img_w - new_w) // 2
+                box = (left, 0, left + new_w, img_h)
+            else:
+                # Image too tall — crop top/bottom.
+                new_h = max(1, int(round(img_w / target_ar)))
+                top = (img_h - new_h) // 2
+                box = (0, top, img_w, top + new_h)
+            cropped = img.crop(box)
+            out_buf = BytesIO()
+            # Preserve original format when possible (PNG / JPEG / WebP);
+            # default to PNG so transparency is preserved if present.
+            fmt = (img.format or "PNG").upper()
+            if fmt not in ("PNG", "JPEG", "WEBP"):
+                fmt = "PNG"
+            # JPEG can't carry alpha — flatten if the source had it.
+            if fmt == "JPEG" and cropped.mode in ("RGBA", "LA", "P"):
+                cropped = cropped.convert("RGB")
+            cropped.save(out_buf, format=fmt)
+            return out_buf.getvalue()
+        except Exception as e:
+            print(f"    ⚠️  Cover-crop failed; returning AI bytes unchanged: {e}")
+            return image_bytes
+
     def _call_image_generation_llm(
         self,
         prompt: str,
         width: Optional[int] = None,
         height: Optional[int] = None,
         reference_image_url: Optional[str] = None,
+        is_cutout: bool = False,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
-        """Generate image via OpenRouter (bytedance-seed/seedream-4.5).
+        """Generate image via OpenRouter (recraft/recraft-v4.1).
+
+        `is_cutout=True` overrides aspect to 1:1 (logos / isolated subjects
+        are naturally square; forcing 9:16 portrait wastes most of the
+        canvas on empty transparent padding around a small logo). Also
+        skips the post-gen cover-crop because cutouts get sized via CSS at
+        their use site, not composited as canvas backgrounds — cropping
+        a square cutout to 9:16 would clip the logo's sides.
 
         Returns (image_bytes, usage_metadata). 429 raises _ImageGenRateLimitError
         so the executor thread is freed and the main thread handles requeue.
         5xx/network errors retry with jittered backoff.
 
         When `reference_image_url` is provided, the call uses the multimodal
-        content-array shape (text part + image_url part) so Seedream can do
+        content-array shape (text part + image_url part) so the model can do
         image-to-image conditioning — used by the subject continuity flow to
         keep recurring characters/products visually consistent across shots.
         """
@@ -15240,19 +22375,44 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         width = width or getattr(self, 'video_width', 1920)
         height = height or getattr(self, 'video_height', 1080)
 
+        # Cutout override — isolated subjects (logos, product cutouts) are
+        # naturally square. Generating them at canvas aspect (e.g. 9:16
+        # portrait) wastes the bulk of the canvas on empty padding around
+        # a small object, and downstream the cover-crop would clip the
+        # subject's sides. Force 1:1 here so target_orient becomes "square",
+        # the prompt directive says "square", and the post-gen cover-crop
+        # is a no-op on a square output.
+        if is_cutout:
+            width = height = 1024
+
         api_key = getattr(self.script_client, "api_key", None)
         if not api_key:
             print(f"    ⚠️ No OpenRouter API key for image gen. Cannot generate: {prompt[:50]}...")
             return None, None
 
-        # Seedream doesn't accept a structured aspect-ratio param — hint textually.
+        # Orientation control. OpenRouter's image-generation API supports a
+        # structured `image_config.aspect_ratio` parameter (per
+        # https://openrouter.ai/docs/guides/overview/multimodal/image-generation)
+        # — values: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9.
+        # We send this as the PRIMARY orientation signal, with the textual
+        # directive as defense-in-depth (some model implementations honor
+        # the prompt more than the param, or vice versa).
         if width < height:
-            aspect_hint = "9:16 vertical framing"
+            aspect_ratio  = "9:16"
+            orient_lead   = "PORTRAIT ORIENTATION 9:16 vertical (image taller than wide). "
+            orient_trail  = "9:16 vertical portrait orientation — tall, not wide"
+            target_orient = "portrait"
         elif width > height:
-            aspect_hint = "16:9 widescreen framing"
+            aspect_ratio  = "16:9"
+            orient_lead   = "LANDSCAPE ORIENTATION 16:9 widescreen (image wider than tall). "
+            orient_trail  = "16:9 widescreen landscape orientation — wide, not tall"
+            target_orient = "landscape"
         else:
-            aspect_hint = "1:1 square framing"
-        full_prompt = f"{prompt}\n\n({aspect_hint})"
+            aspect_ratio  = "1:1"
+            orient_lead   = "SQUARE ORIENTATION 1:1. "
+            orient_trail  = "1:1 square orientation"
+            target_orient = "square"
+        full_prompt = f"{orient_lead}{prompt}\n\n({orient_trail})"
 
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
@@ -15266,13 +22426,20 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         #   - text-only (default): `content` is a plain string.
         #   - multimodal (image-to-image): `content` is an array of parts,
         #     including a single `image_url` part referencing the subject's
-        #     prior generated image. Seedream uses it as the visual reference
+        #     prior generated image. The model uses it as the visual reference
         #     so the subject (character, product, etc.) looks consistent.
         if reference_image_url:
+            # IMPORTANT: when the reference is landscape but the canvas is
+            # portrait (or vice-versa), Recraft tends to inherit the
+            # reference's aspect — producing a wrong-orientation output
+            # that the renderer then cover-crops, losing content. Tell
+            # the model EXPLICITLY to override the reference's aspect.
             i2i_prompt = (
                 f"{full_prompt}\n\nReference: match the subject's identity, "
                 f"colors, and proportions from the attached image. Same subject, "
-                f"new pose / angle / context as described."
+                f"new pose / angle / context as described. "
+                f"IGNORE the reference image's aspect ratio — generate in "
+                f"{orient_trail} regardless of the reference's shape."
             )
             content: Any = [
                 {"type": "text", "text": i2i_prompt},
@@ -15282,9 +22449,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             content = full_prompt
 
         payload = {
-            "model": "bytedance-seed/seedream-4.5",
+            "model": "recraft/recraft-v4.1",
             "messages": [{"role": "user", "content": content}],
             "modalities": ["image"],
+            # Structured aspect-ratio param per OpenRouter image-gen docs:
+            # https://openrouter.ai/docs/guides/overview/multimodal/image-generation
+            # Supported values: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9.
+            # We compute the value above based on the canvas dimensions.
+            # This is the PRIMARY orientation signal — the textual hint in
+            # `full_prompt` is defense-in-depth, and the post-gen cover-crop
+            # in `_enforce_image_orientation` is the last-resort safety net.
+            "image_config": {
+                "aspect_ratio": aspect_ratio,
+            },
         }
 
         max_retries = 3
@@ -15314,12 +22491,26 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         else:
                             b64 = image_url
                         try:
-                            return base64.b64decode(b64), usage_metadata
+                            img_bytes = base64.b64decode(b64)
                         except (ValueError, base64.binascii.Error) as e:
-                            print(f"    ⚠️  Could not decode image from Seedream response: {e}")
+                            print(f"    ⚠️  Could not decode image from Recraft response: {e}")
                             return None, None
+                        # Post-gen orientation enforcement. Recraft frequently
+                        # ignores the textual aspect hint — especially in i2i
+                        # mode where it inherits the reference's aspect. Probe
+                        # the returned image's actual dimensions; if the
+                        # orientation doesn't match the canvas, cover-crop
+                        # to the target aspect ratio. This is deterministic
+                        # and free (no extra API call), and matches what the
+                        # renderer would have done anyway via object-fit:cover
+                        # — but doing it here keeps the cropped image in our
+                        # artifact pipeline and surfaces the mismatch in logs.
+                        img_bytes = self._enforce_image_orientation(
+                            img_bytes, target_orient, width, height, prompt
+                        )
+                        return img_bytes, usage_metadata
 
-                print(f"    ⚠️  Seedream response had no image payload for '{prompt[:50]}...'")
+                print(f"    ⚠️  Recraft response had no image payload for '{prompt[:50]}...'")
                 return None, None
 
             except urllib.error.HTTPError as e:
@@ -15331,29 +22522,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             retry_after = float(raw_hdr) + 1
                         except ValueError:
                             pass
-                    print(f"    ⚠️  Seedream 429 for '{prompt[:40]}...' — signalling rate-limit "
+                    print(f"    ⚠️  Recraft 429 for '{prompt[:40]}...' — signalling rate-limit "
                           f"(retry-after {retry_after:.0f}s)")
                     raise _ImageGenRateLimitError(retry_after)
 
                 if e.code >= 500:
                     if attempt < max_retries - 1:
                         wait = (2.0 ** attempt) * _random.uniform(0.8, 1.4)
-                        print(f"    ⚠️  Seedream HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
+                        print(f"    ⚠️  Recraft HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
                               f"for '{prompt[:40]}...'. Retrying in {wait:.1f}s...")
                         time.sleep(wait)
                         continue
-                print(f"    ❌ Seedream image HTTP {e.code} for '{prompt[:50]}...': {e}")
+                print(f"    ❌ Recraft image HTTP {e.code} for '{prompt[:50]}...': {e}")
                 return None, None
 
             except Exception as e:
                 if attempt < max_retries - 1:
                     wait = (1.5 ** attempt) * _random.uniform(0.5, 1.5)
-                    print(f"    ⚠️  Seedream image attempt {attempt+1}/{max_retries} failed "
+                    print(f"    ⚠️  Recraft image attempt {attempt+1}/{max_retries} failed "
                           f"for '{prompt[:40]}...': {e}. Retrying in {wait:.1f}s...")
                     print(f"    📋 {_tb.format_exc()[:200]}")
                     time.sleep(wait)
                     continue
-                print(f"    ❌ Seedream image failed after {max_retries} attempts: "
+                print(f"    ❌ Recraft image failed after {max_retries} attempts: "
                       f"{_tb.format_exc()[:400]}")
                 return None, None
 
@@ -15691,6 +22882,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if entry.get("sound_cues"):
                     clean_entry["sound_cues"] = entry["sound_cues"]
 
+                # Regen plumbing — html_model identifies which LLM authored
+                # this shot's HTML so "Remake with AI" can use the SAME model
+                # (read by `_lookup_shot_html_model` in regen). shot_idx keys
+                # back into director/shot plans when needed.
+                if entry.get("html_model"):
+                    clean_entry["html_model"] = entry["html_model"]
+                if entry.get("shot_idx") is not None:
+                    clean_entry["shot_idx"] = entry["shot_idx"]
+
                 timeline_entries.append(clean_entry)
             
             content_max_end = 0.0
@@ -15771,6 +22971,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         enriched["absolute_time"] = round(adjusted_in_time + cue_t, 3)
                         offset_cues.append(enriched)
                     timeline_entry["sound_cues"] = offset_cues
+
+                # Regen plumbing — html_model identifies which LLM authored
+                # this shot's HTML so "Remake with AI" can use the SAME model
+                # (read by `_lookup_shot_html_model` in regen). shot_idx keys
+                # back into director/shot plans when needed.
+                if entry.get("html_model"):
+                    timeline_entry["html_model"] = entry["html_model"]
+                if entry.get("shot_idx") is not None:
+                    timeline_entry["shot_idx"] = entry["shot_idx"]
 
                 timeline_entries.append(timeline_entry)
                 
@@ -16050,6 +23259,147 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 meta_dict["questions"] = question_markers
                 print(f"   ❓ Added {len(question_markers)} MCQ questions to timeline metadata")
 
+        # ── meta.shots[] (v3) — per-shot editor metadata ──────────────
+        # Editor reads this as the primary unit for shot-level editing
+        # (replaces the client-derived sentence-clip path). Sourced from
+        # the shot plan persisted by ShotPlanner (v3) or Director (v2);
+        # each shot's audio_url / audio_words_url / audio_script_url /
+        # audio_duration_s / audio_skipped were set by `_attach_per_shot_s3_urls`
+        # right after per-shot TTS concat.
+        _shot_plan_for_meta = None
+        # 1) In-memory v3 plan wins (freshest data, post-reconcile)
+        _mem_v3 = getattr(self, "_v3_shot_plan", None)
+        if isinstance(_mem_v3, dict) and _mem_v3.get("shots"):
+            _shot_plan_for_meta = _mem_v3
+        # 2) Otherwise: try shot_plan.json (v3 checkpoint)
+        if _shot_plan_for_meta is None:
+            _sp_path = run_dir / "shot_plan.json"
+            if _sp_path.exists():
+                try:
+                    _candidate = json.loads(_sp_path.read_text())
+                    if isinstance(_candidate, dict) and _candidate.get("shots"):
+                        _shot_plan_for_meta = _candidate
+                except Exception as _sp_err:
+                    print(f"   ⚠️ shot_plan.json read failed (meta.shots skipped): {_sp_err}")
+        # 3) Fallback: director_plan.json (v2)
+        if _shot_plan_for_meta is None:
+            _dp_path = run_dir / "director_plan.json"
+            if _dp_path.exists():
+                try:
+                    _candidate = json.loads(_dp_path.read_text())
+                    if isinstance(_candidate, dict) and _candidate.get("shots"):
+                        _shot_plan_for_meta = _candidate
+                except Exception as _dp_err:
+                    print(f"   ⚠️ director_plan.json read failed (meta.shots skipped): {_dp_err}")
+
+        if _shot_plan_for_meta and content_type == "VIDEO":
+            shot_clips: List[Dict[str, Any]] = []
+            # Offset shots by intro_duration so they align to the absolute
+            # video timeline (matches the existing convention for chapters /
+            # glossary / questions).
+            _offset = content_starts_at
+            # B-5 — build a shot_idx → entry index for POST-reconcile timing.
+            # The shot plan stored on disk (director_plan.json on v2,
+            # shot_plan.json on v3) may carry Director's ESTIMATED durations;
+            # `_reconcile_shot_timings_after_tts` only rewrites the in-memory
+            # plan, and the v2 director_plan.json on disk stays stale. The
+            # actual rendered `timeline_entries` always carry the post-TTS
+            # truth (inTime / exitTime). Walk entries first to build the
+            # lookup, then prefer those values over the plan's start/end.
+            _entry_by_shot_idx: Dict[int, Dict[str, Any]] = {}
+            try:
+                for _idx_ent, _ent in enumerate(timeline_entries or []):
+                    if not isinstance(_ent, dict):
+                        continue
+                    _e_shot_idx = _ent.get("shot_idx")
+                    if _e_shot_idx is None:
+                        _e_shot_idx = _idx_ent  # fall back to positional index
+                    try:
+                        _e_shot_idx = int(_e_shot_idx)
+                    except (TypeError, ValueError):
+                        continue
+                    _entry_by_shot_idx[_e_shot_idx] = _ent
+            except Exception:
+                # If entry walking errors, just fall back to plan-stored
+                # timings (legacy behavior).
+                _entry_by_shot_idx = {}
+            # Also: lookup map from the per-shot TTS S3 upload pass so
+            # `audio_url` is populated even when the plan dict only has the
+            # local mp3 path (or null). `_per_shot_s3_urls` is set by
+            # `_attach_per_shot_s3_urls` after the TTS concat.
+            _per_shot_urls: Dict[int, Dict[str, str]] = (
+                getattr(self, "_per_shot_s3_urls", None) or {}
+            )
+
+            for s in _shot_plan_for_meta.get("shots") or []:
+                if not isinstance(s, dict):
+                    continue
+                try:
+                    shot_idx = int(s.get("shot_index") or s.get("shot_idx") or 0)
+                except (TypeError, ValueError):
+                    shot_idx = 0
+                _audio_skipped = bool(s.get("audio_skipped"))
+                _audio_policy = s.get("audio_policy") or "narration_only"
+                # B-5 — prefer post-reconcile timings from the rendered entry
+                # (inTime / exitTime), then fall back to the plan dict's
+                # start_time / end_time (which are pre-reconcile on the v2
+                # path and on resume from disk).
+                _ent_match = _entry_by_shot_idx.get(shot_idx)
+                if _ent_match is not None:
+                    _start_t = float(_ent_match.get("inTime") or 0.0)
+                    _end_t = float(_ent_match.get("exitTime") or 0.0)
+                    if _end_t < _start_t:
+                        _end_t = _start_t  # defensive
+                else:
+                    _start_t = float(s.get("start_time") or 0.0)
+                    _end_t = float(s.get("end_time") or 0.0)
+                _dur = max(0.0, _end_t - _start_t)
+                _narration = s.get("narration_text") or s.get("narration_excerpt") or ""
+                # B-5 — also prefer the S3 URL map for audio_url when the plan
+                # dict has it as null (common on v2 where the plan was written
+                # before the per-shot TTS upload pass populated URLs).
+                _ps_urls = _per_shot_urls.get(shot_idx) or {}
+                _audio_url_from_plan = s.get("audio_url")
+                _audio_url = (
+                    _audio_url_from_plan
+                    if _audio_url_from_plan
+                    else _ps_urls.get("audio_url")
+                )
+                _audio_words_url = (
+                    s.get("audio_words_url")
+                    if s.get("audio_words_url")
+                    else _ps_urls.get("audio_words_url")
+                )
+                _audio_script_url = (
+                    s.get("audio_script_url")
+                    if s.get("audio_script_url")
+                    else _ps_urls.get("audio_script_url")
+                )
+                clip: Dict[str, Any] = {
+                    "id": f"shot_{shot_idx:03d}",
+                    "shot_idx": shot_idx,
+                    "shot_type": s.get("shot_type") or "",
+                    "text": str(_narration),
+                    "audio_url": _audio_url if not _audio_skipped else None,
+                    "audio_words_url": _audio_words_url if not _audio_skipped else None,
+                    "audio_script_url": _audio_script_url if not _audio_skipped else None,
+                    "audio_duration_s": float(s.get("audio_duration_s") or _dur),
+                    "audio_skipped": _audio_skipped,
+                    "audio_policy": _audio_policy,
+                    "start_time": round(_start_t + _offset, 3),
+                    "duration": round(_dur, 3),
+                    "intent_role": s.get("intent_role") or "",
+                    "narration_brief": s.get("narration_brief") or "",
+                    # words are per-shot relative; editor renders them against
+                    # audio_url playback time. Optional — not all shots carry
+                    # word timings until post-TTS reconcile completes.
+                    "words": s.get("words") or [],
+                }
+                shot_clips.append(clip)
+            if shot_clips:
+                meta_dict["shots"] = shot_clips
+                print(f"   🎬 Added {len(shot_clips)} shot clips to timeline.meta.shots (v3 editor unit)")
+
         timeline_output = {
             "meta": meta_dict,
             "entries": timeline_entries
@@ -16093,6 +23443,27 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         Returns the (possibly updated) audio path.
         """
         import subprocess as _sp
+
+        # Local helper — mirrors the one in `_concat_master_narration`. ffprobe
+        # for audio duration; returns 0.0 on any failure. Used by both the
+        # full-source-track extraction and the per-segment extraction to detect
+        # silent-failure WAV outputs that ffmpeg writes when the source has no
+        # audio stream (a 44-byte header file passes `Path.exists()` but has
+        # zero playable audio).
+        def _probe_duration(path: Path) -> float:
+            try:
+                _r = _sp.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return float((_r.stdout or "0").strip() or 0.0)
+            except Exception:
+                try:
+                    from mutagen.wave import WAVE as _WAV
+                    return float(_WAV(str(path)).info.length)
+                except Exception:
+                    return 0.0
 
         # Read timeline to find SOURCE_CLIP entries
         tl_data = json.loads(timeline_path.read_text())
@@ -16167,15 +23538,35 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                 # Extract full audio track (we'll seek per-segment in the mix command)
                 audio_track = mix_dir / f"source_audio_{sv_idx}.wav"
-                _sp.run(
+                _ffmpeg_extract = _sp.run(
                     ["ffmpeg", "-y", "-i", str(src_path), "-vn",
                      "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
                      str(audio_track)],
                     capture_output=True, timeout=120,
                 )
-                if audio_track.exists():
+                # Existence alone isn't enough — ffmpeg can produce a near-empty
+                # WAV header file (44 bytes) when the source has no audio stream
+                # or fails mid-extraction. Require a meaningful filesize AND
+                # a non-zero ffprobe duration before treating the source as
+                # usable. Without this, the previous code would print "Extracted
+                # audio" on a silent file and the user would never know why
+                # the SOURCE_CLIP segment played silence.
+                _audio_ok = (
+                    audio_track.exists()
+                    and audio_track.stat().st_size > 1024
+                    and _probe_duration(audio_track) > 0.05
+                )
+                if _audio_ok:
                     source_audio_cache[sv_idx] = audio_track
                     print(f"  ✅ Extracted audio from source [{sv_idx}]")
+                else:
+                    _ffmpeg_err = (_ffmpeg_extract.stderr or b"").decode("utf-8", errors="replace")[-300:]
+                    print(
+                        f"  ⚠️ source [{sv_idx}] audio extraction produced "
+                        f"empty/silent file (size={audio_track.stat().st_size if audio_track.exists() else 0}B). "
+                        f"Source video may have no audio track. ffmpeg stderr tail: {_ffmpeg_err}"
+                    )
+                    # Don't add to cache; this source will be skipped from mixing.
                 # Clean up video file to save disk
                 src_path.unlink(missing_ok=True)
             except Exception as exc:
@@ -16190,15 +23581,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             shutil.rmtree(mix_dir, ignore_errors=True)
             return audio_path
 
-        # Extract per-clip segments from full source audio
-        segment_paths: List[Path] = []
+        # Extract per-clip segments from full source audio. CRITICAL: every
+        # branch must append SOMETHING to keep `segment_paths` index-aligned
+        # with `clips` — downstream code does `segment_paths[i]` lookups and a
+        # silent `continue` here would shift indices and silently drop later
+        # source clips. Use None as a placeholder when extraction is skipped/fails.
+        segment_paths: List[Optional[Path]] = []
         for i, clip in enumerate(clips):
             src_audio = source_audio_cache[clip["source_video_index"]]
             seg_path = mix_dir / f"segment_{i}.wav"
             dur = clip["source_end"] - clip["source_start"]
             if dur <= 0:
+                print(f"  ⚠️ source clip [{i}] has non-positive duration "
+                      f"({dur:.3f}s, source_start={clip['source_start']:.3f}, "
+                      f"source_end={clip['source_end']:.3f}) — skipping")
+                segment_paths.append(None)
                 continue
-            _sp.run(
+            _seg_ffmpeg = _sp.run(
                 ["ffmpeg", "-y", "-i", str(src_audio),
                  "-ss", str(clip["source_start"]),
                  "-t", str(dur),
@@ -16206,9 +23605,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                  str(seg_path)],
                 capture_output=True, timeout=30,
             )
-            if seg_path.exists():
+            # Same size+duration check as the full-track extraction: existence
+            # alone admits empty WAV headers.
+            _seg_ok = (
+                seg_path.exists()
+                and seg_path.stat().st_size > 1024
+                and _probe_duration(seg_path) > 0.05
+            )
+            if _seg_ok:
                 segment_paths.append(seg_path)
             else:
+                _seg_err = (_seg_ffmpeg.stderr or b"").decode("utf-8", errors="replace")[-200:]
+                print(
+                    f"  ⚠️ source segment [{i}] extraction produced empty/silent file "
+                    f"(size={seg_path.stat().st_size if seg_path.exists() else 0}B). "
+                    f"ffmpeg stderr tail: {_seg_err}"
+                )
                 segment_paths.append(None)
 
         # Build FFmpeg filter_complex
@@ -16242,7 +23654,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         tts_chain = ",".join(vol_filters)
         filter_parts = [f"[0:a]{tts_chain}[tts_gated]"]
 
-        # Delay and fade each source segment
+        # Delay and fade each source segment.
+        # CRITICAL ORDERING: fades MUST come BEFORE adelay. Putting them after
+        # adelay (the previous bug) made `afade=t=out:st={dur-fade_dur}` fire
+        # against the post-adelay STREAM time, where t=0 is the start of the
+        # silence padding — so the fade-out completed at t≈6.7s of the stream,
+        # which is still in the silence portion BEFORE the real audio plays
+        # (the audio doesn't appear until t=delay_ms/1000 = e.g. 33s). Result:
+        # source audio was multiplied by 0 throughout, and the user heard only
+        # background music during SOURCE_CLIP shots. Confirmed in production
+        # run vid_1778822400620_24rsbf5 (2026-05-15). With fades BEFORE adelay,
+        # they operate on the 0..dur audio segment directly; adelay then
+        # shifts the faded result into its timeline position.
         src_labels = []
         for clip, idx in valid_clips:
             label = f"src{idx}"
@@ -16252,9 +23675,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             fade_dur = min(0.3, dur / 3)
             fade_out_start = max(0, dur - fade_dur)
             filter_parts.append(
-                f"[{idx}:a]adelay={delay_ms}|{delay_ms},"
-                f"afade=t=in:st=0:d={fade_dur:.2f},"
-                f"afade=t=out:st={fade_out_start:.2f}:d={fade_dur:.2f}"
+                f"[{idx}:a]afade=t=in:st=0:d={fade_dur:.2f},"
+                f"afade=t=out:st={fade_out_start:.2f}:d={fade_dur:.2f},"
+                f"adelay={delay_ms}|{delay_ms}"
                 f"[{label}]"
             )
             src_labels.append(f"[{label}]")
@@ -16415,6 +23838,52 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             except Exception:
                 pass  # never let a callback error break the pipeline
 
+    def _emit_shot_substage(
+        self,
+        shot_idx: int,
+        substage: str,
+        message: Optional[str] = None,
+    ) -> None:
+        """Emit a `shot_substage` event so the FE live-progress view can show
+        which per-shot phase is currently running (html_gen, density, bbox,
+        brand_asset, vision_review, screenshot, tts, media_polling).
+
+        Best-effort and additive — no behavior change if the callback is None.
+        Substage strings are part of the public live-progress contract; the
+        FE's stage-vocab.ts maps them to icons.
+        """
+        self._emit_progress({
+            "type": "shot_substage",
+            "shot_idx": int(shot_idx),
+            "substage": substage,
+            "message": message,
+        })
+
+    def _emit_shot_regen(
+        self,
+        shot_idx: int,
+        step: str,
+        attempt: int,
+        verdict: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Emit a `shot_regen_attempt` event whenever a post-render gate
+        (density / bbox / brand_asset / vision_review) decides to fire a
+        corrective regen. The FE shows this as the regen counter chip on
+        the scene card and as a row in the detail drawer's regen log.
+
+        `verdict` is the current decision: `fail` (about to regen),
+        `pass` (regen accepted), `shipped_original` (regen worse → reverted).
+        """
+        self._emit_progress({
+            "type": "shot_regen_attempt",
+            "shot_idx": int(shot_idx),
+            "step": step,
+            "attempt": int(attempt),
+            "verdict": verdict,
+            "reason": reason,
+        })
+
     def _run_thumbnail_batch_bg(
         self,
         *,
@@ -16422,6 +23891,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         director_plan: Dict[str, Any],
         run_name: Optional[str],
         run_dir: Path,
+        base_prompt: Optional[str] = None,
     ) -> None:
         """Fire 4 Seedream thumbnail calls in a daemon thread.
 
@@ -16439,27 +23909,47 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # Mark started so we don't double-trigger inside the same run().
         self._thumbnails_started = True
 
-        # Resolve a brand_kit-shaped dict from style_config — only `palette`
-        # is consumed by Seedream prompts. Heading font + watermark are
-        # applied client-side by the FE overlay so they always reflect the
-        # currently-active brand kit (not whatever was active at gen time).
+        # Brand color — passed as a soft hint to the thumbnail generator,
+        # which translates the hex into a descriptive color family name
+        # before composing the Recraft prompt. We deliberately do NOT pass
+        # the whole palette: image models tend to render hex strings as
+        # text labels on the image, and over-constraining the palette hurts
+        # engagement. Engagement is the priority; brand binding is a hint.
         _style = getattr(self, "_current_style_config", None) or {}
-        palette: Dict[str, str] = {}
-        for src_key, dst_key in (
-            ("primary_color", "primary"),
-            ("secondary_color", "secondary"),
-            ("accent_color", "accent"),
-            ("background_color", "background"),
-        ):
-            v = _style.get(src_key)
-            if isinstance(v, str) and v.strip():
-                palette[dst_key] = v.strip()
-        brand_kit = {"palette": palette} if palette else None
+        _brand_color_hex = _style.get("primary_color") if isinstance(_style, dict) else None
+        if not isinstance(_brand_color_hex, str) or not _brand_color_hex.strip():
+            _brand_color_hex = None
+
+        # Brand heading font — soft typography hint. Recraft may or may not
+        # honor a specific font name; if it doesn't, the per-intent type_style
+        # directive still drives the look.
+        _brand_heading_font = _style.get("heading_font") if isinstance(_style, dict) else None
+        if not isinstance(_brand_heading_font, str) or not _brand_heading_font.strip():
+            _brand_heading_font = None
+
+        # Custom-avatar face image — used as image-to-image reference so the
+        # thumbnail features the SAME person the video is hosted by. Only
+        # set when the user picked a custom avatar (or a saved vimotion
+        # avatar with provider='custom'); built-in catalog avatars
+        # (Argil/VEED) don't have a face_image_url and skip this path.
+        _avatar_face_url = getattr(self, "_current_avatar_image_url", None)
+        if not isinstance(_avatar_face_url, str) or not _avatar_face_url.strip():
+            _avatar_face_url = None
 
         # Use the script_client for the small headline LLM call — same model
         # the script/director uses, so token usage is accounted for cleanly.
+        # V200: wrap the callable so it sets `_llm_stage` to `headline_thumbnail`
+        # before invoking chat() — this triggers stage routing in
+        # `OpenRouterClient.chat()` so the matrix model wins.
         try:
-            _llm_chat = self.script_client.chat
+            _base_chat = self.script_client.chat
+
+            def _llm_chat(*args, **kwargs):
+                _hl_tok = _llm_stage.set("headline_thumbnail")
+                try:
+                    return _base_chat(*args, **kwargs)
+                finally:
+                    _llm_stage.reset(_hl_tok)
         except AttributeError:
             _llm_chat = None  # subject_extractor pattern: pass None → fallback
 
@@ -16493,7 +23983,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     director_plan=director_plan,
                     orientation=_orientation,
                     subjects_list=[],
-                    brand_kit=brand_kit,
+                    brand_color_hex=_brand_color_hex,
+                    brand_heading_font=_brand_heading_font,
+                    avatar_face_url=_avatar_face_url,
+                    original_prompt=base_prompt,
                     llm_chat=_llm_chat,
                 )
 
@@ -16527,7 +24020,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "message": "Thumbnail generation failed.",
                 })
 
-        _threading_thumb.Thread(target=_worker, name="thumbnail-batch", daemon=True).start()
+        _thread = _threading_thumb.Thread(
+            target=_worker, name="thumbnail-batch", daemon=True
+        )
+        # Stash the thread reference so `run()` can briefly join it before
+        # returning — guarantees the `thumbnails_ready` event lands in the
+        # SSE queue while the service is still draining (otherwise a
+        # template-only HTML stage that finishes in < 30s could outrun the
+        # thumbnail batch and the event would be lost).
+        self._thumbnail_thread = _thread
+        _thread.start()
 
     def _resolve_run_dir(self, run_name: Optional[str], resume_run: Optional[str]) -> Path:
         if resume_run:

@@ -19,7 +19,7 @@ import { getStepKey, syncStep4DataWithStore } from '../../-utils/helper';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { toast } from 'sonner';
-import { AxiosError } from 'axios';
+import { reportApiError } from '@/lib/report-api-error';
 import { useAccessControlStore } from '../../-utils/zustand-global-states/step4-access-control';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useSectionDetailsStore } from '../../-utils/zustand-global-states/step2-add-questions';
@@ -137,15 +137,12 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             }
         },
         onError: (error: unknown) => {
-            if (error instanceof AxiosError) {
-                toast.error(error.message, {
-                    className: 'error-toast',
-                    duration: 2000,
-                });
-            } else {
-                // Handle non-Axios errors if necessary
-                // Handle error silently
-            }
+            reportApiError(error, {
+                feature: 'assessment-step4-access-control',
+                tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
+                extra: { assessmentId, instituteId: instituteDetails?.id, examType },
+                fallbackMessage: 'Failed to save access control.',
+            });
         },
     });
 
@@ -197,15 +194,12 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             }
         },
         onError: (error: unknown) => {
-            if (error instanceof AxiosError) {
-                toast.error(error.message, {
-                    className: 'error-toast',
-                    duration: 2000,
-                });
-            } else {
-                // Handle non-Axios errors if necessary
-                // Handle error silently
-            }
+            reportApiError(error, {
+                feature: 'assessment-publish',
+                tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
+                extra: { assessmentId, instituteId: instituteDetails?.id, examType },
+                fallbackMessage: 'Failed to publish assessment.',
+            });
         },
     });
 
@@ -240,7 +234,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             fetchInstituteDashboardUsers(instituteId, {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -508,7 +502,7 @@ const AccessControlCards = ({
             selectedFilter: {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -528,7 +522,7 @@ const AccessControlCards = ({
             selectedFilter: {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -727,7 +721,7 @@ const AccessControlCards = ({
                                                                             'ADMIN'
                                                                                 ? 'bg-[#F4F9FF]'
                                                                                 : role.roleName ===
-                                                                                    'COURSE CREATOR'
+                                                                                    'CONTENT CREATOR'
                                                                                   ? 'bg-[#F4FFF9]'
                                                                                   : role.roleName ===
                                                                                       'ASSESSMENT CREATOR'
@@ -835,7 +829,7 @@ const AccessControlCards = ({
                                                                     role.roleName === 'ADMIN'
                                                                         ? 'bg-[#F4F9FF]'
                                                                         : role.roleName ===
-                                                                            'COURSE CREATOR'
+                                                                            'CONTENT CREATOR'
                                                                           ? 'bg-[#F4FFF9]'
                                                                           : role.roleName ===
                                                                               'ASSESSMENT CREATOR'

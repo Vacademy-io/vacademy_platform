@@ -2,8 +2,7 @@ import { useState, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MyButton } from '@/components/design-system/button';
-import { X, MagnifyingGlass, Upload, UserPlus } from '@phosphor-icons/react';
+import { X, MagnifyingGlass, Upload, UserPlus, PencilSimple } from '@phosphor-icons/react';
 import { useAutosuggestUsers } from '../../../../-hooks/useAutosuggestUsers';
 import {
     AutosuggestUser,
@@ -32,7 +31,28 @@ export const Step1LearnerSelector = ({
 }: Props) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [mode, setMode] = useState<LearnerSourceMode>('manual');
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
+
+    const editingRow =
+        editingIndex !== null && selectedLearners[editingIndex]?.type === 'new'
+            ? (selectedLearners[editingIndex] as { type: 'new'; newUser: NewUserRow }).newUser
+            : undefined;
+
+    const startEditing = (idx: number) => {
+        setEditingIndex(idx);
+        setMode('manual');
+    };
+
+    const handleEditSave = (updated: NewUserRow) => {
+        if (editingIndex === null) return;
+        const next = [...selectedLearners];
+        next[editingIndex] = { type: 'new', newUser: updated };
+        onSelectedLearnersChange(next);
+        setEditingIndex(null);
+    };
+
+    const handleEditCancel = () => setEditingIndex(null);
 
     const { data: suggestedUsers, isFetching } = useAutosuggestUsers({
         instituteId,
@@ -73,7 +93,7 @@ export const Step1LearnerSelector = ({
         l.type === 'existing' ? l.email : '(new user)';
 
     return (
-        <div className="flex h-full flex-col gap-4 px-6 py-5">
+        <div className="flex h-full flex-col gap-4 px-4 py-4 sm:px-6 sm:py-5">
             {/* Selected learners chip list */}
             {selectedLearners.length > 0 && (
                 <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
@@ -81,45 +101,82 @@ export const Step1LearnerSelector = ({
                         {selectedLearners.length} learner{selectedLearners.length !== 1 ? 's' : ''} selected
                     </p>
                     <div className="flex flex-wrap gap-2">
-                        {selectedLearners.map((l, idx) => (
-                            <div
-                                key={idx}
-                                className="flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs text-primary-700"
-                            >
-                                <div>
-                                    <span className="font-medium">{getLearnerLabel(l)}</span>
-                                    <span className="ml-1 text-primary-400">{getLearnerSub(l)}</span>
-                                </div>
-                                <button
-                                    onClick={() => removeLearner(idx)}
-                                    className="ml-1 rounded-full text-primary-400 hover:text-primary-700"
+                        {selectedLearners.map((l, idx) => {
+                            const isBeingEdited = editingIndex === idx;
+                            return (
+                                <div
+                                    key={idx}
+                                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+                                        isBeingEdited
+                                            ? 'border-warning-400 bg-warning-50 text-warning-700'
+                                            : 'border-primary-200 bg-primary-50 text-primary-700'
+                                    }`}
                                 >
-                                    <X size={12} weight="bold" />
-                                </button>
-                            </div>
-                        ))}
+                                    <div>
+                                        <span className="font-medium">{getLearnerLabel(l)}</span>
+                                        <span className={`ml-1 ${isBeingEdited ? 'text-warning-500' : 'text-primary-400'}`}>
+                                            {isBeingEdited ? '(editing…)' : getLearnerSub(l)}
+                                        </span>
+                                    </div>
+                                    {l.type === 'new' && !isBeingEdited && (
+                                        <button
+                                            onClick={() => startEditing(idx)}
+                                            className="ml-1 rounded-full text-primary-400 hover:text-primary-700"
+                                            title="Edit"
+                                        >
+                                            <PencilSimple size={12} weight="bold" />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            if (isBeingEdited) setEditingIndex(null);
+                                            removeLearner(idx);
+                                        }}
+                                        className={`ml-1 rounded-full ${
+                                            isBeingEdited
+                                                ? 'text-warning-500 hover:text-warning-700'
+                                                : 'text-primary-400 hover:text-primary-700'
+                                        }`}
+                                        title="Remove"
+                                    >
+                                        <X size={12} weight="bold" />
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
-            {/* Source mode tabs */}
-            <Tabs value={mode} onValueChange={(v) => setMode(v as LearnerSourceMode)}>
-                <TabsList className="w-full">
-                    <TabsTrigger value="search" className="flex-1">
-                        <MagnifyingGlass size={14} className="mr-1.5" />
-                        Search Existing
+            {/* Source mode tabs — 2x2 grid on mobile, single row on sm+ */}
+            <Tabs
+                value={mode}
+                onValueChange={(v) => {
+                    const next = v as LearnerSourceMode;
+                    if (editingIndex !== null && next !== 'manual') {
+                        setEditingIndex(null);
+                    }
+                    setMode(next);
+                }}
+            >
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:flex sm:h-9 sm:gap-0">
+                    <TabsTrigger value="search" className="min-w-0 justify-center text-xs sm:flex-1 sm:text-sm">
+                        <MagnifyingGlass size={14} className="mr-1.5 shrink-0" />
+                        <span className="truncate">Search Existing</span>
                     </TabsTrigger>
-                    <TabsTrigger value="from_course" className="flex-1">
-                        <UserPlus size={14} className="mr-1.5" />
-                        From {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                    <TabsTrigger value="from_course" className="min-w-0 justify-center text-xs sm:flex-1 sm:text-sm">
+                        <UserPlus size={14} className="mr-1.5 shrink-0" />
+                        <span className="truncate">
+                            From {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                        </span>
                     </TabsTrigger>
-                    <TabsTrigger value="csv" className="flex-1">
-                        <Upload size={14} className="mr-1.5" />
-                        Import CSV
+                    <TabsTrigger value="csv" className="min-w-0 justify-center text-xs sm:flex-1 sm:text-sm">
+                        <Upload size={14} className="mr-1.5 shrink-0" />
+                        <span className="truncate">Import CSV</span>
                     </TabsTrigger>
-                    <TabsTrigger value="manual" className="flex-1">
-                        <UserPlus size={14} className="mr-1.5" />
-                        Add Manually
+                    <TabsTrigger value="manual" className="min-w-0 justify-center text-xs sm:flex-1 sm:text-sm">
+                        <UserPlus size={14} className="mr-1.5 shrink-0" />
+                        <span className="truncate">Add Manually</span>
                     </TabsTrigger>
                 </TabsList>
 
@@ -202,7 +259,12 @@ export const Step1LearnerSelector = ({
 
                 {/* TAB: Manual entry */}
                 <TabsContent value="manual" className="mt-4">
-                    <ManualUserEntry onAdd={addNewUsers} />
+                    <ManualUserEntry
+                        onAdd={addNewUsers}
+                        editingRow={editingRow}
+                        onEditSave={handleEditSave}
+                        onEditCancel={handleEditCancel}
+                    />
                 </TabsContent>
             </Tabs>
         </div>

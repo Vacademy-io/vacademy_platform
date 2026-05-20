@@ -1,8 +1,8 @@
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { motion } from 'framer-motion';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAnalyticsEngagementTrends } from '../../-services/dashboard-services';
-import { useTheme } from '@/providers/theme/theme-provider';
+import { ChartLine } from '@phosphor-icons/react';
 import {
     LineChart,
     Line,
@@ -12,191 +12,183 @@ import {
     Tooltip,
     CartesianGrid,
 } from 'recharts';
-import { ChartLine, Calendar } from '@phosphor-icons/react';
 
 interface DailyActivityTrendWidgetProps {
     instituteId: string;
 }
 
-export default function DailyActivityTrendWidget({ instituteId }: DailyActivityTrendWidgetProps) {
-    const { primaryColor } = useTheme();
+interface TrendDay {
+    date: string;
+    unique_users: number;
+    total_sessions: number;
+    total_api_calls: number;
+    average_session_duration?: number;
+}
 
-    const { data, isLoading, error } = useQuery({
+interface TrendPoint {
+    date: string;
+    users: number;
+    sessions: number;
+    avgDuration: number;
+}
+
+interface TooltipPayloadEntry {
+    color: string;
+    name: string;
+    value: number;
+}
+
+const CustomTooltip = ({
+    active,
+    payload,
+    label,
+}: {
+    active?: boolean;
+    payload?: TooltipPayloadEntry[];
+    label?: string;
+}) => {
+    if (!active || !payload?.length) return null;
+    return (
+        <div className="rounded-md border border-neutral-200 bg-white p-2 text-xs shadow-md">
+            <div className="font-semibold text-neutral-800">{label}</div>
+            {payload.map((entry, i) => (
+                <div key={i} className="mt-0.5" style={{ color: entry.color }}>
+                    {entry.name}: {entry.value.toLocaleString()}
+                </div>
+            ))}
+        </div>
+    );
+};
+
+export default function DailyActivityTrendWidget({ instituteId }: DailyActivityTrendWidgetProps) {
+    const { data, isLoading, isError } = useQuery({
         queryKey: ['analytics-daily-trends', instituteId],
         queryFn: () => fetchAnalyticsEngagementTrends(instituteId),
-        staleTime: 300000, // 5 minutes - data considered fresh
-        gcTime: 600000, // 10 minutes - keep in cache after becoming unused
+        staleTime: 300_000,
+        gcTime: 600_000,
+        retry: false,
     });
 
-    console.log('DailyActivityTrendWidget - data:', data);
+    const days: TrendDay[] = data?.daily_activity_trend || [];
+    const trendData: TrendPoint[] = days
+        .map((day) => ({
+            date: new Date(day.date).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+            }),
+            users: day.unique_users,
+            sessions: day.total_sessions,
+            avgDuration: Math.round(day.average_session_duration || 0),
+        }))
+        .slice(-7);
 
-    // Process daily activity trend data
-    const trendData =
-        data?.daily_activity_trend
-            ?.map((day: any) => ({
-                date: new Date(day.date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                }),
-                users: day.unique_users,
-                sessions: day.total_sessions,
-                apiCalls: day.total_api_calls,
-                avgDuration: Math.round(day.average_session_duration || 0),
-            }))
-            ?.slice(-7) || []; // Show last 7 days
-
-    const CustomTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="rounded-lg border bg-white p-3 shadow-lg">
-                    <p className="font-semibold text-gray-800">{label}</p>
-                    {payload.map((entry: any, index: number) => (
-                        <p key={index} className="text-sm" style={{ color: entry.color }}>
-                            {entry.name}: {entry.value.toLocaleString()}
-                        </p>
-                    ))}
-                </div>
-            );
-        }
-        return null;
-    };
+    const totalUsers = trendData.reduce((sum, d) => sum + d.users, 0);
+    const totalSessions = trendData.reduce((sum, d) => sum + d.sessions, 0);
+    const avgDuration =
+        trendData.length > 0
+            ? Math.round(trendData.reduce((sum, d) => sum + d.avgDuration, 0) / trendData.length)
+            : 0;
 
     return (
-        <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            whileHover={{ y: -3 }}
-            className="h-full"
-        >
-            <Card className="h-full border-0 bg-gradient-to-br from-white to-blue-50 shadow-lg transition-all duration-300 hover:shadow-xl">
-                <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
-                        <motion.div
-                            animate={{ rotate: [0, 5, -5, 0] }}
-                            transition={{ duration: 4, repeat: Infinity }}
-                            className="rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 p-2 text-white"
-                        >
-                            <ChartLine size={20} />
-                        </motion.div>
-                        <div>
-                            <CardTitle className="text-lg font-bold text-gray-800">
-                                Daily Activity Trend
-                            </CardTitle>
-                            <CardDescription className="text-sm text-gray-600">
-                                User activity over the past week
-                            </CardDescription>
+        <Card className="flex h-full flex-col bg-white shadow-sm">
+            <CardHeader className="p-4 pb-2">
+                <div className="flex items-center gap-2">
+                    <span className="flex size-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                        <ChartLine size={14} weight="duotone" />
+                    </span>
+                    <div className="min-w-0">
+                        <CardTitle className="text-sm font-semibold">
+                            Daily Activity Trend
+                        </CardTitle>
+                        <CardDescription className="line-clamp-1 text-[11px] text-neutral-500 sm:text-xs">
+                            User activity over the past week
+                        </CardDescription>
+                    </div>
+                </div>
+            </CardHeader>
+            <div className="flex flex-1 flex-col px-4 pb-4">
+                {isLoading ? (
+                    <div className="flex flex-1 flex-col gap-3">
+                        <div className="grid grid-cols-3 gap-2">
+                            <Skeleton className="h-12 rounded-md" />
+                            <Skeleton className="h-12 rounded-md" />
+                            <Skeleton className="h-12 rounded-md" />
+                        </div>
+                        <Skeleton className="h-32 flex-1 rounded-md" />
+                    </div>
+                ) : isError || trendData.length === 0 ? (
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 py-6 text-center">
+                        <ChartLine size={20} weight="duotone" className="text-neutral-300" />
+                        <div className="text-[11px] text-neutral-500">
+                            {isError
+                                ? "Couldn't load trend data"
+                                : 'No activity recorded this week'}
                         </div>
                     </div>
-                </CardHeader>
-
-                <CardContent className="pt-0">
-                    {isLoading ? (
-                        <div className="flex h-48 items-center justify-center">
-                            <motion.div
-                                animate={{ rotate: 360 }}
-                                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                                className="border-3 size-8 rounded-full border-blue-500 border-t-transparent"
-                            />
-                        </div>
-                    ) : error ? (
-                        <div className="py-8 text-center text-red-500">
-                            <ChartLine size={32} className="mx-auto mb-2 opacity-50" />
-                            <p className="text-sm">Failed to load trend data</p>
-                        </div>
-                    ) : trendData.length === 0 ? (
-                        <div className="py-8 text-center text-gray-500">
-                            <ChartLine size={32} className="mx-auto mb-2 opacity-50" />
-                            <p className="text-sm">No trend data available</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {/* Line Chart */}
-                            <div className="h-48">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={trendData}>
-                                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                                        <XAxis
-                                            dataKey="date"
-                                            tick={{ fontSize: 12 }}
-                                            axisLine={false}
-                                        />
-                                        <YAxis tick={{ fontSize: 12 }} axisLine={false} />
-                                        <Tooltip content={<CustomTooltip />} />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="users"
-                                            stroke="#3B82F6"
-                                            strokeWidth={3}
-                                            dot={{ fill: '#3B82F6', strokeWidth: 2, r: 4 }}
-                                            name="Users"
-                                            animationDuration={1000}
-                                        />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="sessions"
-                                            stroke="#10B981"
-                                            strokeWidth={2}
-                                            dot={{ fill: '#10B981', strokeWidth: 2, r: 3 }}
-                                            name="Sessions"
-                                            animationDuration={1200}
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="rounded-md border border-blue-100 bg-blue-50/60 p-2">
+                                <div className="text-base font-semibold tabular-nums text-blue-700">
+                                    {totalUsers.toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-[10px] text-blue-700/80">Users</div>
                             </div>
-
-                            {/* Summary Stats */}
-                            <div className="grid grid-cols-3 gap-3 text-center">
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.5 }}
-                                    className="rounded-lg border border-blue-200 bg-blue-100 p-2"
-                                >
-                                    <div className="text-lg font-bold text-blue-700">
-                                        {trendData.reduce(
-                                            (sum: number, day: any) => sum + day.users,
-                                            0
-                                        )}
-                                    </div>
-                                    <div className="text-xs text-blue-600">Total Users</div>
-                                </motion.div>
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.6 }}
-                                    className="rounded-lg border border-green-200 bg-green-100 p-2"
-                                >
-                                    <div className="text-lg font-bold text-green-700">
-                                        {trendData.reduce(
-                                            (sum: number, day: any) => sum + day.sessions,
-                                            0
-                                        )}
-                                    </div>
-                                    <div className="text-xs text-green-600">Total Sessions</div>
-                                </motion.div>
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.7 }}
-                                    className="rounded-lg border border-cyan-200 bg-cyan-100 p-2"
-                                >
-                                    <div className="text-lg font-bold text-cyan-700">
-                                        {Math.round(
-                                            trendData.reduce(
-                                                (sum: number, day: any) => sum + day.avgDuration,
-                                                0
-                                            ) / trendData.length
-                                        )}
-                                        m
-                                    </div>
-                                    <div className="text-xs text-cyan-600">Avg Duration</div>
-                                </motion.div>
+                            <div className="rounded-md border border-emerald-100 bg-emerald-50/60 p-2">
+                                <div className="text-base font-semibold tabular-nums text-emerald-700">
+                                    {totalSessions.toLocaleString('en-IN')}
+                                </div>
+                                <div className="text-[10px] text-emerald-700/80">Sessions</div>
+                            </div>
+                            <div className="rounded-md border border-violet-100 bg-violet-50/60 p-2">
+                                <div className="text-base font-semibold tabular-nums text-violet-700">
+                                    {avgDuration}
+                                    <span className="text-xs">m</span>
+                                </div>
+                                <div className="text-[10px] text-violet-700/80">Avg duration</div>
                             </div>
                         </div>
-                    )}
-                </CardContent>
-            </Card>
-        </motion.div>
+                        <div className="mt-3 h-32 flex-1">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart
+                                    data={trendData}
+                                    margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                                    <XAxis
+                                        dataKey="date"
+                                        tick={{ fontSize: 10 }}
+                                        axisLine={false}
+                                        tickLine={false}
+                                    />
+                                    <YAxis
+                                        tick={{ fontSize: 10 }}
+                                        axisLine={false}
+                                        tickLine={false}
+                                    />
+                                    <Tooltip content={<CustomTooltip />} />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="users"
+                                        stroke="#3B82F6"
+                                        strokeWidth={2}
+                                        dot={{ fill: '#3B82F6', r: 3 }}
+                                        name="Users"
+                                    />
+                                    <Line
+                                        type="monotone"
+                                        dataKey="sessions"
+                                        stroke="#10B981"
+                                        strokeWidth={2}
+                                        dot={{ fill: '#10B981', r: 3 }}
+                                        name="Sessions"
+                                    />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </>
+                )}
+            </div>
+        </Card>
     );
 }

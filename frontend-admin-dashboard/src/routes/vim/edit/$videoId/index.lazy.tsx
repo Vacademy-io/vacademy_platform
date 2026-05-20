@@ -1,20 +1,82 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { createLazyFileRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { Monitor } from 'lucide-react';
 import { VideoEditorPage } from '@/components/ai-video-editor/VideoEditorPage';
 import { useVideoEditorStore } from '@/components/ai-video-editor/stores/video-editor-store';
 import { getInstituteId } from '@/constants/helper';
 import { VimTourProvider, useVimTour } from '@/features/vimotion/tour/VimTourProvider';
+import { useVimotionDocumentChrome } from '@/features/vimotion/brand/useVimotionDocumentChrome';
+import { useVimotionNativeShell } from '@/features/vimotion/native/useVimotionNativeShell';
+import { VimotionLogoMark } from '@/features/vimotion/brand/VimotionLogoMark';
 
 export const Route = createLazyFileRoute('/vim/edit/$videoId/')({
     component: VimVideoEditorRoute,
 });
 
+// Editor is desktop-only: canvas handles, timeline trim, and Monaco HTML editing
+// all require precise pointer input that doesn't translate to touch. The mobile
+// app will ship a redesigned editor; for now, gate the route and send users back
+// to the production view where they can preview and download renders.
+function useIsNarrowViewport(breakpointPx = 768) {
+    const [narrow, setNarrow] = useState(() =>
+        typeof window === 'undefined'
+            ? false
+            : window.matchMedia(`(max-width: ${breakpointPx - 1}px)`).matches
+    );
+    useEffect(() => {
+        const mql = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
+        const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
+        mql.addEventListener('change', onChange);
+        return () => mql.removeEventListener('change', onChange);
+    }, [breakpointPx]);
+    return narrow;
+}
+
 function VimVideoEditorRoute() {
+    useVimotionDocumentChrome();
+    // Mounted at the route level (not inside VimVideoEditorShell) so the native
+    // splash also hides on EditorMobileGate — otherwise a cold-start deep link
+    // into the editor on a mobile viewport would leave the splash forever.
+    useVimotionNativeShell();
     const instituteId = getInstituteId();
+    const isNarrow = useIsNarrowViewport();
+    if (isNarrow) {
+        return <EditorMobileGate />;
+    }
     return (
         <VimTourProvider instituteId={instituteId}>
             <VimVideoEditorShell />
         </VimTourProvider>
+    );
+}
+
+function EditorMobileGate() {
+    const navigate = useNavigate();
+    const { videoId } = useParams({ from: '/vim/edit/$videoId/' });
+    return (
+        <div className="pt-safe pb-safe flex min-h-screen flex-col items-center justify-center bg-[#FAFAF7] px-6 py-10 text-center">
+            <div className="flex size-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-neutral-200">
+                <VimotionLogoMark size={24} className="text-neutral-900" />
+            </div>
+            <div className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600">
+                <Monitor className="size-3.5" />
+                Desktop only
+            </div>
+            <h1 className="mt-3 text-lg font-semibold text-neutral-900">
+                Open on a larger screen to edit
+            </h1>
+            <p className="mt-2 max-w-xs text-sm text-neutral-600">
+                The video editor needs more room than a phone can offer. Open this link on a desktop
+                to trim shots, swap layers, and re-narrate scenes.
+            </p>
+            <button
+                type="button"
+                onClick={() => navigate({ to: '/vim/dashboard', search: { videoId } })}
+                className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-md bg-neutral-900 px-5 text-sm font-semibold text-white hover:bg-neutral-800"
+            >
+                Back to video
+            </button>
+        </div>
     );
 }
 

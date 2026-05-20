@@ -34,6 +34,11 @@ class VideoCostPreviewRequest(BaseModel):
     review_mode: bool = False
     attachments_count: int = 0
     host: Optional["HostConfig"] = None
+    # When true, the estimator adds an AI video (Veo) upper-bound row to
+    # the breakdown so the FE pre-submit panel surfaces the worst-case
+    # spend. Ultra/super_ultra tiers only — silently ignored otherwise.
+    ai_video_enabled: bool = False
+    ai_video_audio_enabled: bool = False
 
 
 class VideoCostPreviewResponse(BaseModel):
@@ -47,6 +52,85 @@ class ReferenceFileItem(BaseModel):
     url: str = Field(..., description="Public S3 URL of the file")
     name: str = Field(..., description="Original filename (e.g., 'diagram.png')")
     type: Literal["image", "pdf"] = Field(..., description="File type: 'image' or 'pdf'")
+
+
+# ---------------------------------------------------------------------------
+# Per-stage model overrides
+# ---------------------------------------------------------------------------
+# The video pipeline has ~17 distinct LLM stages. By default each stage uses
+# the model assigned in the `ai_model_stage_assignments` matrix (per
+# quality_tier × stage_id). User overrides on this DTO replace the matrix
+# value for stages whose `user_overridable` flag is true:
+#   shot_planner, narration_writer, per_shot_html, act_planner, regen_html,
+#   plus v2-legacy director / script_generation / script_review.
+# Vision review + utility prompts (cultural_context, headline_thumbnail,
+# host_description, etc.) ignore the override — they're pinned to admin
+# defaults to protect cost + quality.
+#
+# Resolution order per stage:
+#   1. overrides.per_stage[stage] if set     → source="user_per_stage"
+#   2. overrides.default if set              → source="user_default"
+#   3. matrix row (admin default)            → source="matrix"
+
+class ModelOverrides(BaseModel):
+    """Per-stage user model overrides for an AI video run."""
+    default: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Mass-pick model for every user-overridable stage. Equivalent to "
+            "the legacy single `model` field on VideoGenerationRequest."
+        ),
+    )
+    per_stage: Optional[Dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Per-stage explicit overrides. Keys must be user-overridable stage "
+            "IDs from `app.constants.pipeline_stages.PipelineStage`; unknown or "
+            "non-overridable keys are silently ignored. Wins over `default`."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_model_strings(self) -> "ModelOverrides":
+        """Light validation — reject empty / oversized / non-string entries.
+
+        Full DB validation (model exists in `ai_models`, is_active=TRUE,
+        `recommended_for @> 'video'`) happens at the service layer via
+        AIModelsService — this is the FIRST line of defense at the boundary
+        to keep obviously bad payloads out of the resolver path.
+        """
+        if self.default is not None:
+            v = self.default.strip()
+            if not v:
+                self.default = None
+            elif "/" not in v:  # all known model_ids are 'provider/model'
+                raise ValueError(
+                    f"model_overrides.default '{self.default}' is not a valid "
+                    f"model identifier (expected 'provider/model' shape)."
+                )
+            else:
+                self.default = v
+        if self.per_stage:
+            cleaned: Dict[str, str] = {}
+            for k, val in self.per_stage.items():
+                if not isinstance(val, str):
+                    continue
+                vs = val.strip()
+                if not vs:
+                    continue
+                if len(vs) > 200:
+                    raise ValueError(
+                        f"model_overrides.per_stage[{k!r}] exceeds 200 chars."
+                    )
+                if "/" not in vs:
+                    raise ValueError(
+                        f"model_overrides.per_stage[{k!r}] '{val}' is not a "
+                        f"valid model identifier (expected 'provider/model')."
+                    )
+                cleaned[str(k)] = vs
+            self.per_stage = cleaned or None
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +148,10 @@ class ReferenceFileItem(BaseModel):
 
 AvatarModelLiteral = Literal[
     "fal-ai/kling-video/ai-avatar/v2/standard",
+    "fal-ai/kling-video/ai-avatar/v2/pro",
+    "fal-ai/heygen/avatar4/image-to-video",
     "veed/fabric-1.0",
+    "fal-ai/flashtalk",
 ]
 
 # Provider for studio_avatar / saved-avatar resolution. Single source of truth —
@@ -206,6 +293,14 @@ class VisualPreferences(BaseModel):
         default=None,
         description="Bias for DEVICE_MOCKUP (HTML-rendered app/web/mobile UI).",
     )
+    ai_video: Optional[FamilyBias] = Field(
+        default=None,
+        description=(
+            "Bias for AI_VIDEO_HERO and inline <aivideo> clips (fal.ai Veo). "
+            "Ultra+ tiers only; even when set, requires per-run "
+            "ai_video_enabled=true to actually trigger Veo calls."
+        ),
+    )
     text_density: Optional[TextDensity] = Field(
         default=None,
         description=(
@@ -268,7 +363,23 @@ class VideoGenerationRequest(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="AI Model to use for generation (e.g. 'xiaomi/mimo-v2-flash:free')"
+        description=(
+            "DEPRECATED single-model override. When set without `model_overrides`, "
+            "the service-layer resolver collapses it to `ModelOverrides(default=model)` "
+            "so it applies only to user-overridable critical stages. Prefer "
+            "`model_overrides` going forward."
+        ),
+    )
+    model_overrides: Optional["ModelOverrides"] = Field(
+        default=None,
+        description=(
+            "Per-stage user model overrides. `default` mass-applies to every "
+            "user-overridable stage (ShotPlanner, NarrationWriter, per-shot HTML, "
+            "act planner, regen HTML, plus v2-legacy script/director stages). "
+            "`per_stage` overrides individual stages (per_stage wins over default). "
+            "Vision review + small utility prompts ignore both and stay on admin "
+            "defaults. Omit entirely to use admin defaults for everything."
+        ),
     )
     quality_tier: str = Field(
         default="ultra",
@@ -421,6 +532,37 @@ class VideoGenerationRequest(BaseModel):
         ),
     )
 
+    # ---------------------------------------------------------------------
+    # AI video generation (fal.ai veo3.1/lite) — ultra+ only, opt-in per run
+    # ---------------------------------------------------------------------
+    ai_video_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable AI video generation (fal.ai Veo) for this run. Ultra and "
+            "super_ultra tiers only; ignored on lower tiers. When true, the "
+            "Director may emit AI_VIDEO_HERO shots and per-shot HTML may "
+            "include inline <aivideo> tags. Each call costs $0.24-$0.40; "
+            "circuit-broken at $1.50 per video."
+        ),
+    )
+    ai_video_audio_enabled: bool = Field(
+        default=False,
+        description=(
+            "When ai_video_enabled is on, this lets Veo clips bring their own "
+            "audio (generate_audio=true on the Veo call). Master narration is "
+            "silenced during those shots. Veo audio is $0.05/s instead of "
+            "$0.03/s; only meaningful with ai_video_enabled=true."
+        ),
+    )
+    ai_video_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional override for the AI video model. Defaults to "
+            "'fal-ai/veo3.1/lite'. Currently the only supported value; the "
+            "field exists so future models slot in without a schema change."
+        ),
+    )
+
     @model_validator(mode="after")
     def _normalize_input_videos(self):
         """Normalize input_video_id → input_video_ids and enforce multi-source rules."""
@@ -496,7 +638,20 @@ class VideoStatusResponse(BaseModel):
     status: str
     content_type: str = Field(default="VIDEO", description="Content type: VIDEO, QUIZ, STORYBOOK, etc.")
     file_ids: Dict[str, Optional[str]]
-    s3_urls: Dict[str, Optional[str]]
+    # Values are USUALLY a single URL string (one S3 object per stage). Some
+    # keys carry richer shapes that we MUST not reject at the schema layer:
+    #   • `per_shot_tts`: dict mapping `shot_NNN` → mp3 URL (Phase B
+    #     per-shot TTS, 2026-05).
+    #   • Future v3 keys (shot_plan checkpoint metadata, brand kit refs,
+    #     etc.) may carry nested dict / list shapes.
+    # The previous tighter type `Optional[Union[str, Dict[str, str]]]`
+    # bombed history/status endpoints with HTTP 500 whenever Pydantic
+    # couldn't validate against the str variant first. `Any` makes the
+    # value schema permissive — clients still get the right shape on the
+    # wire, the API just stops failing on additive backend changes.
+    # Downstream readers should `isinstance(v, str)` / `isinstance(v, dict)`
+    # when they expect a specific shape.
+    s3_urls: Dict[str, Any]
     prompt: Optional[str]
     language: str
     error_message: Optional[str]
@@ -531,6 +686,24 @@ class VideoStatusResponse(BaseModel):
             "last_shot ({shot_index, shot_type, duration_s} — quick access to last completed shot), "
             "errors (list[{shot_index, shot_type, error, retrying, attempt, timestamp}] — shot errors, capped at 50), "
             "last_event (raw last pipeline event dict)."
+        )
+    )
+    live: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "v3 live-progress snapshot from RunStateAggregator. Single source of truth "
+            "for the polling-based FE pipeline view. Shape: "
+            "{status, active_stage, active_substage, director_thought, started_at, "
+            "last_event_at, finished_at, stages:{<stage_id>:{state, started_at, wrapped_at, message, detail}}, "
+            "shots:[{idx, shot_type, intent_role, audio_policy, background_treatment, transition_in, "
+            "narration_brief, duration_estimate_s, state, substage, attempts, regen_log, external_call_ids, "
+            "cost_usd, tokens_in, tokens_out, started_at, wrapped_at, elapsed_s, last_error}], "
+            "recurring_motifs, external_calls:[{id, provider, op, state, shot_idx, request_id, "
+            "started_at, finished_at, elapsed_s, poll_count, eta_s, error}], "
+            "costs:{spent_usd, spent_credits, cap_usd, cap_credits, tokens_*}, "
+            "event_log:[{at, type, stage, shot_idx, message, detail}] (last 50)}. "
+            "Read from process memory while the run is active; falls back to the "
+            "persisted snapshot in extra_metadata.live on history reads."
         )
     )
     created_at: Optional[str]
@@ -650,6 +823,14 @@ class RegenerateFrameRequest(BaseModel):
     timestamp: float = Field(..., description="Timestamp of the frame in seconds")
     user_prompt: str = Field(..., description="User's instruction for modification")
     institute_id: Optional[str] = Field(None, description="Institute ID (optional)")
+    model: Optional[str] = Field(
+        None,
+        description=(
+            "Optional model_id override (e.g. 'google/gemini-2.5-pro'). When omitted, "
+            "the service resolves in order: per-shot html_model persisted at gen time → "
+            "ai_model_defaults['video_regenerate'] → hard fallback."
+        ),
+    )
 
 
 class RegenerateFrameResponse(BaseModel):
@@ -659,6 +840,42 @@ class RegenerateFrameResponse(BaseModel):
     timestamp: float
     original_html: str
     new_html: str
+    resolved_model: Optional[str] = Field(
+        None,
+        description=(
+            "The model_id actually used for this regeneration. Named "
+            "`resolved_model` not `model_used` because Pydantic v2 reserves "
+            "the `model_*` namespace."
+        ),
+    )
+    regen_path: Optional[str] = Field(
+        None,
+        description=(
+            "How the regen was produced: 'dom_patch' (deterministic, no LLM), "
+            "'full_remake' (canonical LLM path), or 'full_remake_fallback' "
+            "(classifier wanted a patch but no op was applicable). FE uses "
+            "this to show 'Updated background video' vs 'Rewriting whole shot' "
+            "toasts."
+        ),
+    )
+    classification: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Output of the intent classifier when it ran. Shape: "
+            "{ intent: 'targeted_patch'|'full_remake', confidence: 0-1, "
+            "rationale: str, patch_ops: [{target, selector_hint, new_value, "
+            "confidence}] }. Omitted when classifier was skipped (e.g. legacy "
+            "timeline) or failed."
+        ),
+    )
+    applied_ops: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description=(
+            "Patch operations actually applied on the `dom_patch` path. "
+            "Each entry: { target, selector, before, after, ok }. Used by "
+            "the editor to show what changed (e.g. for the undo stack)."
+        ),
+    )
 
 
 class UpdateFrameRequest(BaseModel):
@@ -670,6 +887,23 @@ class UpdateFrameRequest(BaseModel):
     exit_time: Optional[float] = Field(None, description="New end time in seconds (time_driven)")
     z: Optional[int] = Field(None, description="Z-index layer")
     entry_id: Optional[str] = Field(None, description="Client entry ID for verification")
+    entry_meta: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Free-form per-entry metadata (e.g. {'display_name': 'Welcome'}). "
+            "Merged into the entry's existing entry_meta — keys not present in "
+            "the payload are preserved. Pass an empty object to no-op."
+        ),
+    )
+    html_model: Optional[str] = Field(
+        None,
+        description=(
+            "Optional model_id that authored this HTML. Sent by the editor "
+            "when accepting a regen so the next 'Remake with AI' on this "
+            "entry resolves to the same model. Stored on the timeline entry "
+            "alongside `html`. None = leave existing value untouched."
+        ),
+    )
 
 
 class AddFrameRequest(BaseModel):
@@ -687,6 +921,14 @@ class AddFrameRequest(BaseModel):
     html_start_y: Optional[int] = Field(None, description="Top edge in pixels (default 0)")
     html_end_x: Optional[int] = Field(None, description="Right edge in pixels (default video width)")
     html_end_y: Optional[int] = Field(None, description="Bottom edge in pixels (default video height)")
+    entry_meta: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Free-form per-entry metadata (e.g. {'display_name': 'Welcome'}) "
+            "to attach to the new entry. An empty `display_name` is treated "
+            "as 'no override' and omitted from the stored entry_meta."
+        ),
+    )
 
 
 class AddFrameResponse(BaseModel):
@@ -716,6 +958,32 @@ class DeleteFrameResponse(BaseModel):
     video_id: str
     entry_id: Optional[str]
     frame_index: int
+    message: str
+
+
+class ReorderFrameRequest(BaseModel):
+    """Request for moving a frame to a new position in the timeline.
+
+    Identifies the entry by `entry_id` (the only safe key — positional
+    indices shift after every reorder, so a positional source index from
+    the client can race the server's view). `to_index` is clamped to
+    [0, len(entries) - 1].
+
+    Used by the editor's drag-to-reorder UI. The backend re-saves the
+    timeline JSON with the entry spliced to the new position; no other
+    fields are changed.
+    """
+    video_id: str = Field(..., description="Video ID")
+    entry_id: str = Field(..., description="Stable entry ID to move")
+    to_index: int = Field(..., description="Target 0-based index in the post-move timeline")
+
+
+class ReorderFrameResponse(BaseModel):
+    status: str
+    video_id: str
+    entry_id: str
+    from_index: int
+    to_index: int
     message: str
 
 

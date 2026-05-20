@@ -3,10 +3,13 @@ import {
     parseTimelineThumbnails,
     pickBackgroundMusicTrack,
     pickPalette,
+    pickRecurringMotifs,
+    pickShotMetaByIndex,
     type SceneThumbnails,
     type TimelineAudioTrack,
     type TimelineJson,
     type TimelinePalette,
+    type TimelineShotMeta,
 } from './parse-timeline-thumbnails';
 
 /**
@@ -76,4 +79,27 @@ export function useTimelinePalette(
 ): TimelinePalette | undefined {
     const { data } = useTimelineJson(videoId, timelineUrl);
     return data ? pickPalette(data) : undefined;
+}
+
+/**
+ * v3 per-shot meta (audio_policy, narration_brief, background_treatment,
+ * AI-video telemetry, etc.) keyed by shot index. Lets `PipelineFlow` enrich
+ * `state.scenes[]` with fields the live SSE shot plan didn't carry —
+ * particularly important for history-loaded runs.
+ */
+export function useTimelineShotMeta(
+    videoId: string | undefined,
+    timelineUrl: string | undefined
+): Record<number, TimelineShotMeta> {
+    const { data } = useTimelineJson(videoId, timelineUrl);
+    return data ? pickShotMetaByIndex(data) : {};
+}
+
+/** Plan-level recurring motifs from `meta.recurring_motifs[]` (v3 only). */
+export function useTimelineRecurringMotifs(
+    videoId: string | undefined,
+    timelineUrl: string | undefined
+): Array<{ description: string; screen_position?: string; when_visible?: string }> {
+    const { data } = useTimelineJson(videoId, timelineUrl);
+    return data ? pickRecurringMotifs(data) : [];
 }

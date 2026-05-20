@@ -10,11 +10,16 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { CourseSettingsData, DripConditionsSettings } from '@/types/course-settings';
+import {
+    CourseSettingsData,
+    DripConditionsSettings,
+    OfferPricingSettings,
+} from '@/types/course-settings';
 import { BookOpen, Eye, Users, Save, Image, Play, List, Layers, RotateCcw } from 'lucide-react';
 import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { DripConditionsCard } from './DripConditionsCard';
+import { OfferPricingCard } from './OfferPricingCard';
 
 interface CourseSettingsFormProps {
     settings: CourseSettingsData;
@@ -134,6 +139,13 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
         setFormData((prev) => ({
             ...prev,
             dripConditions,
+        }));
+    };
+
+    const updateOfferPricing = (offerPricing: OfferPricingSettings) => {
+        setFormData((prev) => ({
+            ...prev,
+            offerPricing,
         }));
     };
 
@@ -616,6 +628,12 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                 <DripConditionsCard
                     settings={formData.dripConditions}
                     onUpdate={updateDripConditions}
+                />
+
+                {/* Offer Pricing Section */}
+                <OfferPricingCard
+                    settings={formData.offerPricing ?? { enabled: false }}
+                    onUpdate={updateOfferPricing}
                 />
             </div>
 

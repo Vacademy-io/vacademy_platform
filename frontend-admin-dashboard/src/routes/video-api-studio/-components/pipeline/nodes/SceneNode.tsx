@@ -1,9 +1,19 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { NodeProps } from 'reactflow';
-import { Camera, Loader2 } from 'lucide-react';
+import {
+    Camera,
+    Code2,
+    Eye,
+    Loader2,
+    Maximize2,
+    Mic,
+    Phone,
+    RefreshCw,
+    Stamp,
+} from 'lucide-react';
 import { Handle, Position } from 'reactflow';
 import type { PipelineNodeData } from '../-utils/build-pipeline-graph';
-import type { NodeState, SceneSlot } from '../-utils/derive-pipeline-state';
+import type { NodeState, SceneLiveDetail, SceneSlot } from '../-utils/derive-pipeline-state';
 import { NODE_SIZES } from '../-utils/build-pipeline-graph';
 import { useSceneHtml } from '../-utils/scenes-html-context';
 
@@ -88,6 +98,33 @@ function useFirstVisible<T extends HTMLElement>(): [React.MutableRefObject<T | n
     return [ref, seen];
 }
 
+/**
+ * Substage → label + icon for the per-scene live status line. Mirrors the
+ * BE emit set in run_state_aggregator.py: html_gen | density | bbox_lint |
+ * brand_asset | vision_review | screenshot | tts | media_polling.
+ */
+const SUBSTAGE_VISUAL: Record<string, { label: string; Icon: React.ComponentType<{ className?: string }> }> = {
+    html_gen: { label: 'Generating HTML', Icon: Code2 },
+    density: { label: 'Animation density', Icon: Loader2 },
+    bbox_lint: { label: 'Bounding-box check', Icon: Maximize2 },
+    brand_asset: { label: 'Brand asset check', Icon: Stamp },
+    vision_review: { label: 'Vision review', Icon: Eye },
+    screenshot: { label: 'Capturing screenshot', Icon: Camera },
+    tts: { label: 'Voicing narration', Icon: Mic },
+    media_polling: { label: 'Polling media job', Icon: Phone },
+};
+
+/** Compact list of "running" external calls; used in the live status line. */
+function pickActiveExternal(detail: SceneLiveDetail | undefined): string | null {
+    if (!detail?.externalCalls) return null;
+    for (const c of detail.externalCalls) {
+        if (c.state === 'queued' || c.state === 'polling') {
+            return `${c.provider} ${c.state}${c.pollCount && c.pollCount > 0 ? ` (${c.pollCount})` : ''}`;
+        }
+    }
+    return null;
+}
+
 function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
     const idx = data.sceneIndex ?? -1;
     const scene: SceneSlot | undefined = data.state.scenes[idx];
@@ -97,6 +134,21 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
     const visual = STATE_VISUAL[scene.state];
     const sceneNumber = String(scene.index + 1).padStart(2, '0');
     const hasThumb = !!(scene.imageUrl || scene.videoUrl);
+    // Live detail (substage / regen counter / external-call activity)
+    const live = scene.liveDetail;
+    const subVisual = live?.substage ? SUBSTAGE_VISUAL[live.substage] : undefined;
+    const activeExternal = pickActiveExternal(live);
+    const regenCount = live?.regenCount ?? 0;
+    // AI video badge — shown on Scene nodes whose Director-assigned shot_type
+    // is AI_VIDEO_HERO. Marks the shot as Veo-generated so a viewer can spot
+    // at a glance which shots used the AI video capability (and contributed
+    // to the per-video cost cap). Audio variant gets a slightly different
+    // visual; cost is summarized at the PipelinePanel level.
+    const isAiVideo = scene.shotType === 'AI_VIDEO_HERO';
+    // v3 intrinsic_only badge — master narration is muted in this shot's
+    // window, so the shot's own audio (Veo audio / source-clip audio) plays
+    // alone. Helps users see why some scenes don't have narration text.
+    const isIntrinsic = scene.audioPolicy === 'intrinsic_only';
 
     return (
         <div
@@ -146,10 +198,86 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
                 >
                     {scene.shotType.replace(/_/g, ' ')}
                 </span>
-                <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground">
+                {isAiVideo && (
+                    <span
+                        title="AI-generated video (fal.ai Veo)"
+                        className="shrink-0 rounded bg-violet-100 px-1 text-[9px] font-semibold uppercase tracking-wider text-violet-700"
+                    >
+                        ✨ AI
+                    </span>
+                )}
+                {isIntrinsic && (
+                    <span
+                        title="audio_policy=intrinsic_only — master narration is muted in this window; the shot plays its own audio (Veo audio / source clip)."
+                        className="shrink-0 rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase tracking-wider text-amber-700"
+                    >
+                        🔇 INTR
+                    </span>
+                )}
+                {regenCount > 0 && (
+                    <span
+                        title={`${regenCount} regeneration attempt${regenCount === 1 ? '' : 's'} — click for the verdict log`}
+                        className="ml-auto flex shrink-0 items-center gap-0.5 rounded bg-orange-100 px-1 text-[9px] font-bold tabular-nums text-orange-700"
+                    >
+                        <RefreshCw className="size-2.5" />
+                        {regenCount}
+                    </span>
+                )}
+                <span
+                    className={`${regenCount > 0 ? '' : 'ml-auto'} shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground`}
+                >
                     {scene.durationS.toFixed(1)}s
                 </span>
             </div>
+            {/* v3 intent_role + background_treatment + transition_in chips —
+                secondary header row, only when populated. Lets reviewers see
+                at a glance how the planner classified this beat in the
+                narrative arc and which transition leads into it. */}
+            {(scene.intentRole || scene.backgroundTreatment || scene.transitionIn) && (
+                <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 pb-1 text-[9px]">
+                    {scene.intentRole && (
+                        <span
+                            title={`Intent role: ${scene.intentRole}`}
+                            className="rounded bg-sky-50 px-1 font-medium uppercase tracking-wider text-sky-700"
+                        >
+                            {scene.intentRole}
+                        </span>
+                    )}
+                    {scene.backgroundTreatment && (
+                        <span
+                            title={`Background treatment: ${scene.backgroundTreatment}`}
+                            className="rounded bg-slate-100 px-1 font-medium uppercase tracking-wider text-slate-700"
+                        >
+                            {scene.backgroundTreatment.replace(/_/g, ' ')}
+                        </span>
+                    )}
+                    {scene.transitionIn && (
+                        <span
+                            title={`Transition in: ${scene.transitionIn}`}
+                            className="rounded bg-fuchsia-50 px-1 font-medium uppercase tracking-wider text-fuchsia-700"
+                        >
+                            {scene.transitionIn.replace(/_/g, ' ')}
+                        </span>
+                    )}
+                </div>
+            )}
+            {/* Live substage line — only while the shot is actively in
+                production. The icon hints at *what* the pipeline is doing
+                (HTML gen vs vision review vs Veo polling) so the user
+                doesn't see a generic spinner for the whole shot. */}
+            {scene.state === 'in_production' && (subVisual || activeExternal) && (
+                <div className="flex shrink-0 items-center gap-1.5 border-t border-black/5 bg-blue-50/60 px-2 py-1 text-[10px] text-blue-800">
+                    {subVisual ? (
+                        <subVisual.Icon className="size-3 shrink-0 animate-pulse" />
+                    ) : (
+                        <Loader2 className="size-3 shrink-0 animate-spin" />
+                    )}
+                    <span className="truncate">
+                        {subVisual?.label ?? 'Working…'}
+                        {activeExternal ? ` · ${activeExternal}` : ''}
+                    </span>
+                </div>
+            )}
 
             {/* Thumbnail (when timeline.json is loaded) — falls back to a
                 placeholder camera icon while parsing or when no media is in

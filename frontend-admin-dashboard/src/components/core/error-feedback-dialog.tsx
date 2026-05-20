@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
 import { useLocation } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { Loader2, Bug, Send, User, Mail, FileText, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Send } from 'lucide-react';
 import {
     Sheet,
     SheetContent,
@@ -11,7 +11,6 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -34,29 +33,29 @@ function getInstituteName(): string {
     const storeDetails = useInstituteDetailsStore.getState().instituteDetails;
     if (storeDetails?.institute_name) return storeDetails.institute_name;
 
-    // Derive a readable name from the hostname as last resort
     const host = window.location.hostname.replace(/^(admin\.|app\.|www\.)/, '');
     const domain = host.split('.')[0];
     if (!domain) return 'Vacademy';
     return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
-// In dev: Vite proxies /slack-api → https://slack.com/api and /slack-files → https://files.slack.com
-// In prod: set VITE_SLACK_API_BASE to your backend proxy URL
-const SLACK_API = import.meta.env.VITE_SLACK_API_BASE ?? '/slack-api';
-const SLACK_FILES = import.meta.env.VITE_SLACK_FILES_BASE ?? '/slack-files';
+// All Slack calls go through a server-side proxy:
+//   /slack-api/*   → https://slack.com/api/*     (Authorization injected server-side)
+//   /slack-files/* → https://files.slack.com/*   (pre-signed URL, no auth needed)
+// Dev: vite.config.ts `server.proxy` block reads SLACK_BOT_TOKEN from .env.local.
+// Prod: functions/slack-api/[[path]].js reads context.env.SLACK_BOT_TOKEN.
+// The bot token is NEVER bundled into client code.
+const SLACK_API = '/slack-api';
+const SLACK_FILES = '/slack-files';
 
-async function uploadFileToSlack(file: File, token: string): Promise<string | null> {
+async function uploadFileToSlack(file: File): Promise<string | null> {
     try {
-        // Step 1: get upload URL (proxied to avoid CORS)
         const urlRes = await fetch(
-            `${SLACK_API}/files.getUploadURLExternal?filename=${encodeURIComponent(file.name)}&length=${file.size}`,
-            { headers: { Authorization: `Bearer ${token}` } }
+            `${SLACK_API}/files.getUploadURLExternal?filename=${encodeURIComponent(file.name)}&length=${file.size}`
         );
         const urlData = await urlRes.json();
         if (!urlData.ok) return null;
 
-        // Step 2: upload file — rewrite upload_url to go through our proxy
         const proxyUploadUrl = (urlData.upload_url as string).replace(
             'https://files.slack.com',
             SLACK_FILES
@@ -73,13 +72,14 @@ async function uploadFileToSlack(file: File, token: string): Promise<string | nu
     }
 }
 
-async function completeSlackUploads(fileIds: string[], channelId: string, token: string, initialComment: string) {
+async function completeSlackUploads(
+    fileIds: string[],
+    channelId: string,
+    initialComment: string
+) {
     await fetch(`${SLACK_API}/files.completeUploadExternal`, {
         method: 'POST',
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             files: fileIds.map((id) => ({ id })),
             channel_id: channelId,
@@ -107,10 +107,9 @@ async function sendToSlack({
     route: string;
     error: unknown;
 }) {
-    const webhookUrl = import.meta.env.VITE_SLACK_WEBHOOK_URL;
-    const botToken = import.meta.env.VITE_SLACK_BOT_TOKEN;
-    const channelId = import.meta.env.VITE_SLACK_CHANNEL_ID;
-    if (!webhookUrl && !botToken) return;
+    // Support channel — user reports land here.
+    const channelId = import.meta.env.VITE_SLACK_SUPPORT_CHANNEL_ID;
+    if (!channelId) return;
 
     const errorText = error ? String(error) : 'No error object';
 
@@ -145,59 +144,31 @@ async function sendToSlack({
         },
     ];
 
-    // If bot token + channel are set, use the proper API (supports file uploads)
-    if (botToken && channelId) {
-        const msgRes = await fetch(`${SLACK_API}/chat.postMessage`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${botToken}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ channel: channelId, blocks }),
-        });
-        const msgData = await msgRes.json();
-
-        // Upload files if any
-        if (files && files.length > 0 && msgData.ok) {
-            const fileIds: string[] = [];
-            for (const file of Array.from(files)) {
-                const id = await uploadFileToSlack(file, botToken);
-                if (id) fileIds.push(id);
-            }
-            if (fileIds.length > 0) {
-                await completeSlackUploads(
-                    fileIds,
-                    channelId,
-                    botToken,
-                    `Attachments for error report by ${username} (${instituteName})`
-                );
-            }
-        }
-        return;
-    }
-
-    // Fallback: webhook (no file upload, fire-and-forget)
-    const fileList =
-        files && files.length > 0
-            ? Array.from(files)
-                  .map((f) => `• ${f.name} (${(f.size / 1024).toFixed(1)} KB)`)
-                  .join('\n')
-            : 'None';
-
-    const blocksWithFiles = [
-        ...blocks,
-        {
-            type: 'section',
-            text: { type: 'mrkdwn', text: `*Attachments:*\n${fileList}` },
-        },
-    ];
-
-    await fetch(webhookUrl, {
+    const msgRes = await fetch(`${SLACK_API}/chat.postMessage`, {
         method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({ blocks: blocksWithFiles }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            channel: channelId,
+            text: `Error report from ${username} (${instituteName})`,
+            blocks,
+        }),
     });
+    const msgData = await msgRes.json();
+
+    if (files && files.length > 0 && msgData.ok) {
+        const fileIds: string[] = [];
+        for (const file of Array.from(files)) {
+            const id = await uploadFileToSlack(file);
+            if (id) fileIds.push(id);
+        }
+        if (fileIds.length > 0) {
+            await completeSlackUploads(
+                fileIds,
+                channelId,
+                `Attachments for error report by ${username} (${instituteName})`
+            );
+        }
+    }
 }
 
 export function ErrorFeedbackDialog({
@@ -213,7 +184,6 @@ export function ErrorFeedbackDialog({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const location = useLocation();
 
-    // Pre-fill name/email from JWT token when dialog opens
     useEffect(() => {
         if (!isOpen) return;
         const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
@@ -226,15 +196,13 @@ export function ErrorFeedbackDialog({
         setIsSubmitting(true);
 
         try {
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const instituteName = getInstituteName();
             const tokenData = getTokenDecodedData(getTokenFromCookie(TokenKey.accessToken));
             const username = (tokenData?.username ?? name) || 'Anonymous';
             const userEmail = (tokenData?.email ?? email) || 'unknown@example.com';
 
             await sendToSlack({
-                instituteName,
-                timezone,
+                instituteName: getInstituteName(),
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 username,
                 email: userEmail,
                 description,
@@ -243,38 +211,13 @@ export function ErrorFeedbackDialog({
                 error,
             });
 
+            // Record feedback in Sentry's User Feedback UI for retention.
+            // We intentionally do NOT call Sentry.captureMessage here — that would
+            // create an issue, which the Sentry → webhook → send-alert.js rule
+            // routes to the crash channel, duplicating the Slack post above.
             if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
-                let eventId = initialEventId;
-
-                if (!eventId) {
-                    eventId = Sentry.captureMessage('User Feedback Reported', {
-                        level: 'info',
-                        extra: {
-                            route: location.pathname,
-                            description,
-                            errorDetails: error ? String(error) : 'No error object provided',
-                        },
-                    });
-                }
-
-                if (files && files.length > 0) {
-                    Sentry.withScope((scope) => {
-                        Array.from(files).forEach((file) => {
-                            scope.addAttachment({
-                                filename: file.name,
-                                data: file as unknown as Uint8Array,
-                                contentType: file.type,
-                            });
-                        });
-                        Sentry.captureMessage('User Feedback Attachment', {
-                            level: 'info',
-                            tags: { feedbackParams: 'true' },
-                        });
-                    });
-                }
-
                 await Sentry.captureFeedback({
-                    associatedEventId: eventId,
+                    associatedEventId: initialEventId,
                     name: name || 'Anonymous',
                     email: email || 'anonymous@example.com',
                     message: description,
@@ -305,7 +248,7 @@ export function ErrorFeedbackDialog({
                         Help us improve by providing details. Context is automatically included.
                     </SheetDescription>
                 </SheetHeader>
-                
+
                 <form onSubmit={handleSubmit} className="flex flex-col gap-5">
                     <div className="grid gap-2">
                         <Label htmlFor="name" className="text-sm font-medium text-gray-700">
@@ -319,7 +262,7 @@ export function ErrorFeedbackDialog({
                             className="bg-white border-gray-300 focus-visible:ring-1 focus-visible:ring-primary-500"
                         />
                     </div>
-                    
+
                     <div className="grid gap-2">
                         <Label htmlFor="email" className="text-sm font-medium text-gray-700">
                             Email (Optional)
@@ -367,16 +310,16 @@ export function ErrorFeedbackDialog({
                     </div>
 
                     <div className="flex gap-3 pt-4 mt-2 border-t border-gray-100">
-                        <MyButton 
-                            type="button" 
-                            buttonType="secondary" 
+                        <MyButton
+                            type="button"
+                            buttonType="secondary"
                             onClick={() => setIsOpen(false)}
                             className="w-full"
                         >
                             Cancel
                         </MyButton>
-                        <MyButton 
-                            type="submit" 
+                        <MyButton
+                            type="submit"
                             buttonType="primary"
                             disabled={isSubmitting}
                             className="w-full"

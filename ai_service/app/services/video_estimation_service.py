@@ -19,7 +19,9 @@ from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .credit_service import USD_TO_CREDIT_RATIO, DEFAULT_PRICING
+from .ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
+from .credit_service import DEFAULT_PRICING
+from .credit_rate_service import CreditRateService
 
 logger = logging.getLogger(__name__)
 
@@ -197,10 +199,15 @@ def _llm_cost_usd(input_per_1m: float, output_per_1m: float, prompt_tokens: int,
     return (prompt_tokens / 1_000_000) * input_per_1m + (completion_tokens / 1_000_000) * output_per_1m
 
 
-def _credits_from_usd(request_type: str, cost_usd: float) -> Decimal:
-    """Mirror credit_service.calculate_credits formula: max(min_charge, base_cost + usd × ratio)."""
+def _credits_from_usd(request_type: str, cost_usd: float, ratio: Decimal) -> Decimal:
+    """Mirror credit_service.calculate_credits formula: max(min_charge, base_cost + usd × ratio).
+
+    `ratio` is the live USD→credits multiplier (from `CreditRateService`).
+    Pass the resolved ratio in once per estimation run rather than looking
+    it up per line item.
+    """
     pricing = DEFAULT_PRICING.get(request_type, DEFAULT_PRICING["content"])
-    calculated = pricing["base_cost"] + (Decimal(str(cost_usd)) * USD_TO_CREDIT_RATIO)
+    calculated = pricing["base_cost"] + (Decimal(str(cost_usd)) * ratio)
     result = max(pricing["min_charge"], calculated)
     return result.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -239,6 +246,13 @@ def estimate_video_generation(
     review_mode: bool,
     attachments_count: int,
     host: Optional[Dict[str, Any]] = None,
+    # Opt-in: when True (and tier is ultra/super_ultra) the estimator adds
+    # an AI video upper-bound row to the breakdown so the pre-submit
+    # preview surfaces the worst-case Veo spend. Mirrors the runtime
+    # `ai_video_enabled` flag — the runtime cap is the per-video circuit
+    # breaker in QUALITY_TIERS, not a per-shot guess.
+    ai_video_enabled: bool = False,
+    ai_video_audio_enabled: bool = False,
 ) -> Dict[str, Any]:
     """
     Estimate credits and USD cost for a video generation request, plus echo back
@@ -247,6 +261,11 @@ def estimate_video_generation(
     # Resolve effective model (mirror the runtime resolution chain).
     effective_model = model or _resolve_default_video_model(db) or ""
     duration_band = _normalize_duration_band(target_duration)
+
+    # Resolve the live USD→credits ratio once per estimation. Per-line-item
+    # lookups would hammer the cache for no benefit — the value is stable
+    # for the duration of one estimate call.
+    rate_ratio = CreditRateService(db).get_effective_ratio()
 
     baseline = _VIDEO_BASELINES.get((quality_tier, duration_band))
     if not baseline:
@@ -344,7 +363,7 @@ def estimate_video_generation(
                 "component": "Avatar video synthesis (host)",
                 "detail": host_detail,
                 "cost_usd": round(host_usd, 4),
-                "credits": float(_credits_from_usd("video", host_usd)),
+                "credits": float(_credits_from_usd("video", host_usd, rate_ratio)),
             }
             # Per-shot avatar reference image gen (Seedream image-to-image).
             # Built-in catalog providers (argil/veed) skip Seedream entirely
@@ -368,7 +387,7 @@ def estimate_video_generation(
                 "component": "LLM — Director pass",
                 "detail": f"~{d_in:,} in / ~{d_out:,} out tokens · {effective_model or 'default model'}",
                 "cost_usd": round(dir_usd, 4),
-                "credits": float(_credits_from_usd("video", dir_usd)),
+                "credits": float(_credits_from_usd("video", dir_usd, rate_ratio)),
             })
 
         seg_label = "LLM — per-shot generation" if uses_director else "LLM — script + segment shots"
@@ -377,7 +396,7 @@ def estimate_video_generation(
             "component": seg_label,
             "detail": f"~{s_in:,} in / ~{s_out:,} out tokens · {effective_model or 'default model'}",
             "cost_usd": round(seg_usd, 4),
-            "credits": float(_credits_from_usd("video", seg_usd)),
+            "credits": float(_credits_from_usd("video", seg_usd, rate_ratio)),
         })
 
         rows += [
@@ -385,13 +404,13 @@ def estimate_video_generation(
                 "component": "Image generation",
                 "detail": f"~{imgs} images · seedream-4.5",
                 "cost_usd": round(img_usd, 4),
-                "credits": float(_credits_from_usd("image", img_usd)),
+                "credits": float(_credits_from_usd("image", img_usd, rate_ratio)),
             },
             {
                 "component": f"TTS ({tts_provider})",
                 "detail": f"~{tts_chars:,} characters",
                 "cost_usd": round(tts_usd, 4),
-                "credits": float(_credits_from_usd(_tts_request_type(tts_provider), tts_usd)),
+                "credits": float(_credits_from_usd(_tts_request_type(tts_provider), tts_usd, rate_ratio)),
             },
         ]
         if bg_music_on:
@@ -399,7 +418,7 @@ def estimate_video_generation(
                 "component": "Background music (Lyria)",
                 "detail": "auto-generated track",
                 "cost_usd": round(bg_usd, 4),
-                "credits": float(_credits_from_usd("video", bg_usd)),
+                "credits": float(_credits_from_usd("video", bg_usd, rate_ratio)),
             })
         # Host (avatar) cost — appended last so the FE can render it as a
         # distinct line item below the standard breakdown.
@@ -410,8 +429,31 @@ def estimate_video_generation(
                     "component": "Avatar reference images (host)",
                     "detail": f"~{host_extra_image_count} images · seedream-4.5 (per-shot identity)",
                     "cost_usd": round(host_extra_image_usd, 4),
-                    "credits": float(_credits_from_usd("image", host_extra_image_usd)),
+                    "credits": float(_credits_from_usd("image", host_extra_image_usd, rate_ratio)),
                 })
+
+        # AI video (Veo) upper-bound row — present only when the user
+        # opted-in AND the tier supports it. Veo spend is unpredictable
+        # (Director picks AI_VIDEO_HERO shots at runtime), so we surface
+        # the per-video circuit-breaker cap as the worst case. Same
+        # number across low/expected/high — variance doesn't apply here
+        # since the cap is fixed.
+        if ai_video_enabled and quality_tier in ("ultra", "super_ultra"):
+            _av_cap_usd = AI_VIDEO_PER_VIDEO_COST_CAP_USD
+            rows.append({
+                "component": "AI video (worst case)",
+                "detail": (
+                    "fal.ai Veo · upper bound = per-video cap. Actual spend "
+                    "depends on Director's per-shot decisions."
+                    + (
+                        " Veo audio enabled (≈+67% per second)."
+                        if ai_video_audio_enabled
+                        else ""
+                    )
+                ),
+                "cost_usd": round(_av_cap_usd, 4),
+                "credits": float(_credits_from_usd("ai_video", _av_cap_usd, rate_ratio)),
+            })
         return rows
 
     def _scale(v: int, factor: float) -> int:
@@ -456,7 +498,7 @@ def estimate_video_generation(
                 else "Uses segment-based shot generation (no Director pass)."
             ),
             f"Range reflects ±{int(_TOKEN_VARIANCE * 100)}% variance on tokens, ±{int(_IMAGE_VARIANCE * 100)}% on image count.",
-            "Conversion rate: $1 USD → 150 credits (50% markup).",
+            f"Current rate: $1 USD → {rate_ratio:.0f} credits (DB-driven, see credit_rate_config).",
         ],
         "model_registered": llm_pricing is not None,
     }

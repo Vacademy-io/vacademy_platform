@@ -135,12 +135,44 @@ function mergeDisplayWithDefaults(
     });
 
     // Dashboard widgets merge
-    const mergedWidgets = mergeArrayById(
-        incoming?.dashboard?.widgets as
-            | Array<Partial<DisplaySettingsData['dashboard']['widgets'][number]>>
-            | undefined,
-        defaults.dashboard.widgets
+    //
+    // Behavior:
+    //  - The user's previously-saved widgets keep their saved visibility +
+    //    order as-is.
+    //  - Any widget present in the defaults but missing from the user's
+    //    saved list is a "newly-introduced widget". It's auto-added using
+    //    the default visibility AND assigned an order that places it AFTER
+    //    the user's last saved widget — so it appears at the bottom of the
+    //    existing user's dashboard rather than colliding with an in-use
+    //    order slot. Among themselves, new widgets preserve the priority
+    //    order from the defaults list.
+    //  - For brand-new institutes (no saved widgets) the defaults' own
+    //    order numbers stand, giving them a priority-ordered dashboard.
+    const incomingWidgetsRaw = incoming?.dashboard?.widgets as
+        | Array<Partial<DisplaySettingsData['dashboard']['widgets'][number]>>
+        | undefined;
+    const mergedWidgets = mergeArrayById(incomingWidgetsRaw, defaults.dashboard.widgets);
+
+    const incomingIds = new Set<string>(
+        (incomingWidgetsRaw || [])
+            .map((w) => (w?.id ? String(w.id) : ''))
+            .filter(Boolean)
     );
+    const maxIncomingOrder = (incomingWidgetsRaw || []).reduce(
+        (max, w) => (typeof w?.order === 'number' && w.order > max ? w.order : max),
+        0
+    );
+    // Walk defaults in their declared (priority) order so new widgets keep
+    // that relative ordering when appended below the user's saved widgets.
+    let nextAppendOrder = maxIncomingOrder;
+    const appendOrderById = new Map<string, number>();
+    defaults.dashboard.widgets.forEach((def) => {
+        if (!incomingIds.has(String(def.id))) {
+            nextAppendOrder += 1;
+            appendOrderById.set(String(def.id), nextAppendOrder);
+        }
+    });
+
     merged.dashboard.widgets = mergedWidgets.map((w) => {
         const def =
             defaults.dashboard.widgets.find((d) => d.id === w.id) ||
@@ -149,9 +181,14 @@ function mergeDisplayWithDefaults(
                 order: 0,
                 visible: true,
             } as DisplaySettingsData['dashboard']['widgets'][number]);
+        const isNewForExistingUser =
+            incomingIds.size > 0 && !incomingIds.has(String(w.id));
+        const resolvedOrder = isNewForExistingUser
+            ? (appendOrderById.get(String(w.id)) ?? def.order ?? 0)
+            : (w.order ?? def.order ?? 0);
         return {
             id: w.id as DisplaySettingsData['dashboard']['widgets'][number]['id'],
-            order: w.order ?? def.order ?? 0,
+            order: resolvedOrder,
             visible: w.visible ?? def.visible ?? true,
         };
     });
@@ -320,6 +357,10 @@ function mergeDisplayWithDefaults(
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
+        directEditPublishedCourse: false,
+        canEditCourseStructure: false,
+        canDeleteCourseStructure: false,
+        showAdvancedCourseIds: false,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -335,6 +376,22 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.allowViewSlidesInReadOnly ??
             defCoursePage.allowViewSlidesInReadOnly ??
             true,
+        directEditPublishedCourse:
+            incoming?.coursePage?.directEditPublishedCourse ??
+            defCoursePage.directEditPublishedCourse ??
+            false,
+        canEditCourseStructure:
+            incoming?.coursePage?.canEditCourseStructure ??
+            defCoursePage.canEditCourseStructure ??
+            false,
+        canDeleteCourseStructure:
+            incoming?.coursePage?.canDeleteCourseStructure ??
+            defCoursePage.canDeleteCourseStructure ??
+            false,
+        showAdvancedCourseIds:
+            incoming?.coursePage?.showAdvancedCourseIds ??
+            defCoursePage.showAdvancedCourseIds ??
+            false,
     };
 
     // Redirect
@@ -345,10 +402,12 @@ function mergeDisplayWithDefaults(
     const defSlideView = defaults.slideView || {
         showCopyTo: true,
         showMoveTo: true,
+        showDelete: true,
     };
     merged.slideView = {
         showCopyTo: incoming?.slideView?.showCopyTo ?? defSlideView.showCopyTo,
         showMoveTo: incoming?.slideView?.showMoveTo ?? defSlideView.showMoveTo,
+        showDelete: incoming?.slideView?.showDelete ?? defSlideView.showDelete ?? true,
     };
 
     // Authored Courses Card Settings
@@ -462,6 +521,21 @@ function mergeDisplayWithDefaults(
             incoming?.learnerManagement?.showApprovalToggle ??
             defLearnerManagement.showApprovalToggle,
     };
+
+    // Learner-list column visibility (per-role overlay). Passes through whatever
+    // the role has saved. Empty/missing = institute defaults apply at render time:
+    // system columns visible, custom fields hidden until admin opts in.
+    if (incoming?.learnerListColumns || defaults.learnerListColumns) {
+        merged.learnerListColumns = {
+            hiddenColumns:
+                incoming?.learnerListColumns?.hiddenColumns ??
+                defaults.learnerListColumns?.hiddenColumns ??
+                [],
+            enabledCustomFields:
+                incoming?.learnerListColumns?.enabledCustomFields ??
+                defaults.learnerListColumns?.enabledCustomFields,
+        };
+    }
 
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't

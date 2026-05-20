@@ -37,6 +37,11 @@ interface AttendanceMarkingTableProps {
     scheduleId: string;
     accessType: string;
     sessionTitle?: string;
+    packageSessionDetails?: Array<{
+        package_session_id: string;
+        package_name: string;
+        level_name?: string;
+    }> | null;
     onSaved?: () => void;
 }
 
@@ -95,6 +100,7 @@ export function AttendanceMarkingTable({
     sessionId,
     scheduleId,
     sessionTitle,
+    packageSessionDetails,
     onSaved,
 }: AttendanceMarkingTableProps) {
     const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
@@ -335,6 +341,13 @@ export function AttendanceMarkingTable({
     };
 
     const handleExportCSV = useCallback(() => {
+        // const batchValue = packageSessionDetails && packageSessionDetails.length > 0
+        //     ? packageSessionDetails.map((d) => d.level_name).filter(Boolean).join(' | ')
+        //     : '';
+        const courseValue = packageSessionDetails && packageSessionDetails.length > 0
+            ? packageSessionDetails.map((d) => d.package_name).filter(Boolean).join(' | ')
+            : '';
+
         const csvData = sortedData.map((item, idx) => {
             const engagement = parseEngagement(item.engagementData);
             const duration = item.providerTotalDurationMinutes ?? '';
@@ -345,6 +358,8 @@ export function AttendanceMarkingTable({
                 '#': idx + 1,
                 'Name': item.fullName,
                 'Email': item.email || '',
+                // 'Batch': batchValue,
+                'Course': courseValue,
                 'Status': getStatus(item) === 'PRESENT' ? 'Present' : getStatus(item) === 'ABSENT' ? 'Absent' : 'Unmarked',
                 'Mode': item.statusType || '',
                 'Duration (min)': duration,
@@ -379,7 +394,7 @@ export function AttendanceMarkingTable({
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         toast.success('Attendance CSV downloaded');
-    }, [sortedData, getStatus, sessionId, sessionTitle, customFieldColumns, getCfValue]);
+    }, [sortedData, getStatus, sessionId, sessionTitle, packageSessionDetails, customFieldColumns, feedbackColumns, getCfValue, getFeedbackValue]);
 
     const hasEngagementOrDuration = (student: LiveSessionReport) => {
         return student.providerTotalDurationMinutes || student.engagementData;

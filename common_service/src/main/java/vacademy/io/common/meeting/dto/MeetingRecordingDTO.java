@@ -27,4 +27,8 @@ public class MeetingRecordingDTO {
     private String type;
     /** BBB internal meeting ID — used as recordID in BBB deleteRecordings API */
     private String bbbInternalId;
+    /** YouTube video ID — set after the recording has been uploaded to the institute's channel */
+    private String youtubeVideoId;
+    /** Resolved YouTube watch URL (https://www.youtube.com/watch?v=...) for convenience */
+    private String youtubeVideoUrl;
 }

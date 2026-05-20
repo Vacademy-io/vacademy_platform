@@ -113,11 +113,13 @@ export const SlidesMenuOption = () => {
 
     return (
         <>
-            <MyDropdown dropdownList={menuOptions} onSelect={handleSelect}>
-                <MyButton buttonType="secondary" scale="large" layoutVariant="icon">
-                    <DotsThree />
-                </MyButton>
-            </MyDropdown>
+            {menuOptions.length > 0 && (
+                <MyDropdown dropdownList={menuOptions} onSelect={handleSelect}>
+                    <MyButton buttonType="secondary" scale="large" layoutVariant="icon">
+                        <DotsThree />
+                    </MyButton>
+                </MyDropdown>
+            )}
 
             {/* Copy Dialog */}
             <CopyToDialog openDialog={openDialog} setOpenDialog={setOpenDialog} />

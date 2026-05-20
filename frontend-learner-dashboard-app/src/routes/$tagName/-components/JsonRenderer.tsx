@@ -156,7 +156,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "testimonialSection":
         return <TestimonialSectionComponent key={id} {...props} />;
       case "cartComponent":
-        return <CartComponent key={id} {...props} instituteId={instituteId} />;
+        return <CartComponent key={id} {...props} instituteId={instituteId} globalSettings={globalSettings} />;
       case "buyRentSection":
         return <BuyRentSectionComponent key={id} {...props} tagName={tagName} />;
       case "policyRenderer":

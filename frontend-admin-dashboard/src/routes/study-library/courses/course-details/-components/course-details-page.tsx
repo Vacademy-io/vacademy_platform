@@ -5,6 +5,8 @@ import {
     ChalkboardTeacher,
     Clock,
     Code,
+    Copy,
+    DotsThree,
     File,
     FileDoc,
     FilePdf,
@@ -17,6 +19,14 @@ import {
     FileText,
     VideoCamera,
 } from '@phosphor-icons/react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
     Accordion,
@@ -69,12 +79,9 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey, Authority } from '@/constants/auth/tokens';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import {
-    ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
-    type DisplaySettingsData,
-} from '@/types/display-settings';
-import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { type DisplaySettingsData } from '@/types/display-settings';
+import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { extractTextFromHTML } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
@@ -203,6 +210,65 @@ const extractYouTubeVideoId = (url: string): string | null => {
     const regExp = /^.*(?:youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
     return match && match[1] && match[1].length === 11 ? match[1] : null;
+};
+
+type AdvancedIdItem = { label: string; value: string };
+
+const AdvancedIdsMenu = ({ items }: { items: AdvancedIdItem[] }) => {
+    const handleCopy = async (item: AdvancedIdItem) => {
+        if (!item.value) {
+            toast.error(`${item.label} is not available`);
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(item.value);
+            toast.success(`${item.label} copied`);
+        } catch {
+            toast.error('Failed to copy');
+        }
+    };
+
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <MyButton
+                    type="button"
+                    buttonType="secondary"
+                    layoutVariant="icon"
+                    scale="small"
+                    aria-label="More options"
+                >
+                    <DotsThree size={18} weight="bold" />
+                </MyButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuLabel className="text-xs font-semibold text-gray-700">
+                    Advanced
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {items.map((item) => (
+                    <DropdownMenuItem
+                        key={item.label}
+                        onSelect={(e) => {
+                            e.preventDefault();
+                            handleCopy(item);
+                        }}
+                        className="flex cursor-pointer items-start gap-2"
+                    >
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                            <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                                {item.label}
+                            </span>
+                            <span className="truncate font-mono text-xs text-gray-800">
+                                {item.value || '—'}
+                            </span>
+                        </div>
+                        <Copy size={14} className="mt-1 shrink-0 text-gray-400" />
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 };
 
 export const CourseDetailsPage = () => {
@@ -1132,17 +1198,39 @@ export const CourseDetailsPage = () => {
     const courseCreatedBy = form.getValues('courseData')?.created_by_user_id;
     const isOwnCourse = courseCreatedBy === currentUserId;
 
+    // Role display settings (course page toggles). Use the same async-fetch
+    // pattern as authored-courses-tab / NonAdminSlidesView so the component
+    // re-renders when the cache populates after first render (e.g. fresh
+    // incognito session landing directly on this URL).
+    const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(() =>
+        getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())
+    );
+    useEffect(() => {
+        const roleKeyInner = getActiveRoleDisplaySettingsKey();
+        // Always force-refresh on mount so admin policy changes
+        // (e.g. directEditPublishedCourse) take effect on the next page load
+        // without waiting for the 24h localStorage TTL to expire.
+        getDisplaySettings(roleKeyInner, true)
+            .then(setRoleDisplay)
+            .catch(() => {
+                // On failure, fall back to whatever is cached so the page
+                // still renders something sensible.
+                const cached = getDisplaySettingsFromCache(roleKeyInner);
+                if (cached) setRoleDisplay(cached);
+            });
+    }, []);
+    const coursePage = roleDisplay?.coursePage;
+    const allowDirectEditPublished = coursePage?.directEditPublishedCourse === true;
+
     const canEdit =
         isAdmin ||
+        allowDirectEditPublished ||
         (isOwnCourse && courseStatus === 'DRAFT') ||
         (!courseCreatedBy && courseStatus === 'DRAFT');
     const isPublishedCourse = courseStatus === 'ACTIVE';
     const isInReviewCourse = courseStatus === 'IN_REVIEW';
-    const isTeacherOnPublishedCourse = !isAdmin && isPublishedCourse;
-    // Role display settings (course page toggles)
-    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-    const roleDisplay: DisplaySettingsData | null = getDisplaySettingsFromCache(roleKey);
-    const coursePage = roleDisplay?.coursePage;
+    const isTeacherOnPublishedCourse =
+        !isAdmin && isPublishedCourse && !allowDirectEditPublished;
     const showSelectors = !(
         coursePage?.viewCourseConfiguration === false &&
         sessionOptions.length <= 1 &&
@@ -1151,7 +1239,8 @@ export const CourseDetailsPage = () => {
 
     const { instituteDetails } = useInstituteDetailsStore();
     // Show restriction message for non-editable courses
-    const shouldShowRestriction = !isAdmin && (isPublishedCourse || isInReviewCourse);
+    const shouldShowRestriction =
+        !isAdmin && !allowDirectEditPublished && (isPublishedCourse || isInReviewCourse);
 
     // Show dashboard loader while loading
     if (isLoading) {
@@ -1255,6 +1344,25 @@ export const CourseDetailsPage = () => {
                                                         `${sessionId}|${levelId}`
                                                     ) ?? ''
                                                 }
+                                            />
+                                        )}
+                                        {coursePage?.showAdvancedCourseIds === true && (
+                                            <AdvancedIdsMenu
+                                                items={[
+                                                    {
+                                                        label: 'Course ID',
+                                                        value: effectiveCourseId,
+                                                    },
+                                                    {
+                                                        label: 'Package Session ID',
+                                                        value: packageSessionIds || '',
+                                                    },
+                                                    {
+                                                        label: 'Session ID',
+                                                        value: selectedSession,
+                                                    },
+                                                    { label: 'Level ID', value: selectedLevel },
+                                                ]}
                                             />
                                         )}
                                     </div>

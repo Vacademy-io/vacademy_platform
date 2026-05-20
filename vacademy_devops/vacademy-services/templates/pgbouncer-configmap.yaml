@@ -1,3 +1,18 @@
+{{- /*
+  Guard: refuse to render the pgbouncer ConfigMap unless the DB connection
+  values have been overridden (typically via a local values.secret.yaml).
+  This prevents a broken deploy where pgbouncer would point at placeholder hosts.
+*/ -}}
+{{- $pgb := .Values.pgbouncer | default dict -}}
+{{- range $key := list "dbHost" "dbReadHost" "dbPort" -}}
+  {{- $val := index $pgb $key -}}
+  {{- if not $val -}}
+    {{- fail (printf "pgbouncer.%s is required. Set it in values.secret.yaml (see values.secret.example.yaml) and pass it with -f. The pgbouncer ConfigMap will NOT be applied without it." $key) -}}
+  {{- end -}}
+  {{- if hasPrefix "REPLACE_WITH_" (toString $val) -}}
+    {{- fail (printf "pgbouncer.%s is still set to a placeholder (%q). Override it in values.secret.yaml and pass it with -f. The pgbouncer ConfigMap will NOT be applied with placeholder values." $key (toString $val)) -}}
+  {{- end -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -4,7 +4,9 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import {
   fetchBookCataloguePage,
+  fetchCatalogueStores,
   BookCatalogueItem,
+  CatalogueStore,
 } from "../../-services/book-catalogue-service";
 import {
   getOpenLevels,
@@ -29,6 +31,7 @@ import { toTitleCase, formatTagForDisplay } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import { ShareButton } from "./ShareButton";
+import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 
 interface BookCatalogueProps {
   title: string;
@@ -56,6 +59,8 @@ interface Course {
   description: string;
   thumbnail: string;
   price: number;
+  elevatedPrice?: number;
+  currency?: string;
   type: string;
   level: string;
   instructor: string;
@@ -68,6 +73,11 @@ interface Course {
   enrollInviteId?: string;
   packageSessionId?: string;
   available_slots?: number;
+  /** The store/session this variant belongs to. Set on every Course; populated from the cheapest variant when no store is filtered. */
+  sessionId?: string;
+  sessionName?: string;
+  /** Total number of distinct stores carrying this book (>=1). Used for the "Available at N stores" hint. */
+  storeCount?: number;
   [key: string]: any;
 }
 
@@ -175,6 +185,33 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [togle, settogle] = useState(false);
+
+  // Store / session filter — persisted in localStorage like levelFilter.
+  // `null` = "all stores"; for buy mode that means show the cheapest variant per
+  // book. For rent mode we refuse to render anything until a store is chosen
+  // because rent is physical pickup.
+  const [storeFilter, setStoreFilterState] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("storeFilter") || null;
+  });
+  const [storeMenuOpen, setStoreMenuOpen] = useState(false);
+  const setStoreFilter = (id: string | null) => {
+    setStoreFilterState(id);
+    if (typeof window !== "undefined") {
+      if (id) localStorage.setItem("storeFilter", id);
+      else localStorage.removeItem("storeFilter");
+      window.dispatchEvent(new CustomEvent("storeFilterChanged"));
+    }
+  };
+  useEffect(() => {
+    const onStoreChange = (e: StorageEvent) => {
+      if (e.key === "storeFilter") {
+        setStoreFilterState(e.newValue || null);
+      }
+    };
+    window.addEventListener("storage", onStoreChange);
+    return () => window.removeEventListener("storage", onStoreChange);
+  }, []);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -285,6 +322,35 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
   const currentLevelId = levelIdMap?.[cartMode];
   const PAGE_SIZE = 30;
 
+  // Discover stores for this institute / current level. The list is the union
+  // of sessions seen in a wide, unfiltered fetch — so empty stores are hidden
+  // naturally.
+  const { data: storeList = [] } = useQuery<CatalogueStore[]>({
+    queryKey: ["catalogue-stores", instituteId, currentLevelId ?? null],
+    queryFn: () => fetchCatalogueStores(instituteId, currentLevelId ? [currentLevelId] : []),
+    enabled: !!instituteId && !!currentLevelId,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  });
+
+  // If the persisted store filter doesn't exist in this institute (e.g. user
+  // switched institutes, store was deleted), clear it.
+  useEffect(() => {
+    if (storeFilter && storeList.length > 0 && !storeList.some((s) => s.id === storeFilter)) {
+      setStoreFilter(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeFilter, storeList]);
+
+  const activeStoreName = useMemo(
+    () => storeList.find((s) => s.id === storeFilter)?.name,
+    [storeFilter, storeList]
+  );
+
+  // Rent mode without a store is an empty state — physical pickup means we
+  // cannot show "any" inventory honestly.
+  const rentRequiresStorePick = cartMode === "rent" && !storeFilter;
+
   // Paginated, server-filtered catalogue fetch.
   // Different (mode, search, genres) -> different cache entry, so mode toggles hit cache once warmed.
   const {
@@ -299,6 +365,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       "book-catalogue",
       instituteId,
       currentLevelId ?? null,
+      storeFilter ?? null,
       debouncedSearchTerm,
       [...selectedGenres].sort(),
     ],
@@ -306,6 +373,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       fetchBookCataloguePage({
         instituteId,
         levelIds: currentLevelId ? [currentLevelId] : [],
+        sessionIds: storeFilter ? [storeFilter] : [],
         searchByName: debouncedSearchTerm,
         tags: selectedGenres,
         page: pageParam as number,
@@ -313,17 +381,41 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => (lastPage.last ? undefined : lastPage.number + 1),
-    enabled: !!instituteId && !!currentLevelId,
+    enabled: !!instituteId && !!currentLevelId && !rentRequiresStorePick,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
   });
 
-  // Flatten pages -> rendered Course[]. Dedup by id in case of race / refetch overlap.
+  // Flatten pages -> rendered Course[]. The catalogue API returns one row per
+  // package_session, so a book sold at N stores returns N rows. We group by
+  // package id and pick a "best" variant:
+  //   * if a store is filtered, every group has exactly one row (the API
+  //     already narrowed it)
+  //   * otherwise, pick the cheapest variant so the customer sees the best deal
+  // We also count distinct stores per book to surface "Available at N stores".
   const displayedCourses: Course[] = useMemo(() => {
     const raw: BookCatalogueItem[] = data?.pages.flatMap((p) => p.content) ?? [];
-    const seen = new Set<string>();
-    const result: Course[] = [];
+    const variantsByPackage = new Map<string, BookCatalogueItem[]>();
     for (const c of raw) {
+      if (!c.id) continue;
+      const arr = variantsByPackage.get(c.id);
+      if (arr) arr.push(c);
+      else variantsByPackage.set(c.id, [c]);
+    }
+
+    const result: Course[] = [];
+    for (const [, variants] of variantsByPackage) {
+      // Cheapest first; missing prices sort to the end.
+      const sorted = [...variants].sort((a, b) => {
+        const av = a.min_plan_actual_price ?? Number.POSITIVE_INFINITY;
+        const bv = b.min_plan_actual_price ?? Number.POSITIVE_INFINITY;
+        return av - bv;
+      });
+      const c = sorted[0];
+      const storeCount = new Set(
+        variants.map((v) => v.session_id).filter((id): id is string => Boolean(id))
+      ).size;
+
       const htmlContent = c.course_html_description_html || "";
       const textContent = htmlContent
         .replace(/<[^>]*>/g, "")
@@ -336,12 +428,14 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
         .trim()
         .toLowerCase();
 
-      const course: Course = {
+      result.push({
         ...c,
         title: c.package_name || "Untitled Book",
         description: textContent,
         thumbnail: c.course_banner_media_id || "/api/placeholder/300/400",
         price: c.min_plan_actual_price || 0,
+        elevatedPrice: c.min_plan_elevated_price ?? undefined,
+        currency: c.currency,
         type: c.package_type || "Book",
         level: c.level_name || "General",
         instructor: c.instructors?.[0]?.full_name || "",
@@ -349,13 +443,13 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
         rating: c.rating || 0,
         packageSessionId: c.package_session_id,
         enrollInviteId: c.enroll_invite_id,
+        sessionId: c.session_id,
+        sessionName: c.session_name,
+        storeCount,
         package_name: (c.package_name || "").toLowerCase(),
         textContent,
         available_slots: c.availableSlots !== undefined ? c.availableSlots : c.available_slots,
-      };
-      if (!course.id || seen.has(course.id)) continue;
-      seen.add(course.id);
-      result.push(course);
+      });
     }
     return result;
   }, [data]);
@@ -467,6 +561,76 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
       <div className="bg-white border-b border-gray-100 z-10 relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
 
+          {/* Store picker — single-select, persisted. Mandatory for rent mode. */}
+          {storeList.length > 0 && (
+            <div className="pt-3 pb-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Store
+                </span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setStoreMenuOpen((o) => !o)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                      storeFilter
+                        ? "bg-primary-50 border-primary-300 text-primary-700"
+                        : "bg-white border-gray-300 text-gray-700 hover:border-gray-400"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                    {storeFilter ? activeStoreName || "Selected store" : "All stores"}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${storeMenuOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {storeMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setStoreMenuOpen(false)} />
+                      <div className="absolute left-0 z-50 mt-2 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                        {cartMode !== "rent" && (
+                          <button
+                            onClick={() => {
+                              setStoreFilter(null);
+                              setStoreMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                              !storeFilter ? "bg-primary-50 text-primary-600 font-semibold" : "text-gray-700"
+                            }`}
+                          >
+                            All stores
+                          </button>
+                        )}
+                        {storeList.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              setStoreFilter(s.id);
+                              setStoreMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                              storeFilter === s.id ? "bg-primary-50 text-primary-600 font-semibold" : "text-gray-700"
+                            }`}
+                          >
+                            {s.name || s.id}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {cartMode === "rent" && !storeFilter && (
+                  <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                    Pick a store to browse rental inventory
+                  </span>
+                )}
+                {cartMode !== "rent" && !storeFilter && (
+                  <span className="text-xs text-gray-500">
+                    Showing best price across all stores
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 2. Enhanced Genres UI - Horizontal Scrollable Chips */}
           {showGenreFilter && genres.length > 0 && (
             <div className="mt-0">
@@ -524,7 +688,29 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
 
       {/* 3. Book Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-        {isInitialLoading ? (
+        {rentRequiresStorePick ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+            <ShoppingBag className="h-10 w-10 text-gray-300" />
+            <h3 className="text-lg font-semibold text-gray-700">Pick a store to browse rentals</h3>
+            <p className="text-sm text-gray-500 max-w-md">
+              Rental books are picked up at a store, so inventory is store-specific.
+              Choose a store above to see what's available.
+            </p>
+            {storeList.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-center mt-1">
+                {storeList.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setStoreFilter(s.id)}
+                    className="px-3 py-1.5 rounded-full text-sm font-medium border border-primary-300 bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors"
+                  >
+                    {s.name || s.id}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : isInitialLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
             {[...Array(10)].map((_, i) => (
               <div key={i} className="aspect-[9/16] bg-gray-200 rounded-2xl animate-pulse" />
@@ -540,7 +726,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                 return (
                   <div
                     key={book.id}
-                    className="group relative flex flex-col cursor-pointer perspective-1000   rounded-xl"
+                    className="group relative isolate flex flex-col cursor-pointer perspective-1000   rounded-xl"
 
                     onClick={() => handleBookClick(book)}
                   >
@@ -554,27 +740,35 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                         <CourseImage previewImageUrl={book.thumbnail} alt={book.title} className="w-full h-full object-contain drop-shadow-lg" />
                       </div>
 
-                      {/* Stock Indicator Overlay */}
-                      {book.available_slots !== undefined && (
-                        <div className="absolute top-2 left-2 z-20 px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
-                          {book.available_slots > 5 ? (
-                            <>
-                              <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                              <span className="text-green-700 uppercase tracking-wider">In Stock</span>
-                            </>
-                          ) : book.available_slots > 0 ? (
-                            <>
-                              <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
-                              <span className="text-orange-700 uppercase tracking-wider">Only {book.available_slots} Left</span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                              <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
-                            </>
-                          )}
-                        </div>
-                      )}
+                      {/* Top-left badge stack: offer badge + stock / multi-store hint */}
+                      <div className="absolute top-2 left-2 z-20 flex flex-col items-start gap-1">
+                        <OfferBadge actual={book.price} elevated={book.elevatedPrice} />
+                        {!storeFilter && (book.storeCount ?? 0) > 1 ? (
+                          <div className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            <span className="text-blue-700 uppercase tracking-wider">Available at {book.storeCount} stores</span>
+                          </div>
+                        ) : book.available_slots !== undefined && (
+                          <div className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
+                            {book.available_slots > 5 ? (
+                              <>
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                                <span className="text-green-700 uppercase tracking-wider">In Stock</span>
+                              </>
+                            ) : book.available_slots > 0 ? (
+                              <>
+                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                                <span className="text-orange-700 uppercase tracking-wider">Only {book.available_slots} Left</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                                <span className="text-gray-600 uppercase tracking-wider">Out of Stock</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Share Button - top-right corner */}
                       {book.packageSessionId && (
@@ -687,11 +881,15 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                         id: book.id,
                                         title: book.title,
                                         price: book.price,
+                                        elevatedPrice: book.elevatedPrice,
+                                        currency: book.currency,
                                         image: book.thumbnail,
                                         level: book.level,
                                         packageSessionId: book.packageSessionId,
                                         enrollInviteId: book.enrollInviteId,
                                         levelId: book.levelId,
+                                        sessionId: book.sessionId,
+                                        sessionName: book.sessionName,
                                         courseId: book.courseId,
                                       });
                                       // Dispatch event to update cart count in header
@@ -718,8 +916,19 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                         {book.title}
                       </h3>
                       {render.cardFields.includes("price") && cartMode === 'buy' && (
-                        <div className="text-lg font-extrabold text-gray-900 tracking-tight">
-                          {book.price === 0 ? <span className="text-green-600">Free</span> : `₹${book.price}`}
+                        <div>
+                          <PriceWithMrp
+                            actual={book.price}
+                            elevated={book.elevatedPrice}
+                            currency={book.currency}
+                            size="md"
+                          />
+                          {!storeFilter && book.sessionName && (
+                            <p className="text-[11px] text-gray-500 mt-0.5">
+                              from <span className="font-medium text-gray-700">{book.sessionName}</span>
+                              {(book.storeCount ?? 0) > 1 ? " — lowest price" : ""}
+                            </p>
+                          )}
                         </div>
                       )}
                       <div className="flex items-center justify-between">

@@ -10,4 +10,6 @@ public interface LearnerActivityProjection {
     Long getTotalTimeSpent();
 
     Timestamp getLastActive();
+
+    String getReviewStatus();
 }

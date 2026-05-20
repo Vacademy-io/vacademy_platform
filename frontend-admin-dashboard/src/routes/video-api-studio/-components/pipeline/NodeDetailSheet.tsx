@@ -1,32 +1,44 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../../-utils/credits';
 import {
     AlignLeft,
     Camera,
     Check,
     CheckCircle2,
+    Clapperboard,
     Clock,
     Copy,
     ExternalLink,
     Film,
     FileText,
     Layers,
+    ListOrdered,
     Loader2,
     Mic,
     Music,
     Pause,
+    PenLine,
     Play,
     Sparkles,
     UserSquare2,
+    Volume2,
+    VolumeX,
     Wand2,
     X,
     XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchScriptText, regenerateFrame, updateFrame } from '../../-services/video-generation';
+import {
+    fetchScriptText,
+    regenerateFrame,
+    updateFrame,
+    type VideoStatusUserSelections,
+} from '../../-services/video-generation';
 import { LatexRenderer } from '../LatexRenderer';
 import { useSceneHtml } from './-utils/scenes-html-context';
 import { NODE_LABELS, type PipelineNodeId } from './-utils/stage-vocab';
@@ -62,9 +74,12 @@ interface NodeDetailSheetProps {
 const NODE_ICON: Record<PipelineNodeId, React.ReactNode> = {
     pitch: <Sparkles className="size-4" />,
     research: <ExternalLink className="size-4" />,
+    beats: <ListOrdered className="size-4" />,
     screenplay: <FileText className="size-4" />,
     narration: <Mic className="size-4" />,
     storyboard: <Layers className="size-4" />,
+    shotPlanner: <Clapperboard className="size-4" />,
+    narrationWriter: <PenLine className="size-4" />,
     filming: <Camera className="size-4" />,
     talent: <UserSquare2 className="size-4" />,
     score: <Music className="size-4" />,
@@ -112,6 +127,7 @@ function DetailSheetContents({
                         <p className="text-sm text-muted-foreground">Scene data not available.</p>
                     )}
                 </div>
+                <RunSummaryFooter state={state} />
             </>
         );
     }
@@ -127,8 +143,171 @@ function DetailSheetContents({
             <div className="mt-4">
                 <NodeDetailBody kind={target.kind} state={state} />
             </div>
+            <RunSummaryFooter state={state} />
         </>
     );
+}
+
+/**
+ * Run-wide summary footer shown on every node sheet so the user always
+ * has the "what did this whole video cost / where are its files" answer
+ * without jumping back to the right rail.
+ *
+ * Renders four sections (each conditional, but the footer itself is always
+ * shown for wrapped runs so the user has *something* useful even when token
+ * data is missing on older history-restored runs):
+ *   - Tokens (from cumulativeTokens, fall back to legacy tokenUsage)
+ *   - Estimated cost
+ *   - Elapsed (only present for runs that started in this session)
+ *   - Artifact URLs (script / audio / words / timeline / mp4 / videoId)
+ */
+function RunSummaryFooter({ state }: { state: PipelineState }) {
+    // Backend reports cumulative cost in USD; convert to credits via the
+    // live rate so all surfaces consistently use the credit denomination.
+    const ratio = useEffectiveCreditRatio();
+    const cum = state.stats.cumulativeTokens;
+    const tokenUsage = state.stats.tokenUsage;
+    const totalTokens = cum?.total_tokens ?? tokenUsage?.total_tokens;
+    const promptTokens = cum?.prompt_tokens ?? tokenUsage?.prompt_tokens;
+    const completionTokens = cum?.completion_tokens ?? tokenUsage?.completion_tokens;
+    const cost =
+        cum?.estimated_cost_usd ??
+        (tokenUsage as { estimated_cost_usd?: number | null } | null | undefined)
+            ?.estimated_cost_usd;
+    const elapsedMs = state.stats.elapsedMs;
+    const imageCount = tokenUsage?.image_count;
+    const ttsChars = tokenUsage?.tts_character_count;
+
+    const hasAnyTokenData =
+        totalTokens != null ||
+        cost != null ||
+        elapsedMs != null ||
+        imageCount != null ||
+        ttsChars != null;
+
+    const artifacts = state.artifactUrls;
+    const hasArtifacts =
+        !!artifacts.script ||
+        !!artifacts.audio ||
+        !!artifacts.words ||
+        !!artifacts.timeline ||
+        !!artifacts.videoMp4;
+
+    return (
+        <div className="mt-6 space-y-4 border-t pt-3">
+            <section>
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Production budget
+                </div>
+                {hasAnyTokenData ? (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                        {totalTokens != null && (
+                            <>
+                                <span className="text-muted-foreground">Total tokens</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {totalTokens.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {promptTokens != null && (
+                            <>
+                                <span className="text-muted-foreground">· Prompt</span>
+                                <span className="text-right font-mono tabular-nums text-muted-foreground">
+                                    {promptTokens.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {completionTokens != null && (
+                            <>
+                                <span className="text-muted-foreground">· Completion</span>
+                                <span className="text-right font-mono tabular-nums text-muted-foreground">
+                                    {completionTokens.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {imageCount != null && imageCount > 0 && (
+                            <>
+                                <span className="text-muted-foreground">Images generated</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {imageCount.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {ttsChars != null && ttsChars > 0 && (
+                            <>
+                                <span className="text-muted-foreground">TTS characters</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {ttsChars.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {cost != null && (
+                            <>
+                                <span className="text-muted-foreground">Estimated cost</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {formatCredits(usdToCredits(cost, ratio), { precision: 2 })}
+                                </span>
+                            </>
+                        )}
+                        {elapsedMs != null && elapsedMs > 0 && (
+                            <>
+                                <span className="text-muted-foreground">Elapsed</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {formatElapsed(elapsedMs)}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    <p className="text-xs text-muted-foreground">
+                        Token + cost telemetry wasn&apos;t persisted for this run. (Older videos
+                        from before token accounting was added.)
+                    </p>
+                )}
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                    Cumulative for the whole run. Per-stage breakdown isn&apos;t available yet.
+                </p>
+            </section>
+
+            {hasArtifacts && (
+                <section>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Artifacts
+                    </div>
+                    <div className="space-y-1 text-xs">
+                        {artifacts.script && <ArtifactRow label="Script" url={artifacts.script} />}
+                        {artifacts.audio && <ArtifactRow label="Narration" url={artifacts.audio} />}
+                        {artifacts.words && (
+                            <ArtifactRow label="Word timings" url={artifacts.words} />
+                        )}
+                        {artifacts.timeline && (
+                            <ArtifactRow label="Timeline" url={artifacts.timeline} />
+                        )}
+                        {artifacts.videoMp4 && (
+                            <ArtifactRow label="Rendered MP4" url={artifacts.videoMp4} />
+                        )}
+                    </div>
+                </section>
+            )}
+
+            <section>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Run
+                </div>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {state.videoId}
+                </p>
+            </section>
+        </div>
+    );
+}
+
+function formatElapsed(ms: number): string {
+    const sec = Math.round(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
 const STATE_BADGE: Record<NodeState, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -185,12 +364,18 @@ function NodeDetailBody({ kind, state }: { kind: PipelineNodeId; state: Pipeline
             return <PitchDetail state={state} />;
         case 'research':
             return <ResearchDetail state={state} />;
+        case 'beats':
+            return <BeatsDetail state={state} />;
         case 'screenplay':
             return <ScreenplayDetail state={state} />;
         case 'narration':
             return <NarrationDetail state={state} />;
         case 'storyboard':
             return <StoryboardDetail state={state} />;
+        case 'shotPlanner':
+            return <ShotPlannerDetail state={state} />;
+        case 'narrationWriter':
+            return <NarrationWriterDetail state={state} />;
         case 'filming':
             return <FilmingDetail state={state} />;
         case 'talent':
@@ -202,25 +387,625 @@ function NodeDetailBody({ kind, state }: { kind: PipelineNodeId; state: Pipeline
     }
 }
 
-// ── Per-node detail bodies ────────────────────────────────────────────────
+// ── v3 detail bodies ─────────────────────────────────────────────────────
 
-function PitchDetail({ state }: { state: PipelineState }) {
+function ShotPlannerDetail({ state }: { state: PipelineState }) {
+    const slot = state.shotPlanner;
+    if (!slot) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                ShotPlanner didn&apos;t run for this video — this is a v2 (legacy) pipeline run.
+            </div>
+        );
+    }
+    if (slot.state === 'scheduled') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                Awaiting brief lock-in before planning shots.
+            </div>
+        );
+    }
+    if (slot.state === 'in_production') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                ShotPlanner is calling the LLM — emits the full shot list with intent_role,
+                audio_policy, background_treatment, transition_in, and any plan-level
+                recurring_motifs in a single hop.
+            </div>
+        );
+    }
+    if (slot.state === 'cut' || slot.state === 'reshoot') {
+        return <p className="text-sm text-red-700">{slot.error}</p>;
+    }
+    if (slot.state !== 'wrapped') return null;
+    const {
+        shotCount,
+        intrinsicCount,
+        narratedCount,
+        recurringMotifs,
+        intentRoleBreakdown,
+        backgroundBreakdown,
+    } = slot.data;
+    return (
+        <div className="space-y-4">
+            {/* Summary */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Plan summary
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {shotCount}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">shots</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-green-700">
+                            {narratedCount}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">narrated</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-amber-700">
+                            {intrinsicCount}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">intrinsic</div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Recurring motifs */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Recurring motifs
+                </div>
+                {recurringMotifs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                        Planner didn&apos;t register any cross-shot motifs for this video.
+                    </p>
+                ) : (
+                    <ul className="space-y-1.5">
+                        {recurringMotifs.map((m, i) => (
+                            <li key={i} className="rounded-md border bg-card p-2 text-xs">
+                                <div className="font-medium text-foreground">{m.description}</div>
+                                {(m.screenPosition || m.whenVisible) && (
+                                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                                        {m.screenPosition && (
+                                            <span>
+                                                <span className="uppercase tracking-wider">
+                                                    Where:
+                                                </span>{' '}
+                                                {m.screenPosition}
+                                            </span>
+                                        )}
+                                        {m.whenVisible && (
+                                            <span>
+                                                <span className="uppercase tracking-wider">
+                                                    When:
+                                                </span>{' '}
+                                                {m.whenVisible}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            {/* Intent role / background breakdown */}
+            {(intentRoleBreakdown || backgroundBreakdown) && (
+                <section className="space-y-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Distribution
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                        {intentRoleBreakdown && (
+                            <div>
+                                <div className="mb-1 text-[10px] text-muted-foreground">
+                                    Intent roles
+                                </div>
+                                <ul className="space-y-0.5">
+                                    {Object.entries(intentRoleBreakdown).map(([role, n]) => (
+                                        <li
+                                            key={role}
+                                            className="flex items-center justify-between gap-2"
+                                        >
+                                            <span className="truncate text-foreground">{role}</span>
+                                            <span className="font-mono tabular-nums text-muted-foreground">
+                                                {n}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        {backgroundBreakdown && (
+                            <div>
+                                <div className="mb-1 text-[10px] text-muted-foreground">
+                                    Backgrounds (≤2 contract)
+                                </div>
+                                <ul className="space-y-0.5">
+                                    {Object.entries(backgroundBreakdown).map(([bg, n]) => (
+                                        <li
+                                            key={bg}
+                                            className="flex items-center justify-between gap-2"
+                                        >
+                                            <span className="truncate text-foreground">
+                                                {bg.replace(/_/g, ' ')}
+                                            </span>
+                                            <span className="font-mono tabular-nums text-muted-foreground">
+                                                {n}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* Per-shot mini-grid */}
+            <ShotPlannerShotList state={state} />
+        </div>
+    );
+}
+
+function ShotPlannerShotList({ state }: { state: PipelineState }) {
+    if (state.scenes.length === 0) return null;
+    return (
+        <section className="space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Shot grid ({state.scenes.length})
+            </div>
+            <ol className="space-y-1">
+                {state.scenes.map((s) => (
+                    <li
+                        key={s.index}
+                        className="flex items-start gap-1.5 rounded-md border bg-card p-2 text-[11px]"
+                    >
+                        <span className="font-mono tabular-nums text-muted-foreground">
+                            {String(s.index + 1).padStart(2, '0')}
+                        </span>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                            <span className="rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wider text-foreground">
+                                {s.shotType.replace(/_/g, ' ')}
+                            </span>
+                            {s.intentRole && (
+                                <span className="rounded bg-sky-50 px-1 text-[9px] font-medium uppercase tracking-wider text-sky-700">
+                                    {s.intentRole}
+                                </span>
+                            )}
+                            {s.backgroundTreatment && (
+                                <span className="rounded bg-slate-100 px-1 text-[9px] font-medium uppercase tracking-wider text-slate-700">
+                                    {s.backgroundTreatment.replace(/_/g, ' ')}
+                                </span>
+                            )}
+                            {s.transitionIn && (
+                                <span className="rounded bg-violet-50 px-1 text-[9px] font-medium uppercase tracking-wider text-violet-700">
+                                    ↗ {s.transitionIn.replace(/_/g, ' ')}
+                                </span>
+                            )}
+                            {s.audioPolicy === 'intrinsic_only' && (
+                                <span className="rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase tracking-wider text-amber-700">
+                                    🔇 INTR
+                                </span>
+                            )}
+                        </div>
+                        <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground">
+                            {s.durationS.toFixed(1)}s
+                        </span>
+                    </li>
+                ))}
+            </ol>
+        </section>
+    );
+}
+
+function NarrationWriterDetail({ state }: { state: PipelineState }) {
+    const slot = state.narrationWriter;
+    if (!slot) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                NarrationWriter didn&apos;t run — this is a v2 pipeline run (the monolithic
+                Narration node covers the same surface).
+            </div>
+        );
+    }
+    if (slot.state === 'scheduled') {
+        return (
+            <p className="text-sm text-muted-foreground">
+                Writers&apos; room is waiting for the shot plan.
+            </p>
+        );
+    }
+    if (slot.state === 'in_production') {
+        return (
+            <p className="text-sm text-muted-foreground">
+                NarrationWriter is authoring per-shot narration in one LLM call. Each shot gets a
+                line budgeted at ~150 wpm × duration; intrinsic_only shots get an empty string and
+                skip per-shot TTS.
+            </p>
+        );
+    }
+    if (slot.state === 'cut' || slot.state === 'reshoot') {
+        return <p className="text-sm text-red-700">{slot.error}</p>;
+    }
+    if (slot.state !== 'wrapped') return null;
+    const {
+        totalWords,
+        perShotWordCounts,
+        skippedIntrinsicCount,
+        narrationMp3Url,
+        narrationWordsUrl,
+    } = slot.data;
+    const writtenShots = perShotWordCounts.filter((n) => n > 0).length;
+    const avgWords = writtenShots > 0 ? Math.round(totalWords / writtenShots) : 0;
+    const maxWords = Math.max(...perShotWordCounts, 1);
+
+    return (
+        <div className="space-y-4">
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Authored copy
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {totalWords}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">total words</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {writtenShots}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">shots voiced</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {avgWords}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">avg w/shot</div>
+                    </div>
+                </div>
+                {skippedIntrinsicCount > 0 && (
+                    <p className="flex items-center gap-1.5 text-[11px] text-amber-700">
+                        <VolumeX className="size-3" />
+                        {skippedIntrinsicCount} shot{skippedIntrinsicCount === 1 ? '' : 's'} left
+                        silent (intrinsic_only — Veo audio / source clip plays alone).
+                    </p>
+                )}
+            </section>
+
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Per-shot word count
+                </div>
+                {perShotWordCounts.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No shots authored yet.</p>
+                ) : (
+                    <ul className="space-y-0.5 text-[10px]">
+                        {perShotWordCounts.map((n, i) => (
+                            <li key={i} className="flex items-center gap-1.5">
+                                <span className="w-5 shrink-0 font-mono tabular-nums text-muted-foreground">
+                                    {String(i + 1).padStart(2, '0')}
+                                </span>
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className={
+                                            n === 0 ? 'h-full bg-amber-300' : 'h-full bg-blue-500'
+                                        }
+                                        style={{
+                                            width: `${
+                                                n === 0 ? 100 : Math.max(5, (n / maxWords) * 100)
+                                            }%`,
+                                            opacity: n === 0 ? 0.4 : 1,
+                                        }}
+                                    />
+                                </div>
+                                <span className="w-10 shrink-0 text-right font-mono tabular-nums text-muted-foreground">
+                                    {n === 0 ? '—' : `${n}w`}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            {(narrationMp3Url || narrationWordsUrl) && (
+                <section className="space-y-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Master concat
+                    </div>
+                    {narrationMp3Url && <ArtifactRow label="narration.mp3" url={narrationMp3Url} />}
+                    {narrationWordsUrl && (
+                        <ArtifactRow label="narration_raw.json" url={narrationWordsUrl} />
+                    )}
+                </section>
+            )}
+        </div>
+    );
+}
+
+function BeatsDetail({ state }: { state: PipelineState }) {
+    const slot = state.beats;
+    if (!slot) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                BeatPlanner didn&apos;t run for this video.
+            </div>
+        );
+    }
+    if (slot.state === 'scheduled') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                The beat plan hasn&apos;t started yet.
+            </div>
+        );
+    }
+    if (slot.state === 'in_production') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                BeatPlanner is outlining the story beats. The Director will use these as the
+                planning frame for shot boundaries — duration estimates are calibrated at
+                ~150&nbsp;words/minute.
+            </div>
+        );
+    }
+    if (slot.state === 'cut' || slot.state === 'reshoot') {
+        return <p className="text-sm text-red-700">{slot.error}</p>;
+    }
+    if (slot.state !== 'wrapped') return null;
+    const beats = slot.data.beats ?? [];
+    const count = slot.data.count ?? beats.length;
     return (
         <div className="space-y-3">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                The brief
-            </div>
-            <div className="rounded-lg border bg-muted/20 p-4">
-                <LatexRenderer
-                    text={state.prompt}
-                    className="whitespace-pre-wrap text-sm text-foreground"
-                />
+                Beat plan
             </div>
             <p className="text-xs text-muted-foreground">
-                The original prompt that drove this production.
+                {count > 0
+                    ? `${count} beat${count === 1 ? '' : 's'} feeding the Director's shot plan.`
+                    : 'Beat plan locked. The Director used these beats to scope shots before TTS.'}
+                {slot.data.wpm ? ` Duration estimates at ${slot.data.wpm.toFixed(0)} wpm.` : ''}
             </p>
+            {beats.length > 0 && (
+                <ol className="space-y-2 text-xs">
+                    {beats.slice(0, 12).map((b: NonNullable<typeof beats>[number], i: number) => (
+                        <li key={i} className="rounded-md border bg-muted/20 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">{b.label || `Beat ${i + 1}`}</span>
+                                {typeof b.durationEstimateS === 'number' && (
+                                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                                        ~{b.durationEstimateS.toFixed(1)}s
+                                    </span>
+                                )}
+                            </div>
+                            {(b.intentRole || b.visualTypeHint) && (
+                                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                    {[b.intentRole, b.visualTypeHint].filter(Boolean).join(' · ')}
+                                </div>
+                            )}
+                            {b.intendedNarration && (
+                                <p className="mt-1 line-clamp-2 italic text-foreground/70">
+                                    &ldquo;{b.intendedNarration}&rdquo;
+                                </p>
+                            )}
+                        </li>
+                    ))}
+                </ol>
+            )}
         </div>
     );
+}
+
+// ── Per-node detail bodies ────────────────────────────────────────────────
+
+function PitchDetail({ state }: { state: PipelineState }) {
+    const pitchData = state.pitch.state === 'wrapped' ? state.pitch.data : undefined;
+    const sel = pitchData?.userSelections;
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const promptText = (pitchData?.prompt ?? state.prompt ?? '').trim();
+
+    return (
+        <div className="space-y-4">
+            {/* ── Brief ──────────────────────────────────────────────── */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    The brief
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-4">
+                    {promptText ? (
+                        <LatexRenderer
+                            text={promptText}
+                            className="whitespace-pre-wrap text-sm text-foreground"
+                        />
+                    ) : (
+                        <p className="text-sm italic text-muted-foreground">
+                            Prompt text not available for this run.
+                        </p>
+                    )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    The original prompt that drove this production.
+                </p>
+            </section>
+
+            {/* ── Configuration (always shown; falls back to message) ── */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Configuration
+                </div>
+                {sel ? (
+                    <ConfigGrid
+                        rows={[
+                            ['Content type', formatLabel(sel.content_type ?? state.contentType)],
+                            ['Quality tier', formatLabel(sel.quality_tier)],
+                            ['Orientation', formatLabel(sel.orientation ?? state.orientation)],
+                            ['Target duration', sel.target_duration],
+                            ['Target audience', sel.target_audience],
+                            ['Language', sel.language],
+                            ['Voice', formatVoice(sel.voice_gender, sel.tts_provider)],
+                            ['Voice ID', sel.voice_id || undefined],
+                            ['Captions', formatBool(sel.captions_enabled)],
+                            ['Background music', formatBool(sel.background_music_enabled)],
+                            ['Sound effects', formatBool(sel.sound_effects_enabled)],
+                            ['Host avatar', formatHost(sel)],
+                            ['Reference files', formatCount(sel.reference_files_count)],
+                            ['Target stage', sel.target_stage],
+                        ]}
+                    />
+                ) : (
+                    <p className="text-xs text-muted-foreground">
+                        Configuration snapshot not persisted for this run. (Older videos predate the
+                        user_selections snapshot in /status.)
+                    </p>
+                )}
+            </section>
+
+            {/* ── Advanced (collapsible — only when config exists) ───── */}
+            {sel && (
+                <section className="space-y-2">
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced((v) => !v)}
+                        className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                    >
+                        <span>{showAdvanced ? '▾' : '▸'}</span> Advanced
+                    </button>
+                    {showAdvanced && (
+                        <ConfigGrid
+                            rows={[
+                                ['Model', sel.model],
+                                ['HTML quality', formatLabel(sel.html_quality)],
+                                ['Sub-shots enabled', formatBool(sel.sub_shots_enabled)],
+                                [
+                                    'Routing overrides',
+                                    formatRoutingOverrides(sel.routing_overrides),
+                                ],
+                                [
+                                    'Visual preferences',
+                                    formatVisualPreferences(sel.visual_preferences),
+                                ],
+                                ['Avatar image URL', sel.avatar_image_url || undefined],
+                                ['Input video IDs', formatList(sel.input_video_ids)],
+                                ['Input video audio', formatLabel(sel.input_video_audio)],
+                                [
+                                    'Mute TTS on source clips',
+                                    formatBool(sel.mute_tts_on_source_clips_kwarg),
+                                ],
+                                [
+                                    'Background music volume',
+                                    sel.background_music_volume != null
+                                        ? sel.background_music_volume.toFixed(2)
+                                        : undefined,
+                                ],
+                            ]}
+                            emptyMessage="No advanced overrides recorded."
+                        />
+                    )}
+                </section>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Two-column key/value grid. Rows with empty values are auto-omitted —
+ * callers list every field unconditionally and `ConfigGrid` decides what
+ * actually renders. Keeps Pitch's Configuration block clean across the
+ * wide variation in what user_selections actually contains per run.
+ */
+function ConfigGrid({
+    rows,
+    emptyMessage,
+}: {
+    rows: Array<[string, string | undefined | null]>;
+    emptyMessage?: string;
+}) {
+    const filled = rows.filter(([, v]) => v != null && v !== '');
+    if (filled.length === 0) {
+        return emptyMessage ? (
+            <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+        ) : null;
+    }
+    return (
+        <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-xs">
+            {filled.map(([k, v]) => (
+                <Fragment key={k}>
+                    <span className="text-muted-foreground">{k}</span>
+                    <span className="break-all text-right text-foreground">{v}</span>
+                </Fragment>
+            ))}
+        </div>
+    );
+}
+
+// ── Formatters for ConfigGrid rows ──────────────────────────────────────
+//
+// All return `undefined` when there's nothing meaningful to show so the
+// grid auto-omits the row. Boolean fields collapse to 'On'/'Off'; snake_case
+// strings get prettified to Title Case.
+
+function formatLabel(v: string | undefined | null): string | undefined {
+    if (!v) return undefined;
+    return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatBool(v: boolean | undefined | null): string | undefined {
+    if (v == null) return undefined;
+    return v ? 'On' : 'Off';
+}
+
+function formatCount(n: number | undefined | null): string | undefined {
+    if (n == null || n === 0) return undefined;
+    return n.toString();
+}
+
+function formatVoice(gender: string | undefined, provider: string | undefined): string | undefined {
+    if (!gender && !provider) return undefined;
+    const parts = [gender, provider].filter(Boolean).map((p) => formatLabel(p as string));
+    return parts.join(' · ');
+}
+
+function formatHost(sel: VideoStatusUserSelections): string | undefined {
+    const generate = sel.generate_avatar;
+    const hostType = sel.host?.type;
+    if (!generate && !hostType) return 'None';
+    if (hostType === 'avatar' || generate) {
+        const id = (sel.host?.avatar as { saved_avatar_id?: string } | undefined)?.saved_avatar_id;
+        return id ? `Avatar (${id})` : 'Avatar';
+    }
+    if (hostType === 'raw') return 'Raw clips';
+    return formatLabel(hostType);
+}
+
+function formatList(arr: string[] | undefined | null): string | undefined {
+    if (!arr || arr.length === 0) return undefined;
+    return arr.join(', ');
+}
+
+function formatRoutingOverrides(o: Record<string, unknown> | null | undefined): string | undefined {
+    if (!o) return undefined;
+    const tools = (o as { tools?: Record<string, boolean | null> }).tools;
+    if (!tools) return JSON.stringify(o);
+    const flags = Object.entries(tools)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => `${k}=${v ? 'on' : 'off'}`);
+    return flags.length ? flags.join(', ') : undefined;
+}
+
+function formatVisualPreferences(
+    p: Record<string, unknown> | null | undefined
+): string | undefined {
+    if (!p) return undefined;
+    const entries = Object.entries(p).filter(([, v]) => v != null && v !== 'auto');
+    if (entries.length === 0) return undefined;
+    return entries.map(([k, v]) => `${k}=${String(v)}`).join(', ');
 }
 
 function ResearchDetail({ state }: { state: PipelineState }) {
@@ -400,13 +1185,20 @@ function ResearchDetail({ state }: { state: PipelineState }) {
 
 function ScreenplayDetail({ state }: { state: PipelineState }) {
     const slot = state.screenplay;
-    const scriptUrl = slot.state === 'wrapped' ? slot.data.scriptUrl : undefined;
+    // History-restored wrapped runs sometimes have `slot.data.scriptUrl`
+    // unset (the History sidebar doesn't always hydrate it). Fall back to
+    // `state.artifactUrls.script`, which is populated from the same /status
+    // source and the PipelineFlow enrichment can backfill.
+    const scriptUrl =
+        (slot.state === 'wrapped' ? slot.data.scriptUrl : undefined) ?? state.artifactUrls.script;
     const [text, setText] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [fetchFailed, setFetchFailed] = useState(false);
     useEffect(() => {
         if (!scriptUrl) return;
         setLoading(true);
+        setFetchFailed(false);
         fetchScriptText(scriptUrl)
             .then((raw) => {
                 let display = raw;
@@ -423,7 +1215,10 @@ function ScreenplayDetail({ state }: { state: PipelineState }) {
                 }
                 setText(display);
             })
-            .catch(() => setText(null))
+            .catch(() => {
+                setText(null);
+                setFetchFailed(true);
+            })
             .finally(() => setLoading(false));
     }, [scriptUrl]);
 
@@ -477,6 +1272,23 @@ function ScreenplayDetail({ state }: { state: PipelineState }) {
                     <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
                         {text}
                     </pre>
+                ) : !scriptUrl ? (
+                    <p className="text-sm text-muted-foreground">
+                        Screenplay URL not available for this run. The narration audio + word
+                        timings are still accessible from the Narration node.
+                    </p>
+                ) : fetchFailed ? (
+                    <div className="space-y-2 text-sm">
+                        <p className="text-muted-foreground">
+                            Inline preview failed to load. Use{' '}
+                            <span className="font-medium text-foreground">Open raw file</span> above
+                            to view the screenplay directly.
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                            (S3 CORS, network drop, or the file is no longer present at the
+                            persisted URL.)
+                        </p>
+                    </div>
                 ) : (
                     <p className="text-sm text-muted-foreground">
                         Could not load the screenplay text.
@@ -580,12 +1392,27 @@ function StoryboardDetail({ state }: { state: PipelineState }) {
             </div>
         );
     }
-    const scenes = (slot.data as StoryboardArtifact).scenes;
+    // Storyboard's own scenes can be empty on history-restored wrapped
+    // runs (the live SSE shotPlan never arrived). The enriched `state.scenes`
+    // is synthesized from /status.shot_plan by PipelineFlow's enrichedState
+    // memo, so it's the more reliable source for the wrapped list.
+    const storyScenes = (slot.data as StoryboardArtifact).scenes;
+    const scenes =
+        storyScenes.length > 0
+            ? storyScenes
+            : state.scenes.map((s) => ({
+                  index: s.index,
+                  shotType: s.shotType,
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                  durationS: s.durationS,
+                  narrationExcerpt: s.narrationExcerpt,
+              }));
     if (scenes.length === 0) {
         return (
             <div className="text-sm text-muted-foreground">
-                Shot plan finalized — every scene appears as its own node in the diagram. Click any
-                scene there to inspect it.
+                Shot plan finalized — scene details aren&apos;t available for this run, but each
+                scene still appears as its own node in the diagram.
             </div>
         );
     }
@@ -635,18 +1462,33 @@ function FilmingDetail({ state }: { state: PipelineState }) {
         completed = slot.partialData.shotsCompleted ?? 0;
         total = slot.partialData.shotsTotal ?? 0;
     }
+    // History-restored wrapped runs may have lost the shotsCompleted/Total
+    // counters but the enriched `state.scenes` is synthesized from
+    // /status.shot_plan. Use it as the canonical count when the filming
+    // slot's own counter is missing — otherwise we'd render "hasn't
+    // started" on a video that's already done.
+    const wrappedWithoutCounter = slot.state === 'wrapped' && total === 0;
+    if (wrappedWithoutCounter && state.scenes.length > 0) {
+        total = state.scenes.length;
+        completed = state.scenes.filter((s) => s.state === 'wrapped').length || state.scenes.length;
+    }
+    const isWrapped = slot.state === 'wrapped';
     return (
         <div className="space-y-3">
             {total > 0 ? (
                 <div>
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Scenes filmed
+                        {isWrapped ? 'Scenes wrapped' : 'Scenes filmed'}
                     </div>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
                         {completed}{' '}
                         <span className="text-base text-muted-foreground">/ {total}</span>
                     </p>
                 </div>
+            ) : isWrapped ? (
+                <p className="text-sm text-muted-foreground">
+                    Filming wrapped — per-scene counters aren&apos;t available for this run.
+                </p>
             ) : (
                 <p className="text-sm text-muted-foreground">Filming hasn&apos;t started yet.</p>
             )}
@@ -681,18 +1523,207 @@ function SceneDetail({
     const narration = state.narration;
     const narrationAudioUrl = narration.state === 'wrapped' ? narration.data.audioUrl : undefined;
 
+    const isAiVideoScene = scene.shotType === 'AI_VIDEO_HERO';
+    const isIntrinsic = scene.audioPolicy === 'intrinsic_only';
     return (
         <div className="space-y-4">
-            {/* Header row: shot type + duration / time range */}
+            {/* Header row: shot type + duration / time range + v3 chips */}
             <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground">
                     {scene.shotType.replace(/_/g, ' ')}
                 </span>
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {scene.intentRole && (
+                    <span
+                        title={`Intent role: ${scene.intentRole}`}
+                        className="rounded bg-sky-50 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-sky-700"
+                    >
+                        {scene.intentRole}
+                    </span>
+                )}
+                {scene.backgroundTreatment && (
+                    <span
+                        title={`Background treatment: ${scene.backgroundTreatment}`}
+                        className="rounded bg-slate-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-slate-700"
+                    >
+                        bg · {scene.backgroundTreatment.replace(/_/g, ' ')}
+                    </span>
+                )}
+                {scene.transitionIn && (
+                    <span
+                        title={`Transition in: ${scene.transitionIn}`}
+                        className="rounded bg-violet-50 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-violet-700"
+                    >
+                        ↗ {scene.transitionIn.replace(/_/g, ' ')}
+                    </span>
+                )}
+                {isAiVideoScene && (
+                    <span
+                        className="rounded bg-violet-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-700"
+                        title="Generated by fal.ai Veo 3.1 Lite"
+                    >
+                        ✨ AI VIDEO
+                    </span>
+                )}
+                {isIntrinsic && (
+                    <span
+                        className="rounded bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-700"
+                        title="audio_policy=intrinsic_only — master narration is silenced in this window; the shot's own audio plays alone."
+                    >
+                        🔇 INTRINSIC AUDIO
+                    </span>
+                )}
+                <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
                     {scene.startTime.toFixed(1)}s – {scene.endTime.toFixed(1)}s ·{' '}
                     {scene.durationS.toFixed(1)}s
                 </span>
             </div>
+
+            {isAiVideoScene && (
+                <div className="rounded-md border border-violet-200 bg-violet-50/60 p-3 text-xs text-violet-900">
+                    <div className="mb-1 font-medium">AI-generated video shot</div>
+                    <div className="text-violet-700">
+                        This shot was generated with fal.ai Veo. Cost contributes to the per-video
+                        AI video cap. Editing inside the editor re-runs the Veo call.
+                    </div>
+                </div>
+            )}
+
+            {isIntrinsic && (
+                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-900">
+                    <div className="mb-1 flex items-center gap-1.5 font-medium">
+                        <VolumeX className="size-3.5" />
+                        Intrinsic-only audio policy
+                    </div>
+                    <div className="text-amber-800">
+                        Master narration is muted in this scene&apos;s [{scene.startTime.toFixed(1)}
+                        s, {scene.endTime.toFixed(1)}s] window. The shot plays its own audio (
+                        {isAiVideoScene ? 'Veo-generated audio' : 'source clip audio'}) alone.
+                        Per-shot TTS was skipped — re-narrate via the source asset, not this panel.
+                    </div>
+                </div>
+            )}
+
+            {/* v3 live-progress detail — present when the BE RunStateAggregator
+                snapshot includes per-shot detail for this scene. Shows the
+                current substage, the full regen log (every gate verdict), and
+                any active third-party calls. Quietly absent for legacy runs. */}
+            {scene.liveDetail && (
+                <div className="rounded-md border bg-gradient-to-b from-slate-50 to-white p-3 text-xs">
+                    <div className="mb-2 flex items-center justify-between">
+                        <span className="font-medium text-foreground">Live progress</span>
+                        {scene.liveDetail.elapsedS != null && (
+                            <span className="font-mono tabular-nums text-muted-foreground">
+                                {scene.liveDetail.elapsedS.toFixed(1)}s elapsed
+                            </span>
+                        )}
+                    </div>
+                    {scene.liveDetail.substage && (
+                        <div className="mb-2 text-foreground/80">
+                            Current substage:{' '}
+                            <span className="font-mono">{scene.liveDetail.substage}</span>
+                        </div>
+                    )}
+                    {scene.liveDetail.attempts && Object.keys(scene.liveDetail.attempts).length > 0 && (
+                        <div className="mb-2">
+                            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                Regen attempts by gate
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                                {Object.entries(scene.liveDetail.attempts).map(([step, n]) => (
+                                    <span
+                                        key={step}
+                                        className="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10px] text-orange-700"
+                                    >
+                                        {step.replace(/_regen$/, '')}: {n}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {scene.liveDetail.regenLog && scene.liveDetail.regenLog.length > 0 && (
+                        <div className="mb-2">
+                            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                Verdict log
+                            </div>
+                            <ol className="space-y-1">
+                                {scene.liveDetail.regenLog.map((r, i) => (
+                                    <li
+                                        key={`${r.step}-${r.attempt}-${i}`}
+                                        className="flex items-start gap-2 text-[11px] leading-snug"
+                                    >
+                                        <span className="mt-0.5 font-mono text-muted-foreground">
+                                            {r.step}#{r.attempt}
+                                        </span>
+                                        <span
+                                            className={
+                                                r.verdict === 'pass'
+                                                    ? 'rounded bg-emerald-50 px-1 text-[10px] text-emerald-700'
+                                                    : r.verdict === 'shipped_original'
+                                                      ? 'rounded bg-amber-50 px-1 text-[10px] text-amber-700'
+                                                      : 'rounded bg-rose-50 px-1 text-[10px] text-rose-700'
+                                            }
+                                        >
+                                            {r.verdict}
+                                        </span>
+                                        {r.reason && (
+                                            <span className="flex-1 text-foreground/70">
+                                                {r.reason}
+                                            </span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+                    )}
+                    {scene.liveDetail.externalCalls &&
+                        scene.liveDetail.externalCalls.length > 0 && (
+                            <div>
+                                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                    External calls
+                                </div>
+                                <ul className="space-y-1">
+                                    {scene.liveDetail.externalCalls.map((c) => (
+                                        <li
+                                            key={c.id}
+                                            className="flex items-center gap-2 text-[11px]"
+                                        >
+                                            <span className="font-mono text-foreground/80">
+                                                {c.provider} · {c.op}
+                                            </span>
+                                            <span
+                                                className={
+                                                    c.state === 'done'
+                                                        ? 'rounded bg-emerald-50 px-1 text-[10px] text-emerald-700'
+                                                        : c.state === 'failed'
+                                                          ? 'rounded bg-rose-50 px-1 text-[10px] text-rose-700'
+                                                          : 'rounded bg-blue-50 px-1 text-[10px] text-blue-700'
+                                                }
+                                            >
+                                                {c.state}
+                                                {c.pollCount ? ` (${c.pollCount})` : ''}
+                                            </span>
+                                            {c.elapsedS != null && (
+                                                <span className="font-mono text-muted-foreground">
+                                                    {c.elapsedS.toFixed(1)}s
+                                                </span>
+                                            )}
+                                            {c.error && (
+                                                <span className="truncate text-rose-700">
+                                                    {c.error}
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    {scene.liveDetail.lastError && (
+                        <div className="mt-2 rounded bg-rose-50 p-2 text-[11px] text-rose-800">
+                            {scene.liveDetail.lastError}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Hero media — prefer the rendered HTML when present so the
                 user can actually "play" the beat (animations, video tags
@@ -754,17 +1785,14 @@ function SceneDetail({
                 />
             )}
 
-            {/* Narration excerpt */}
-            {scene.narrationExcerpt && (
-                <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Narration
-                    </div>
-                    <p className="rounded-lg border bg-muted/20 p-3 text-sm italic leading-relaxed text-foreground">
-                        &ldquo;{scene.narrationExcerpt}&rdquo;
-                    </p>
-                </div>
-            )}
+            {/* Narration — brief (planner intent) + text (what gets said) */}
+            <SceneNarrationSection scene={scene} />
+
+            {/* Per-shot TTS audio (v3) — distinct from master narration. */}
+            <ScenePerShotAudio scene={scene} />
+
+            {/* AI-video telemetry — request_id, segments, cost. */}
+            <SceneAiVideoSection scene={scene} />
 
             {/* Asset links */}
             {(scene.imageUrl || scene.videoUrl) && (
@@ -784,6 +1812,227 @@ function SceneDetail({
                 </div>
             )}
         </div>
+    );
+}
+
+/**
+ * Narration section for a scene. On v3 runs we have both `narrationBrief`
+ * (what the planner wanted said) and `narrationText` (what NarrationWriter
+ * actually wrote). On intrinsic_only shots the text is empty by design —
+ * show an explanatory empty state instead of a blank box.
+ */
+function SceneNarrationSection({ scene }: { scene: SceneSlot }) {
+    const isIntrinsic = scene.audioPolicy === 'intrinsic_only';
+    const brief = scene.narrationBrief;
+    const text = scene.narrationText ?? scene.narrationExcerpt;
+    if (!brief && !text && !isIntrinsic) return null;
+    return (
+        <section className="space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Narration
+            </div>
+            {brief && (
+                <div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Planner brief
+                    </div>
+                    <p className="rounded-lg border bg-sky-50/40 p-2.5 text-xs leading-relaxed text-foreground">
+                        {brief}
+                    </p>
+                </div>
+            )}
+            {isIntrinsic ? (
+                <div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Spoken narration
+                    </div>
+                    <p className="rounded-lg border border-dashed bg-muted/20 p-2.5 text-xs italic text-muted-foreground">
+                        Intrinsic-only shot — no per-shot narration was authored. The shot&apos;s
+                        own audio plays alone.
+                    </p>
+                </div>
+            ) : (
+                text && (
+                    <div>
+                        <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Spoken narration
+                        </div>
+                        <p className="rounded-lg border bg-muted/20 p-2.5 text-sm italic leading-relaxed text-foreground">
+                            &ldquo;{text}&rdquo;
+                        </p>
+                    </div>
+                )
+            )}
+        </section>
+    );
+}
+
+/**
+ * Per-shot TTS audio (v3 only). On v2 runs there's no per-shot mp3; the
+ * master narration covers everything. On v3, each non-intrinsic shot has a
+ * dedicated mp3 the editor (and future per-shot regenerate flow) can swap
+ * in isolation.
+ */
+function ScenePerShotAudio({ scene }: { scene: SceneSlot }) {
+    if (!scene.audioUrl) return null;
+    return (
+        <section className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Volume2 className="size-3" />
+                Per-shot voiceover
+                {scene.audioDurationS != null && (
+                    <span className="font-mono normal-case tracking-normal text-muted-foreground/70">
+                        ({scene.audioDurationS.toFixed(2)}s)
+                    </span>
+                )}
+            </div>
+            <audio controls preload="none" className="w-full">
+                <source src={scene.audioUrl} type="audio/mpeg" />
+            </audio>
+            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                <a
+                    href={scene.audioUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                >
+                    <ExternalLink className="size-3" />
+                    mp3
+                </a>
+                {scene.audioWordsUrl && (
+                    <a
+                        href={scene.audioWordsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    >
+                        <ExternalLink className="size-3" />
+                        word timings
+                    </a>
+                )}
+                {scene.audioScriptUrl && (
+                    <a
+                        href={scene.audioScriptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    >
+                        <ExternalLink className="size-3" />
+                        script.txt
+                    </a>
+                )}
+            </div>
+        </section>
+    );
+}
+
+/**
+ * AI-video (Veo) telemetry for a scene, shown when the scene was generated
+ * via the AI video orchestrator. Surfaces request_id, segment list, cost,
+ * audio flag — everything the orchestrator wrote to the timeline entry.
+ */
+function SceneAiVideoSection({ scene }: { scene: SceneSlot }) {
+    const hasTelemetry =
+        scene.aiVideoRequestId ||
+        scene.aiVideoUrl ||
+        scene.aiVideoSegments?.length ||
+        scene.aiVideoCostCredits != null ||
+        scene.aiVideoCostUsd != null;
+    if (!hasTelemetry) return null;
+    return (
+        <section className="space-y-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                AI video telemetry
+            </div>
+            <div className="space-y-1 rounded-md border bg-violet-50/30 p-2.5 text-[11px]">
+                {scene.aiVideoRequestId && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">request_id</span>
+                        <span className="truncate font-mono text-foreground">
+                            {scene.aiVideoRequestId}
+                        </span>
+                    </div>
+                )}
+                {scene.aiVideoCostCredits != null && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">cost</span>
+                        <span className="font-mono tabular-nums text-violet-700">
+                            {formatCredits(scene.aiVideoCostCredits, { precision: 1 })}
+                            {scene.aiVideoCostUsd != null && (
+                                <span className="ml-1 text-muted-foreground">
+                                    (${scene.aiVideoCostUsd.toFixed(3)})
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                )}
+                {scene.aiVideoElapsedS != null && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">elapsed</span>
+                        <span className="font-mono tabular-nums text-foreground">
+                            {scene.aiVideoElapsedS.toFixed(1)}s
+                        </span>
+                    </div>
+                )}
+                {scene.aiVideoOn != null && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Veo audio</span>
+                        <span className="text-foreground">{scene.aiVideoOn ? 'on' : 'off'}</span>
+                    </div>
+                )}
+                {scene.aiVideoUrl && (
+                    <a
+                        href={scene.aiVideoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    >
+                        <ExternalLink className="size-3" />
+                        Open Veo output
+                    </a>
+                )}
+                {scene.aiVideoSegments && scene.aiVideoSegments.length > 0 && (
+                    <div className="mt-1.5 border-t border-violet-200/60 pt-1.5">
+                        <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Segments ({scene.aiVideoSegments.length})
+                        </div>
+                        <ul className="space-y-0.5">
+                            {scene.aiVideoSegments.map((seg) => (
+                                <li
+                                    key={seg.segIdx}
+                                    className="flex items-center gap-2 text-[10px]"
+                                >
+                                    <span className="font-mono tabular-nums text-muted-foreground">
+                                        seg {seg.segIdx}
+                                    </span>
+                                    {seg.durationS != null && (
+                                        <span className="font-mono tabular-nums text-foreground">
+                                            {seg.durationS.toFixed(1)}s
+                                        </span>
+                                    )}
+                                    {seg.cacheHit && (
+                                        <span className="rounded bg-emerald-100 px-1 text-[9px] font-medium uppercase tracking-wider text-emerald-700">
+                                            cached
+                                        </span>
+                                    )}
+                                    {seg.videoUrl && (
+                                        <a
+                                            href={seg.videoUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="ml-auto inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                                        >
+                                            <ExternalLink className="size-3" />
+                                            mp4
+                                        </a>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </section>
     );
 }
 

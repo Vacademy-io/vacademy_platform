@@ -23,6 +23,23 @@ from .s3_service import S3Service
 from . import cancellation_registry
 
 
+def _resolve_pipeline_version(quality_tier: Optional[str] = None) -> str:
+    """v3 is the only supported pipeline. v2 BeatPlanner→Director→segment-HTML
+    code remains inside `_run_v3_shot_planning`'s exception handler as an
+    internal safety-net fallback, but is no longer a user-selectable mode.
+
+    The `quality_tier` argument is kept for call-site back-compat — it's
+    ignored. Every video persists `user_selections.pipeline_version = "v3"`,
+    so the FE audit panel always reflects the actual runtime.
+
+    Previously this function consulted `PIPELINE_VERSION` env var and the
+    per-tier `pipeline_version` field on QUALITY_TIERS. Both surfaces had
+    silent-fallback paths that could persist `"v2"` even when the runtime
+    successfully ran v3 (e.g. lazy import races on cold start). Removed.
+    """
+    return "v3"
+
+
 def _is_pipeline_cancelled(exc: BaseException) -> bool:
     """The pipeline lives in the ``ai-video-gen-main/`` directory (not a
     proper Python package importable from ``app.*``). It defines its own
@@ -30,6 +47,24 @@ def _is_pipeline_cancelled(exc: BaseException) -> bool:
     detect it here by class name so we don't need a fragile dynamic import
     at module load time — the pipeline is only loaded later via sys.path."""
     return type(exc).__name__ == "PipelineCancelled"
+
+
+def _get_run_state_aggregator():
+    """Lazy import of the v3 live-progress aggregator. The aggregator lives
+    in ``ai-video-gen-main/`` so we follow the same sys.path trick the
+    pipeline import uses. Returns the module-level RUN_STATE singleton or
+    None if the module can't be loaded — callers must tolerate None so a
+    broken aggregator never breaks the generation pipeline."""
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _aigen = str(_Path(__file__).resolve().parent.parent / "ai-video-gen-main")
+        if _aigen not in _sys.path:
+            _sys.path.insert(0, _aigen)
+        from run_state_aggregator import RUN_STATE  # type: ignore
+        return RUN_STATE
+    except Exception:
+        return None
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
@@ -227,6 +262,11 @@ class VideoGenerationService:
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
         visual_preferences: Optional[Any] = None,
+        ai_video_enabled: bool = False,
+        ai_video_audio_enabled: bool = False,
+        # Per-stage model overrides (V200 — DB-backed routing). Untyped here
+        # (Any) to avoid a schemas → service circular import.
+        model_overrides: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -511,6 +551,9 @@ class VideoGenerationService:
                     brand_kit_id=brand_kit_id,
                     resolved_saved_avatar=resolved_saved_avatar,
                     visual_preferences=visual_preferences,
+                    ai_video_enabled=ai_video_enabled,
+                    ai_video_audio_enabled=ai_video_audio_enabled,
+                    model_overrides=model_overrides,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -602,6 +645,17 @@ class VideoGenerationService:
         brand_kit_id: Optional[str] = None,
         resolved_saved_avatar: Optional[Dict[str, Any]] = None,
         visual_preferences: Optional[Any] = None,
+        # AI video (Phase 3b) — per-run opt-in, ultra+ only. Passed through
+        # to pipeline.run; the pipeline downgrades to False on ineligible
+        # tiers, so callers can pass these flags unconditionally.
+        ai_video_enabled: bool = False,
+        ai_video_audio_enabled: bool = False,
+        # Per-stage model overrides (V200 — DB-backed routing). When set,
+        # resolved into a per-stage map via AIModelsService.get_stage_model_map
+        # and passed to VideoGenerationPipeline. Untyped here (Any) to avoid a
+        # schemas → service circular import; the field shape is the pydantic
+        # `ModelOverrides` from app.schemas.video_generation.
+        model_overrides: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -668,6 +722,69 @@ class VideoGenerationService:
             else:
                 pipeline_args["script_model"] = resolved_model
                 pipeline_args["html_model"]   = resolved_model
+
+        # ── V200 stage routing: DB-backed per-stage model assignment ──
+        # Resolve a {stage_id → (model_id, source)} map from
+        # `ai_model_stage_assignments` and pass it to the pipeline. Each LLM
+        # call site reads its model via `_resolve_stage_model(stage)`; when
+        # the matrix doesn't have a row for the stage OR the DB lookup fails,
+        # the call falls through to `client.default_model` (the legacy
+        # script_model / html_model set above) — defensive no-op.
+        # The legacy global `model` field collapses to
+        # `ModelOverrides(default=model)` so a request that pre-dates the
+        # per-stage UI still gets the same critical-stage override behavior.
+        try:
+            from ..services.ai_models_service import AIModelsService
+            if db_session:
+                _effective_overrides = model_overrides
+                if _effective_overrides is None and model:
+                    # Collapse legacy `model` into the new shape so it
+                    # applies only to user-overridable critical stages.
+                    from ..schemas.video_generation import ModelOverrides
+                    _effective_overrides = ModelOverrides(default=model)
+                elif _effective_overrides is not None and model:
+                    # Both fields sent — model_overrides wins. Log so a
+                    # client-side bug (sending both) shows up in audit.
+                    logger.warning(
+                        f"[VideoGenService] Both legacy `model={model!r}` and "
+                        f"`model_overrides` sent; `model_overrides` wins. "
+                        f"Drop the legacy field on the next request."
+                    )
+                stage_resolved = AIModelsService(db_session).get_stage_model_map(
+                    use_case="video",
+                    quality_tier=quality_tier,
+                    overrides=_effective_overrides,
+                )
+                if stage_resolved:
+                    # Carry (model_id, source) tuple so cost_event_tracker
+                    # can attribute each call to "matrix" / "user_default"
+                    # / "user_per_stage" — preserves the resolution
+                    # provenance the resolver computed.
+                    pipeline_args["stage_model_map"] = {
+                        stage_id: (rm.model_id, rm.source)
+                        for stage_id, rm in stage_resolved.items()
+                    }
+                    logger.info(
+                        f"[VideoGenService] Stage routing resolved "
+                        f"{len(stage_resolved)} stage(s) for tier={quality_tier}; "
+                        f"user_overrides_active={bool(_effective_overrides)}"
+                    )
+                else:
+                    logger.info(
+                        f"[VideoGenService] Stage routing returned no rows for "
+                        f"use_case=video tier={quality_tier} — falling back to "
+                        f"legacy script_model/html_model routing"
+                    )
+            else:
+                logger.info(
+                    f"[VideoGenService] Stage routing skipped — no db_session "
+                    f"available; falling back to legacy script_model/html_model routing"
+                )
+        except Exception as _sr_err:
+            logger.warning(
+                f"[VideoGenService] Stage routing resolution failed "
+                f"({_sr_err}); falling back to legacy script_model/html_model routing"
+            )
 
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
@@ -811,29 +928,33 @@ class VideoGenerationService:
                         else:
                             logger.warning(f"[VideoGenService] Failed to download script.txt from {script_url}")
 
-                # Also pull `script_plan.json` (internal — not stored in DB
-                # s3_urls). Without this, the resume path loads `plan_data = {}`
-                # and the Director skips with "missing script or beat outline".
-                # The plan is uploaded by the SCRIPT stage; we reconstruct the
-                # public S3 URL from convention.
+                # Also pull internal plan files — `script_plan.json` (v2) and
+                # `shot_plan.json` (v3). Without these, the resume path loads
+                # `plan_data = {}` and the Director skips with "missing script
+                # or beat outline" (v2) or the v3 ShotPlanner falls back to a
+                # synthesized stub. Both are uploaded by the SCRIPT stage and
+                # the public S3 URL is reconstructed from convention.
                 try:
                     from ..config import get_settings
                     settings = get_settings()
                     bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
-                    plan_key = f"ai-videos/{video_id}/script/script_plan.json"
-                    plan_url = f"https://{bucket}.s3.amazonaws.com/{plan_key}"
-                    plan_local = run_dir / "script_plan.json"
-                    if not plan_local.exists():
-                        logger.info(f"[VideoGenService] Attempting to download script_plan.json from S3...")
+                    for _plan_name in ("script_plan.json", "shot_plan.json"):
+                        plan_key = f"ai-videos/{video_id}/script/{_plan_name}"
+                        plan_url = f"https://{bucket}.s3.amazonaws.com/{plan_key}"
+                        plan_local = run_dir / _plan_name
+                        if plan_local.exists():
+                            continue
+                        logger.info(f"[VideoGenService] Attempting to download {_plan_name} from S3...")
                         if self.s3_service.download_file(plan_url, plan_local):
-                            logger.info(f"[VideoGenService] Successfully downloaded script_plan.json")
+                            logger.info(f"[VideoGenService] Successfully downloaded {_plan_name}")
                         else:
                             logger.info(
-                                f"[VideoGenService] script_plan.json not found in S3 "
-                                f"(legacy run? Director will use a synthesized fallback beat)"
+                                f"[VideoGenService] {_plan_name} not found in S3 "
+                                f"(legacy run or v2-only / v3-only path? "
+                                f"Director/ShotPlanner will use a synthesized fallback)"
                             )
                 except Exception as e:
-                    logger.warning(f"[VideoGenService] Could not download script_plan.json: {e}")
+                    logger.warning(f"[VideoGenService] Could not download plan JSON files: {e}")
             
             # Need narration_raw.json and narration.mp3 if resuming from WORDS or later
             if start_stage_idx >= 3:  # WORDS, HTML, or RENDER
@@ -895,6 +1016,16 @@ class VideoGenerationService:
                     _dp_local = run_dir / "director_plan.json"
                     if not _dp_local.exists():
                         self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local)
+
+                    # shot_plan.json (v3) — ShotPlanner+NarrationWriter output.
+                    # On v3 resumes, the html-stage Director branch reads this
+                    # in `automation_pipeline._run_v3_shot_planning`'s sibling
+                    # branch via `getattr(self, "_v3_shot_plan", None)` falling
+                    # back to disk. Download is best-effort: absent file just
+                    # means the run was v2 (no shot_plan.json was ever written).
+                    _sp_local = run_dir / "shot_plan.json"
+                    if not _sp_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/shot_plan.json", _sp_local)
 
                     # Per-shot cache files (shot_000.json … shot_NNN.json)
                     _shot_cache_local = run_dir / "shot_cache"
@@ -1203,6 +1334,10 @@ class VideoGenerationService:
                     "content_type": content_type,
                     "quality_tier": quality_tier,
                     "model": model,
+                    # Persist target_stage (canonical uppercase: SCRIPT/TTS/WORDS/HTML/RENDER)
+                    # so the FE can distinguish review-mode runs (target_stage='SCRIPT')
+                    # from full runs without depending on SSE replay state.
+                    "target_stage": self.STAGES[target_stage_idx],
                     "target_duration": target_duration,
                     "target_audience": target_audience,
                     "orientation": orientation,
@@ -1228,6 +1363,15 @@ class VideoGenerationService:
                     # originally picked. Free-text overrides land in
                     # intent_outcomes.visual_preferences_resolved instead.
                     "visual_preferences": visual_prefs_struct,
+                    # Pipeline architecture flag — written up-front so the FE
+                    # renders the right graph without waiting for SSE events.
+                    # `_resolve_pipeline_version` is now a constant `"v3"` (v2
+                    # deprecated, no longer user-selectable). Historical
+                    # records may still have `"v2"` persisted from before this
+                    # change and render under the v2 graph — that's correct
+                    # display of what actually ran. Only new gen-starts get
+                    # `"v3"` stamped going forward.
+                    "pipeline_version": _resolve_pipeline_version(quality_tier),
                 }
                 _emeta["intent_outcomes"] = {
                     "video_type": video_type_plan.model_dump(),
@@ -1482,7 +1626,8 @@ class VideoGenerationService:
             # Without this, resume at HTML loses the plan and the Director skips.
             "script": [
                 ("script_path", "script", "script.txt"),
-                (None, None, "script_plan.json"),  # internal — see download path
+                (None, None, "script_plan.json"),  # internal — see download path (v2)
+                (None, None, "shot_plan.json"),    # internal — see download path (v3)
             ],
             "tts": [
                 ("audio_path", "audio", "narration.mp3"),
@@ -1497,6 +1642,15 @@ class VideoGenerationService:
             "html": [
                 (None, "generated_images", "generated_images"),  # Directory - process FIRST to build image mapping
                 (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
+                # Per-shot TTS artifacts (Phase B / v2): the `tts/` directory
+                # under run_dir contains shot_NNN.mp3, shot_NNN_raw.json, and
+                # shot_NNN_script.txt for each shot. Uploaded as a directory
+                # at `ai-videos/{video_id}/per_shot_tts/`. The editor uses
+                # these for shot-level audio regeneration; the render server
+                # continues to read the master narration.mp3 (re-uploaded
+                # below). Skipped on legacy v1 runs because tts/ directory
+                # doesn't exist there — upload loop tolerates missing dir.
+                (None, "per_shot_tts", "tts"),
                 ("timeline_json", "timeline", "time_based_frame.json"),  # Process AFTER images to update URLs
                 ("audio_path", "audio", "narration.mp3"),  # Re-upload if audio was mixed with source clips
                 ("words_json", "words", "narration.words.json"),  # Re-upload if words were filtered
@@ -1513,6 +1667,35 @@ class VideoGenerationService:
         # PipelineCancelled. Cleared at the end of this generator (and as a
         # safety net by the router's _run_generation finally block).
         stop_event = cancellation_registry.register(video_id)
+
+        # ── PHASE B COMBINE (2026-05-14) ──────────────────────────────────
+        # Phase B's per-shot TTS reorder requires the pipeline.run() call to
+        # see do_tts=True AND do_html=True together. The per-stage iteration
+        # below normally calls pipeline.run(start_from="tts", stop_at="tts")
+        # for the TTS stage, which makes do_html=False inside that call —
+        # falsifying the v2 gate. To fix: when Phase B conditions are met,
+        # SKIP the individual TTS+WORDS iterations and run TTS+WORDS+HTML
+        # as a single pipeline.run(start_from="tts", stop_at="html") during
+        # what would have been the HTML iteration. The pipeline produces
+        # narration.mp3 + words.json + timeline.json + per_shot_tts/ all in
+        # that combined run, and the html-stage upload list at line ~1510
+        # uploads every one of them.
+        #
+        # Conditions: target ≥ HTML, start ≤ TTS (fresh run or resume from
+        # script), premium+ tier (has Director), VIDEO content type.
+        _phase_b_combine = (
+            target_stage_idx >= 4  # html
+            and start_stage_idx <= 2  # tts or earlier
+            and quality_tier in ("premium", "ultra", "super_ultra")
+            and content_type == "VIDEO"
+        )
+        if _phase_b_combine:
+            logger.info(
+                f"[VideoGenService] 🧪 Phase B combine ACTIVE: TTS+WORDS+HTML "
+                f"will run in a single pipeline.run(start_from='tts', stop_at='html') "
+                f"call to enable per-shot TTS deferral (target={stop_at}, "
+                f"start={start_from}, tier={quality_tier})"
+            )
 
         # Iterate through stages individually
         for stage_idx in range(start_stage_idx, target_stage_idx + 1):
@@ -1542,9 +1725,44 @@ class VideoGenerationService:
                 cancellation_registry.clear(video_id)
                 return
 
+            # ── PHASE B COMBINE: skip TTS + WORDS individual iterations ──
+            # When Phase B combine is active (Director-before-TTS reorder
+            # requires TTS+HTML in a single pipeline.run), the per-shot TTS
+            # + concat + reconcile work happens INSIDE the HTML iteration's
+            # pipeline call (via start_from="tts"). The TTS and WORDS
+            # individual iterations would otherwise call pipeline.run with
+            # stop_at="tts" / "words" — falsifying do_html in the gate. So
+            # we skip them here. The HTML iteration's upload list at
+            # line ~1510 handles narration.mp3 + narration.words.json
+            # upload, so the external file contract is preserved.
+            if _phase_b_combine and stage_idx in (2, 3):
+                logger.info(
+                    f"[VideoGenService] 🧪 Phase B combine: skipping individual "
+                    f"stage iteration for {self.STAGES[stage_idx]} (folded into HTML)"
+                )
+                try:
+                    self.repository.update_stage(video_id, self.STAGES[stage_idx], "IN_PROGRESS")
+                except Exception:
+                    pass
+                continue
+
             stage_name = self.STAGES[stage_idx]
             config = stage_config[stage_idx]
             stage_pipeline_name = config["name"]
+            # Phase B: when HTML iteration runs with combine active, the
+            # pipeline must start FROM TTS (not HTML) so the deferral gate
+            # sees do_tts=True AND do_html=True in the same call. The pipeline
+            # internally runs TTS-stage block (deferring), WORDS-stage block
+            # (also deferring), then HTML-stage block (Director + per-shot
+            # TTS + concat + html gen).
+            _pipeline_start_from = stage_pipeline_name
+            if _phase_b_combine and stage_idx == 4:  # html
+                _pipeline_start_from = "tts"
+                logger.info(
+                    f"[VideoGenService] 🧪 Phase B combine: HTML iteration will "
+                    f"call pipeline.run(start_from='tts', stop_at='html') to "
+                    f"enable Director-before-TTS deferral"
+                )
             
             # Yield progress at start of stage
             # Calculate percentage for start of this stage
@@ -1586,10 +1804,18 @@ class VideoGenerationService:
                 _vid_width = 1080 if orientation == "portrait" else 1920
                 _vid_height = 1920 if orientation == "portrait" else 1080
 
-                # Thread-safe queue: pipeline thread puts events; async loop drains them
+                # Thread-safe queue: pipeline thread puts events; async loop drains them.
+                # The live-progress aggregator is the structured-snapshot store the
+                # polling /status endpoint reads from; the queue is the legacy SSE
+                # delivery path (kept until the FE is fully on polling).
                 _prog_queue: _queue.Queue = _queue.Queue()
+                _aggregator = _get_run_state_aggregator()
+                if _aggregator is not None:
+                    _aggregator.start_run(video_id)
 
                 def _progress_cb(event: Dict[str, Any]) -> None:
+                    if _aggregator is not None:
+                        _aggregator.handle_event(video_id, event)
                     _prog_queue.put_nowait(event)
 
                 pipeline_run = functools.partial(
@@ -1597,7 +1823,7 @@ class VideoGenerationService:
                     base_prompt=prompt,
                     run_name=video_id,
                     resume_run=None,
-                    start_from=stage_pipeline_name,
+                    start_from=_pipeline_start_from,
                     stop_at=stage_pipeline_name,
                     language=language,
                     show_captions=captions_enabled,
@@ -1629,12 +1855,23 @@ class VideoGenerationService:
                     # IntentRouter free-text scan (free-text wins on overlap).
                     # Empty / all-None → pipeline behaves identically to today.
                     visual_preferences=visual_prefs_resolved or None,
+                    # AI video (Phase 3b): the pipeline gates eligibility by
+                    # tier internally and downgrades silently when ineligible,
+                    # so it's safe to forward whatever the request had.
+                    ai_video_enabled=bool(ai_video_enabled),
+                    ai_video_audio_enabled=bool(ai_video_audio_enabled),
+                    # Bind the AI video ledger writer to this institute so
+                    # Veo USAGE_DEDUCTION rows are attributed correctly.
+                    # Pipeline downgrades to no-op when institute_id is None.
+                    institute_id=institute_id,
                     progress_callback=_progress_cb,
                     stop_event=stop_event,
                 )
 
                 # Run pipeline in thread while draining the progress queue in the
                 # async event loop so sub-stage events reach the SSE client in real time.
+                _LIVE_FLUSH_INTERVAL_S = 5.0
+                _last_live_flush_ts = 0.0
                 with ThreadPoolExecutor() as executor:
                     _pipeline_future = loop.run_in_executor(executor, pipeline_run)
                     while not _pipeline_future.done():
@@ -1668,6 +1905,19 @@ class VideoGenerationService:
                                     except Exception:
                                         pass
                             yield _ev
+                        # Periodic flush of the live snapshot to DB so post-restart
+                        # polls and history reads have something to fall back to.
+                        # Best-effort; aggregator may be absent if module failed to
+                        # load. 5s cadence keeps Postgres write volume bounded.
+                        _now = time.time()
+                        if _aggregator is not None and (_now - _last_live_flush_ts) >= _LIVE_FLUSH_INTERVAL_S:
+                            try:
+                                _snap = _aggregator.serialize_for_db(video_id)
+                                if _snap:
+                                    self.repository.update_live_snapshot(video_id, _snap)
+                            except Exception:
+                                pass
+                            _last_live_flush_ts = _now
                         await asyncio.sleep(0.25)
                     # Drain any remaining events after the future completes
                     while not _prog_queue.empty():
@@ -2050,6 +2300,15 @@ class VideoGenerationService:
                         "message": "Stopped by user",
                     }
                     cancellation_registry.clear(video_id)
+                    _agg_end = _get_run_state_aggregator()
+                    if _agg_end is not None:
+                        _agg_end.end_run(video_id, "FAILED")
+                        try:
+                            _final_snap = _agg_end.serialize_for_db(video_id)
+                            if _final_snap:
+                                self.repository.update_live_snapshot(video_id, _final_snap)
+                        except Exception:
+                            pass
                     return
                 import traceback
                 pipeline_error = str(e)
@@ -2245,11 +2504,38 @@ class VideoGenerationService:
                                         settings = get_settings()
                                         bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
                                         base_url = f"https://{bucket}.s3.amazonaws.com/ai-videos/{video_id}/{file_key}/"
-                                    
+
+                                    # Phase B: for per_shot_tts, store an ordered shot→mp3 map in s3_urls
+                                    # instead of just the directory URL. The editor reads this to render
+                                    # per-shot audio clips on the timeline (aligned to shot boundaries)
+                                    # rather than one continuous waveform of the concat master. Other
+                                    # directory uploads (generated_images, etc.) keep the directory-URL
+                                    # convention. Per-shot mp3 filenames are `shot_NNN.mp3` (3-digit
+                                    # zero-padded) — see _synthesize_voice_per_shot in automation_pipeline.
+                                    s3_url_value: Any = base_url
+                                    if file_key == "per_shot_tts":
+                                        _shot_audio_map: Dict[str, str] = {}
+                                        for _u in s3_urls:
+                                            _m = re.search(r'/(shot_\d{3})\.mp3(?:\?|$)', _u)
+                                            if _m:
+                                                _shot_audio_map[_m.group(1)] = _u
+                                        if _shot_audio_map:
+                                            # Sort by shot id for stable JSON ordering in the DB column.
+                                            s3_url_value = dict(sorted(_shot_audio_map.items()))
+                                            logger.info(
+                                                f"[VideoGenService] per_shot_tts: built shot→mp3 map "
+                                                f"({len(s3_url_value)} shots) for s3_urls"
+                                            )
+                                        else:
+                                            logger.warning(
+                                                f"[VideoGenService] per_shot_tts: no shot_NNN.mp3 files matched "
+                                                f"in {len(s3_urls)} uploaded URLs — falling back to directory URL"
+                                            )
+
                                     file_id = f"{video_id}-{file_key}"
                                     uploaded_files[file_key] = {
                                         "file_id": file_id,
-                                        "s3_url": base_url,  # Base directory URL
+                                        "s3_url": s3_url_value,  # Directory URL OR per_shot_tts shot→mp3 dict
                                         "files": s3_urls  # List of individual file URLs
                                     }
                                     logger.info(f"[VideoGenService] Uploaded {len(s3_urls)} files in {file_key} directory")
@@ -2481,6 +2767,14 @@ class VideoGenerationService:
                         _dir_plan = run_dir / "director_plan.json"
                         if _dir_plan.exists():
                             _ckpt_files.append((_dir_plan, f"ai-videos/{video_id}/checkpoints/director_plan.json"))
+                        # v3 shot plan — ShotPlanner+NarrationWriter output.
+                        # Persisted alongside director_plan.json so a v3 run can
+                        # resume from the last saved shot without re-planning.
+                        # The editor's `/shot/regenerate` endpoint also reads
+                        # this to keep shot_plan + timeline in sync.
+                        _shot_plan = run_dir / "shot_plan.json"
+                        if _shot_plan.exists():
+                            _ckpt_files.append((_shot_plan, f"ai-videos/{video_id}/checkpoints/shot_plan.json"))
                         _shot_cache_dir = run_dir / "shot_cache"
                         if _shot_cache_dir.exists():
                             for _sc_file in sorted(_shot_cache_dir.glob("shot_*.json")):
@@ -2494,6 +2788,24 @@ class VideoGenerationService:
                             logger.info(f"[VideoGenService] Uploaded {len(_ckpt_files)} checkpoint files to S3 for {video_id}")
                     except Exception as _ckpt_err:
                         logger.warning(f"[VideoGenService] Failed to upload checkpoints to S3: {_ckpt_err}")
+
+                    # Pillar 1 — per-run cost balance sheet. The pipeline writes
+                    # cost_breakdown.json locally to run_dir on each run() call;
+                    # we mirror it to a stable S3 path so the FE/admin can fetch
+                    # the latest report without joining ai_token_usage. The file
+                    # is overwritten on each stage iteration — the final upload
+                    # (after render or the user's chosen stop_at stage) wins.
+                    try:
+                        _cb_file = run_dir / "cost_breakdown.json"
+                        if _cb_file.exists():
+                            self.s3_service.upload_file(
+                                _cb_file,
+                                s3_key=f"ai-videos/{video_id}/cost_breakdown/cost_breakdown.json",
+                                content_type="application/json",
+                            )
+                            logger.info(f"[VideoGenService] Uploaded cost_breakdown.json for {video_id}")
+                    except Exception as _cb_err:
+                        logger.warning(f"[VideoGenService] Failed to upload cost_breakdown.json: {_cb_err}")
 
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.
@@ -2544,6 +2856,7 @@ class VideoGenerationService:
             logger.warning(f"[VideoGenService] No record found in DB for {video_id}")
         
         # If pipeline had error, mark as failed
+        _agg_terminal = _get_run_state_aggregator()
         if pipeline_error:
             logger.error(f"[VideoGenService] Pipeline error: {pipeline_error}")
             video_record = self.repository.get_by_video_id(video_id)
@@ -2560,7 +2873,15 @@ class VideoGenerationService:
                     video_id=video_id,
                     error_message=pipeline_error
                 )
-            
+            if _agg_terminal is not None:
+                _agg_terminal.end_run(video_id, "FAILED")
+                try:
+                    _final_snap = _agg_terminal.serialize_for_db(video_id)
+                    if _final_snap:
+                        self.repository.update_live_snapshot(video_id, _final_snap)
+                except Exception:
+                    pass
+
             yield {
                 "type": "error",
                 "message": f"Video generation encountered an error: {pipeline_error}. Partial files may have been saved.",
@@ -2568,6 +2889,19 @@ class VideoGenerationService:
                 "error_details": pipeline_error,
                 "stage": video_record.current_stage if video_record else "PENDING"
             }
+        elif _agg_terminal is not None:
+            # Loop finished without setting pipeline_error → mark the live
+            # snapshot as completed so the polling endpoint stops showing the
+            # stage spinner. The DB record's status is the authoritative
+            # source on retrospective queries; the aggregator's flip here
+            # keeps the live view in sync without a separate DB read.
+            _agg_terminal.end_run(video_id, "COMPLETED")
+            try:
+                _final_snap = _agg_terminal.serialize_for_db(video_id)
+                if _final_snap:
+                    self.repository.update_live_snapshot(video_id, _final_snap)
+            except Exception:
+                pass
 
         # Clean up the cooperative-stop registry entry. Idempotent — safe even
         # if we already cleared on a PipelineCancelled return earlier.
@@ -2629,18 +2963,47 @@ class VideoGenerationService:
     def get_video_status(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
         Get current status of video generation.
-        
+
         Args:
             video_id: Video identifier
-            
+
         Returns:
-            Video status dictionary or None if not found
+            Video status dictionary or None if not found. Includes a `live`
+            field carrying the v3 RunStateAggregator snapshot — read from
+            process memory while the run is active, falling back to the
+            persisted snapshot in ``extra_metadata.live`` for history views.
+            The DB-side ``status`` field always wins for the top-level
+            status string; ``live.status`` is allowed to lag (it's a
+            snapshot of what the in-process aggregator believed last).
         """
         video_record = self.repository.get_by_video_id(video_id)
         if not video_record:
             return None
-        
-        return video_record.to_dict()
+
+        result = video_record.to_dict()
+
+        # Attach live snapshot. In-memory wins; DB fallback for history /
+        # post-restart reads. Tolerates aggregator load failure (returns
+        # None) so a broken aggregator never breaks status reads.
+        live: Optional[Dict[str, Any]] = None
+        aggregator = _get_run_state_aggregator()
+        if aggregator is not None:
+            try:
+                live = aggregator.snapshot(video_id)
+            except Exception:
+                live = None
+        if live is None:
+            meta = result.get("metadata") or {}
+            live = meta.get("live") if isinstance(meta, dict) else None
+        if live is not None:
+            # Reflect the authoritative DB status onto the snapshot so the
+            # FE doesn't have to reconcile two status strings.
+            db_status = result.get("status")
+            if db_status:
+                live["status"] = db_status
+            result["live"] = live
+
+        return result
 
 
     # ──────────────────────────────────────────────────────────────────────
@@ -2715,6 +3078,87 @@ DO NOT touch `document.head`, `document.body`, `#camera-wrapper`, `#world-layer`
 DO NOT inject `<style>` rules that override the built-in classes globally (e.g. redefining `.text-display`). Scope custom CSS to inner classes inside `#shot-root`.
 DO NOT hardcode fonts other than the four loaded above — anything else triggers a flash-of-unstyled-text in the rendered video.
 """
+
+    def _lookup_shot_html_model(
+        self,
+        video_id: str,
+        target_frame: Optional[Dict[str, Any]],
+        raw_timeline: Optional[Dict[str, Any]],
+        status: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Find the model that authored this shot's HTML, if persisted.
+
+        Checks in order:
+          1. target_frame['html_model']            (direct on the frame)
+          2. raw_timeline['meta']['shots'][i]['html_model']
+                                                    (v3 meta.shots[])
+          3. S3 director_plan.json / shot_plan.json shot entry's html_model
+                                                    (initial-gen artifact)
+
+        `status` is the result of `self.get_video_status(video_id)` — passed
+        in by the caller to avoid a second roundtrip when regenerate already
+        called it. If omitted, this method calls it itself.
+
+        Returns None if no persisted model is found (caller falls back).
+        """
+        if target_frame and target_frame.get("html_model"):
+            return target_frame["html_model"]
+
+        # Try both field names — the codebase mixes `shot_idx` (newer entries)
+        # and `shot_index` (older paths via _coerce_shot_index).
+        shot_idx = None
+        if target_frame:
+            shot_idx = target_frame.get("shot_idx")
+            if shot_idx is None:
+                shot_idx = target_frame.get("shot_index")
+
+        def _shot_key(s: Dict[str, Any]) -> Any:
+            return s.get("shot_idx") if s.get("shot_idx") is not None else s.get("shot_index")
+
+        # 2. meta.shots[] (pipeline v3) or meta.sentences[]-keyed lookup
+        if raw_timeline and isinstance(raw_timeline.get("meta"), dict):
+            meta_shots = raw_timeline["meta"].get("shots") or []
+            for s in meta_shots:
+                if not isinstance(s, dict):
+                    continue
+                if shot_idx is not None and _shot_key(s) == shot_idx:
+                    if s.get("html_model"):
+                        return s["html_model"]
+
+        # 3. Director plan / shot plan on S3 — last resort.
+        try:
+            if status is None:
+                status = self.get_video_status(video_id)
+            s3_urls = (status or {}).get("s3_urls", {}) if status else {}
+            plan_url = s3_urls.get("shot_plan") or s3_urls.get("director_plan")
+            if not plan_url:
+                return None
+            with tempfile.TemporaryDirectory() as td:
+                plan_path = Path(td) / "plan.json"
+                if not self.s3_service.download_file(plan_url, plan_path):
+                    return None
+                plan = json.loads(plan_path.read_text(encoding="utf-8"))
+                shots = plan.get("shots") if isinstance(plan, dict) else None
+                if not shots:
+                    return None
+                # Positional lookup first (cheapest, accurate for v3 plans
+                # where shots[] indexes line up with shot_idx).
+                if (
+                    shot_idx is not None
+                    and isinstance(shot_idx, int)
+                    and 0 <= shot_idx < len(shots)
+                ):
+                    hit = (shots[shot_idx] or {}).get("html_model")
+                    if hit:
+                        return hit
+                # Fallback: scan by either field name.
+                for s in shots:
+                    if isinstance(s, dict) and _shot_key(s) == shot_idx:
+                        if s.get("html_model"):
+                            return s["html_model"]
+        except Exception:
+            return None
+        return None
 
     def _build_regen_context(
         self,
@@ -2828,15 +3272,72 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             )
             return system, user
 
-        # Rich context path — build a designer-grade system prompt
+        # Rich context path — build a designer-grade system prompt.
+        #
+        # Until 2026-05 this method maintained its own per-shot teaching block
+        # in parallel with the one initial-gen uses. The May audit (rubric v3,
+        # bbox-lint, pacing profile, background_treatment, whitespace-safe
+        # accent words, branded easing, 3D perspective layers, SVG filter
+        # teaching, second-beat motion) only landed in `shot_type_cards.
+        # build_per_shot_system_prompt` — regen never saw those fixes, which
+        # is the single largest reason regen output was visibly worse than
+        # initial-gen output.
+        #
+        # We now call the canonical builder first, then append regen-specific
+        # context (run brand tokens, neighbours, original HTML, edit
+        # instruction). One prompt builder, two callers.
         sections: List[str] = []
+
+        target_shot_type = context.get("target_shot_type", "")
+        dims = context.get("dimensions") or {}
+        _w = int(dims.get("width", 1920) or 1920)
+        _h = int(dims.get("height", 1080) or 1080)
+
+        # Always use the aspirational preamble for regen. Per the May 2026
+        # audit, both CORE_PREAMBLE and CORE_PREAMBLE_ASPIRATIONAL carry the
+        # foundational rules (whitespace-safe accent words, background
+        # contract, second-beat motion). Aspirational only differs by
+        # relaxing some stylistic bans — which is the right trade for an
+        # edit where the user may want exactly that kind of break. Earlier
+        # tier-heuristic was a dead branch (`context['run']` was never set).
+        canonical_block: Optional[str] = None
+        if target_shot_type:
+            try:
+                if str(self.video_gen_root) not in sys.path:
+                    sys.path.insert(0, str(self.video_gen_root))
+                from shot_type_cards import (  # type: ignore
+                    build_per_shot_system_prompt as _bpssp,
+                )
+                canonical_block = _bpssp(
+                    target_shot_type, _w, _h,
+                    aspirational=True,
+                )
+            except Exception as _bpssp_err:
+                # Best-effort: regen continues with the legacy inlined block
+                # below if the canonical builder isn't importable for any
+                # reason. Log so the gap is visible in stage logs instead of
+                # silently degrading regen quality.
+                import logging as _lg
+                _lg.getLogger(__name__).warning(
+                    "[VideoGenService] Frame regen could not import "
+                    f"build_per_shot_system_prompt (continuing with legacy "
+                    f"teaching block): {_bpssp_err}"
+                )
+
         sections.append(
             "You are the editor for an existing AI-generated educational video. "
-            "A specific frame needs to be modified. The rest of the timeline is "
+            "A specific shot needs to be modified. The rest of the timeline is "
             "FROZEN — your edit must look stylistically continuous with its "
-            "neighbours. Use the run's brand tokens, motion strategy, and "
-            "neighbour context below to stay on-brand."
+            "neighbours. Honor the canonical teaching block (CORE_PREAMBLE / "
+            "shot type card / DO-NOT rules / TEXT BOUND BOX / OUTPUT FORMAT) "
+            "exactly as initial generation does — regen is held to the same "
+            "post-render rubric (bbox-lint + vision review v3 + brand-asset + "
+            "animation density). Your output will be graded on those gates."
         )
+
+        if canonical_block:
+            sections.append("\n## CANONICAL SHOT TEACHING (same block as initial gen)\n")
+            sections.append(canonical_block)
 
         sections.append("\n## RUN CONTEXT (do not violate)")
 
@@ -2958,18 +3459,83 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             except Exception:
                 pass  # registry import / catalog build is best-effort
 
+        # ── REGEN DELTA BLOCK ────────────────────────────────────────────
+        # Things the LLM needs to know about EDITING (not authoring) a shot.
+        # These don't belong in the canonical per-shot teaching (initial gen
+        # has no "original HTML" to edit), so they live here.
+        regen_delta: List[str] = []
+        regen_delta.append("\n## REGEN-SPECIFIC RULES (editing an existing shot)")
+
+        # 1. Tell the LLM about SVG <filter>/<defs> IDs already in the HTML so
+        #    it doesn't redeclare them (which silently overrides the originals
+        #    if IDs collide) and doesn't strip them (which breaks any element
+        #    that references them via filter="url(#…)").
+        try:
+            svg_filter_ids = sorted(set(
+                re.findall(
+                    r'<(?:filter|linearGradient|radialGradient|symbol|clipPath|mask|pattern)\s+[^>]*\bid=["\']([^"\']+)["\']',
+                    original_html or "",
+                )
+            ))
+        except Exception:
+            svg_filter_ids = []
+        if svg_filter_ids:
+            regen_delta.append(
+                "\n**SVG defs already declared in the original HTML** (do NOT "
+                "redeclare; reference via `url(#id)` if needed; do NOT strip "
+                "unless replacing the consuming element):"
+            )
+            for sid in svg_filter_ids[:24]:
+                regen_delta.append(f"  - #{sid}")
+            if len(svg_filter_ids) > 24:
+                regen_delta.append(f"  - …and {len(svg_filter_ids) - 24} more")
+
+        # 2. The shot has its own scoped id prefix (e.g. `s3_panel`, `s3_w1`).
+        #    Tell the LLM to keep that prefix — the timeline-wide CSS scoping
+        #    assumes per-shot id namespaces.
+        try:
+            id_prefix_match = re.search(r'id=["\']([a-zA-Z]+\d+)_', original_html or "")
+            id_prefix = id_prefix_match.group(1) if id_prefix_match else None
+        except Exception:
+            id_prefix = None
+        if id_prefix:
+            regen_delta.append(
+                f"\n**ID prefix in use**: `{id_prefix}_*` — keep this prefix on "
+                "any new elements you add. Other shots in the timeline use "
+                "different prefixes; do NOT collide."
+            )
+
+        regen_delta.append(
+            "\n**Edit discipline**\n"
+            "- Make the smallest change that fulfils the user instruction. "
+            "Rewriting unaffected sections raises drift risk and gets caught "
+            "by the post-regen vision reviewer.\n"
+            "- Preserve element IDs that already exist in the HTML. The "
+            "render harness, audio-sync layer, and editor's transform overlay "
+            "all key off these IDs.\n"
+            "- If the user instruction is ambiguous (\"the image\", \"the "
+            "text\"), prefer the element that occupies the largest screen "
+            "area in the original HTML."
+        )
+
+        sections.append("\n".join(regen_delta))
+
         sections.append(
             "\n## OUTPUT RULES\n"
-            "1. PRESERVE existing `<img src=\"...\">` tags exactly — do not change image URLs.\n"
-            "2. PRESERVE `data-img-prompt`, `data-video-query`, and `data-subject-id` attributes — "
-            "they drive downstream image/video selection.\n"
-            "3. Use the brand CSS variables from RUN CONTEXT — never hardcode brand colors.\n"
-            "4. Reuse the shot pack's font_scale and spacing tokens — never pick your own.\n"
-            "5. Keep the outer wrapper as `<div id=\"shot-root\" style=\"position:relative;width:100%;height:100%;overflow:hidden\">…</div>`.\n"
-            "6. Use named GSAP eases (power3.out / back.out / expo.out) — never `linear` unless intentional.\n"
-            "7. Never use `setTimeout`. Use `gsap.delayedCall` or tween `delay:` values.\n"
-            "8. Never wrap inline scripts in `window.addEventListener('load', …)` — won't fire in the render server's shadow DOM.\n"
-            "9. Return ONLY the new HTML code. No markdown fences, no commentary."
+            "1. PRESERVE existing `<img src=\"...\">` and `<video src=\"...\">` tags exactly — "
+            "do not change `src`, `data-img-source`, `data-reference-url`, "
+            "`data-img-prompt`, `data-video-query`, `data-subject-id`, "
+            "`data-skill`, or `data-aivideo` attributes unless the user "
+            "instruction explicitly asks for it. These attributes drive "
+            "downstream asset resolution; reordering or removing them "
+            "silently breaks the image/video cascade.\n"
+            "2. Use the brand CSS variables from RUN CONTEXT — never hardcode brand colors.\n"
+            "3. Reuse the shot pack's font_scale and spacing tokens — never pick your own.\n"
+            "4. Keep the outer wrapper as `<div id=\"shot-root\" style=\"position:relative;width:100%;height:100%;overflow:hidden\">…</div>`.\n"
+            "5. Use named GSAP eases (power3.out / back.out / expo.out) — never `linear` unless intentional.\n"
+            "6. Never use `setTimeout`. Use `gsap.delayedCall` or tween `delay:` values.\n"
+            "7. Never wrap inline scripts in `window.addEventListener('load', …)` — won't fire in the render server's shadow DOM.\n"
+            "8. Return ONLY the new HTML code. No markdown fences, no commentary."
         )
 
         # Append the preloaded-runtime catalog so the LLM knows what's
@@ -3064,6 +3630,10 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
 
             seedream_call = make_standalone_seedream_call(api_key)
 
+            # The video record's `prompt` field carries the user's original
+            # input — same authoritative topic signal we pass on first-time
+            # generation. Threading it through makes regenerate honor the
+            # actual topic instead of drifting to generic clickbait.
             thumb_set = _run_thumb(
                 seedream_call=seedream_call,
                 run_id=video_id,
@@ -3071,7 +3641,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 director_plan=director_plan,
                 orientation=orientation,
                 subjects_list=[],
-                brand_kit=None,
+                original_prompt=(record.prompt or "").strip() or None,
                 llm_chat=None,
             )
 
@@ -3096,7 +3666,8 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         timestamp: float,
         user_prompt: str,
         db_session: Optional[Session] = None,
-        institute_id: Optional[str] = None
+        institute_id: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Regenerate HTML content for a specific frame based on user prompt.
@@ -3207,10 +3778,132 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
 
             import requests
             settings = get_settings()
-            
+
             if not settings.openrouter_api_key:
                 raise ValueError("OpenRouter API key not configured")
-                
+
+            # ── DOM-PATCH FAST PATH ─────────────────────────────────────
+            # Before paying the price of a full LLM call, classify the user's
+            # intent. If they want a small targeted edit (image swap, text
+            # change, color tweak), apply it deterministically with no LLM —
+            # the deterministic patcher is faster, cheaper, and doesn't
+            # introduce the kind of drift that made Flash regen output worse
+            # than the original on full-HTML rewrites.
+            #
+            # On any failure (classifier down, classifier says "full_remake",
+            # patcher couldn't apply the op, parsing failed), we fall through
+            # to the canonical LLM path unchanged.
+            classification: Optional[Dict[str, Any]] = None
+            applied_ops: Optional[List[Dict[str, Any]]] = None
+            try:
+                from .regen_intent_classifier import (
+                    classify_intent as _classify_intent,
+                    build_shot_summary as _build_summary,
+                    is_patch_safe_to_apply as _patch_safe,
+                )
+                from .regen_dom_patcher import (
+                    build_shot_summary_from_html as _summary_from_html,
+                    apply as _dom_apply,
+                )
+                _summary_kwargs = _summary_from_html(
+                    original_html,
+                    shot_type=regen_context.get("target_shot_type"),
+                )
+                _shot_summary = _build_summary(**_summary_kwargs)
+                classification = _classify_intent(
+                    user_instruction=user_prompt,
+                    shot_summary=_shot_summary,
+                    openrouter_api_key=settings.openrouter_api_key,
+                )
+                if classification:
+                    logger.info(
+                        f"🧭 Regen intent={classification['intent']} "
+                        f"confidence={classification.get('confidence')} "
+                        f"ops={len(classification.get('patch_ops') or [])} "
+                        f"frame={frame_index}"
+                    )
+                if classification and _patch_safe(classification):
+                    patch_result = _dom_apply(
+                        original_html, classification["patch_ops"]
+                    )
+                    if patch_result:
+                        new_html_patched, applied_ops = patch_result
+                        logger.info(
+                            f"⚡ Regen DOM-patched frame={frame_index} "
+                            f"ops_applied={len(applied_ops)} "
+                            f"(skipped full LLM)"
+                        )
+                        return {
+                            "video_id": video_id,
+                            "frame_index": frame_index,
+                            "timestamp": timestamp,
+                            "original_html": original_html,
+                            "new_html": new_html_patched,
+                            "resolved_model": None,  # no LLM used
+                            "regen_path": "dom_patch",
+                            "classification": classification,
+                            "applied_ops": applied_ops,
+                        }
+            except Exception as _fast_path_err:
+                logger.warning(
+                    "[VideoGenService] Regen fast path failed, falling through "
+                    f"to LLM: {_fast_path_err}"
+                )
+                # classification may still be partially populated; the LLM
+                # path will echo whatever we have back in the response.
+
+            # ── Model resolution (4-step, in priority order) ──
+            # 1. Explicit request override (FE "Advanced > Model" dropdown).
+            # 2. Per-shot html_model persisted at initial-gen time, so a regen
+            #    uses the SAME model that authored the shot. Looked up on the
+            #    target frame, then on the matching shot in director_plan/
+            #    shot_plan if the frame doesn't carry it.
+            # 3. Registry default for use_case='video_regenerate' from
+            #    ai_model_defaults (admin-tunable; see migrations).
+            # 4. Hard fallback — Gemini 2.5 Flash (matches initial-gen tier,
+            #    NOT gpt-4o which was the previous broken default).
+            resolved_model: Optional[str] = None
+            model_source = "fallback"
+
+            if model_override:
+                resolved_model = model_override
+                model_source = "request_override"
+
+            if not resolved_model:
+                persisted = target_frame.get("html_model") if target_frame else None
+                if not persisted:
+                    persisted = self._lookup_shot_html_model(
+                        video_id,
+                        target_frame,
+                        raw if isinstance(raw, dict) else None,
+                        status=status,  # reuse — get_video_status already called above
+                    )
+                if persisted:
+                    resolved_model = persisted
+                    model_source = "persisted_at_gen"
+
+            if not resolved_model and db_session is not None:
+                try:
+                    from .ai_models_service import AIModelsService
+                    registry = AIModelsService(db_session)
+                    registry_default = registry.get_default_model_id_for_use_case(
+                        "video_regenerate"
+                    )
+                    if registry_default:
+                        resolved_model = registry_default
+                        model_source = "registry_default"
+                except Exception as e:
+                    logger.warning(f"Regen model registry lookup failed: {e}")
+
+            if not resolved_model:
+                resolved_model = settings.llm_default_model or "google/gemini-2.5-flash"
+                model_source = "hard_fallback"
+
+            logger.info(
+                f"🎨 Regen frame={frame_index} model={resolved_model} "
+                f"source={model_source}"
+            )
+
             response = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
@@ -3219,7 +3912,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                     "HTTP-Referer": "https://vacademy.io",
                 },
                 json={
-                    "model": settings.llm_default_model or "openai/gpt-4o",
+                    "model": resolved_model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message}
@@ -3243,12 +3936,24 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             else:
                 new_html = new_html.strip()
             
+            # If the classifier wanted a patch but no op was applicable
+            # (e.g. animation-span text target → patcher correctly bailed),
+            # surface that distinction in regen_path so the FE can show a
+            # more accurate toast.
+            _path = "full_remake"
+            if classification and classification.get("intent") == "targeted_patch":
+                _path = "full_remake_fallback"
+
             return {
                 "video_id": video_id,
                 "frame_index": frame_index,
                 "timestamp": timestamp,
                 "original_html": original_html,
-                "new_html": new_html
+                "new_html": new_html,
+                "resolved_model": resolved_model,
+                "regen_path": _path,
+                "classification": classification,
+                "applied_ops": None,
             }
 
     async def update_video_frame(
@@ -3260,6 +3965,8 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         exit_time: float | None = None,
         z: int | None = None,
         entry_id: str | None = None,
+        entry_meta: Dict[str, Any] | None = None,
+        html_model: str | None = None,
     ) -> Dict[str, Any]:
         """
         Update a specific frame's HTML in the timeline and save back to S3.
@@ -3314,6 +4021,26 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 entry["exitTime"] = exit_time
             if z is not None:
                 entry["z"] = z
+            # Persist the model that authored the HTML, when sent. Editor
+            # uses this to make "Remake with AI" sticky — next regen on this
+            # entry resolves to the same model the user picked this time.
+            # None = leave existing value untouched (raw HTML edits / Code
+            # tab saves don't change which model authored the shot).
+            if html_model is not None:
+                entry["html_model"] = html_model
+            # Merge entry_meta (free-form per-entry metadata) — preserve any
+            # keys the caller didn't include so we don't clobber unrelated
+            # state set by other tools writing into the same entry.
+            if entry_meta is not None and isinstance(entry_meta, dict):
+                existing_meta = entry.get("entry_meta")
+                if not isinstance(existing_meta, dict):
+                    existing_meta = {}
+                merged = {**existing_meta, **entry_meta}
+                # Empty string display_name → drop the key entirely so the
+                # entry reverts to its auto-derived friendly name.
+                if "display_name" in merged and merged["display_name"] in (None, ""):
+                    merged.pop("display_name", None)
+                entry["entry_meta"] = merged
 
             # Write (data already points to the modified entries when wrapped)
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
@@ -3368,6 +4095,85 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "video_id": video_id,
                 "updated_frame_index": frame_index,
                 "message": "Frame updated successfully. Player should reflect changes immediately."
+            }
+
+
+    async def reorder_video_frame(
+        self,
+        video_id: str,
+        entry_id: str,
+        to_index: int,
+    ) -> Dict[str, Any]:
+        """
+        Move a frame to a new positional index in the timeline.
+
+        Looked up by entry_id (the only safe key — positional indices shift
+        after every reorder, so a client-provided from_index can race the
+        server's view). The entry is spliced from its current position and
+        inserted at `to_index`, clamped to [0, len-1]. All other fields
+        (html, inTime/exitTime, z, meta.total_duration) are left untouched.
+
+        Atomic on the server side — the timeline JSON is reloaded, modified
+        in memory, and re-uploaded as one S3 PUT. No partial-failure window
+        where the timeline could end up missing an entry.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if not entry_id:
+            raise ValueError("entry_id is required for reorder")
+
+        from ..config import get_settings
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data, entries, _meta, is_wrapped, key, file_path = self._load_timeline(video_id, temp_dir)
+            settings = get_settings()
+            bucket = settings.aws_bucket_name
+
+            from_index = -1
+            for i, e in enumerate(entries):
+                if e.get("id") == entry_id:
+                    from_index = i
+                    break
+            if from_index < 0:
+                raise ValueError(
+                    f"Entry '{entry_id}' not found in video '{video_id}'"
+                )
+
+            # Clamp to_index to a valid range. The post-splice length is
+            # len(entries) (we re-insert what we just removed), so the
+            # valid insert range is [0, len-1].
+            clamped_to = max(0, min(to_index, len(entries) - 1))
+            if clamped_to == from_index:
+                logger.info(
+                    "reorder_video_frame: entry %s already at index %d, no-op",
+                    entry_id, from_index,
+                )
+                return {
+                    "status": "success",
+                    "video_id": video_id,
+                    "entry_id": entry_id,
+                    "from_index": from_index,
+                    "to_index": from_index,
+                    "message": "Frame already at target index (no-op).",
+                }
+
+            moved = entries.pop(from_index)
+            entries.insert(clamped_to, moved)
+
+            if is_wrapped:
+                data["entries"] = entries
+            else:
+                data = entries
+
+            self._save_timeline(data, file_path, bucket, key)
+
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "entry_id": entry_id,
+                "from_index": from_index,
+                "to_index": clamped_to,
+                "message": "Frame reordered successfully.",
             }
 
 
@@ -3464,6 +4270,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         html_start_y: Optional[int] = None,
         html_end_x: Optional[int] = None,
         html_end_y: Optional[int] = None,
+        entry_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Insert a new frame/entry into the video timeline and save back to S3.
@@ -3526,6 +4333,16 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 new_entry["inTime"] = in_time
             if exit_time is not None:
                 new_entry["exitTime"] = exit_time
+
+            # Attach entry_meta when the client provided one. Treat the
+            # empty-string display_name sentinel as "no override" and skip
+            # storing it — same semantic as update_video_frame's merge path.
+            if entry_meta is not None and isinstance(entry_meta, dict) and entry_meta:
+                clean_meta = dict(entry_meta)
+                if "display_name" in clean_meta and clean_meta["display_name"] in (None, ""):
+                    clean_meta.pop("display_name", None)
+                if clean_meta:
+                    new_entry["entry_meta"] = clean_meta
 
             # Insert sorted by inTime so the timeline stays ordered (time_driven).
             # For user_driven (no inTime), simply append.

@@ -26,7 +26,7 @@ export interface AssigneeOption {
 
 const DEFAULT_ASSIGNEE_ROLES: { id: string; name: string }[] = [
     { id: '1', name: 'ADMIN' },
-    { id: '2', name: 'COURSE CREATOR' },
+    { id: '2', name: 'CONTENT CREATOR' },
     { id: '3', name: 'ASSESSMENT CREATOR' },
     { id: '4', name: 'EVALUATOR' },
     { id: '5', name: 'TEACHER' },
@@ -35,7 +35,7 @@ const DEFAULT_ASSIGNEE_ROLES: { id: string; name: string }[] = [
 const ROLE_PRIORITY: Record<string, number> = {
     TEACHER: 0,
     EVALUATOR: 1,
-    'COURSE CREATOR': 2,
+    'CONTENT CREATOR': 2,
     'ASSESSMENT CREATOR': 3,
     ADMIN: 4,
 };
@@ -50,7 +50,7 @@ const toDisplayRole = (raw?: string): string => {
 
 /**
  * Returns the list of ACTIVE institute users who can be assigned to a doubt — staff-level roles
- * (TEACHER, EVALUATOR, COURSE_CREATOR, ASSESSMENT_CREATOR, ADMIN). Each option carries a role
+ * (TEACHER, EVALUATOR, CONTENT_CREATOR, ASSESSMENT_CREATOR, ADMIN). Each option carries a role
  * subtitle so the picker can show "Jane · Teacher" / "Ravi · Evaluator".
  *
  * Backed by the same institute-users endpoint the Teams page uses; role-agnostic at the API layer,

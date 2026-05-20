@@ -267,15 +267,16 @@ function AttendanceTrackerContent() {
         return [{ label: 'All Batches', value: null }, ...extractedBatches];
     }, [batches]);
 
-    // Map packageSessionId → { batchName, packageId } for fast lookup
+    // Map packageSessionId → { batchName, packageId, packageName } for fast lookup
     const batchInfoMap = useMemo(() => {
-        const map = new Map<string, { batchName: string; packageId: string }>();
+        const map = new Map<string, { batchName: string; packageId: string; packageName: string }>();
         if (batches && Array.isArray(batches)) {
             for (const batchData of batches as batchWithStudentDetails[]) {
                 for (const batch of batchData.batches) {
                     map.set(batch.package_session_id, {
                         batchName: `${batch.batch_name} (${batch.invite_code})`,
                         packageId: batchData.package_dto.id,
+                        packageName: batchData.package_dto.package_name,
                     });
                 }
             }
@@ -565,14 +566,21 @@ function AttendanceTrackerContent() {
         setIsExporting(true);
         try {
             const allStudents = await fetchAllAttendancePages();
-            const csvData = allStudents.map((student) => ({
-                'Name': student.fullName || '',
-                'Email': student.email || '',
-                'Mobile Number': student.mobileNumber || '',
-                'Enrollment Number': student.instituteEnrollmentNumber || '',
-                'Gender': student.gender || '',
-                'Enrollment Status': student.enrollmentStatus || '',
-            }));
+            const csvData = allStudents.map((student) => {
+                const info = student.packageSessionId
+                    ? batchInfoMap.get(student.packageSessionId)
+                    : undefined;
+                return {
+                    'Name': student.fullName || '',
+                    'Email': student.email || '',
+                    'Mobile Number': student.mobileNumber || '',
+                    'Enrollment Number': student.instituteEnrollmentNumber || '',
+                    // 'Batch': info?.batchName || '',
+                    'Course': info?.packageName || '',
+                    'Gender': student.gender || '',
+                    'Enrollment Status': student.enrollmentStatus || '',
+                };
+            });
             const csv = Papa.unparse(csvData);
             downloadCsv(csv, `attendance_account_details_${format(new Date(), 'yyyy-MM-dd')}.csv`);
             toast.success('Account details exported successfully');
@@ -617,11 +625,17 @@ function AttendanceTrackerContent() {
                     .map((s) => `${s.title} (${s.meetingDate})`)
                     .join(', ');
 
+                const info = student.packageSessionId
+                    ? batchInfoMap.get(student.packageSessionId)
+                    : undefined;
+
                 return {
                     'Name': student.fullName || '',
                     'Email': student.email || '',
                     'Mobile Number': student.mobileNumber || '',
                     'Enrollment Number': student.instituteEnrollmentNumber || '',
+                    // 'Batch': info?.batchName || '',
+                    'Course': info?.packageName || '',
                     'Attendance %': `${student.attendancePercentage}%`,
                     'Classes Attended': `${attended}/${total}`,
                     'Avg Duration': formatDurationMinutes(avgDurationMinutes),
@@ -1203,9 +1217,22 @@ interface BatchDropdownProps {
 
 function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) {
     const [batchSearch, setBatchSearch] = useState('');
-    const filteredOptions = options.filter((opt) =>
-        opt.label.toLowerCase().includes(batchSearch.toLowerCase())
-    );
+
+    const uniqueOptions = useMemo(() => {
+        const seen = new Set<string>();
+        return options.filter((opt) => {
+            const key = `${opt.value ?? 'all'}::${opt.label}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [options]);
+
+    const filteredOptions = useMemo(() => {
+        const query = batchSearch.trim().toLowerCase();
+        if (!query) return uniqueOptions;
+        return uniqueOptions.filter((opt) => opt.label.toLowerCase().includes(query));
+    }, [uniqueOptions, batchSearch]);
 
     return (
         <div className="w-full">
@@ -1229,6 +1256,11 @@ function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) 
                                 placeholder="Search..."
                                 value={batchSearch}
                                 onChange={(e) => setBatchSearch(e.target.value)}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                name="batch-dropdown-search"
                                 className="h-8 w-full rounded-md border border-neutral-200 bg-white pl-8 pr-3 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                             />
                         </div>
@@ -1236,12 +1268,13 @@ function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) 
                             {filteredOptions.length > 0 ? (
                                 filteredOptions.map((opt) => (
                                     <button
-                                        key={opt.value || 'all'}
+                                        key={`${opt.value ?? 'all'}::${opt.label}`}
                                         onClick={() => onSelect(opt.value)}
-                                        className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${value === opt.label ? 'bg-primary-50 text-primary-600' : ''
+                                        title={opt.label}
+                                        className={`flex w-full items-center rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-xs leading-5 hover:border-neutral-300 hover:bg-neutral-50 ${value === opt.label ? 'bg-primary-50 text-primary-600' : ''
                                             }`}
                                     >
-                                        {opt.label}
+                                        <span className="block w-full truncate">{opt.label}</span>
                                     </button>
                                 ))
                             ) : (

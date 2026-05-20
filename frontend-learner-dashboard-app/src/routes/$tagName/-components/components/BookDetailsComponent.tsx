@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useNavigate } from "@tanstack/react-router";
 import { ShareButton } from "./ShareButton";
+import { PriceWithMrp } from "@/components/common/price-with-mrp";
 
 interface BookDetailsProps {
     fields?: {
@@ -237,9 +238,12 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                         {cartMode === 'buy' && (
                             <div className="mb-4 pb-3 border-b border-gray-200">
                                 <p className="text-sm text-gray-500 mb-1">Price</p>
-                                <div className="text-2xl sm:text-3xl font-bold text-gray-900">
-                                    {courseData.price === 0 ? "Free" : `₹${courseData.price}`}
-                                </div>
+                                <PriceWithMrp
+                                    actual={courseData.price}
+                                    elevated={courseData.elevatedPrice}
+                                    currency={courseData.currency}
+                                    size="xl"
+                                />
                             </div>
                         )}
 
@@ -334,11 +338,15 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                                 id: courseData.courseId || courseData.id,
                                                 title: courseData.title,
                                                 price: courseData.price,
+                                                elevatedPrice: courseData.elevatedPrice,
+                                                currency: courseData.currency,
                                                 image: coverUrl,
                                                 level: courseData.level_name,
                                                 packageSessionId: courseData.packageSessionId,
                                                 enrollInviteId: courseData.enrollInviteId,
                                                 levelId: courseData.levelId,
+                                                sessionId: courseData.sessionId || courseData.session_id,
+                                                sessionName: courseData.sessionName || courseData.session_name,
                                                 courseId: courseData.courseId
                                             });
                                             // Dispatch event to update cart count in header

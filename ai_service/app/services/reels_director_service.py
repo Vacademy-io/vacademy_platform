@@ -39,6 +39,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..services.reels_bgv_stitch_service import stitch_bgv_sequence
 from ..services.reels_broll_service import (
     extract_concept,
     find_b_roll,
@@ -127,6 +128,62 @@ def _effective_caption_palette(style_override: Optional[dict]) -> dict:
         if isinstance(value, str) and hex_re.fullmatch(value.strip()):
             out[token] = value.strip()
     return out
+
+
+# Caption / overlay dedup (Phase 2e bug fix from 2026-05-13 audit).
+#
+# Text overlays from the LLM director (hook / micro_hook / loop_back /
+# emphasis) display the SAME content the speaker is saying, in larger
+# colored type. Running the karaoke caption block underneath stacks two
+# layers of similar text — the audit screenshots showed yellow
+# "TEAMWORK IS YOUR GREATEST STRENGTH" overlaid on white "It's really
+# always" karaoke captions, fighting for the same visual real estate.
+#
+# Fix: caption builder accepts `suppression_ranges` (time ranges where a
+# text overlay is active). Blocks that overlap any suppression range get
+# dropped. Visual overlays (broll / stat / motion_graphic) do NOT
+# suppress — they sit at a different z-band and captions add value when
+# they're on screen.
+_CAPTION_SUPPRESSING_OVERLAY_TYPES = frozenset({
+    "overlay_hook",
+    "overlay_micro_hook",
+    "overlay_loop_back",
+    "overlay_emphasis",
+})
+
+
+def _collect_text_overlay_ranges(overlay_shots: list) -> list[tuple[float, float]]:
+    """Extract `(in_time, exit_time)` tuples from text-overlay shots only.
+
+    Pulls from `_Shot.entry_meta["shot_type"]` which the spec_to_shot
+    builders set to `overlay_<spec.type>` for every OverlaySpec. Visual
+    overlay types (broll_video, broll_image, animated_stat, motion_graphic)
+    are NOT in `_CAPTION_SUPPRESSING_OVERLAY_TYPES`, so this returns only
+    the text-overlay ranges that should hide overlapping caption blocks.
+    """
+    ranges: list[tuple[float, float]] = []
+    for shot in overlay_shots or []:
+        meta = getattr(shot, "entry_meta", None) or {}
+        if meta.get("shot_type") in _CAPTION_SUPPRESSING_OVERLAY_TYPES:
+            ranges.append((float(shot.in_time), float(shot.exit_time)))
+    return ranges
+
+
+def _block_overlaps_any(
+    block_start: float,
+    block_end: float,
+    ranges: list[tuple[float, float]],
+) -> bool:
+    """True iff [block_start, block_end] overlaps any (start, end) range.
+
+    Open intervals — a block ending exactly at a range start does NOT
+    overlap. Used by `_build_caption_blocks_from_reel_time` to filter
+    out karaoke blocks that would land underneath a text overlay.
+    """
+    for r_start, r_end in ranges:
+        if block_start < r_end and r_start < block_end:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -223,11 +280,13 @@ class ReelsDirectorService:
         # from the same call (Phase 2c.8). Moving this above bgv-resolution
         # lets the bgv chain prefer the LLM's scene-level concept over
         # the heuristic single-word pick from `extract_concept`.
-        overlay_shots, overlay_method, llm_bg_concept = await self._build_storyline_overlays(
-            reel_duration_s=total_duration,
-            title=title,
-            rationale=rationale,
-            word_importance_reel_time=word_importance_reel_time,
+        overlay_shots, overlay_method, llm_bg_concept, llm_bg_concepts = (
+            await self._build_storyline_overlays(
+                reel_duration_s=total_duration,
+                title=title,
+                rationale=rationale,
+                word_importance_reel_time=word_importance_reel_time,
+            )
         )
 
         # 4. Layout resolution. Both `stacked_speaker_with_broll` and
@@ -235,11 +294,14 @@ class ReelsDirectorService:
         # without it the bottom half / bg fill is a black void. Resolution
         # order:
         #   a. User-supplied `background_video_url` (the "URL" source mode)
-        #   b. Auto-fetched Pexels b-roll, concept picked by EITHER the
-        #      LLM director's `background_concept` (preferred, 2-5 word
-        #      scene query — Phase 2c.8) OR the heuristic single-word
-        #      `extract_concept` (Phase 2c.4 fallback).
-        #   c. Silent downgrade to `full_speaker_with_overlays` if neither
+        #   b. STITCHED multi-clip bgv from LLM `background_concepts`
+        #      (Phase 2c.9 — the bottom CHANGES as the reel progresses
+        #      instead of looping one static clip)
+        #   c. Auto-fetched Pexels b-roll for the LLM's single
+        #      `background_concept` (Phase 2c.8) OR the heuristic single-
+        #      word `extract_concept` (Phase 2c.4 fallback) — these
+        #      produce ONE clip on loop.
+        #   d. Silent downgrade to `full_speaker_with_overlays` if neither
         #      yields a usable URL.
         # The effective layout + the bgv source choice are tracked on
         # `extra_metadata` so FE / audit can tell which path fired.
@@ -254,10 +316,43 @@ class ReelsDirectorService:
             and requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker")
             and word_importance_reel_time
         ):
-            # Try the LLM's scene-concept first; fall back to the
-            # heuristic single-word pick. Both go through the same
-            # Pexels finder + per-process LRU cache, so a hot concept
-            # short-circuits to the cached URL.
+            # Phase 2c.9: PREFERRED path — stitch the LLM's multi-concept
+            # sequence into one continuous bottom_bgv.mp4. Each concept
+            # is fetched from Pexels in parallel, downloaded locally,
+            # then ffmpeg concats them into a single output that the
+            # stacked-layout `<video loop>` element plays naturally.
+            # Falls through to the single-concept path on any failure.
+            if llm_bg_concepts:
+                try:
+                    stitched_url = await stitch_bgv_sequence(
+                        concepts=llm_bg_concepts,
+                        reel_id=ctx.reel_id,
+                        target_duration_s=total_duration,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[Director] {ctx.reel_id} stitch raised: {e}; "
+                        "falling through to single-concept path"
+                    )
+                    stitched_url = None
+                if stitched_url:
+                    bgv_url = stitched_url
+                    bgv_source = "auto_pexels_stitched"
+                    bgv_concept_used = ", ".join(llm_bg_concepts)
+                    logger.info(
+                        f"[Director] {ctx.reel_id} stitched {len(llm_bg_concepts)} "
+                        f"concepts → {stitched_url[:60]}…"
+                    )
+
+        if (
+            not bgv_url
+            and requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker")
+            and word_importance_reel_time
+        ):
+            # Single-concept fallback path. Try the LLM's scene-concept
+            # first; fall back to the heuristic single-word pick. Both
+            # go through the same Pexels finder + per-process LRU cache,
+            # so a hot concept short-circuits to the cached URL.
             concept_candidates: list[tuple[str, str]] = []
             if llm_bg_concept:
                 concept_candidates.append(("llm", llm_bg_concept))
@@ -312,12 +407,21 @@ class ReelsDirectorService:
         palette = _effective_caption_palette(
             (ctx.extra_metadata or {}).get("style_palette")
         )
+        # Phase 2e caption-overlay dedup: a text overlay (hook /
+        # micro_hook / loop_back / emphasis) IS the caption for its time
+        # slice — running a karaoke caption underneath stacks two layers
+        # of similar text. Collect the text-overlay ranges from the
+        # already-built overlay shots and drop caption blocks that
+        # overlap. Visual overlays (broll / stat / motion_graphic) sit
+        # at a different z-band; they don't suppress.
+        suppression_ranges = _collect_text_overlay_ranges(overlay_shots)
         if word_importance_reel_time:
             caption_shots = self._build_caption_blocks_from_reel_time(
                 word_importance_reel_time,
                 total_duration=total_duration,
                 layout=effective_layout,
                 palette=palette,
+                suppression_ranges=suppression_ranges,
             )
             shots.extend(caption_shots)
 
@@ -331,8 +435,13 @@ class ReelsDirectorService:
         # Surface the concept that actually fed Pexels (if any). Useful
         # for debugging "why did this reel pick THIS b-roll?" and for the
         # FE detail page to show "ambient b-roll: 'data analytics' (auto)".
+        # Phase 2c.9: when the stitched-sequence path fired,
+        # `bgv_concept_used` is the comma-joined list of concepts and
+        # we ALSO surface the raw list for FE display + audit.
         if bgv_concept_used:
             ctx.extra_metadata["bgv_concept"] = bgv_concept_used
+        if bgv_source == "auto_pexels_stitched" and llm_bg_concepts:
+            ctx.extra_metadata["bgv_concepts"] = llm_bg_concepts
         logger.info(
             f"[Director] {ctx.reel_id} composed {len(shots)} shots "
             f"(1 base + {len(overlay_shots)} overlays via {overlay_method} + "
@@ -347,21 +456,24 @@ class ReelsDirectorService:
         title: str,
         rationale: str,
         word_importance_reel_time: list[dict],
-    ) -> tuple[list[_Shot], str, Optional[str]]:
+    ) -> tuple[list[_Shot], str, Optional[str], Optional[list[str]]]:
         """LLM-direct overlay specs → `_Shot` list, with deterministic fallback.
 
-        Returns (shots, method, bg_concept) where:
+        Returns (shots, method, bg_concept, bg_concepts) where:
           * `method` ∈ {"llm", "deterministic_fallback"} — tracked in
             extra_metadata for A/B comparison.
-          * `bg_concept` is the LLM-emitted 2-5 word Pexels search query
-            for layouts that need ambient bgv (stacked / pip_corner_speaker);
-            None if the LLM didn't emit one OR fell back to deterministic.
-            Caller's bgv-resolution chain prefers this over the heuristic.
+          * `bg_concept`: LEGACY single 2-5 word Pexels search query
+            (Phase 2c.8). Used when the LLM emits the singular field or
+            for backward compatibility with older candidates.
+          * `bg_concepts`: Phase 2c.9 SEQUENCE — 2-5 Pexels queries the
+            director stitches into a multi-clip bottom-half bgv. Caller's
+            bgv-resolution chain prefers this over the single concept.
         """
         bg_concept: Optional[str] = None
+        bg_concepts: Optional[list[str]] = None
         try:
             director = LLMDirector()
-            specs, bg_concept = await director.generate_overlays(
+            specs, bg_concept, bg_concepts = await director.generate_overlays(
                 reel_duration_s=reel_duration_s,
                 title=title,
                 rationale=rationale,
@@ -369,7 +481,7 @@ class ReelsDirectorService:
             )
         except Exception as e:
             # Defensive — the LLMDirector already catches its own transport
-            # errors and returns ([], None); this is for any unexpected breakage.
+            # errors and returns ([], None, None); this is for any unexpected breakage.
             logger.warning(f"[Director] LLMDirector raised: {e}; falling back")
             specs = []
 
@@ -394,15 +506,16 @@ class ReelsDirectorService:
                     shots.append(self._stat_spec_to_shot(spec, i))
                 else:
                     shots.append(self._spec_to_shot(spec, i))
-            return shots, "llm", bg_concept
+            return shots, "llm", bg_concept, bg_concepts
 
         # Fallback — Phase 1 behavior: one deterministic hook overlay with
-        # the candidate's enriched title. No bg_concept on this path —
-        # the heuristic extractor will pick a single-word fallback.
+        # the candidate's enriched title. No bg_concept / bg_concepts on
+        # this path — the heuristic extractor will pick a single-word
+        # fallback for stacked / pip layouts.
         hook_end = min(HOOK_DURATION_S, reel_duration_s)
         if hook_end > 0.3:
-            return [self._build_hook_overlay(title, hook_end)], "deterministic_fallback", None
-        return [], "deterministic_fallback", None
+            return [self._build_hook_overlay(title, hook_end)], "deterministic_fallback", None, None
+        return [], "deterministic_fallback", None, None
 
     async def _resolve_media_urls(
         self,
@@ -706,6 +819,7 @@ class ReelsDirectorService:
         *,
         layout: str = "full_speaker_with_overlays",
         palette: Optional[dict] = None,
+        suppression_ranges: Optional[list[tuple[float, float]]] = None,
     ) -> list[_Shot]:
         """Group already-reel-time word_importance into caption phrase blocks.
 
@@ -722,6 +836,14 @@ class ReelsDirectorService:
         STYLE_GUIDE's `style_palette` override onto DEFAULT_CAPTION_PALETTE
         by the caller). When None, falls back to DEFAULT inside the block
         builder for backwards-compatibility with older call paths.
+
+        `suppression_ranges` is the list of (in_time, exit_time) ranges
+        where text overlays (hook / micro_hook / loop_back / emphasis)
+        are displaying. Phase 2e fix from the 2026-05-13 audit: blocks
+        that overlap any range are dropped so the karaoke caption doesn't
+        stack underneath the styled overlay. Visual overlays (broll /
+        stat / motion_graphic) are NOT in `_CAPTION_SUPPRESSING_OVERLAY_TYPES`
+        so their ranges never reach this builder.
         """
         remapped = [
             {
@@ -768,6 +890,26 @@ class ReelsDirectorService:
         blocks = [b for b in blocks if (b[-1]["exit_time"] - b[0]["in_time"]) >= CAPTION_MIN_BLOCK_DURATION_S]
         if not blocks:
             return []
+
+        # Phase 2e dedup: drop blocks whose timing overlaps a text-overlay
+        # range. The overlay IS the caption for that moment — running a
+        # karaoke caption underneath would stack two layers of similar
+        # text (the 2026-05-13 "captions appearing twice" bug). We drop
+        # the WHOLE block on any overlap rather than try to split it;
+        # partial blocks would either jitter mid-phrase or leave a
+        # sub-MIN_BLOCK_DURATION_S sliver that the filter above already
+        # rejects.
+        if suppression_ranges:
+            blocks = [
+                b for b in blocks
+                if not _block_overlaps_any(
+                    float(b[0]["in_time"]),
+                    float(b[-1]["exit_time"]),
+                    suppression_ranges,
+                )
+            ]
+            if not blocks:
+                return []
 
         shots: list[_Shot] = []
         for i, block in enumerate(blocks):

@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, List
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header, status
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from ..schemas.video_generation import (
     UpdateFrameRequest,
     AddFrameRequest,
     DeleteFrameRequest,
+    ReorderFrameRequest,
     AddAudioTrackRequest,
     UpdateAudioTrackRequest,
     DeleteAudioTrackRequest,
@@ -196,6 +197,8 @@ def preview_video_cost(
         review_mode=payload.review_mode,
         attachments_count=payload.attachments_count,
         host=(payload.host.model_dump() if getattr(payload, "host", None) else None),
+        ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
+        ai_video_audio_enabled=bool(getattr(payload, "ai_video_audio_enabled", False)),
     )
     return VideoCostPreviewResponse(**result)
 
@@ -252,7 +255,18 @@ async def generate_video_external(
     payload: VideoGenerationRequest,
     target_stage: str = "HTML",
     institute_id: str = Depends(get_institute_from_api_key),
-    _credits_check=Depends(require_credits("video", estimated_tokens=5000)),
+    # Pre-flight check raised 5_000 → 60_000 tokens (2026-05) after the May
+    # audit added several post-render gates (bbox-lint regen, brand-asset
+    # regen, second-beat motion regen) plus larger system prompts (continuity
+    # brief, OUTPUT FORMAT, TEXT BOUND BOX, background contract). A typical
+    # ultra video now consumes ~250K-300K total tokens — 60K is a conservative
+    # PRE-flight floor that catches obviously-bankrupt institutes without
+    # blocking edge-case short videos. The real spend tracking happens
+    # stage-by-stage via TokenUsageService.record_usage_and_deduct_credits;
+    # refund-on-failure (TokenUsageService.refund_video_credits) is the safety
+    # net for mid-run depletion. Tier-aware pre-flight (read payload.quality_tier
+    # and scale) is a tracked follow-up.
+    _credits_check=Depends(require_credits("video", estimated_tokens=60000)),
 ) -> StreamingResponse:
     """
     Generate AI video.
@@ -266,6 +280,28 @@ async def generate_video_external(
     # Enforce per-institute rate limit and concurrency cap
     _check_rate_limit(institute_id)
     _check_concurrency_limit(institute_id)
+
+    # Tier-aware pre-flight (2026-05 audit, supersedes the standalone Veo
+    # check). The generic `require_credits("video", ...)` dep above is a
+    # zero-balance floor (resolves to ~0.05 credits via the fallback formula)
+    # and was never gating realistic cost. This block reads `payload.quality_tier`
+    # + `payload.ai_video_enabled` after parsing and rejects HTTP 402 when
+    # balance can't cover the tier baseline + Veo cap (if enabled).
+    # See `CreditService.check_video_tier_credits` for the per-tier floors;
+    # they're derived from the breakdown in docs/AI_CREDITS_PRICING.md.
+    with make_db_session() as _preflight_db:
+        from ..services.credit_service import CreditService
+        _tier_check = CreditService(_preflight_db).check_video_tier_credits(
+            institute_id=institute_id,
+            quality_tier=getattr(payload, "quality_tier", "standard") or "standard",
+            ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
+            partial_run_factor=1.0,  # fresh run — full budget required
+        )
+        if not _tier_check.has_sufficient_credits:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=_tier_check.message,
+            )
 
     video_id = payload.video_id or str(uuid4())
 
@@ -329,6 +365,16 @@ async def generate_video_external(
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
                         visual_preferences=getattr(p, "visual_preferences", None),
+                        # AI video (Phase 3b): forward from request body. The
+                        # service / pipeline gates tier eligibility internally.
+                        ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
+                        ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
+                        # Per-stage model overrides (DB-backed routing). When set,
+                        # the service resolves a per-stage map via
+                        # `AIModelsService.get_stage_model_map(...)`. The legacy
+                        # `model` field collapses to `model_overrides.default` if
+                        # `model_overrides` is omitted.
+                        model_overrides=getattr(p, "model_overrides", None),
                     ):
                         await q.put(json.dumps(event))
             except asyncio.CancelledError:
@@ -514,7 +560,11 @@ async def resume_video_external(
     video_id: str,
     payload: ResumeRequest,
     institute_id: str = Depends(get_institute_from_api_key),
-    _credits_check=Depends(require_credits("video", estimated_tokens=3000)),
+    # Resume picks up from a checkpoint so remaining work is a fraction of
+    # a full run, but the per-shot LLM calls + post-render gates still apply
+    # to every shot yet to ship. 3_000 → 30_000 tokens (2026-05 audit) for
+    # the same reason as the main generate dep above.
+    _credits_check=Depends(require_credits("video", estimated_tokens=30000)),
     db: Session = Depends(db_dependency),
 ) -> StreamingResponse:
     """
@@ -538,6 +588,29 @@ async def resume_video_external(
         raise HTTPException(
             status_code=409,
             detail=f"Video {video_id} was cancelled — start a new generation instead of resuming.",
+        )
+
+    # Tier-aware pre-flight (2026-05). Resume picks up from a SCRIPT-stage
+    # checkpoint — the remaining work is the full HTML + render budget. We
+    # use partial_run_factor=0.7 (not 0.5) because the script stage is only
+    # ~5% of total cost and the HTML stage hasn't started yet.
+    # Quality tier is pulled from the video record's metadata, NOT the resume
+    # payload (which has no tier field). AI video flag also comes from metadata.
+    _vr_meta = getattr(video_record, "metadata", None) or {}
+    _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
+    _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
+    _ai_video = bool(_user_sel.get("ai_video_enabled", False))
+    from ..services.credit_service import CreditService
+    _tier_check = CreditService(db).check_video_tier_credits(
+        institute_id=institute_id,
+        quality_tier=_qt,
+        ai_video_enabled=_ai_video,
+        partial_run_factor=0.7,
+    )
+    if not _tier_check.has_sufficient_credits:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_tier_check.message,
         )
 
     # Overwrite script in S3 if the user edited it
@@ -610,6 +683,16 @@ async def resume_video_external(
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                         visual_preferences=_meta.get("visual_preferences"),
+                        # AI video (Phase 3b): rehydrate from saved metadata
+                        # on resume so the original intent of the run is
+                        # preserved. Resumed runs default OFF when absent.
+                        ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
+                        ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                        # Resume parity: rehydrate per-stage overrides from
+                        # saved metadata if present; otherwise fall through to
+                        # the legacy `model` field (which the service collapses
+                        # into ModelOverrides(default=model)).
+                        model_overrides=_meta.get("model_overrides"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -670,7 +753,11 @@ async def resume_video_external(
 async def retry_video_external(
     video_id: str,
     institute_id: str = Depends(get_institute_from_api_key),
-    _credits_check=Depends(require_credits("video", estimated_tokens=3000)),
+    # Retry resumes from HTML stage with most shots cached — only failed shots
+    # are regenerated. 3_000 → 30_000 tokens (2026-05 audit). Same rationale
+    # as the resume dep: per-shot post-render gates apply to every shot that
+    # needs regeneration.
+    _credits_check=Depends(require_credits("video", estimated_tokens=30000)),
     db: Session = Depends(db_dependency),
 ) -> StreamingResponse:
     """
@@ -690,6 +777,28 @@ async def retry_video_external(
         raise HTTPException(
             status_code=400,
             detail=f"Video {video_id} is not in a retryable state (status={video_record.status})"
+        )
+
+    # Tier-aware pre-flight (2026-05). Retry resumes from the HTML stage with
+    # most shots already cached. partial_run_factor=0.4 — typically only 1-2
+    # failed shots regenerate plus the render stage. AI video flag from
+    # original metadata (Veo cap still applies if any shot left to ship is
+    # AI_VIDEO_HERO; safer to keep the worst-case guard).
+    _vr_meta = getattr(video_record, "metadata", None) or {}
+    _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
+    _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
+    _ai_video = bool(_user_sel.get("ai_video_enabled", False))
+    from ..services.credit_service import CreditService
+    _tier_check = CreditService(db).check_video_tier_credits(
+        institute_id=institute_id,
+        quality_tier=_qt,
+        ai_video_enabled=_ai_video,
+        partial_run_factor=0.4,
+    )
+    if not _tier_check.has_sufficient_credits:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_tier_check.message,
         )
 
     queue: asyncio.Queue = asyncio.Queue()
@@ -737,6 +846,11 @@ async def retry_video_external(
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     visual_preferences=_meta.get("visual_preferences"),
+                    # AI video (Phase 3b) — retry rehydrates from saved meta
+                    ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
+                    ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                    # Retry parity: rehydrate per-stage overrides from saved meta
+                    model_overrides=_meta.get("model_overrides"),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:
@@ -1058,7 +1172,8 @@ async def regenerate_frame_external(
             timestamp=payload.timestamp,
             user_prompt=payload.user_prompt,
             db_session=db,
-            institute_id=institute_id
+            institute_id=institute_id,
+            model_override=payload.model,
         )
         return RegenerateFrameResponse(**result)
     except ValueError as e:
@@ -1100,6 +1215,7 @@ async def add_frame_external(
             html_start_y=payload.html_start_y,
             html_end_x=payload.html_end_x,
             html_end_y=payload.html_end_y,
+            entry_meta=payload.entry_meta,
         )
         return result
     except ValueError as e:
@@ -1132,11 +1248,52 @@ async def update_frame_external(
             exit_time=payload.exit_time,
             z=payload.z,
             entry_id=payload.entry_id,
+            entry_meta=payload.entry_meta,
+            html_model=payload.html_model,
         )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/frame/reorder",
+    summary="Move a frame to a new position in the timeline (External)"
+)
+async def reorder_frame_external(
+    payload: ReorderFrameRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+):
+    """
+    Move a single frame to a new positional index. Identified by `entry_id`
+    (positional indices shift after every reorder, so a client-provided
+    from_index can race the server's view; entry_id is the only safe key).
+
+    Atomic on the server — the timeline JSON is rewritten in one S3 PUT,
+    so there's no partial-failure window where the timeline could end up
+    missing an entry. Use this instead of sequential `/frame/update` calls
+    when reordering — sequential updates would destroy the entry at the
+    target position because /frame/update overwrites by index.
+
+    meta.total_duration, meta.sentences[], and per-entry timing fields are
+    left untouched.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    try:
+        result = await service.reorder_video_frame(
+            video_id=payload.video_id,
+            entry_id=payload.entry_id,
+            to_index=payload.to_index,
+        )
+        return result
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1382,6 +1539,143 @@ async def regenerate_sentence_external(
     return RegenerateSentenceResponse(
         video_id=result.video_id,
         sentence=SentenceClipDto(**result.sentence),
+        duration_delta=result.duration_delta,
+        new_global_audio_url=result.new_global_audio_url,
+        new_global_duration=result.new_global_duration,
+        timeline_url=result.timeline_url,
+    )
+
+
+class ShotClipDto(BaseModel):
+    """One entry in `timeline.meta.shots[]` — the v3 editor unit.
+
+    Mirrors `ShotClip` in the FE types. `audio_url` / `audio_words_url` /
+    `audio_script_url` are None for `audio_policy=intrinsic_only` shots
+    (those carry intrinsic audio — source clip or Veo audio — and have no
+    per-shot master narration mp3)."""
+    id: str
+    shot_idx: int
+    shot_type: str
+    text: str
+    audio_url: Optional[str] = None
+    audio_words_url: Optional[str] = None
+    audio_script_url: Optional[str] = None
+    audio_duration_s: float
+    audio_skipped: bool = False
+    audio_policy: str = "narration_only"
+    start_time: float
+    duration: float
+    intent_role: str = ""
+    narration_brief: str = ""
+    words: List[SentenceWordDto] = []
+
+
+class RegenerateShotRequest(BaseModel):
+    video_id: str
+    shot_idx: int = Field(
+        ..., description="Zero-based shot index, matches `shot_idx` in meta.shots[]",
+    )
+    new_text: str
+    voice_overrides: Optional[VoiceOverrides] = None
+    crossfade_ms: int = Field(
+        default=50, ge=0, le=2000,
+        description="Crossfade duration at each splice join.",
+    )
+    head_pad_ms: int = Field(
+        default=40, ge=0, le=500,
+        description="Shifts the splice boundary later by this many ms.",
+    )
+
+
+class RegenerateShotResponse(BaseModel):
+    video_id: str
+    shot: ShotClipDto
+    duration_delta: float = Field(
+        ..., description="new clip duration − old; ripple downstream shot start_times by this",
+    )
+    new_global_audio_url: str
+    new_global_duration: float
+    timeline_url: str
+
+
+@router.post(
+    "/shot/regenerate",
+    response_model=RegenerateShotResponse,
+    summary="Re-narrate one shot and splice it into the global audio (External, v3)",
+)
+async def regenerate_shot_external(
+    payload: RegenerateShotRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateShotResponse:
+    """
+    Re-narrate a single shot's audio. Mirrors `/sentence/regenerate` but
+    operates on `meta.shots[]` (the v3 editor unit) instead of
+    `meta.sentences[]`.
+
+    Flow on the server:
+      1. TTS the new text in the same voice → fresh per-shot MP3.
+      2. Render worker splices the clip into the global narration.mp3
+         with crossfading on both joins.
+      3. Every later shot in `meta.shots[]` and every later entry has its
+         time shifted by the duration delta (ripple).
+      4. `shot_plan.json` (v3 source of truth) is updated to match,
+         best-effort.
+      5. Patched timeline JSON re-uploaded; video record's audio URL points
+         at the new spliced MP3.
+
+    Refuses to re-narrate shots with `audio_policy=intrinsic_only` (source
+    clip speaker, Veo audio) — those have no master-narration slot. To
+    change their audio, edit the underlying source asset.
+
+    Errors:
+      - 400 — request body invalid, shot not found, video has no
+              meta.shots[] yet (pre-v3 video), or shot is intrinsic_only.
+      - 503 — render server not configured.
+      - 500 — TTS / splice / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
+
+    try:
+        result = svc.regenerate_shot(
+            video_id=payload.video_id,
+            shot_idx=payload.shot_idx,
+            new_text=payload.new_text,
+            voice_overrides=overrides,
+            crossfade_ms=payload.crossfade_ms,
+            head_pad_ms=payload.head_pad_ms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate shot: {exc}")
+
+    return RegenerateShotResponse(
+        video_id=result.video_id,
+        shot=ShotClipDto(**result.shot),
         duration_delta=result.duration_delta,
         new_global_audio_url=result.new_global_audio_url,
         new_global_duration=result.new_global_duration,

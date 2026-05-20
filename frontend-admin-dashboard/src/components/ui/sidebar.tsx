@@ -59,7 +59,7 @@ const SidebarProvider = React.forwardRef<
         ref
     ) => {
         const isMobile = useIsMobile();
-        const [openMobile, setOpenMobile] = React.useState(false);
+        const [_openMobile, _setOpenMobile] = React.useState(false);
 
         // This is the internal state of the sidebar.
         // We use openProp and setOpenProp for control from outside the component.
@@ -78,6 +78,23 @@ const SidebarProvider = React.forwardRef<
                 document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
             },
             [setOpenProp, open]
+        );
+
+        // When the provider is controlled via `open`/`onOpenChange`, the mobile
+        // Sheet should mirror that same state so callers don't need to manage
+        // a separate `openMobile` value. Uncontrolled callers keep the original
+        // internal `openMobile` state.
+        const isControlled = openProp !== undefined;
+        const openMobile = isControlled ? open : _openMobile;
+        const setOpenMobile = React.useCallback(
+            (value: boolean | ((value: boolean) => boolean)) => {
+                if (isControlled) {
+                    setOpen(value);
+                } else {
+                    _setOpenMobile(value);
+                }
+            },
+            [isControlled, setOpen]
         );
 
         // Helper to toggle the sidebar.

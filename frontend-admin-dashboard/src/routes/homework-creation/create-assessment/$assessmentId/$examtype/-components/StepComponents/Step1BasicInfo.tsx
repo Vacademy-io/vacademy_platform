@@ -25,7 +25,7 @@ import {
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { useBasicInfoStore } from '../../-utils/zustand-global-states/step1-basic-info';
 import { toast } from 'sonner';
-import { AxiosError } from 'axios';
+import { reportApiError } from '@/lib/report-api-error';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { CaretLeft } from '@phosphor-icons/react';
 import { useParams } from '@tanstack/react-router';
@@ -178,15 +178,12 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
             }
         },
         onError: (error: unknown) => {
-            if (error instanceof AxiosError) {
-                toast.error(error.message, {
-                    className: 'error-toast',
-                    duration: 2000,
-                });
-            } else {
-                // Handle non-Axios errors if necessary
-                console.error('Unexpected error:', error);
-            }
+            reportApiError(error, {
+                feature: 'homework-step1-basic-info',
+                tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
+                extra: { assessmentId, instituteId: instituteDetails?.id, examType },
+                fallbackMessage: 'Failed to save basic info.',
+            });
         },
     });
 

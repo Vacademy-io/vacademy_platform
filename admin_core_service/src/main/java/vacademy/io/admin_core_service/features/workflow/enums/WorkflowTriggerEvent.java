@@ -23,7 +23,18 @@ public enum WorkflowTriggerEvent {
 
     // Payment
     PAYMENT_FAILED,
+    PAYMENT_SUCCESS,
     ABANDONED_CART,
+
+    // Subscription / plan lifecycle
+    SUBSCRIPTION_CANCELLED,
+    SUBSCRIPTION_TERMINATED,
+    LEARNER_RE_ENROLLMENT,
+
+    // LMS / content / engagement
+    COURSE_CREATED,
+    DOUBT_RAISED,
+    ASSIGNMENT_SUBMITTED,
 
     // Invites
     INVITE_CREATE,

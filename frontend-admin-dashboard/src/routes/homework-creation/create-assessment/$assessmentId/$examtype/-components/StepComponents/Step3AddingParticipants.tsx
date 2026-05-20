@@ -38,7 +38,7 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { getAssessmentDetails, handlePostStep3Data } from '../../-services/assessment-services';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { toast } from 'sonner';
-import { AxiosError } from 'axios';
+import { reportApiError } from '@/lib/report-api-error';
 import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTestAccessStore } from '../../-utils/zustand-global-states/step3-adding-participants';
@@ -217,15 +217,12 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             }
         },
         onError: (error: unknown) => {
-            if (error instanceof AxiosError) {
-                toast.error(error.message, {
-                    className: 'error-toast',
-                    duration: 2000,
-                });
-            } else {
-                // Handle non-Axios errors if necessary
-                console.error('Unexpected error:', error);
-            }
+            reportApiError(error, {
+                feature: 'homework-step3-add-participants',
+                tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
+                extra: { assessmentId, instituteId: instituteDetails?.id, examType },
+                fallbackMessage: 'Failed to save participants.',
+            });
         },
     });
 

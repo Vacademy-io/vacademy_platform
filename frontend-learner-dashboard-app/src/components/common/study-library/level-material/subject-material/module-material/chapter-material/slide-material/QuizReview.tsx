@@ -122,9 +122,16 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   };
 
   // Inline SVG for checkmark
-  const CheckIcon = () => (
-    <svg className="inline-block mr-1 text-green-600" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  const CheckIcon = ({ className = "text-green-600" }: { className?: string } = {}) => (
+    <svg className={`inline-block mr-1 ${className}`} width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M5 10.5L9 14.5L15 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+
+  // Inline SVG for cross / X
+  const CrossIcon = ({ className = "text-red-600" }: { className?: string } = {}) => (
+    <svg className={`inline-block mr-1 ${className}`} width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 6L14 14M14 6L6 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 
@@ -311,6 +318,46 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           const userAnswerWithIndex = getUserAnswerWithIndex();
           const correctAnswerWithIndex = getCorrectAnswerWithIndex();
 
+          const hasUserAnswer = !(
+            userAnswer === undefined ||
+            userAnswer === null ||
+            userAnswer === '' ||
+            (Array.isArray(userAnswer) && userAnswer.length === 0)
+          );
+          const isUserAnswerCorrect = (() => {
+            if (!hasUserAnswer || correctAnswers.length === 0) return false;
+            const correctSet = new Set(correctAnswers.map(String));
+            if (Array.isArray(userAnswer)) {
+              const userSet = new Set(userAnswer.map(String));
+              if (userSet.size !== correctSet.size) return false;
+              for (const v of userSet) if (!correctSet.has(v)) return false;
+              return true;
+            }
+            return correctSet.has(String(userAnswer));
+          })();
+          const answerStatus: 'correct' | 'wrong' | 'skipped' = !hasUserAnswer
+            ? 'skipped'
+            : isUserAnswerCorrect
+              ? 'correct'
+              : 'wrong';
+          const yourAnswerStyles = {
+            correct: {
+              label: 'text-green-800',
+              box: 'bg-green-50 border-green-200',
+              text: 'text-green-900',
+            },
+            wrong: {
+              label: 'text-red-800',
+              box: 'bg-red-50 border-red-200',
+              text: 'text-red-900',
+            },
+            skipped: {
+              label: 'text-blue-800',
+              box: 'bg-blue-50 border-blue-200',
+              text: 'text-blue-900',
+            },
+          }[answerStatus];
+
           return (
             <div key={q.id} className="p-6 rounded-xl border border-gray-200 bg-gray-50 shadow-sm">
               <div className="mb-2 text-xs text-gray-500 font-medium">Question {idx + 1}</div>
@@ -335,25 +382,29 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
               </div>
               <div className="flex flex-col md:flex-row gap-4 mb-4">
                 <div className="flex-1">
-                  <div className="mb-1 text-xs font-semibold text-blue-800 flex items-center"><UserIcon />Your Answer</div>
-                  <div className="w-full rounded-lg bg-blue-50 border border-blue-200 p-3 flex flex-col gap-2">
-                    {/* ✅ Check if userAnswer exists before rendering */}
-                    {!userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0) ? (
+                  <div className={`mb-1 text-xs font-semibold flex items-center ${yourAnswerStyles.label}`}>
+                    {answerStatus === 'correct' && <CheckIcon />}
+                    {answerStatus === 'wrong' && <CrossIcon />}
+                    {answerStatus === 'skipped' && <UserIcon />}
+                    Your Answer
+                  </div>
+                  <div className={`w-full rounded-lg border p-3 flex flex-col gap-2 ${yourAnswerStyles.box}`}>
+                    {!hasUserAnswer ? (
                       <span className="text-gray-500 italic text-sm">No answer selected</span>
                     ) : isMCQ && userAnswerWithIndex
                       ? userAnswerWithIndex.map(({ id, idx }) => (
-                          <span key={id as string} className="text-blue-900 text-sm flex items-center">
+                          <span key={id as string} className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
                             <span className="font-bold mr-1">{getOptionLabel(idx)}</span>
                             <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
                           </span>
                         ))
                       : isMulti
                         ? (userAnswer as (string | number)[]).map((id) => (
-                            <span key={id as string} className="text-blue-900 text-sm flex items-center">
+                            <span key={id as string} className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
                               <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
                             </span>
                           ))
-                        : <span className="text-blue-900 text-sm flex items-center">
+                        : <span className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
                             <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, userAnswer) }} />
                           </span>}
                   </div>

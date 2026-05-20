@@ -47,19 +47,23 @@ type Handle = 'move' | 'rotate' | ResizeHandlePos;
  * are counter-scaled so they stay constant at any canvas zoom.
  */
 export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOverlayProps) {
-    const { selectedEntryId, selectedLayerPath, updateEntryHtml } = useVideoEditorStore(
-        useShallow((s) => ({
-            selectedEntryId: s.selectedEntryId,
-            selectedLayerPath: s.selectedLayerPath,
-            updateEntryHtml: s.updateEntryHtml,
-        }))
-    );
+    const { selectedEntryId, selectedLayerPath, updateEntryHtml, selectedEntryHtml } =
+        useVideoEditorStore(
+            useShallow((s) => ({
+                selectedEntryId: s.selectedEntryId,
+                selectedLayerPath: s.selectedLayerPath,
+                updateEntryHtml: s.updateEntryHtml,
+                // Subscribe to the selected entry's html so we re-resolve
+                // iframeRef whenever the iframe re-mounts (HTML commit changes
+                // srcDoc, which causes a full iframe reload — the previous
+                // element node is detached and iframeRef.current goes stale).
+                selectedEntryHtml: s.entries.find((e) => e.id === s.selectedEntryId)?.html ?? null,
+            }))
+        );
 
     const [rect, setRect] = useState<CanvasRect | null>(null);
     /** Live preview overlay during a drag — rect in canvas-space. */
     const [previewRect, setPreviewRect] = useState<CanvasRect | null>(null);
-    /** Live rotation in degrees during a drag (composes with original transform). */
-    const [previewRotate, setPreviewRotate] = useState<number | null>(null);
 
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const requestIdRef = useRef(0);
@@ -74,7 +78,11 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
         height: number;
     } | null>(null);
 
-    // Resolve which iframe to talk to whenever the selection changes.
+    // Resolve which iframe to talk to whenever the selection changes OR the
+    // selected entry's html changes (which re-mounts its iframe — the previous
+    // element is detached and iframeRef would point to a dead node). Without
+    // re-resolving here, every drag after the first one would post to a torn-
+    // down contentWindow and silently no-op.
     useEffect(() => {
         if (!selectedEntryId || !selectedLayerPath) {
             iframeRef.current = null;
@@ -85,7 +93,7 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
             `iframe[data-vx-entry-id="${cssAttrEscape(selectedEntryId)}"]`
         );
         iframeRef.current = el ?? null;
-    }, [selectedEntryId, selectedLayerPath]);
+    }, [selectedEntryId, selectedLayerPath, selectedEntryHtml]);
 
     const queryRect = useCallback(() => {
         const iframe = iframeRef.current;
@@ -139,12 +147,21 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
                     transform: data.transform ?? '',
                     rotate: data.rotate ?? '',
                 });
-            } else if (
-                data.type === 'vx-iframe-ready' &&
-                e.source === iframeRef.current?.contentWindow
-            ) {
-                // Re-query one tick later so any post-mount layout has settled.
-                requestAnimationFrame(queryRect);
+            } else if (data.type === 'vx-iframe-ready') {
+                // The selected entry's iframe just (re-)mounted. Re-resolve
+                // iframeRef from the DOM by data-vx-entry-id so a fresh
+                // post-commit re-mount doesn't leave us pointing at a dead
+                // element. Match the source window against the resolved
+                // element to ignore ready signals from other entries' iframes.
+                if (!selectedEntryId) return;
+                const el = document.querySelector<HTMLIFrameElement>(
+                    `iframe[data-vx-entry-id="${cssAttrEscape(selectedEntryId)}"]`
+                );
+                if (el && e.source === el.contentWindow) {
+                    iframeRef.current = el;
+                    // Re-query one tick later so any post-mount layout has settled.
+                    requestAnimationFrame(queryRect);
+                }
             } else if ((data as { type?: string; ok?: boolean }).type === 'vx-resize-applied') {
                 const r = data as unknown as {
                     requestId?: number;
@@ -175,17 +192,23 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
         };
         window.addEventListener('message', onMessage);
         return () => window.removeEventListener('message', onMessage);
-    }, [queryRect]);
+    }, [queryRect, selectedEntryId]);
 
-    // Initial / selection-change query.
+    // Initial / selection-change query. Also re-queries whenever the
+    // selected entry's html changes — style-only edits no longer re-mount
+    // the iframe (EditorCanvas keeps srcDoc stable for those), so the
+    // vx-iframe-ready re-query path doesn't fire. Reading the rect again
+    // here is what keeps the handles aligned after a drag commit.
     useEffect(() => {
-        setRect(null);
         if (selectedLayerPath) {
-            // Try once immediately; iframe may not be mounted yet, in which
-            // case the `vx-iframe-ready` listener above will retry.
-            queryRect();
+            // Wait one frame so the iframe agent has had a chance to apply
+            // any vx-sync-styles from the same render tick.
+            const id = requestAnimationFrame(() => queryRect());
+            return () => cancelAnimationFrame(id);
         }
-    }, [selectedEntryId, selectedLayerPath, queryRect]);
+        setRect(null);
+        return undefined;
+    }, [selectedEntryId, selectedLayerPath, selectedEntryHtml, queryRect]);
 
     // Re-query on canvas resize so handles stay aligned with the iframe content.
     useEffect(() => {
@@ -272,7 +295,16 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
     // ── Gesture handling ────────────────────────────────────────────────
     const startGesture = useCallback(
         (handle: Handle) => (e: React.PointerEvent) => {
-            if (!rect || !selectedLayerPath || !iframeRef.current) return;
+            if (!rect || !selectedLayerPath || !selectedEntryId) return;
+            // Re-resolve the iframe from the DOM at gesture-start so a stale
+            // ref (e.g. iframe re-mounted but effect hasn't caught up) can't
+            // cause a no-op drag.
+            const iframe =
+                document.querySelector<HTMLIFrameElement>(
+                    `iframe[data-vx-entry-id="${cssAttrEscape(selectedEntryId)}"]`
+                ) ?? iframeRef.current;
+            if (!iframe) return;
+            iframeRef.current = iframe;
             e.preventDefault();
             e.stopPropagation();
             (e.target as Element).setPointerCapture(e.pointerId);
@@ -281,7 +313,6 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
             const startScreenY = e.clientY;
             const startRect: CanvasRect = { ...rect };
             const path = selectedLayerPath;
-            const iframe = iframeRef.current;
             // Reset the resize echo cache for this gesture.
             latestResizeAppliedRef.current = null;
 
@@ -306,25 +337,45 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
                 return parseRotateDeg(startRect.transform);
             })();
 
+            // Closure-local trackers for the latest values produced by the
+            // gesture. Reading these on pointerup avoids the one-event lag we
+            // would hit with state→ref mirrors (a tiny single-pointermove drag
+            // would otherwise commit as dx=dy=0 because the useEffect that
+            // mirrored preview state into a ref had not run yet).
+            let lastDx = 0;
+            let lastDy = 0;
+            let lastRotateDeg: number | null = null;
+            let lastResize: ResizeResult | null = null;
+            let didMove = false;
+
             const onMove = (ev: PointerEvent) => {
                 const [dxCanvas, dyCanvas] = screenToCanvas(
                     ev.clientX - startScreenX,
                     ev.clientY - startScreenY,
                     scale
                 );
+                didMove = true;
 
                 if (handle === 'move') {
                     // Use `left`/`top` rather than `transform` for moves —
                     // gsap/anime constantly re-apply transform on every seek
                     // (which fires after every iframe re-mount), so a
                     // transform-based move would revert on commit. left/top
-                    // are layout properties they don't touch.
+                    // are layout properties they typically don't touch.
+                    //
+                    // Mark our writes !important: some shots animate `left`
+                    // directly (or override it via CSS classes inside the
+                    // shot's <style> block), and without !important the
+                    // animation's next tick clobbers our value, making the
+                    // image silently snap back to where it was.
                     const baseLeft = startRect.leftPx ?? startRect.left;
                     const baseTop = startRect.topPx ?? startRect.top;
+                    lastDx = dxCanvas;
+                    lastDy = dyCanvas;
                     sendStyle({
-                        position: 'absolute',
-                        left: `${baseLeft + dxCanvas}px`,
-                        top: `${baseTop + dyCanvas}px`,
+                        position: 'absolute !important',
+                        left: `${baseLeft + dxCanvas}px !important`,
+                        top: `${baseTop + dyCanvas}px !important`,
                     });
                     setPreviewRect({
                         ...startRect,
@@ -342,17 +393,20 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
                         scale
                     );
                     const ang = Math.atan2(pyCanvas - cy, pxCanvas - cx) * (180 / Math.PI) + 90;
+                    lastRotateDeg = ang;
                     // Write the standalone CSS `rotate` property — anime/gsap
                     // animate `transform`, which is a separate property, so
                     // our rotation isn't clobbered on every iframe re-mount.
+                    // The visual is driven by the imperative style write above;
+                    // no React state is needed for rotation preview.
                     sendStyle({ rotate: `${Math.round(ang * 100) / 100}deg` });
-                    setPreviewRotate(ang);
                 } else {
                     // Resize handle — compute the target rect for the gesture
                     // and let the agent absorb any centering-translate drift
                     // by writing left/top after width/height. See `vx-resize-
                     // to-rect` in editor-iframe-agent.ts.
                     const next = computeResize(startRect, handle, dxCanvas, dyCanvas);
+                    lastResize = next;
                     const requestId = ++resizeRequestIdRef.current;
                     try {
                         iframe.contentWindow?.postMessage(
@@ -392,24 +446,32 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
                 const entry = state.entries.find((x) => x.id === selectedEntryId);
                 if (!entry) {
                     setPreviewRect(null);
-                    setPreviewRotate(null);
+                    return;
+                }
+
+                // Pure click on the move handle (no actual pointermove) — bail
+                // without committing so we don't pollute undo with a no-op or
+                // force a static element into absolute positioning by mistake.
+                if (!didMove) {
+                    setPreviewRect(null);
                     return;
                 }
 
                 let finalPatch: Record<string, string | null> | null = null;
                 if (handle === 'move') {
-                    const r = previewRectRef.current ?? startRect;
-                    const dx = r.left - startRect.left;
-                    const dy = r.top - startRect.top;
+                    // !important mirrors the live-preview writes — without it
+                    // a shot whose script animates `left` directly would
+                    // immediately undo the move on the very first vx-seek
+                    // after the iframe re-mounts with our new HTML.
                     const baseLeft = startRect.leftPx ?? startRect.left;
                     const baseTop = startRect.topPx ?? startRect.top;
                     finalPatch = {
-                        position: 'absolute',
-                        left: `${Math.round((baseLeft + dx) * 100) / 100}px`,
-                        top: `${Math.round((baseTop + dy) * 100) / 100}px`,
+                        position: 'absolute !important',
+                        left: `${Math.round((baseLeft + lastDx) * 100) / 100}px !important`,
+                        top: `${Math.round((baseTop + lastDy) * 100) / 100}px !important`,
                     };
                 } else if (handle === 'rotate') {
-                    const ang = previewRotateRef.current ?? origRotateDeg;
+                    const ang = lastRotateDeg ?? origRotateDeg;
                     finalPatch = {
                         rotate: `${Math.round(ang * 100) / 100}deg`,
                     };
@@ -418,18 +480,19 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
                     // compensated for any centering-translate). Falls back to
                     // the raw computeResize values if the agent never echoed
                     // (e.g. the gesture was too short to dispatch a message).
+                    // Same !important rationale as the move path.
                     const r = latestResizeAppliedRef.current;
                     finalPatch = {
-                        position: 'absolute',
-                        left: `${Math.round(r.leftPx * 100) / 100}px`,
-                        top: `${Math.round(r.topPx * 100) / 100}px`,
-                        width: `${Math.max(1, Math.round(r.width))}px`,
-                        height: `${Math.max(1, Math.round(r.height))}px`,
+                        position: 'absolute !important',
+                        left: `${Math.round(r.leftPx * 100) / 100}px !important`,
+                        top: `${Math.round(r.topPx * 100) / 100}px !important`,
+                        width: `${Math.max(1, Math.round(r.width))}px !important`,
+                        height: `${Math.max(1, Math.round(r.height))}px !important`,
                     };
-                } else if (previewRectRef.current) {
+                } else if (lastResize) {
                     finalPatch = {
-                        width: `${Math.max(1, Math.round(previewRectRef.current.width))}px`,
-                        height: `${Math.max(1, Math.round(previewRectRef.current.height))}px`,
+                        width: `${Math.max(1, Math.round(lastResize.width))}px`,
+                        height: `${Math.max(1, Math.round(lastResize.height))}px`,
                     };
                 }
 
@@ -438,7 +501,6 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
                 }
 
                 setPreviewRect(null);
-                setPreviewRotate(null);
                 // The HTML commit will re-mount the iframe, which will
                 // re-handshake and trigger a fresh queryRect via the ready
                 // listener above. No manual queryRect needed here.
@@ -450,17 +512,6 @@ export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOve
         },
         [rect, selectedEntryId, selectedLayerPath, scale, updateEntryHtml]
     );
-
-    // Mirror preview state into refs so the gesture handler (which closes
-    // over them at start time) can read the latest values on pointerup.
-    const previewRectRef = useRef<CanvasRect | null>(null);
-    const previewRotateRef = useRef<number | null>(null);
-    useEffect(() => {
-        previewRectRef.current = previewRect;
-    }, [previewRect]);
-    useEffect(() => {
-        previewRotateRef.current = previewRotate;
-    }, [previewRotate]);
 
     /**
      * Align the selected layer to a canvas edge / center. Sends the same

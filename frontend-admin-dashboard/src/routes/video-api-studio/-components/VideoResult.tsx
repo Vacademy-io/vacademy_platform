@@ -34,6 +34,8 @@ import {
 import { LatexRenderer } from './LatexRenderer';
 import { RenderSettingsDialog } from './RenderSettingsDialog';
 import { toast } from 'sonner';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../-utils/credits';
 
 // ---------------------------------------------------------------------------
 // localStorage helpers for render job persistence
@@ -99,6 +101,8 @@ function GenerationDetails({
 }) {
     const [shotsOpen, setShotsOpen] = useState(false);
     const [errorsOpen, setErrorsOpen] = useState(false);
+    // Backend reports cumulative LLM cost in USD; we display credits only.
+    const ratio = useEffectiveCreditRatio();
 
     // Prefer the richer cumulative_tokens from generation_progress if available
     const totalPrompt =
@@ -165,7 +169,9 @@ function GenerationDetails({
                     {estCost != null && (
                         <>
                             <dt className="font-medium text-foreground">Est. cost</dt>
-                            <dd className="font-medium text-emerald-600">${estCost.toFixed(4)}</dd>
+                            <dd className="font-medium text-emerald-600">
+                                {formatCredits(usdToCredits(estCost, ratio))}
+                            </dd>
                         </>
                     )}
                 </dl>

@@ -290,6 +290,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
+                subItem: 'Notification Hub',
+                subItemLink: '/communication/notification-hub',
+                subItemId: 'notification-hub',
+            },
+            {
                 subItem: 'WhatsApp Inbox',
                 subItemLink: '/communication/inbox',
                 subItemId: 'whatsapp-inbox',

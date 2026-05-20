@@ -81,6 +81,17 @@ interface RenderSettingsDialogProps {
     onOpenChange: (open: boolean) => void;
     onConfirm: (settings: RenderSettings) => void;
     isPortrait?: boolean;
+    /**
+     * Optional initial settings. When provided, takes precedence over the
+     * localStorage `loadSettings()` default. The video editor passes its
+     * `captionSettings` (mapped to RenderSettings shape) so what the user
+     * previewed on the editor canvas is what the MP4 will use.
+     *
+     * Only the caption-related fields are typically supplied; missing fields
+     * fall back to the loaded localStorage defaults so resolution / fps /
+     * watermark stay sticky across renders.
+     */
+    initialSettings?: Partial<RenderSettings>;
 }
 
 export function RenderSettingsDialog({
@@ -88,13 +99,19 @@ export function RenderSettingsDialog({
     onOpenChange,
     onConfirm,
     isPortrait = false,
+    initialSettings,
 }: RenderSettingsDialogProps) {
-    const [settings, setSettings] = useState<RenderSettings>(loadSettings);
+    const [settings, setSettings] = useState<RenderSettings>(() => ({
+        ...loadSettings(),
+        ...(initialSettings ?? {}),
+    }));
 
-    // Reload from localStorage when dialog opens
+    // Reload from localStorage when dialog opens, then overlay initialSettings
+    // so the caller's preview values always win. Re-derives on every open so
+    // a settings change between two dialog opens is picked up.
     useEffect(() => {
-        if (open) setSettings(loadSettings());
-    }, [open]);
+        if (open) setSettings({ ...loadSettings(), ...(initialSettings ?? {}) });
+    }, [open, initialSettings]);
 
     const update = <K extends keyof RenderSettings>(key: K, val: RenderSettings[K]) =>
         setSettings((prev) => ({ ...prev, [key]: val }));

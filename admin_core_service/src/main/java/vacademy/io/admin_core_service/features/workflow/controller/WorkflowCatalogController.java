@@ -167,6 +167,14 @@ public class WorkflowCatalogController {
                 .category("Notification")
                 .requiredParams(List.of("instituteId"))
                 .optionalParams(List.of("batchId"))
+                .build(),
+            CatalogItemDTO.builder()
+                .key("fetch_institute_admin_emails")
+                .label("Fetch Institute Admin / Team Emails")
+                .description("Returns the institute's admin and teacher contacts as a list of {email, fullName, role} maps — for routing reports and notifications to staff. Pass 'roles' as CSV (e.g. 'ADMIN,TEACHER') to scope.")
+                .category("Notification")
+                .requiredParams(List.of("instituteId"))
+                .optionalParams(List.of("roles"))
                 .build()
         );
         return ResponseEntity.ok(keys);
@@ -191,7 +199,16 @@ public class WorkflowCatalogController {
         eventMeta.put("LIVE_SESSION_FORM_SUBMISSION", new String[]{"Live Session Form Submission", "Fires when a learner submits a live session registration form", "Live Session", "LIVE_SESSION"});
         // Payment
         eventMeta.put("PAYMENT_FAILED", new String[]{"Payment Failed", "Fires when a payment fails for an enrollment invite", "Payment", "ENROLL_INVITE"});
+        eventMeta.put("PAYMENT_SUCCESS", new String[]{"Payment Success", "Fires when a payment completes successfully", "Payment", "ENROLL_INVITE"});
         eventMeta.put("ABANDONED_CART", new String[]{"Abandoned Cart", "Fires when a user starts enrollment but doesn't complete payment", "Payment", "ENROLL_INVITE"});
+        // Subscription / plan lifecycle
+        eventMeta.put("SUBSCRIPTION_CANCELLED", new String[]{"Subscription Cancelled", "Fires when a learner cancels their own subscription", "Subscription", "USER_PLAN"});
+        eventMeta.put("SUBSCRIPTION_TERMINATED", new String[]{"Subscription Terminated", "Fires when an admin terminates a learner's subscription", "Subscription", "USER_PLAN"});
+        eventMeta.put("LEARNER_RE_ENROLLMENT", new String[]{"Learner Re-enrolment", "Fires when a learner re-enrols in a course they already had a plan for", "Enrollment", "ENROLL_INVITE"});
+        // LMS / content / engagement
+        eventMeta.put("COURSE_CREATED", new String[]{"Course Created", "Fires when a new course / package is published in the institute", "Course", "PACKAGE_SESSION"});
+        eventMeta.put("DOUBT_RAISED", new String[]{"Doubt Raised", "Fires when a learner posts a new doubt", "Engagement", "PACKAGE_SESSION"});
+        eventMeta.put("ASSIGNMENT_SUBMITTED", new String[]{"Assignment Submitted", "Fires when a learner submits an assignment slide for the first time", "Engagement", "PACKAGE_SESSION"});
         // Invites
         eventMeta.put("INVITE_CREATE", new String[]{"Invite Created", "Fires when a new enroll invite is created", "Invites", "ENROLL_INVITE"});
         eventMeta.put("INVITE_FORM_FILL", new String[]{"Invite Form Filled", "Fires when a learner completes an invite enrollment form", "Invites", "ENROLL_INVITE"});

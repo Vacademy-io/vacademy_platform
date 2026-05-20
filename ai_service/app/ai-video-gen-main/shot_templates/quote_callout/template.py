@@ -11,11 +11,15 @@ import re
 
 METADATA = {
     "id": "quote_callout",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "title": "Quote Callout",
     "description": "Oversized pull quote with slam-text line reveal + small attribution. One accent word optional.",
     "use_when": "Testimonials, citations, mission statements, narrator emphasis on a memorable line. Best at 4-7s shot duration.",
-    "compatible_shot_types": ["TEXT_DIAGRAM", "KINETIC_TITLE", "*"],
+    # Explicit allow-list. KINETIC_TITLE is in the composer's specialised
+    # blocklist (it has a dedicated builder), so listing it here would be
+    # dead weight — dropped. LOWER_THIRD added: short attribution-with-quote
+    # framings are exactly this template's wheelhouse.
+    "compatible_shot_types": ["TEXT_DIAGRAM", "LOWER_THIRD"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -45,8 +49,10 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_display = fs.get("display", "8rem")
-    fs_caption = fs.get("caption", "1.35rem")
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_display = fs.get("display", "clamp(2rem, min(14vw, 8vh), 6.25rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
     safe = sp.get("safe_area", "5%")
     ease_entry = ez.get("entry", "power3.out")
 
@@ -54,18 +60,39 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     attribution = (params.get("attribution") or "").strip()
     accent_word = (params.get("accent_word") or "").strip()
 
-    # Split quote into lines for slam reveal. Heuristic: split on existing
-    # newlines, otherwise wrap by approximate width (3-5 words per line for
-    # display-size typography).
+    # Split quote into lines for slam reveal. Prefer explicit newlines, then
+    # split at strong punctuation (em-dash / comma / semicolon), then fall back
+    # to balanced word-count chunks. This avoids the old 4-words-per-line
+    # heuristic producing awkward orphan tails like "still in place" / "— for
+    # now." when the natural break is at the em-dash.
     if "\n" in quote:
         lines = [l.strip() for l in quote.split("\n") if l.strip()]
     else:
         words = quote.split()
-        # Aim for 4 words per line, 5 if quote is long.
-        per_line = 5 if len(words) > 12 else 4
-        lines = []
-        for i in range(0, len(words), per_line):
-            lines.append(" ".join(words[i:i + per_line]))
+        n = len(words)
+        if n <= 4:
+            lines = [quote]
+        else:
+            # Try strong-punctuation split first.
+            punct_parts = [p.strip() for p in re.split(r"(?<=[—;])\s+|(?<=,)\s+", quote) if p.strip()]
+            usable = punct_parts and all(2 <= len(p.split()) <= 8 for p in punct_parts)
+            if usable and 2 <= len(punct_parts) <= 4:
+                lines = punct_parts
+            elif n <= 8:
+                # 2 balanced lines.
+                mid = (n + 1) // 2
+                lines = [" ".join(words[:mid]), " ".join(words[mid:])]
+            elif n <= 12:
+                # 3 balanced lines.
+                third = (n + 2) // 3
+                lines = [
+                    " ".join(words[:third]),
+                    " ".join(words[third:2 * third]),
+                    " ".join(words[2 * third:]),
+                ]
+            else:
+                per_line = 5 if n > 16 else 4
+                lines = [" ".join(words[i:i + per_line]) for i in range(0, n, per_line)]
 
     def _wrap_accent(text: str) -> str:
         if not accent_word:
@@ -116,18 +143,20 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   font-family:'Inter',system-ui,sans-serif;
 }}
 .{sid}-quote-block {{ display:flex; flex-direction:column; gap:0.1em; max-width:96%; }}
-.{sid}-slam-wrap {{ overflow:hidden; line-height:0.95; }}
+/* padding-bottom keeps descenders ("g","y","p") from being clipped by the
+   overflow:hidden wrapper that drives the slam-reveal. */
+.{sid}-slam-wrap {{ overflow:hidden; line-height:1; padding-bottom:0.15em; }}
 .{sid}-slam-text {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(2.4rem,{fs_display},9rem);
-  font-weight:400; letter-spacing:0.005em;
+  font-size:{fs_display};
+  font-weight:400; letter-spacing:0.005em; line-height:0.95;
   color:var(--brand-text);
   transform:translateY(105%); will-change:transform;
 }}
 .{sid}-quotemark {{ color:var(--brand-accent); margin:0 0.04em; }}
 .{sid}-accent {{ color:var(--brand-accent); }}
 .{sid}-attr {{
-  font-family:'Inter',sans-serif; font-size:clamp(0.95rem,{fs_caption},1.6rem);
+  font-family:'Inter',sans-serif; font-size:{fs_caption};
   letter-spacing:0.18em; text-transform:uppercase;
   color:var(--brand-text-secondary); opacity:0;
 }}

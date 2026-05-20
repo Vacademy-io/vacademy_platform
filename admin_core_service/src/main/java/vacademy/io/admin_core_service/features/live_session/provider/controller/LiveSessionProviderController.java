@@ -51,6 +51,7 @@ public class LiveSessionProviderController {
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
     private final vacademy.io.common.media.service.FileService fileService;
     private final vacademy.io.common.auth.repository.UserRepository userRepository;
+    private final vacademy.io.admin_core_service.features.youtube.service.YoutubeUploadJobService youtubeUploadJobService;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -309,7 +310,13 @@ public class LiveSessionProviderController {
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
                 providerMeetingId, fullName, user.getUserId(), role, instituteId, schedule.getBbbServerId());
 
-        // Mark attendance with join timestamp
+        // Mark attendance with join timestamp.
+        // Note: LIVE_SESSION_START is NOT emitted from here. It's dispatched
+        // by LiveSessionNotificationProcessor's periodic scan when the
+        // schedule's start_time falls in the look-back window — same pattern
+        // as LIVE_SESSION_END. That avoids the join-time race (multiple
+        // concurrent first-joins all seeing count=0) and keeps lifecycle
+        // emissions in one place.
         markBbbAttendance(schedule.getSessionId(), scheduleId, user.getUserId(), fullName, role, providerMeetingId);
 
         return ResponseEntity.ok(Map.of(
@@ -623,6 +630,18 @@ public class LiveSessionProviderController {
                 schedule.setLastRecordingSyncAt(new java.util.Date());
                 scheduleRepository.save(schedule);
                 log.info("[BBB Recording] Saved recording (type={}) for scheduleId={}", recordingType, schedule.getId());
+
+                // Kick off YouTube auto-upload if the institute has connected
+                // their channel and not disabled auto-upload. Silent skip
+                // otherwise — we don't want post-publish to fail because
+                // YouTube isn't set up.
+                try {
+                    youtubeUploadJobService.autoEnqueueIfEnabled(
+                            schedule.getId(), recordingId, fileId);
+                } catch (Exception ytEx) {
+                    log.warn("[YouTube] Auto-enqueue failed for scheduleId={}: {}",
+                            schedule.getId(), ytEx.getMessage());
+                }
             } catch (Exception e) {
                 log.error("[BBB Recording] Failed to save for scheduleId={}: {}",
                         schedule.getId(), e.getMessage());

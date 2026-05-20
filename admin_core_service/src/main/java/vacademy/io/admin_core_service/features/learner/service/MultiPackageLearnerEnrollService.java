@@ -112,6 +112,34 @@ public class MultiPackageLearnerEnrollService {
             paymentInit.setEmail(request.getUser().getEmail());
         }
 
+        // 0.3 Verify the client-supplied amount equals the sum of plan prices for
+        // every enrollment item. Closes the trust gap where any caller could submit
+        // an arbitrary `amount` for the v2 multi-package endpoint. Skipped for
+        // free/manual enrollments — those paths bypass payment entirely.
+        boolean willSkipPaymentVerification =
+                "MANUAL".equalsIgnoreCase(request.getEnrollmentType())
+                        || (paymentInit.getAmount() != null && paymentInit.getAmount() <= 0);
+        if (!willSkipPaymentVerification && paymentInit.getAmount() != null) {
+            double expectedSum = 0.0;
+            for (LearnerPackageSessionEnrollmentItemDTO item : items) {
+                if (!StringUtils.hasText(item.getPlanId())) {
+                    throw new VacademyException(
+                            "Each enrollment item must include a plan_id so the amount can be verified");
+                }
+                vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan plan =
+                        paymentPlanService.findById(item.getPlanId()).orElseThrow(
+                                () -> new VacademyException("PaymentPlan not found: " + item.getPlanId()));
+                expectedSum += plan.getActualPrice();
+            }
+            double clientAmount = paymentInit.getAmount();
+            if (Math.abs(clientAmount - expectedSum) > 0.01) {
+                log.warn("Amount mismatch on multi-package enroll: client sent {}, expected {} (from {} plans)",
+                        clientAmount, expectedSum, items.size());
+                throw new VacademyException(String.format(
+                        "Payment amount mismatch: submitted %.2f, expected %.2f", clientAmount, expectedSum));
+            }
+        }
+
         // 1. Ensure a consistent OrderId for the entire multi-package transaction
         if (!StringUtils.hasText(paymentInit.getOrderId())) {
             // Generate Order ID that fits PhonePe's 38-character limit

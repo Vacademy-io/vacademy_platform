@@ -175,13 +175,22 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<StudentTable>; column
         return String(value);
     };
 
+    // Audience-only respondents (filled an audience form, never enrolled into a batch) get a
+    // small chip next to the name so admins can tell them apart from enrolled learners.
+    const isAudienceOnly = columnId === 'full_name' && row.original.is_audience_only;
+
     return (
         <div
             onClick={() => handleClick(columnId, row)}
             onDoubleClick={(e) => handleDoubleClick(e, columnId, row)}
-            className="cursor-pointer"
+            className="flex cursor-pointer items-center gap-1.5"
         >
-            {getDisplayValue(value)}
+            <span className="truncate">{getDisplayValue(value)}</span>
+            {isAudienceOnly && (
+                <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+                    Audience
+                </span>
+            )}
         </div>
     );
 };

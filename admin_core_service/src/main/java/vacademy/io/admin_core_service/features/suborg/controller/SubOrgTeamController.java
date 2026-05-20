@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAddRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamListRequestDTO;
+import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamMemberInstallmentsDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamRemoveRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgTeamService;
 import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
@@ -61,5 +62,18 @@ public class SubOrgTeamController {
             @RequestBody SubOrgTeamRemoveRequestDTO request,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         return ResponseEntity.ok(subOrgTeamService.removeTeamMember(request, user));
+    }
+
+    /**
+     * Pending-installments summary for the team members of a sub-org. Same caller scope as
+     * {@link #listTeamMembers}. Only members with non-PAID StudentFeePayment rows are returned.
+     */
+    @GetMapping("/pending-installments")
+    public ResponseEntity<SubOrgTeamMemberInstallmentsDTO> getPendingInstallments(
+            @RequestParam("subOrgId") String subOrgId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        return ResponseEntity.ok(
+                subOrgTeamService.getPendingInstallments(subOrgId, instituteId, user));
     }
 }

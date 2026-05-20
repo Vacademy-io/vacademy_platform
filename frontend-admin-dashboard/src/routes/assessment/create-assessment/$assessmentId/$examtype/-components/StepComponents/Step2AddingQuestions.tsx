@@ -15,7 +15,7 @@ import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Step2SectionInfo from './Step2SectionInfo';
 import { toast } from 'sonner';
-import { AxiosError } from 'axios';
+import { reportApiError } from '@/lib/report-api-error';
 import { getFieldOptions, getStepKey, syncStep2DataWithStore } from '../../-utils/helper';
 import { useSectionDetailsStore } from '../../-utils/zustand-global-states/step2-add-questions';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -138,14 +138,12 @@ const Step2AddingQuestions: React.FC<StepContentProps> = ({
             }
         },
         onError: (error: unknown) => {
-            if (error instanceof AxiosError) {
-                toast.error(error.message, {
-                    className: 'error-toast',
-                    duration: 2000,
-                });
-            } else {
-                // Handle non-Axios errors if necessary
-            }
+            reportApiError(error, {
+                feature: 'assessment-step2-add-questions',
+                tags: { actionType: assessmentId !== 'defaultId' ? 'update' : 'create' },
+                extra: { assessmentId, instituteId: instituteDetails?.id, examType },
+                fallbackMessage: 'Failed to save questions.',
+            });
         },
     });
 

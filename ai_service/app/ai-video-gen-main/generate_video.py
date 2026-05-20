@@ -206,6 +206,12 @@ def _load_timeline(json_path: Path) -> List[Dict[str, Any]]:
         # timescale undefined in JS means the per-shot-timeline branch stays
         # dormant and shots play at base speed against globalTimeline — which
         # is what worked for the majority before my v24-v30 changes.
+        # Carry `entry_meta` through so the per-frame caption block can apply
+        # per-shot caption_style overrides (hide / top / bottom). Editor writes
+        # this via /frame/update; older timelines without entry_meta no-op.
+        em = item.get("entry_meta")
+        if isinstance(em, dict):
+            entry["entry_meta"] = em
         timeline.append(entry)
     return timeline
 def _load_words(words_path: Path) -> List[Dict[str, Any]]:
@@ -519,6 +525,10 @@ def _active_entries_at(
         if "z" in item:
             entry["z"] = item["z"]
         # NOTE: intentionally NOT carrying `timescale` (reverted; see _load_timeline above).
+        # Carry `entry_meta` so the per-frame caption block can read
+        # entry_meta.caption_style for per-shot overrides.
+        if "entry_meta" in item and isinstance(item["entry_meta"], dict):
+            entry["entry_meta"] = item["entry_meta"]
 
         if cf > 0.0:
             if t < in_t:
@@ -1629,11 +1639,37 @@ def render_video_from_json(
             if show_captions and caption_segments and caption_styles:
                 seg = _active_caption_at(caption_segments, t)
                 if seg:
+                    # Per-shot override: find the primary (non-branding) active
+                    # entry and read its entry_meta.caption_style. `hide` skips
+                    # caption emission for this frame; `position` overrides the
+                    # global setting. `null` (the editor's explicit-clear
+                    # sentinel) and missing keys both fall back to global.
+                    _shot_override = None
+                    for _e in active:
+                        if str(_e.get("id", "")).startswith("branding-"):
+                            continue
+                        _em = _e.get("entry_meta")
+                        if isinstance(_em, dict):
+                            _cs = _em.get("caption_style")
+                            if isinstance(_cs, dict):
+                                _shot_override = _cs
+                        break
+
+                    if _shot_override and _shot_override.get("hide"):
+                        # Skip caption emission for this frame entirely.
+                        seg = None  # type: ignore[assignment]
+
+                if seg:
                     style = caption_styles
                     allow_html = bool(style.get("allow_html", False))
                     raw_text = seg.get("text", "")
                     content_html = raw_text if allow_html else _html_escape(raw_text)
-                    cap_position = str(style.get("position", "bottom"))
+                    _override_pos = (
+                        _shot_override.get("position")
+                        if isinstance(_shot_override, dict)
+                        else None
+                    )
+                    cap_position = str(_override_pos or style.get("position", "bottom"))
                     if cap_position == "top":
                         position_css = f"top:{int(height * 0.037)}px; bottom:auto;"
                     else:

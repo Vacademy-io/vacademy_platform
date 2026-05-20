@@ -42,6 +42,8 @@ import {
     Upload as UploadIcon,
     X as XIcon,
     Lock as LockIcon,
+    Cpu as CpuIcon,
+    ChevronRight as ChevronRightIcon,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
@@ -76,7 +78,13 @@ import {
     TextDensity,
     VISUAL_PREFERENCE_FAMILIES,
     hasActiveVisualPreferences,
+    AI_VIDEO_MODELS,
+    AiVideoModel,
+    ModelOverrides,
+    UserOverridableStage,
+    USER_OVERRIDABLE_STAGE_META,
 } from '../../-services/video-generation';
+import { useAIModelsList } from '@/hooks/useAiModels';
 import {
     type VideoBrandingConfig,
     type VideoStyleConfig,
@@ -90,12 +98,9 @@ import {
 import { VimBrandKitSelect } from '@/features/vimotion/composer/VimBrandKitSelect';
 import { VimSavedAvatarSelect } from '@/features/vimotion/composer/VimSavedAvatarSelect';
 import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
-
-interface AiModel {
-    model_id: string;
-    name: string;
-    is_free?: boolean;
-}
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../../-utils/credits';
+import type { AIModel } from '@/types/ai-models';
 
 interface SettingsPopoverProps {
     options: Omit<GenerateVideoRequest, 'prompt'>;
@@ -113,8 +118,8 @@ interface SettingsPopoverProps {
     videoBranding: VideoBrandingConfig;
     onVideoBrandingChange: React.Dispatch<React.SetStateAction<VideoBrandingConfig>>;
     videoTemplates: VideoTemplate[];
-    /** AI model list (filtered by quality_tier). */
-    models: AiModel[];
+    /** Curated AI model list for the current content type (use-case). */
+    models: AIModel[];
     /**
      * Vim-only mode: swaps the Branding tab's free-form Style/Branding
      * accordions for a saved-Brand-Kit picker (request.brand_kit_id), and
@@ -970,6 +975,24 @@ function SettingsBody({
                     </p>
                 </div>
 
+                <AiVideoPanel
+                    enabled={!!options.ai_video_enabled}
+                    audioEnabled={!!options.ai_video_audio_enabled}
+                    model={options.ai_video_model}
+                    qualityTier={options.quality_tier || 'ultra'}
+                    onChange={(patch) => {
+                        if ('enabled' in patch) update('ai_video_enabled', patch.enabled);
+                        if ('audioEnabled' in patch)
+                            update('ai_video_audio_enabled', patch.audioEnabled);
+                        if ('model' in patch) update('ai_video_model', patch.model);
+                    }}
+                />
+
+                <ModelOverridesPanel
+                    overrides={options.model_overrides}
+                    onChange={(next) => update('model_overrides', next)}
+                />
+
                 <VisualPreferencesPanel
                     prefs={options.visual_preferences}
                     qualityTier={options.quality_tier || 'ultra'}
@@ -978,6 +1001,120 @@ function SettingsBody({
                 />
             </TabsContent>
         </Tabs>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AiVideoPanel — Phase 3b–6 user-facing toggle
+//
+// Three controls:
+//   - Enable AI video (master toggle)
+//   - Model dropdown (Phase 3 ships with one option; future-proofed)
+//   - Veo audio toggle (visible only when AI video is on)
+//
+// Disabled with an explanation when the run's quality_tier is below ultra,
+// since the backend hard-gates eligibility there. The disabled state keeps
+// any previously-set values intact — switching tier back up restores them.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface AiVideoPanelChange {
+    enabled?: boolean;
+    audioEnabled?: boolean;
+    model?: AiVideoModel;
+}
+
+function AiVideoPanel({
+    enabled,
+    audioEnabled,
+    model,
+    qualityTier,
+    onChange,
+}: {
+    enabled: boolean;
+    audioEnabled: boolean;
+    model: AiVideoModel | undefined;
+    qualityTier: QualityTier;
+    onChange: (patch: AiVideoPanelChange) => void;
+}) {
+    const tierEligible = qualityTier === 'ultra' || qualityTier === 'super_ultra';
+    const effectiveModel: AiVideoModel = model ?? AI_VIDEO_MODELS[0].value;
+    // Live USD→credits rate (V252-driven; falls back to seed 150× when offline).
+    // Used to render the per-shot range, per-video cap, and per-second
+    // Veo audio rate as credit values.
+    const ratio = useEffectiveCreditRatio();
+    const perShotMinCredits = formatCredits(usdToCredits(0.12, ratio), { suffix: '' });
+    const perShotMaxCredits = formatCredits(usdToCredits(0.4, ratio), { suffix: '' });
+    const perVideoCapCredits = formatCredits(usdToCredits(1.5, ratio), { suffix: 'credits' });
+    const audioOffPerSec = formatCredits(usdToCredits(0.03, ratio), { precision: 1, suffix: '' });
+    const audioOnPerSec = formatCredits(usdToCredits(0.05, ratio), { precision: 1, suffix: '' });
+    return (
+        <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+                <Label className="flex items-center gap-1.5 text-xs font-medium">
+                    <Film className="size-3.5" />
+                    AI video generation
+                    <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                        Beta
+                    </Badge>
+                </Label>
+                <Switch
+                    checked={enabled && tierEligible}
+                    disabled={!tierEligible}
+                    onCheckedChange={(v) => onChange({ enabled: v })}
+                    aria-label="Enable AI video"
+                />
+            </div>
+            {!tierEligible && (
+                <p className="pl-5 text-[10px] text-amber-600">
+                    Available on Ultra and Super Ultra tiers only. Switch tier above to enable.
+                </p>
+            )}
+            {tierEligible && (
+                <p className="pl-5 text-[10px] text-muted-foreground">
+                    Generates cinematic clips with fal.ai Veo. ≈{perShotMinCredits}–
+                    {perShotMaxCredits} credits per shot, hard-capped at {perVideoCapCredits} per
+                    video. Director picks when content fits.
+                </p>
+            )}
+            {enabled && tierEligible && (
+                <>
+                    <div className="space-y-1.5 pl-5">
+                        <Label className="text-[10px] text-muted-foreground">Model</Label>
+                        <Select
+                            value={effectiveModel}
+                            onValueChange={(v) => onChange({ model: v as AiVideoModel })}
+                        >
+                            <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {AI_VIDEO_MODELS.map((m) => (
+                                    <SelectItem key={m.value} value={m.value} className="text-xs">
+                                        {m.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pl-5">
+                        <Label className="flex items-center gap-1.5 text-[11px]">
+                            <Volume2 className="size-3" />
+                            Veo audio
+                        </Label>
+                        <Switch
+                            checked={audioEnabled}
+                            onCheckedChange={(v) => onChange({ audioEnabled: v })}
+                            aria-label="Enable Veo audio"
+                        />
+                    </div>
+                    <p className="pl-5 text-[10px] text-muted-foreground">
+                        When ON, AI video shots play their own audio. Master narration is silenced
+                        during those shots. Cost rises from {audioOffPerSec} credits/s to{' '}
+                        {audioOnPerSec} credits/s.
+                    </p>
+                </>
+            )}
+        </div>
     );
 }
 
@@ -1205,6 +1342,10 @@ function HostTabBody({
     const tierAllowed = tier === 'ultra' || tier === 'super_ultra';
     const host = options.host;
     const hostEnabled = !!host;
+    // Avatar models are billed in USD/sec internally; render in credits/sec
+    // using the live rate from `credit_rate_config` (falls back to the seed
+    // 150× when the rate endpoint is unreachable).
+    const ratio = useEffectiveCreditRatio();
 
     const { uploadFile, getPublicUrl, isUploading } = useFileUpload();
     const [uploadError, setUploadError] = useState<string | null>(null);
@@ -1342,8 +1483,9 @@ function HostTabBody({
                     <Switch checked={hostEnabled} onCheckedChange={handleEnableToggle} />
                 </div>
                 <p className="pl-5 text-[10px] text-muted-foreground">
-                    A talking-head host appears in some shots and narrates in 1st person. Costs
-                    $0.0562/sec of host footage on top of the base video.
+                    A talking-head host appears in some shots and narrates in 1st person. Costs{' '}
+                    {formatCredits(usdToCredits(0.0562, ratio), { precision: 1, suffix: '' })}{' '}
+                    credits/sec of host footage on top of the base video.
                 </p>
             </div>
 
@@ -1532,8 +1674,17 @@ function HostTabBody({
                                                                 <div className="flex flex-col">
                                                                     <span>{m.label}</span>
                                                                     <span className="text-[10px] text-muted-foreground">
-                                                                        ${m.perSecondUsd.toFixed(4)}
-                                                                        /sec
+                                                                        {formatCredits(
+                                                                            usdToCredits(
+                                                                                m.perSecondUsd,
+                                                                                ratio
+                                                                            ),
+                                                                            {
+                                                                                precision: 1,
+                                                                                suffix: '',
+                                                                            }
+                                                                        )}{' '}
+                                                                        cr/sec
                                                                     </span>
                                                                 </div>
                                                             </SelectItem>
@@ -1663,7 +1814,17 @@ function HostTabBody({
                                                         <div className="flex flex-col">
                                                             <span>{m.label}</span>
                                                             <span className="text-[10px] text-muted-foreground">
-                                                                ${m.perSecondUsd.toFixed(4)}/sec
+                                                                {formatCredits(
+                                                                    usdToCredits(
+                                                                        m.perSecondUsd,
+                                                                        ratio
+                                                                    ),
+                                                                    {
+                                                                        precision: 1,
+                                                                        suffix: '',
+                                                                    }
+                                                                )}{' '}
+                                                                cr/sec
                                                             </span>
                                                         </div>
                                                     </SelectItem>
@@ -1837,6 +1998,208 @@ function IntroOutroEditor({
                         className="h-7 w-16 text-xs"
                     />
                     <span className="text-[10px] text-muted-foreground">seconds</span>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ModelOverridesPanel — V200 per-stage user model overrides
+//
+// One simple control: "Default model" dropdown. Picking a model mass-applies
+// to every user-overridable stage (ShotPlanner, NarrationWriter, per-shot
+// HTML, act planner, regen HTML, plus v2-legacy script/director stages).
+//
+// Optional "Customize per stage" expander shows each overridable stage with
+// its own dropdown — defaults to "inherits default" so the user only needs
+// to touch the stages they care about.
+//
+// Vision review + utility prompts ignore this entirely (pinned to admin
+// defaults in the DB matrix). The hint below makes that explicit so users
+// don't think they can wire e.g. Sonnet for the headline thumbnailer.
+// ─────────────────────────────────────────────────────────────────────────
+
+function ModelOverridesPanel({
+    overrides,
+    onChange,
+}: {
+    overrides: ModelOverrides | undefined;
+    onChange: (next: ModelOverrides | undefined) => void;
+}) {
+    const [advancedOpen, setAdvancedOpen] = useState(false);
+    // Fetch models eligible for video. Single shared query — TanStack
+    // dedupes across the panel + every per-stage dropdown.
+    const { data: modelsData, isLoading } = useAIModelsList({ use_case: 'video' });
+    const models = modelsData?.models ?? [];
+
+    const defaultModel = overrides?.default ?? '';
+    const perStage = overrides?.per_stage ?? {};
+    const SYSTEM_DEFAULT_VALUE = '__system_default__';
+
+    // Drop entries with empty/whitespace strings so FE state matches what the
+    // BE will accept after pydantic validation. Without this, a `{ shot_planner:
+    // '' }` slot could survive in state, inflate the "settings count" badge,
+    // and confuse history rehydration.
+    const prunePerStage = (
+        src: Partial<Record<UserOverridableStage, string>>
+    ): Partial<Record<UserOverridableStage, string>> => {
+        const out: Partial<Record<UserOverridableStage, string>> = {};
+        (Object.keys(src) as UserOverridableStage[]).forEach((k) => {
+            const v = src[k];
+            if (typeof v === 'string' && v.trim()) out[k] = v.trim();
+        });
+        return out;
+    };
+
+    const setDefault = (model: string | undefined) => {
+        const cleanedPerStage = prunePerStage(perStage);
+        const hasPerStage = Object.keys(cleanedPerStage).length > 0;
+        if (!model) {
+            // Clearing default — if no per-stage entries either, drop the
+            // whole object so the request body omits `model_overrides`
+            // entirely (admin defaults apply everywhere).
+            onChange(hasPerStage ? { per_stage: cleanedPerStage } : undefined);
+            return;
+        }
+        onChange({
+            default: model,
+            ...(hasPerStage ? { per_stage: cleanedPerStage } : {}),
+        });
+    };
+
+    const setPerStage = (stage: UserOverridableStage, model: string | undefined) => {
+        const next: Partial<Record<UserOverridableStage, string>> = { ...perStage };
+        if (model && model.trim()) {
+            next[stage] = model.trim();
+        } else {
+            delete next[stage];
+        }
+        const cleaned = prunePerStage(next);
+        const hasPerStage = Object.keys(cleaned).length > 0;
+        if (!defaultModel && !hasPerStage) {
+            onChange(undefined);
+            return;
+        }
+        onChange({
+            ...(defaultModel ? { default: defaultModel } : {}),
+            ...(hasPerStage ? { per_stage: cleaned } : {}),
+        });
+    };
+
+    return (
+        <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+                <Label className="flex items-center gap-1.5 text-xs font-medium">
+                    <CpuIcon className="size-3.5" />
+                    AI model overrides
+                </Label>
+            </div>
+            <p className="pl-5 text-[10px] text-muted-foreground">
+                Pick a model for the LLM stages of this run. Leave blank to use system
+                defaults. Vision review and small utility prompts always use system
+                defaults to protect quality and cost.
+            </p>
+            <div className="space-y-1.5 pl-5">
+                <Label className="text-[10px] text-muted-foreground">Default model</Label>
+                <Select
+                    value={defaultModel || SYSTEM_DEFAULT_VALUE}
+                    onValueChange={(v) =>
+                        setDefault(v === SYSTEM_DEFAULT_VALUE ? undefined : v)
+                    }
+                    disabled={isLoading}
+                >
+                    <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Use system defaults" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={SYSTEM_DEFAULT_VALUE} className="text-xs">
+                            Use system defaults
+                        </SelectItem>
+                        {models.map((m) => (
+                            <SelectItem key={m.model_id} value={m.model_id} className="text-xs">
+                                {m.name}
+                                <span className="ml-1 text-[9px] text-muted-foreground">
+                                    ({m.provider})
+                                </span>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <button
+                type="button"
+                onClick={() => setAdvancedOpen((v) => !v)}
+                className="flex w-full items-center gap-1 pl-5 text-[10px] text-muted-foreground hover:text-foreground"
+            >
+                <ChevronRightIcon
+                    className={`size-3 transition-transform ${
+                        advancedOpen ? 'rotate-90' : ''
+                    }`}
+                />
+                Customize per stage (advanced)
+            </button>
+
+            {advancedOpen && (
+                <div className="space-y-2 rounded-md border border-border/40 bg-background/60 p-2 pl-5">
+                    {USER_OVERRIDABLE_STAGE_META.map((stage) => {
+                        const current = perStage[stage.value] ?? '';
+                        return (
+                            <div key={stage.value} className="space-y-1">
+                                <Label className="text-[10px] text-foreground/80">
+                                    {stage.label}
+                                    {stage.hint && (
+                                        <span className="ml-1 text-[9px] text-muted-foreground">
+                                            — {stage.hint}
+                                        </span>
+                                    )}
+                                </Label>
+                                <Select
+                                    value={current || SYSTEM_DEFAULT_VALUE}
+                                    onValueChange={(v) =>
+                                        setPerStage(
+                                            stage.value,
+                                            v === SYSTEM_DEFAULT_VALUE ? undefined : v
+                                        )
+                                    }
+                                    disabled={isLoading}
+                                >
+                                    <SelectTrigger className="h-7 text-[11px]">
+                                        <SelectValue
+                                            placeholder={
+                                                defaultModel
+                                                    ? `Inherits default (${defaultModel})`
+                                                    : 'Inherits system default'
+                                            }
+                                        />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem
+                                            value={SYSTEM_DEFAULT_VALUE}
+                                            className="text-[11px]"
+                                        >
+                                            {defaultModel
+                                                ? `Inherits default (${defaultModel})`
+                                                : 'Inherits system default'}
+                                        </SelectItem>
+                                        {models.map((m) => (
+                                            <SelectItem
+                                                key={m.model_id}
+                                                value={m.model_id}
+                                                className="text-[11px]"
+                                            >
+                                                {m.name}
+                                                <span className="ml-1 text-[9px] text-muted-foreground">
+                                                    ({m.provider})
+                                                </span>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>

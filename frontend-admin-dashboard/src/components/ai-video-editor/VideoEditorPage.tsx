@@ -18,11 +18,13 @@ import {
     Film,
     Download,
     RotateCcw,
+    Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { useVideoEditorStore, InitParams } from './stores/video-editor-store';
+import { snapSizeToBucket } from './utils/caption-rendering';
 import { EditorCanvas } from './EditorCanvas';
 import { EntryListPanel } from './EntryListPanel';
 import { TimelineScrubber } from './TimelineScrubber';
@@ -30,6 +32,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { AddMediaOverlayDialog } from './AddMediaOverlayDialog';
 import { AddShotDialog } from './AddShotDialog';
 import { AudioTracksPanel } from './AudioTracksPanel';
+import { CaptionSettingsPanel } from './CaptionSettingsPanel';
 import { PlaybackBar } from './playback/PlaybackBar';
 import { RenderSettingsDialog } from '@/routes/video-api-studio/-components/RenderSettingsDialog';
 import { ThumbnailPickerPanel } from '@/routes/video-api-studio/-components/pipeline/ThumbnailPickerPanel';
@@ -104,6 +107,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const {
         init,
         loadTimeline,
+        loadCaptionWords,
         isLoading,
         error,
         meta,
@@ -112,6 +116,9 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         selectEntry,
         dirtyEntryIds,
         deletedEntryIds,
+        pendingReorders,
+        viewMode,
+        toggleViewMode,
         entryTransforms,
         past,
         future,
@@ -126,6 +133,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         audioUrl: storeAudioUrl,
         htmlUrl: storeHtmlUrl,
         wordsUrl: storeWordsUrl,
+        captionSettings,
     } = useVideoEditorStore();
 
     const [entriesPanelOpen, setEntriesPanelOpen] = useState(true);
@@ -184,6 +192,34 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     useEffect(() => {
         loadTimeline();
     }, [props.htmlUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch narration.words.json so CaptionOverlay can render the caption layer.
+    // Soft-fails when wordsUrl is missing or unreachable — captions just don't show.
+    useEffect(() => {
+        loadCaptionWords();
+    }, [props.wordsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Cmd/Ctrl+Shift+D toggles developer mode. Guarded against input focus
+    // so the shortcut doesn't fire while typing into form fields.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!(e.metaKey || e.ctrlKey) || !e.shiftKey) return;
+            if (e.key !== 'd' && e.key !== 'D') return;
+            const t = e.target as HTMLElement | null;
+            if (
+                t &&
+                (t.tagName === 'INPUT' ||
+                    t.tagName === 'TEXTAREA' ||
+                    t.tagName === 'SELECT' ||
+                    t.isContentEditable)
+            )
+                return;
+            e.preventDefault();
+            toggleViewMode();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [toggleViewMode]);
 
     // ── Deep-link focus ────────────────────────────────────────────────────
     // When a `focusTime` search param is set (pipeline view's "Edit this
@@ -312,7 +348,11 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             if (!props.apiKey || !props.videoId) return;
             // Render reads the server-side timeline; unsaved local edits would
             // be silently missing from the MP4. Save first if needed.
-            if (dirtyEntryIds.length > 0 || deletedEntryIds.length > 0) {
+            if (
+                dirtyEntryIds.length > 0 ||
+                deletedEntryIds.length > 0 ||
+                pendingReorders.length > 0
+            ) {
                 try {
                     await saveChanges();
                     toast.info('Saved pending edits before rendering');
@@ -345,6 +385,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             startRenderPolling,
             dirtyEntryIds,
             deletedEntryIds,
+            pendingReorders,
             saveChanges,
         ]
     );
@@ -361,6 +402,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const isDirty =
         dirtyEntryIds.length > 0 ||
         deletedEntryIds.length > 0 ||
+        pendingReorders.length > 0 ||
         Object.values(entryTransforms).some(
             (t) => t.x !== 0 || t.y !== 0 || t.scale !== 1 || t.rotation !== 0
         );
@@ -635,6 +677,30 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 </Popover>
             )}
 
+            {/* Developer-mode toggle. Off (simple) = friendly labels + advanced
+                inputs tucked under `Advanced ▾` disclosures. On (developer) =
+                advanced disclosures pre-expanded + tag-name badges in the
+                Layers tree. Both modes keep every underlying control reachable. */}
+            <Button
+                size="sm"
+                variant="outline"
+                className={[
+                    'h-7 border-gray-300 px-2 text-xs',
+                    viewMode === 'developer'
+                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                        : 'text-gray-500 hover:text-gray-800',
+                ].join(' ')}
+                onClick={toggleViewMode}
+                title={
+                    viewMode === 'developer'
+                        ? 'Developer mode on — advanced sections expanded by default. (Cmd+Shift+D)'
+                        : 'Simple mode — advanced inputs hidden in `Advanced ▾` sections. (Cmd+Shift+D to toggle)'
+                }
+                aria-pressed={viewMode === 'developer'}
+            >
+                <Wrench className="size-3" />
+            </Button>
+
             {/* Save + Render + Preview — grouped so the tour can highlight the
                 full export workflow with one anchor. */}
             <div data-tour="editor-save-render" className="flex items-center gap-1.5">
@@ -646,11 +712,21 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     title={
                         !props.apiKey
                             ? 'API key required to save to backend; changes saved locally'
-                            : dirtyEntryIds.length + deletedEntryIds.length > 0
-                              ? `Save ${dirtyEntryIds.length} edit${dirtyEntryIds.length === 1 ? '' : 's'}` +
-                                (deletedEntryIds.length > 0
-                                    ? ` and ${deletedEntryIds.length} deletion${deletedEntryIds.length === 1 ? '' : 's'}`
-                                    : '')
+                            : dirtyEntryIds.length +
+                                    deletedEntryIds.length +
+                                    pendingReorders.length >
+                                0
+                              ? [
+                                    `Save ${dirtyEntryIds.length} edit${dirtyEntryIds.length === 1 ? '' : 's'}`,
+                                    deletedEntryIds.length > 0
+                                        ? `${deletedEntryIds.length} deletion${deletedEntryIds.length === 1 ? '' : 's'}`
+                                        : '',
+                                    pendingReorders.length > 0
+                                        ? `${pendingReorders.length} reorder${pendingReorders.length === 1 ? '' : 's'}`
+                                        : '',
+                                ]
+                                    .filter(Boolean)
+                                    .join(', ')
                               : 'Save changes'
                     }
                     onClick={handleSave}
@@ -664,9 +740,14 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                         <>
                             <Save className="mr-1 size-3" />
                             Save
-                            {dirtyEntryIds.length + deletedEntryIds.length > 0 && (
+                            {dirtyEntryIds.length +
+                                deletedEntryIds.length +
+                                pendingReorders.length >
+                                0 && (
                                 <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">
-                                    {dirtyEntryIds.length + deletedEntryIds.length}
+                                    {dirtyEntryIds.length +
+                                        deletedEntryIds.length +
+                                        pendingReorders.length}
                                 </span>
                             )}
                         </>
@@ -747,6 +828,17 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 onOpenChange={setRenderSettingsOpen}
                 onConfirm={handleRenderConfirm}
                 isPortrait={isPortrait}
+                // Seed the dialog from the editor's caption preview so the MP4
+                // matches what the user just saw on canvas. Resolution / fps /
+                // watermark still come from the dialog's own localStorage.
+                initialSettings={{
+                    captions: captionSettings.enabled,
+                    captionPosition: captionSettings.position,
+                    captionTextColor: captionSettings.textColor,
+                    captionBgColor: captionSettings.bgColor,
+                    captionBgOpacity: Math.round(captionSettings.bgOpacity * 100),
+                    captionSize: snapSizeToBucket(captionSettings.sizePx),
+                }}
             />
         </>
     );
@@ -784,6 +876,9 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
             <PlaybackBar />
             <div data-tour="editor-timeline">
                 <TimelineScrubber />
+            </div>
+            <div data-tour="editor-captions">
+                <CaptionSettingsPanel />
             </div>
             <div data-tour="editor-audio-tracks">
                 <AudioTracksPanel />

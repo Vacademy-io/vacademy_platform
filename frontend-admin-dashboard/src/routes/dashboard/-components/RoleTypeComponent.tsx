@@ -32,7 +32,7 @@ interface RoleTypeProps {
     setRoleTypeCount: React.Dispatch<
         React.SetStateAction<{
             ADMIN: number;
-            'COURSE CREATOR': number;
+            'CONTENT CREATOR': number;
             'ASSESSMENT CREATOR': number;
             EVALUATOR: number;
             TEACHER: number;
@@ -117,7 +117,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
             selectedFilter: {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -141,7 +141,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
                 selectedFilter: {
                     roles: [
                         { id: '1', name: 'ADMIN' },
-                        { id: '2', name: 'COURSE CREATOR' },
+                        { id: '2', name: 'CONTENT CREATOR' },
                         { id: '3', name: 'ASSESSMENT CREATOR' },
                         { id: '4', name: 'EVALUATOR' },
                         { id: '5', name: 'TEACHER' },
@@ -164,7 +164,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
                 fetchInstituteDashboardUsers(instituteId, {
                     roles: [
                         { id: '1', name: 'ADMIN' },
-                        { id: '2', name: 'COURSE CREATOR' },
+                        { id: '2', name: 'CONTENT CREATOR' },
                         { id: '3', name: 'ASSESSMENT CREATOR' },
                         { id: '4', name: 'EVALUATOR' },
                         { id: '5', name: 'TEACHER' },
@@ -177,7 +177,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
                 fetchInstituteDashboardUsers(instituteId, {
                     roles: [
                         { id: '1', name: 'ADMIN' },
-                        { id: '2', name: 'COURSE CREATOR' },
+                        { id: '2', name: 'CONTENT CREATOR' },
                         { id: '3', name: 'ASSESSMENT CREATOR' },
                         { id: '4', name: 'EVALUATOR' },
                         { id: '5', name: 'TEACHER' },
@@ -217,7 +217,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
         const cnt2 = countAdminRoles(dashboardUsers.invites);
         setRoleTypeCount({
             ADMIN: cnt1.ADMIN + cnt2.ADMIN,
-            'COURSE CREATOR': cnt1['COURSE CREATOR'] + cnt2['COURSE CREATOR'],
+            'CONTENT CREATOR': cnt1['CONTENT CREATOR'] + cnt2['CONTENT CREATOR'],
             'ASSESSMENT CREATOR': cnt1['ASSESSMENT CREATOR'] + cnt2['ASSESSMENT CREATOR'],
             EVALUATOR: cnt1.EVALUATOR + cnt2.EVALUATOR,
             TEACHER: cnt1.TEACHER + cnt2.TEACHER,
@@ -237,7 +237,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
                 fetchInstituteDashboardUsers(instituteId, {
                     roles: [
                         { id: '1', name: 'ADMIN' },
-                        { id: '2', name: 'COURSE CREATOR' },
+                        { id: '2', name: 'CONTENT CREATOR' },
                         { id: '3', name: 'ASSESSMENT CREATOR' },
                         { id: '4', name: 'EVALUATOR' },
                         { id: '5', name: 'TEACHER' },
@@ -250,7 +250,7 @@ const RoleTypeComponent = ({ setRoleTypeCount }: RoleTypeProps) => {
                 fetchInstituteDashboardUsers(instituteId, {
                     roles: [
                         { id: '1', name: 'ADMIN' },
-                        { id: '2', name: 'COURSE CREATOR' },
+                        { id: '2', name: 'CONTENT CREATOR' },
                         { id: '3', name: 'ASSESSMENT CREATOR' },
                         { id: '4', name: 'EVALUATOR' },
                         { id: '5', name: 'TEACHER' },

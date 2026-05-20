@@ -828,7 +828,7 @@ class BulkCourseServiceTest {
                     .build();
 
             assertEquals("INR", config.getEffectiveCurrency()); // Default
-            assertEquals(365, config.getEffectiveValidityInDays()); // Default
+            assertNull(config.getEffectiveValidityInDays()); // Null = no expiry (lifetime)
             assertEquals(100.0, config.getEffectiveElevatedPrice()); // Falls back to price
             assertFalse(config.isEffectiveRequireApproval()); // Default false
         }

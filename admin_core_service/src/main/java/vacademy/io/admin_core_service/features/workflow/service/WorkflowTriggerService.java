@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowTriggerRepository;
 import vacademy.io.common.logging.SentryLogger;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -140,6 +141,12 @@ public class WorkflowTriggerService {
                     }
                     // Flag whether this is a global trigger (event_id IS NULL in DB)
                     seedContext.put("isGlobalTrigger", trigger.getEventId() == null);
+                    // ISO-8601 timestamp of when this trigger fired. Available on the
+                    // context as #ctx['triggerTime'] for HTTP_REQUEST bodies, SEND_EMAIL
+                    // templates, etc. — handlers that need "when did this happen" no
+                    // longer have to compute it themselves or rely on T(java.time.Instant)
+                    // SpEL (which the body evaluator doesn't pick up).
+                    seedContext.put("triggerTime", Instant.now().toString());
                     log.info("Seed context prepared for workflow run ({} keys): {}", seedContext.size(), seedContext);
                     log.info("Starting workflowEngineService.run for workflowId='{}'", trigger.getWorkflow().getId());
 

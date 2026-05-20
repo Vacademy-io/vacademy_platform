@@ -65,6 +65,9 @@ public class DoubtsManager {
     @Autowired
     vacademy.io.admin_core_service.features.auth_service.service.AuthService authService;
 
+    @Autowired
+    vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /** Role name as configured in auth_service for institute-level admins. */
@@ -131,6 +134,34 @@ public class DoubtsManager {
         if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty() && instituteId != null) {
             doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
         }
+
+        // Fire the DOUBT_RAISED workflow trigger so admin/team-notification
+        // recipes can react. Only for top-level doubts (replies don't count as
+        // a "raised" event) and only when we know the institute. Wrapped so
+        // workflow failures can't affect the doubt creation response.
+        if (savedDoubt.getParentId() == null && instituteId != null && !instituteId.isBlank()) {
+            try {
+                java.util.Map<String, Object> ctx = new java.util.HashMap<>();
+                ctx.put("doubtId", savedDoubt.getId());
+                ctx.put("userId", savedDoubt.getUserId());
+                ctx.put("packageSessionId", savedDoubt.getPackageSessionId());
+                ctx.put("source", savedDoubt.getSource());
+                ctx.put("sourceId", savedDoubt.getSourceId());
+                ctx.put("contentType", savedDoubt.getContentType());
+                ctx.put("htmlText", savedDoubt.getHtmlText());
+                ctx.put("raisedTime", savedDoubt.getRaisedTime());
+                ctx.put("assigneeIds", finalAssigneeIds);
+                workflowTriggerService.handleTriggerEvents(
+                        vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.DOUBT_RAISED.name(),
+                        savedDoubt.getId(),
+                        instituteId,
+                        ctx);
+            } catch (Exception wfe) {
+                log.warn("Failed to trigger DOUBT_RAISED workflow for doubt {}: {}",
+                        savedDoubt.getId(), wfe.getMessage());
+            }
+        }
+
         return savedDoubt.getId();
     }
 

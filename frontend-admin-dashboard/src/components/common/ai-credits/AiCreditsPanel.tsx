@@ -528,6 +528,8 @@ interface AiCreditsPanelProps {
     popoverSideOffset?: number;
     /** Override the default "Explore AI Tools" link in the footer. Pass `null` to hide it. */
     footerAction?: React.ReactNode | null;
+    /** When true, hide the Top Up button and modal (e.g. for non-admin Vimotion users). */
+    hideTopUp?: boolean;
 }
 
 export function AiCreditsPanel({
@@ -537,6 +539,7 @@ export function AiCreditsPanel({
     popoverAlign = 'end',
     popoverSideOffset = 8,
     footerAction,
+    hideTopUp = false,
 }: AiCreditsPanelProps) {
     const { data: credits, isError } = useAiCreditsQuery(true);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -619,7 +622,7 @@ export function AiCreditsPanel({
                 {/* Footer */}
                 <Separator />
                 <div className="flex items-center justify-between rounded-b-2xl bg-white px-4 py-2">
-                    {footerAction === null ? (
+                    {footerAction === null || hideTopUp ? (
                         <span />
                     ) : (
                         footerAction ?? (
@@ -657,7 +660,7 @@ export function AiCreditsPanel({
                     )}
                 </div>
             </PopoverContent>
-            <TopUpModal open={topUpOpen} onOpenChange={setTopUpOpen} />
+            {!hideTopUp && <TopUpModal open={topUpOpen} onOpenChange={setTopUpOpen} />}
         </Popover>
     );
 }

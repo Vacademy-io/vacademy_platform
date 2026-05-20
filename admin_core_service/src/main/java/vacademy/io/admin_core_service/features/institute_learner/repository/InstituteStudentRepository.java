@@ -1216,6 +1216,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 )
               )
             )
+            AND (
+              :#{#audienceIds == null || #audienceIds.isEmpty()} = true
+              OR EXISTS (
+                SELECT 1 FROM audience_response ar
+                WHERE ar.user_id = s.user_id
+                  AND ar.audience_id IN (:audienceIds)
+                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              )
+            )
           GROUP BY ssigm.user_id
       ) t
       ORDER BY last_enrolled DESC NULLS LAST
@@ -1248,6 +1257,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
           )
         )
+        AND (
+          :#{#audienceIds == null || #audienceIds.isEmpty()} = true
+          OR EXISTS (
+            SELECT 1 FROM audience_response ar
+            WHERE ar.user_id = s.user_id
+              AND ar.audience_id IN (:audienceIds)
+              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+          )
+        )
       """)
   Page<String> findPagedStudentIdsForV2Filter(
       @Param("statuses") List<String> statuses,
@@ -1263,6 +1281,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("subOrgUserTypes") List<String> subOrgUserTypes,
       @Param("startDate") LocalDate startDate,
       @Param("endDate") LocalDate endDate,
+      @Param("audienceIds") List<String> audienceIds,
       Pageable pageable);
 
   // ── Lightweight name-search variant: returns only user IDs, no aggregation JOINs ──
@@ -1295,6 +1314,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                   SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
                   WHERE TRIM(role) IN (:subOrgUserTypes)
                 )
+              )
+            )
+            AND (
+              :#{#audienceIds == null || #audienceIds.isEmpty()} = true
+              OR EXISTS (
+                SELECT 1 FROM audience_response ar
+                WHERE ar.user_id = s.user_id
+                  AND ar.audience_id IN (:audienceIds)
+                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
               )
             )
             AND (
@@ -1342,6 +1370,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           )
         )
         AND (
+          :#{#audienceIds == null || #audienceIds.isEmpty()} = true
+          OR EXISTS (
+            SELECT 1 FROM audience_response ar
+            WHERE ar.user_id = s.user_id
+              AND ar.audience_id IN (:audienceIds)
+              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+          )
+        )
+        AND (
           to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
           OR s.full_name ILIKE '%' || :name || '%'
           OR s.username ILIKE '%' || :name || '%'
@@ -1369,6 +1406,204 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("subOrgUserTypes") List<String> subOrgUserTypes,
       @Param("startDate") LocalDate startDate,
       @Param("endDate") LocalDate endDate,
+      @Param("audienceIds") List<String> audienceIds,
+      Pageable pageable);
+
+  // ── Learner-list COMBINED id page: institute users UNION audience-only respondents ──
+  // The default learner-list landing shows everyone (institute + audience-only). Enrollment-scoped
+  // filters (statuses, batches, sources, types, dates, sub_org_user_types, levels, groups,
+  // destPSIDs) only apply to the ssigm side. Audience-only respondents survive only when
+  // includeAudienceOnly=true (caller sets this to false when any enrollment filter is active).
+  // Audience-only candidates must NOT have any ssigm row for this institute.
+
+  @Query(nativeQuery = true, value = """
+      SELECT user_id
+      FROM (
+          SELECT ssigm.user_id, MAX(ssigm.enrolled_date) AS last_sort
+          FROM student s
+          JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+          WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+            AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+            AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+            AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+            AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (
+              CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+              OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+            )
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+            AND (
+              :#{#audienceIds == null || #audienceIds.isEmpty()} = true
+              OR EXISTS (
+                SELECT 1 FROM audience_response ar
+                WHERE ar.user_id = s.user_id
+                  AND ar.audience_id IN (:audienceIds)
+                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              )
+            )
+            AND (
+              CAST(:name AS TEXT) IS NULL
+              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+              OR s.full_name ILIKE '%' || :name || '%'
+              OR s.username ILIKE '%' || :name || '%'
+              OR s.email ILIKE '%' || :name || '%'
+              OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
+              OR s.user_id LIKE :name || '%'
+              OR (
+                  :name ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+              )
+            )
+          GROUP BY ssigm.user_id
+
+          UNION ALL
+
+          SELECT ar.user_id, MAX(ar.created_at) AS last_sort
+          FROM audience_response ar
+          JOIN audience a ON a.id = ar.audience_id
+          JOIN student s ON s.user_id = ar.user_id
+          WHERE :includeAudienceOnly = TRUE
+            AND a.institute_id IN (:instituteIds)
+            AND ar.user_id IS NOT NULL
+            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (
+              CAST(:name AS TEXT) IS NULL
+              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+              OR s.full_name ILIKE '%' || :name || '%'
+              OR s.username ILIKE '%' || :name || '%'
+              OR s.email ILIKE '%' || :name || '%'
+              OR s.user_id LIKE :name || '%'
+              OR (
+                  :name ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+              )
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM student_session_institute_group_mapping ssigm2
+              WHERE ssigm2.user_id = ar.user_id
+                AND ssigm2.institute_id IN (:instituteIds)
+            )
+          GROUP BY ar.user_id
+      ) combined
+      GROUP BY user_id
+      ORDER BY MAX(last_sort) DESC NULLS LAST
+      """,
+      countQuery = """
+      SELECT COUNT(*) FROM (
+          SELECT DISTINCT ssigm.user_id
+          FROM student s
+          JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+          WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+            AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+            AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+            AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+            AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (
+              CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+              OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+            )
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+            AND (
+              :#{#audienceIds == null || #audienceIds.isEmpty()} = true
+              OR EXISTS (
+                SELECT 1 FROM audience_response ar
+                WHERE ar.user_id = s.user_id
+                  AND ar.audience_id IN (:audienceIds)
+                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              )
+            )
+            AND (
+              CAST(:name AS TEXT) IS NULL
+              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+              OR s.full_name ILIKE '%' || :name || '%'
+              OR s.username ILIKE '%' || :name || '%'
+              OR s.email ILIKE '%' || :name || '%'
+              OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
+              OR s.user_id LIKE :name || '%'
+              OR (
+                  :name ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+              )
+            )
+
+          UNION
+
+          SELECT DISTINCT ar.user_id
+          FROM audience_response ar
+          JOIN audience a ON a.id = ar.audience_id
+          JOIN student s ON s.user_id = ar.user_id
+          WHERE :includeAudienceOnly = TRUE
+            AND a.institute_id IN (:instituteIds)
+            AND ar.user_id IS NOT NULL
+            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (
+              CAST(:name AS TEXT) IS NULL
+              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+              OR s.full_name ILIKE '%' || :name || '%'
+              OR s.username ILIKE '%' || :name || '%'
+              OR s.email ILIKE '%' || :name || '%'
+              OR s.user_id LIKE :name || '%'
+              OR (
+                  :name ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+              )
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM student_session_institute_group_mapping ssigm2
+              WHERE ssigm2.user_id = ar.user_id
+                AND ssigm2.institute_id IN (:instituteIds)
+            )
+      ) total
+      """)
+  Page<String> findPagedCombinedUserIdsForLearnerList(
+      @Param("statuses") List<String> statuses,
+      @Param("gender") List<String> gender,
+      @Param("instituteIds") List<String> instituteIds,
+      @Param("groupIds") List<String> groupIds,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("sources") List<String> sources,
+      @Param("types") List<String> types,
+      @Param("typeIds") List<String> typeIds,
+      @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+      @Param("levelIds") List<String> levelIds,
+      @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate,
+      @Param("audienceIds") List<String> audienceIds,
+      @Param("name") String name,
+      @Param("includeAudienceOnly") boolean includeAudienceOnly,
       Pageable pageable);
 
   // ── Paginated combined user IDs (institute users UNION audience respondents) ──
@@ -1519,7 +1754,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           CAST(
             COALESCE(
               json_agg(
-                DISTINCT jsonb_build_object('custom_field_id', cf.id, 'value', cfv.value)
+                DISTINCT jsonb_build_object('custom_field_id', cf.id, 'value', COALESCE(cfv_user.value, cfv_ssigm.value))
               ) FILTER (WHERE cf.id IS NOT NULL), '[]'
             ) AS text
           ) AS "customFieldsJson",
@@ -1568,10 +1803,16 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ON icf.institute_id = ssigm.institute_id
           AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
       LEFT JOIN custom_fields cf ON cf.id = icf.custom_field_id
-      LEFT JOIN custom_field_values cfv
-          ON cfv.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
-          AND cfv.source_id = ssigm.id
-          AND cfv.custom_field_id = cf.id
+      -- Primary: user-scoped values (where the edit dialog writes). Fallback: legacy SSIGM-scoped values
+      -- saved at enrollment time. COALESCE picks user-scoped first.
+      LEFT JOIN custom_field_values cfv_user
+          ON cfv_user.source_type = 'USER'
+          AND cfv_user.source_id = s.user_id
+          AND cfv_user.custom_field_id = cf.id
+      LEFT JOIN custom_field_values cfv_ssigm
+          ON cfv_ssigm.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
+          AND cfv_ssigm.source_id = ssigm.id
+          AND cfv_ssigm.custom_field_id = cf.id
       LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
       LEFT JOIN last_payments last_pl ON last_pl.user_plan_id = up.id
       LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
@@ -1593,6 +1834,110 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
       """)
   List<StudentListV2Projection> getStudentV2DataForUserIds(
+      @Param("userIds") List<String> userIds,
+      @Param("instituteIds") List<String> instituteIds,
+      @Param("customFieldStatus") List<String> customFieldStatus);
+
+  // ── SLIM enrichment for the manage-students list ──
+  // Returns only what the table + side-view header read directly. Side-view tabs
+  // hydrate their own data, so we skip user_plan/payment_log/enroll_invite joins
+  // and the per-row paymentPlan/paymentOption JSON parsing.
+  // Payment/plan/source/type columns are aliased as NULL so StudentListV2Projection
+  // still maps cleanly without needing a separate projection.
+  @Query(nativeQuery = true, value = """
+      SELECT
+          s.full_name         AS "fullName",
+          s.email             AS "email",
+          s.username          AS "username",
+          s.mobile_number     AS "phone",
+          ssigm.package_session_id AS "packageSessionId",
+          CAST(GREATEST(0, COALESCE(EXTRACT(DAY FROM (ssigm.expiry_date - ssigm.enrolled_date)), 0)) AS int) AS "accessDays",
+          CAST(NULL AS text)  AS "paymentStatus",
+          CAST(
+            COALESCE(
+              json_agg(
+                DISTINCT jsonb_build_object('custom_field_id', cf.id, 'value', COALESCE(cfv_user.value, cfv_ssigm.value))
+              ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+            ) AS text
+          ) AS "customFieldsJson",
+          s.user_id AS "userId",
+          s.id AS "id",
+          s.address_line AS "addressLine",
+          s.region AS "region",
+          s.city AS "city",
+          s.pin_code AS "pinCode",
+          s.date_of_birth AS "dateOfBirth",
+          s.gender AS "gender",
+          s.fathers_name AS "fathersName",
+          s.mothers_name AS "mothersName",
+          s.parents_mobile_number AS "parentsMobileNumber",
+          s.parents_email AS "parentsEmail",
+          s.linked_institute_name AS "linkedInstituteName",
+          s.created_at AS "createdAt",
+          s.updated_at AS "updatedAt",
+          s.face_file_id AS "faceFileId",
+          ssigm.expiry_date AS "expiryDate",
+          s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
+          s.parents_to_mother_email AS "parentsToMotherEmail",
+          ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
+          ssigm.institute_id AS "instituteId",
+          ssigm.group_id AS "groupId",
+          ssigm.status AS "status",
+          CAST(NULL AS text)  AS "paymentPlanJson",
+          CAST(NULL AS text)  AS "paymentOptionJson",
+          ssigm.destination_package_session_id AS "destinationPackageSessionId",
+          ssigm.user_plan_id AS "userPlanId",
+          CAST(NULL AS text)  AS "enrollInviteId",
+          CAST(NULL AS text)  AS "enrollInviteName",
+          CAST(NULL AS numeric) AS "paymentAmount",
+          ssigm.source AS "source",
+          ssigm.type AS "type",
+          ssigm.type_id AS "typeId",
+          ssigm.desired_level_id AS "desiredLevelId",
+          ssigm.sub_org_id AS "subOrgId",
+          sub_org.name AS "subOrgName",
+          ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles",
+          s.tnc_accepted AS "tncAccepted",
+          s.tnc_file_id AS "tncFileId",
+          s.tnc_accepted_date AS "tncAcceptedDate",
+          CASE WHEN MAX(ssigm.id) IS NULL THEN TRUE ELSE FALSE END AS "isAudienceOnly"
+      FROM student s
+      -- LEFT JOIN so audience-only respondents (no ssigm row for this institute) still come back
+      -- with null ssigm-derived columns.
+      LEFT JOIN student_session_institute_group_mapping ssigm
+          ON s.user_id = ssigm.user_id
+          AND ssigm.institute_id IN (:instituteIds)
+      LEFT JOIN institute_custom_fields icf
+          ON icf.institute_id IN (:instituteIds)
+          AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+      LEFT JOIN custom_fields cf ON cf.id = icf.custom_field_id
+      -- Primary: user-scoped values (where the edit dialog writes). Fallback: legacy SSIGM-scoped values
+      -- saved at enrollment time. COALESCE picks user-scoped first.
+      LEFT JOIN custom_field_values cfv_user
+          ON cfv_user.source_type = 'USER'
+          AND cfv_user.source_id = s.user_id
+          AND cfv_user.custom_field_id = cf.id
+      LEFT JOIN custom_field_values cfv_ssigm
+          ON cfv_ssigm.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
+          AND cfv_ssigm.source_id = ssigm.id
+          AND cfv_ssigm.custom_field_id = cf.id
+      LEFT JOIN institutes sub_org ON sub_org.id = ssigm.sub_org_id
+      WHERE s.user_id IN (:userIds)
+      GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
+               ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
+               s.user_id, s.address_line, s.region, s.city,
+               s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
+               s.parents_mobile_number, s.parents_email, s.linked_institute_name,
+               s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
+               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               ssigm.institute_id, ssigm.group_id, ssigm.status,
+               ssigm.destination_package_session_id, ssigm.user_plan_id,
+               ssigm.source, ssigm.type, ssigm.type_id, ssigm.desired_level_id,
+               ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+      ORDER BY s.user_id, ssigm.enrolled_date DESC NULLS LAST
+      """)
+  List<StudentListV2Projection> getStudentSlimDataForUserIds(
       @Param("userIds") List<String> userIds,
       @Param("instituteIds") List<String> instituteIds,
       @Param("customFieldStatus") List<String> customFieldStatus);

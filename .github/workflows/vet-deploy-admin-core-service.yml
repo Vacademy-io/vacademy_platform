@@ -101,7 +101,10 @@ jobs:
             "META_WEBHOOK_VERIFY_TOKEN=${{ secrets.META_WEBHOOK_VERIFY_TOKEN }}" \
             "META_OAUTH_REDIRECT_URI=${{ secrets.META_OAUTH_REDIRECT_URI }}" \
             "META_OAUTH_FRONTEND_CALLBACK_URL=${{ secrets.META_OAUTH_FRONTEND_CALLBACK_URL }}" \
-            "OAUTH_TOKEN_ENCRYPTION_KEY=${{ secrets.OAUTH_TOKEN_ENCRYPTION_KEY }}"
+            "OAUTH_TOKEN_ENCRYPTION_KEY=${{ secrets.OAUTH_TOKEN_ENCRYPTION_KEY }}" \
+            "YOUTUBE_OAUTH_CLIENT_ID=${{ secrets.ORG_YOUTUBE_OAUTH_CLIENT_ID }}" \
+            "YOUTUBE_OAUTH_CLIENT_SECRET=${{ secrets.ORG_YOUTUBE_OAUTH_CLIENT_SECRET }}" \
+            "YOUTUBE_OAUTH_REDIRECT_URI=${{ secrets.ORG_YOUTUBE_OAUTH_REDIRECT_URI }}"
 
       - name: Restart deployment
         env:

@@ -489,14 +489,28 @@ async def preview_reel_candidates(
     if not rows:
         return PreviewResponse(enriched=[])
 
-    # Pre-flight credit gate. The LLM-burning subset is just rows that
-    # AREN'T already enriched within TTL — re-previewing the same picks is
-    # a free cache hit. We charge for the rows that WILL hit the network.
-    # Estimate ~_PREVIEW_PROMPT_TOKENS prompt + ~_PREVIEW_COMPLETION_TOKENS
-    # completion per candidate; under-estimating costs the user nothing
-    # extra (the deduct path uses the same numbers), over-estimating means
-    # they'd get a misleading "insufficient credits" message.
-    miss_count = sum(1 for r in rows if not r.enriched)
+    # Cache-hit predicate. We treat ONLY enrichments with `method == "llm"`
+    # as valid cache hits. `heuristic_fallback` rows are cache MISSES — the
+    # LLM was unavailable at the time of the original /preview (transient
+    # OpenRouter outage, transient model parse error, etc.) and we should
+    # retry on every subsequent /preview until the LLM succeeds. Without
+    # this, a single transient failure poisons the candidate's enrichment
+    # forever — every /render off it ships with the garbage fallback title
+    # ("a there was a person you") + empty cut_plan + zero keyword tags.
+    # The audited reel-9ad0255f2bb6 is exactly this case.
+    def _needs_llm_enrich(r) -> bool:
+        if not r.enriched:
+            return True
+        return (r.enriched or {}).get("method") != "llm"
+
+    # Pre-flight credit gate. The LLM-burning subset is rows that need a
+    # fresh LLM call — null-enriched rows + cached heuristic-fallback rows.
+    # We charge for the rows that WILL hit the network. Estimate
+    # ~_PREVIEW_PROMPT_TOKENS prompt + ~_PREVIEW_COMPLETION_TOKENS completion
+    # per candidate; under-estimating costs the user nothing extra (the
+    # deduct path uses the same numbers), over-estimating means they'd get
+    # a misleading "insufficient credits" message.
+    miss_count = sum(1 for r in rows if _needs_llm_enrich(r))
     if miss_count > 0:
         from ..services.credit_service import CreditService
         from ..schemas.credits import CreditCheckRequest
@@ -529,13 +543,15 @@ async def preview_reel_candidates(
 
     # Split rows into cache hits (cheap, sync) and misses (need LLM).
     # Each row carries its index so we can reassemble in request order.
+    # `_needs_llm_enrich` matches the credit-gate predicate above — a
+    # cached `heuristic_fallback` row counts as a miss so we retry.
     cache_hits: list[tuple[int, EnrichedCandidate]] = []
     miss_rows: list[tuple[int, Any]] = []
     for i, row in enumerate(rows):
-        if row.enriched:
-            cache_hits.append((i, _enriched_dict_to_response(str(row.id), row.enriched)))
-        else:
+        if _needs_llm_enrich(row):
             miss_rows.append((i, row))
+        else:
+            cache_hits.append((i, _enriched_dict_to_response(str(row.id), row.enriched)))
 
     # Run all cache-miss enrichments concurrently. Each candidate is an
     # independent LLM call + DB write; gathering parallelizes the LLM hops

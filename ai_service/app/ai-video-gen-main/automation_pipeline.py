@@ -16306,6 +16306,41 @@ class VideoGenerationPipeline:
 
             html = self._sanitize_html_content(html)
 
+            # ── Contract auto-repair (root id + dims + brand bg) ──────────
+            # 2026-05: the LLM consistently violates the root-element rules
+            # spelled out in prompts.py:1704 + shot_type_cards.py:379:
+            #   - must use id="shot-root" (not #s6_shot-root aliases)
+            #   - must have inline style width:100% height:100% position:relative
+            # When violated, the shot renders blank because the root collapses
+            # to 0×0 and the background never paints. This module patches the
+            # contract deterministically (no LLM round-trip). Pure repair —
+            # can only fix known violations, never introduce them. Audit step
+            # below logs remaining violations as warnings (non-blocking).
+            try:
+                from html_contract_repair import (
+                    repair_root_contract,
+                    audit_contract,
+                )
+                html, _contract_fixes = repair_root_contract(html)
+                if _contract_fixes:
+                    print(
+                        f"   🔧 Shot {shot_idx + 1} contract auto-repair: "
+                        f"{_contract_fixes}"
+                    )
+                _contract_warnings = audit_contract(html)
+                if _contract_warnings:
+                    print(
+                        f"   ⚠️  Shot {shot_idx + 1} contract audit "
+                        f"(non-blocking): {_contract_warnings}"
+                    )
+            except Exception as _hcr_err:
+                # Defensive — never let contract repair break a shot. The
+                # existing structural validator below catches gross issues.
+                print(
+                    f"   ⚠️ Shot {shot_idx + 1} contract repair errored "
+                    f"({_hcr_err}); shipping HTML unchanged"
+                )
+
             # JS call sanitizer — wrap every statement-context call to a
             # known-optional animation library (anime, annotate,
             # splitReveal, animateSVG, playSound, …) in a `typeof X !==

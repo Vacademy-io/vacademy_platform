@@ -94,9 +94,9 @@ def initialize_models():
 # ---------------------------------------------------------------------------
 s3_client = boto3.client(
     's3',
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-    region_name=os.getenv('AWS_REGION', 'ap-south-1')
+    aws_access_key_id=os.getenv('S3_AWS_ACCESS_KEY') or os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('S3_AWS_ACCESS_SECRET') or os.getenv('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.getenv('S3_AWS_REGION') or os.getenv('AWS_REGION', 'ap-south-1')
 )
 S3_BUCKET = os.getenv('AWS_S3_PUBLIC_BUCKET', 'your-vacademy-bucket-name')
 
@@ -177,7 +177,7 @@ def generate_avatar(job):
             s3_key,
             ExtraArgs={'ContentType': 'video/mp4'}
         )
-        video_url = f"https://{S3_BUCKET}.s3.{os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{s3_key}"
+        video_url = f"https://{S3_BUCKET}.s3.{os.getenv('S3_AWS_REGION') or os.getenv('AWS_REGION', 'ap-south-1')}.amazonaws.com/{s3_key}"
         print(f"[{job_id}] Upload complete: {video_url}")
 
     except Exception as e:

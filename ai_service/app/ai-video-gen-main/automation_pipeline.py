@@ -2394,9 +2394,9 @@ class VideoGenerationPipeline:
             import boto3 as _boto3_sfx
             _sfx_s3 = _boto3_sfx.client(
                 "s3",
-                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+                aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1"),
             )
             _sfx_bucket = os.environ.get(
                 "AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public",
@@ -2416,18 +2416,28 @@ class VideoGenerationPipeline:
             print(f"⚠️ SFX S3 uploader unavailable ({_s3_err}) — "
                   f"cues will use local paths (editor visibility limited)")
 
-        try:
-            sfx_palette_counts = _enrich_sfx_palette(
-                entries,
-                script=_script_for_mood,
-                tier_config=self._tier_config,
-                cost_tracker=getattr(self, "_cost_events", None),
-                run_dir=run_dir,
-                video_id=video_id,
-                s3_uploader=_sfx_s3_uploader,
-            )
-        except Exception as _se:
-            print(f"⚠️ SFX palette enrichment errored (non-fatal): {_se}")
+        # AI SFX enrichment (cassetteai) is OFF by default. The semantic-
+        # search picker in sound_planner now selects appropriate library
+        # sounds per cue, so on-demand SFX generation is no longer needed
+        # and was unreliable (fal cassetteai queue stalls leave the
+        # pipeline waiting minutes per cue). Re-enable per-run by setting
+        # ENABLE_AI_SFX=1 — useful only when fal is healthy.
+        if os.environ.get("ENABLE_AI_SFX", "").strip() in ("1", "true", "yes"):
+            try:
+                sfx_palette_counts = _enrich_sfx_palette(
+                    entries,
+                    script=_script_for_mood,
+                    tier_config=self._tier_config,
+                    cost_tracker=getattr(self, "_cost_events", None),
+                    run_dir=run_dir,
+                    video_id=video_id,
+                    s3_uploader=_sfx_s3_uploader,
+                )
+            except Exception as _se:
+                print(f"⚠️ SFX palette enrichment errored (non-fatal): {_se}")
+        else:
+            print("ℹ️ AI SFX enrichment disabled (ENABLE_AI_SFX != 1) — "
+                  "using semantic-search library picks")
         n_stingers = (sfx_palette_counts.get("transition_whoosh", 0)
                       + sfx_palette_counts.get("transition_riser", 0))
 
@@ -3270,9 +3280,9 @@ class VideoGenerationPipeline:
                 try:
                     import boto3 as _boto3
                     _s3c = _boto3.client("s3",
-                        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-                        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                        region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+                        aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                        aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                        region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1"),
                     )
                     for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
                         if _bkt in _iv_source_url:
@@ -20783,9 +20793,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             import os as _os_vrc
             s3 = _boto3_vrc.client(
                 "s3",
-                aws_access_key_id=_os_vrc.environ.get("AWS_ACCESS_KEY_ID") or None,
-                aws_secret_access_key=_os_vrc.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                region_name=_os_vrc.environ.get("AWS_REGION", "ap-south-1"),
+                aws_access_key_id=_os_vrc.environ.get("S3_AWS_ACCESS_KEY") or _os_vrc.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=_os_vrc.environ.get("S3_AWS_ACCESS_SECRET") or _os_vrc.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=_os_vrc.environ.get("S3_AWS_REGION") or _os_vrc.environ.get("AWS_REGION", "ap-south-1"),
             )
             bucket = "vacademy-media-storage-public"
         except Exception as exc:
@@ -22233,9 +22243,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         try:
             client = _boto3_subj.client(
                 "s3",
-                aws_access_key_id=_os_subj.environ.get("AWS_ACCESS_KEY_ID") or None,
-                aws_secret_access_key=_os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                region_name=_os_subj.environ.get("AWS_REGION", "ap-south-1"),
+                aws_access_key_id=_os_subj.environ.get("S3_AWS_ACCESS_KEY") or _os_subj.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=_os_subj.environ.get("S3_AWS_ACCESS_SECRET") or _os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=_os_subj.environ.get("S3_AWS_REGION") or _os_subj.environ.get("AWS_REGION", "ap-south-1"),
             )
             client.put_object(
                 Bucket=bucket,
@@ -23517,9 +23527,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if "s3.amazonaws.com/" in source_url:
                     import boto3
                     s3 = boto3.client("s3",
-                        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-                        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                        region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+                        aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                        aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                        region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1"),
                     )
                     for bkt in ["vacademy-media-storage-public", "vacademy-media-storage"]:
                         if bkt in source_url:

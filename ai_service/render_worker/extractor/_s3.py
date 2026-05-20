@@ -25,9 +25,9 @@ class S3Helper:
     def __init__(self):
         self._s3 = boto3.client(
             "s3",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+            aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+            aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+            region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1"),
         )
         self.bucket = os.environ.get("AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public")
 

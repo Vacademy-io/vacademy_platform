@@ -25,9 +25,9 @@ logger = logging.getLogger("transcribe-worker")
 # Config (reuses same env vars as render worker)
 # ---------------------------------------------------------------------------
 
-AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+AWS_ACCESS_KEY = os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_KEY = os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION = os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1")
 S3_BUCKET = os.environ.get("AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public")
 
 # Limit concurrent model loads — only one model at a time

@@ -136,10 +136,9 @@ def _content_hash(text: str, duration_int: int) -> str:
 
 def get_fal_api_key_from_env() -> Optional[str]:
     """Resolve the fal.ai API key (same env vars all fal clients use)."""
-    for key in ("FAL_API_KEY", "FAL_KEY"):
-        v = os.environ.get(key)
-        if v and v.strip():
-            return v.strip()
+    v = os.environ.get("FAL_API_KEY")
+    if v and v.strip():
+        return v.strip()
     return None
 
 

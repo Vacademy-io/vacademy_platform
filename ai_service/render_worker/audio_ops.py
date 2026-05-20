@@ -418,9 +418,9 @@ def _get_s3_client():
         raise AudioOpsError("boto3 not installed on render worker") from exc
     return boto3.client(
         "s3",
-        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-        region_name=os.environ.get("AWS_REGION", DEFAULT_REGION),
+        aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+        aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+        region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", DEFAULT_REGION),
     )
 
 

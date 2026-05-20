@@ -1,5 +1,6 @@
 import { TokenKey } from '@/constants/auth/tokens';
 import axios from 'axios';
+import { getInstituteId } from '@/constants/helper';
 import {
     getTokenFromCookie,
     isTokenExpired,
@@ -51,6 +52,19 @@ authenticatedAxiosInstance.interceptors.request.use(
 
         // Now that token is valid, attach it to headers
         request.headers.Authorization = `Bearer ${accessToken}`;
+
+        // Attach institute id as `clientId` header. Backend's JwtAuthFilter
+        // composes its user-lookup key as `${clientId}@${username}`; without
+        // it the user-details cache key is wrong AND services like the audit
+        // log (which require institute_id NOT NULL) end up dropping events.
+        // Don't overwrite if the caller already set it explicitly.
+        if (!request.headers.clientId) {
+            const instituteId = getInstituteId();
+            if (instituteId) {
+                request.headers.clientId = instituteId;
+            }
+        }
+
         return request;
     },
 

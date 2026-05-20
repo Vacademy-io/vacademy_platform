@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SwitchWhatsAppProviderRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.WhatsAppProviderCredentialsRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.WhatsAppProviderStatusResponse;
@@ -34,6 +35,12 @@ public class InstituteWhatsAppSettingController {
      * Switch the active WhatsApp provider.
      */
     @PutMapping("/provider")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'switched WhatsApp provider to ' + #request?.newProvider",
+            captureBefore = "@whatsAppSettingService.getProviderStatus(#instituteId)")
     public ResponseEntity<String> switchProvider(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
@@ -48,6 +55,12 @@ public class InstituteWhatsAppSettingController {
      * 'wati', 'meta')
      */
     @PutMapping("/credentials")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'updated WhatsApp credentials for ' + #request?.providerName",
+            captureBefore = "@whatsAppSettingService.getProviderStatus(#instituteId)")
     public ResponseEntity<String> updateCredentials(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
@@ -62,6 +75,12 @@ public class InstituteWhatsAppSettingController {
      * was active).
      */
     @DeleteMapping("/credentials/{providerName}")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "DELETE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'removed WhatsApp credentials for ' + #providerName",
+            captureBefore = "@whatsAppSettingService.getProviderStatus(#instituteId)")
     public ResponseEntity<String> removeCredentials(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,

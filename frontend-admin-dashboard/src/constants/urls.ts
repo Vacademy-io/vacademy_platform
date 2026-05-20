@@ -763,6 +763,11 @@ export const OFFLINE_CREATE_AND_SUBMIT = `${BASE_URL}/assessment-service/assessm
 
 export const SYNC_MAX_SESSIONS = `${BASE_URL}/auth-service/v1/institute-settings/update-max-sessions`;
 
+// ============ Admin Activity Logs (audit) ============
+export const ADMIN_ACTIVITY_LOGS_LIST = `${BASE_URL}/admin-core-service/audit/v1/logs`;
+export const ADMIN_ACTIVITY_LOG_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/audit/v1/logs/${id}`;
+export const ADMIN_ACTIVITY_LOGS_EXPORT_CSV = `${BASE_URL}/admin-core-service/audit/v1/logs/export.csv`;
 // Product Pages
 export const PRODUCT_PAGE_BASE_URL = `${BASE_URL}/admin-core-service/v1/product-page`;
 export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;

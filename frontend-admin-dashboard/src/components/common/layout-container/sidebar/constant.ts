@@ -82,6 +82,9 @@ export const controlledTabs = [
     'manage-campaigns',
     'list',
     'invite',
+    // Audit log: opt-in per institute via Display Settings. Off by default
+    // (see admin-defaults.ts) so the UI only surfaces it where it's wanted.
+    'admin-activity-logs',
 ];
 
 export const modules = ['ASSESS', 'ENGAGE', 'VOLT', 'VSMART_AI_TOOLS'];

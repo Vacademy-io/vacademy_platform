@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FileUploader } from "./file-uploader";
+import { FileUploader, parseAllowedFileTypes } from "./file-uploader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@/constants/urls";
@@ -926,7 +926,12 @@ const AssignmentSlide = ({
       )}
 
       {/* Attached Documents Section */}
-      {assignmentData.comma_separated_media_ids && assignmentData.comma_separated_media_ids.trim() !== '' && (
+      {assignmentData.comma_separated_media_ids &&
+        assignmentData.comma_separated_media_ids.trim() !== '' &&
+        // The field also carries the admin's allowed-file-types selection
+        // (prefixed with `types:`); skip the section in that case so we don't
+        // render the encoded list as fake documents.
+        !assignmentData.comma_separated_media_ids.startsWith('types:') && (
         <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
           <CardHeader className="space-y-1">
             <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
@@ -1054,6 +1059,10 @@ const AssignmentSlide = ({
                 onUpload={handleFileUpload}
                 isUploading={isUploading}
                 uploadedFiles={uploadedFiles}
+                allowedFileTypes={parseAllowedFileTypes(
+                  assignmentData.comma_separated_media_ids
+                )}
+                onRejected={(_file, reason) => toast.error(reason)}
                 onRemove={(index) => {
                   setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
                   setUploadedFileIds((prev) => prev.filter((_, i) => i !== index));
@@ -1066,9 +1075,10 @@ const AssignmentSlide = ({
           <div className="flex justify-end">
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting || isUploading}
+              disabled={isSubmitting || isUploading || uploadedFileIds.length === 0}
+              title={uploadedFileIds.length === 0 ? "Upload at least one file before submitting" : undefined}
               className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
-                isSubmitting || isUploading
+                isSubmitting || isUploading || uploadedFileIds.length === 0
                   ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                   : "bg-gray-900 text-white hover:bg-gray-800"
               }`}

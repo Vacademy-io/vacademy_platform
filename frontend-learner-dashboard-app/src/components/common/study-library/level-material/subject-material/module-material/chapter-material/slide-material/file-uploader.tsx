@@ -6,16 +6,127 @@ import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Upload, X, FileText } from "lucide-react"
 
+export type AllowedFileType = "pdf" | "image" | "doc" | "video" | "audio"
+
+interface AllowedTypeSpec {
+  label: string
+  // File extensions including leading dot, lowercased.
+  extensions: string[]
+  // MIME prefix patterns used for the <input accept> attribute and validation.
+  // A trailing slash (e.g. "image/") is treated as a wildcard prefix.
+  mimePatterns: string[]
+}
+
+const ALLOWED_TYPE_SPECS: Record<AllowedFileType, AllowedTypeSpec> = {
+  pdf: {
+    label: "PDF",
+    extensions: [".pdf"],
+    mimePatterns: ["application/pdf"],
+  },
+  image: {
+    label: "Image",
+    extensions: [".png", ".jpg", ".jpeg", ".gif", ".webp"],
+    mimePatterns: ["image/"],
+  },
+  doc: {
+    label: "DOC/DOCX",
+    extensions: [".doc", ".docx"],
+    mimePatterns: [
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ],
+  },
+  video: {
+    label: "Video",
+    extensions: [".mp4", ".mov", ".webm"],
+    mimePatterns: ["video/"],
+  },
+  audio: {
+    label: "Audio",
+    extensions: [".mp3", ".wav", ".m4a"],
+    mimePatterns: ["audio/"],
+  },
+}
+
+const KNOWN_TYPES = Object.keys(ALLOWED_TYPE_SPECS) as AllowedFileType[]
+
+// The admin's selection is piggybacked on the existing comma_separated_media_ids
+// column with a sentinel prefix so we can tell our payload apart from a real
+// media-id list. A returned empty array means "no restriction" (legacy data or
+// admin explicitly left the selection blank); the uploader falls back to
+// accepting any of the known types in that case.
+const ALLOWED_TYPES_PREFIX = "types:"
+
+export const parseAllowedFileTypes = (raw?: string | null): AllowedFileType[] => {
+  if (!raw || !raw.startsWith(ALLOWED_TYPES_PREFIX)) return []
+  return Array.from(
+    new Set(
+      raw
+        .slice(ALLOWED_TYPES_PREFIX.length)
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter((t): t is AllowedFileType => (KNOWN_TYPES as string[]).includes(t))
+    )
+  )
+}
+
+const isFileAllowed = (file: File, allowed: AllowedFileType[]): boolean => {
+  const name = file.name.toLowerCase()
+  const mime = file.type.toLowerCase()
+  return allowed.some((type) => {
+    const spec = ALLOWED_TYPE_SPECS[type]
+    const extOk = spec.extensions.some((ext) => name.endsWith(ext))
+    const mimeOk =
+      !!mime && spec.mimePatterns.some((p) => (p.endsWith("/") ? mime.startsWith(p) : mime === p))
+    return extOk || mimeOk
+  })
+}
+
+const buildAcceptAttr = (allowed: AllowedFileType[]): string =>
+  allowed
+    .flatMap((t) => [
+      ...ALLOWED_TYPE_SPECS[t].extensions,
+      ...ALLOWED_TYPE_SPECS[t].mimePatterns.map((p) => (p.endsWith("/") ? `${p}*` : p)),
+    ])
+    .join(",")
+
+const buildHintLabel = (allowed: AllowedFileType[]): string =>
+  allowed.map((t) => ALLOWED_TYPE_SPECS[t].label).join(", ")
+
 interface FileUploaderProps {
   onUpload: (file: File) => Promise<boolean>
   isUploading: boolean
   uploadedFiles: File[]
   onRemove: (index: number) => void
+  allowedFileTypes?: AllowedFileType[]
+  onRejected?: (file: File, reason: string) => void
 }
 
-export const FileUploader = ({ onUpload, isUploading, uploadedFiles, onRemove }: FileUploaderProps) => {
+export const FileUploader = ({
+  onUpload,
+  isUploading,
+  uploadedFiles,
+  onRemove,
+  allowedFileTypes,
+  onRejected,
+}: FileUploaderProps) => {
   const [dragActive, setDragActive] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Empty / unset → no restriction: accept any of the known types.
+  const isUnrestricted = !allowedFileTypes || allowedFileTypes.length === 0
+  const allowed = (isUnrestricted ? KNOWN_TYPES : allowedFileTypes) as AllowedFileType[]
+  const acceptAttr = isUnrestricted ? "" : buildAcceptAttr(allowed)
+  const hintLabel = isUnrestricted ? "Any file" : buildHintLabel(allowed)
+
+  const guardedUpload = async (file: File) => {
+    if (!isUnrestricted && !isFileAllowed(file, allowed)) {
+      const reason = `Only ${hintLabel} files are allowed for this assignment.`
+      onRejected?.(file, reason)
+      return
+    }
+    await onUpload(file)
+  }
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -33,15 +144,17 @@ export const FileUploader = ({ onUpload, isUploading, uploadedFiles, onRemove }:
     setDragActive(false)
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      await onUpload(e.dataTransfer.files[0])
+      await guardedUpload(e.dataTransfer.files[0])
     }
   }
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault()
     if (e.target.files && e.target.files[0]) {
-      await onUpload(e.target.files[0])
+      await guardedUpload(e.target.files[0])
     }
+    // Reset so re-picking the same file still fires onChange
+    if (inputRef.current) inputRef.current.value = ""
   }
 
   const formatFileSize = (bytes: number) => {
@@ -61,7 +174,14 @@ export const FileUploader = ({ onUpload, isUploading, uploadedFiles, onRemove }:
         onDragOver={handleDrag}
         onDrop={handleDrop}
       >
-        <input ref={inputRef} type="file" className="hidden" onChange={handleChange} disabled={isUploading} />
+        <input
+          ref={inputRef}
+          type="file"
+          className="hidden"
+          accept={acceptAttr}
+          onChange={handleChange}
+          disabled={isUploading}
+        />
 
         <div className="flex flex-col items-center justify-center space-y-3">
           <div className="p-3 bg-gray-100 rounded-full">
@@ -70,9 +190,7 @@ export const FileUploader = ({ onUpload, isUploading, uploadedFiles, onRemove }:
           <div className="text-sm text-gray-600">
             <span className="font-medium">Click to upload</span> or drag and drop
           </div>
-          <p className="text-xs text-gray-500">
-            PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, ZIP, RAR, JPG, PNG, GIF up to 10MB
-          </p>
+          <p className="text-xs text-gray-500">{hintLabel} up to 10MB</p>
           <Button
             type="button"
             variant="outline"

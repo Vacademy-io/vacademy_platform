@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.institute.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.institute.dto.settings.custom_field.CustomFieldSettingRequest;
 import vacademy.io.admin_core_service.features.institute.manager.InstituteSettingManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -17,6 +18,12 @@ public class InstituteCustomFieldSettingController {
     }
 
     @PostMapping("/create-or-update")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'updated custom field settings'",
+            captureBefore = "@instituteSettingManager.getSettingData(#userDetails, #instituteId, 'CUSTOM_FIELD_SETTING').body")
     public ResponseEntity<String> updateCustomFieldSetting(@RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
             @RequestBody CustomFieldSettingRequest request,

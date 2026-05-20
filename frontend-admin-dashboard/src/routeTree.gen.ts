@@ -45,6 +45,7 @@ import { Route as AssessmentIndexRouteImport } from "./routes/assessment/index"
 import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
+import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activity-logs/index"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
@@ -422,6 +423,13 @@ const AdminPackageManagementIndexRoute =
   } as any).lazy(() =>
     import("./routes/admin-package-management/index.lazy").then((d) => d.Route),
   )
+const AdminActivityLogsIndexRoute = AdminActivityLogsIndexRouteImport.update({
+  id: "/admin-activity-logs/",
+  path: "/admin-activity-logs/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/admin-activity-logs/index.lazy").then((d) => d.Route),
+)
 const VimLoginRoute = VimLoginRouteImport.update({
   id: "/vim/login",
   path: "/vim/login",
@@ -1467,6 +1475,7 @@ export interface FileRoutesByFullPath {
   "/pricing": typeof PricingLazyRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
+  "/admin-activity-logs/": typeof AdminActivityLogsIndexRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
@@ -1631,6 +1640,7 @@ export interface FileRoutesByTo {
   "/pricing": typeof PricingLazyRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
+  "/admin-activity-logs": typeof AdminActivityLogsIndexRoute
   "/admin-package-management": typeof AdminPackageManagementIndexRoute
   "/admissions": typeof AdmissionsIndexRoute
   "/ai-center": typeof AiCenterIndexRoute
@@ -1797,6 +1807,7 @@ export interface FileRoutesById {
   "/pricing": typeof PricingLazyRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
+  "/admin-activity-logs/": typeof AdminActivityLogsIndexRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
@@ -1964,6 +1975,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/vim/dashboard"
     | "/vim/login"
+    | "/admin-activity-logs/"
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
@@ -2128,6 +2140,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/vim/dashboard"
     | "/vim/login"
+    | "/admin-activity-logs"
     | "/admin-package-management"
     | "/admissions"
     | "/ai-center"
@@ -2293,6 +2306,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/vim/dashboard"
     | "/vim/login"
+    | "/admin-activity-logs/"
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
@@ -2459,6 +2473,7 @@ export interface RootRouteChildren {
   PricingLazyRoute: typeof PricingLazyRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
+  AdminActivityLogsIndexRoute: typeof AdminActivityLogsIndexRoute
   AdminPackageManagementIndexRoute: typeof AdminPackageManagementIndexRoute
   AdmissionsIndexRoute: typeof AdmissionsIndexRoute
   AiCenterIndexRoute: typeof AiCenterIndexRoute
@@ -2880,6 +2895,13 @@ declare module "@tanstack/react-router" {
       path: "/admin-package-management"
       fullPath: "/admin-package-management/"
       preLoaderRoute: typeof AdminPackageManagementIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/admin-activity-logs/": {
+      id: "/admin-activity-logs/"
+      path: "/admin-activity-logs"
+      fullPath: "/admin-activity-logs/"
+      preLoaderRoute: typeof AdminActivityLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/login": {
@@ -3781,6 +3803,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingLazyRoute: PricingLazyRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
+  AdminActivityLogsIndexRoute: AdminActivityLogsIndexRoute,
   AdminPackageManagementIndexRoute: AdminPackageManagementIndexRoute,
   AdmissionsIndexRoute: AdmissionsIndexRoute,
   AiCenterIndexRoute: AiCenterIndexRoute,

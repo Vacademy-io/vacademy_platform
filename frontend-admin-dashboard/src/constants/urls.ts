@@ -770,3 +770,9 @@ export const CREATE_PRODUCT_PAGE_COUPON = (coursePageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/create?coursePageId=${coursePageId}`;
 export const DELETE_PRODUCT_PAGE_COUPON = (couponCodeId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/${couponCodeId}`;
+export const ADD_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/add`;
+export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
+export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;

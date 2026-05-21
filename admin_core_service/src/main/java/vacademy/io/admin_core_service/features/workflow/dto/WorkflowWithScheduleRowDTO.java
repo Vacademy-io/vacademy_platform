@@ -72,4 +72,11 @@ public class WorkflowWithScheduleRowDTO {
     private LocalDateTime triggerCreatedAt;
 
     private LocalDateTime triggerUpdatedAt;
+
+    // Scope of the trigger — what entity type its event_id refers to
+    // (AUDIENCE / PACKAGE_SESSION / LIVE_SESSION / etc.) and the specific
+    // entity ID. Both null = global trigger (fires for every event of that name).
+    private String eventAppliedType;
+
+    private String eventId;
 }

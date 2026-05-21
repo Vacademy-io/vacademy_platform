@@ -371,11 +371,14 @@ export function SendMessageDialog({
                     return pushTitle.trim() !== '' && pushBody.trim() !== '';
                 return false;
             case 3:
-                return true; // mapping is optional
+                // Mapping is optional, but if the user picked "Static value…" for a row
+                // they must enter a non-empty value (sending `static:` would resolve to
+                // an empty string and break WhatsApp template sends).
+                return !Object.values(variableMapping).some((v) => v === 'static:');
             default:
                 return false;
         }
-    }, [step, channel, selectedTemplate, subject, body, pushTitle, pushBody]);
+    }, [step, channel, selectedTemplate, subject, body, pushTitle, pushBody, variableMapping]);
 
     // -----------------------------------------------------------------------
     // Handlers
@@ -405,11 +408,19 @@ export function SendMessageDialog({
         if (!channel) return;
         setIsSending(true);
         try {
+            // Drop entries where the user picked "Static value…" but didn't type anything —
+            // WhatsApp Cloud API rejects templates with empty body variables.
+            const cleanedMapping = Object.fromEntries(
+                Object.entries(variableMapping).filter(
+                    ([, value]) => value !== '' && value !== 'static:'
+                )
+            );
+
             const payload: SendAudienceMessageRequest = {
                 institute_id: instituteId,
                 channel: channel as SendAudienceMessageRequest['channel'],
                 variable_mapping:
-                    Object.keys(variableMapping).length > 0 ? variableMapping : undefined,
+                    Object.keys(cleanedMapping).length > 0 ? cleanedMapping : undefined,
             };
 
             if (channel === 'WHATSAPP' && selectedTemplate) {
@@ -730,31 +741,61 @@ export function SendMessageDialog({
                         <span>Variable</span>
                         <span>Mapped Field</span>
                     </div>
-                    {variableKeys.map((varKey) => (
-                        <div
-                            key={varKey}
-                            className="grid grid-cols-2 items-center gap-4 border-b px-4 py-2 last:border-b-0"
-                        >
-                            <span className="rounded bg-muted px-2 py-1 font-mono text-sm">
-                                {`{{${varKey}}}`}
-                            </span>
-                            <Select
-                                value={variableMapping[varKey] ?? ''}
-                                onValueChange={(val) => handleMappingChange(varKey, val)}
+                    {variableKeys.map((varKey) => {
+                        const currentValue = variableMapping[varKey] ?? '';
+                        const isStatic = currentValue.startsWith('static:');
+                        const selectValue = isStatic ? '__static__' : currentValue;
+                        const staticText = isStatic ? currentValue.substring('static:'.length) : '';
+
+                        return (
+                            <div
+                                key={varKey}
+                                className="grid grid-cols-2 items-center gap-4 border-b px-4 py-2 last:border-b-0"
                             >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select field..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {mappingOptions.map((opt) => (
-                                        <SelectItem key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    ))}
+                                <span className="rounded bg-muted px-2 py-1 font-mono text-sm">
+                                    {`{{${varKey}}}`}
+                                </span>
+                                <div className="flex flex-col gap-2">
+                                    <Select
+                                        value={selectValue}
+                                        onValueChange={(val) => {
+                                            if (val === '__static__') {
+                                                handleMappingChange(varKey, 'static:');
+                                            } else {
+                                                handleMappingChange(varKey, val);
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select field..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__static__">
+                                                Static value…
+                                            </SelectItem>
+                                            {mappingOptions.map((opt) => (
+                                                <SelectItem key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {isStatic && (
+                                        <Input
+                                            value={staticText}
+                                            onChange={(e) =>
+                                                handleMappingChange(
+                                                    varKey,
+                                                    `static:${e.target.value}`
+                                                )
+                                            }
+                                            placeholder='e.g. "Student"'
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
@@ -848,9 +889,10 @@ export function SendMessageDialog({
                             <p className="mb-2 text-xs text-muted-foreground">Variable Mappings</p>
                             <div className="space-y-1">
                                 {Object.entries(variableMapping).map(([varKey, field]) => {
-                                    const fieldLabel =
-                                        mappingOptions.find((o) => o.value === field)?.label ??
-                                        field;
+                                    const fieldLabel = field.startsWith('static:')
+                                        ? `Static: "${field.substring('static:'.length)}"`
+                                        : (mappingOptions.find((o) => o.value === field)?.label ??
+                                          field);
                                     return (
                                         <div
                                             key={varKey}

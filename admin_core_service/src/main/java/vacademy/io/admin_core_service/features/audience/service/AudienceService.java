@@ -3717,6 +3717,8 @@ public class AudienceService {
         } else if (source.startsWith("custom:")) {
             String fieldId = source.substring("custom:".length());
             return customFields.get(fieldId);
+        } else if (source.startsWith("static:")) {
+            return source.substring("static:".length());
         }
 
         // If no prefix, treat as literal

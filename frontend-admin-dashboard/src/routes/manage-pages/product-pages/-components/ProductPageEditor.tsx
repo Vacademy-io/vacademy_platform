@@ -249,6 +249,7 @@ export const ProductPageEditor = () => {
                             <ProductPagePreview
                                 productPageCode={page?.code || ''}
                                 instituteId={instituteId}
+                                learnerPortalBaseUrl={instituteDetails?.learner_portal_base_url}
                                 preselectedCourseIds={mappingRows
                                     .filter((r) => r.preselected && r.packageSessionId)
                                     .map((r) => r.packageSessionId)}

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Preferences } from '@capacitor/preferences';
+import { preferencesGet, preferencesSet } from '../../../utils/preferences-storage';
 
 export interface CartItem {
   id: string;
@@ -70,7 +70,7 @@ const getStorageKey = (mode?: 'buy' | 'rent'): string => {
 const loadCartFromStorage = async (mode?: 'buy' | 'rent'): Promise<CartItem[]> => {
   try {
     const storageKey = getStorageKey(mode);
-    const stored = await Preferences.get({ key: storageKey });
+    const stored = await preferencesGet(storageKey);
     if (stored.value) {
       return JSON.parse(stored.value);
     }
@@ -82,7 +82,7 @@ const loadCartFromStorage = async (mode?: 'buy' | 'rent'): Promise<CartItem[]> =
 
 const loadPlanFromStorage = async (): Promise<MembershipPlan | null> => {
   try {
-    const stored = await Preferences.get({ key: PLAN_STORAGE_KEY });
+    const stored = await preferencesGet(PLAN_STORAGE_KEY);
     if (stored.value) {
       return JSON.parse(stored.value);
     }
@@ -96,10 +96,7 @@ const loadPlanFromStorage = async (): Promise<MembershipPlan | null> => {
 const saveCartToStorage = async (items: CartItem[], mode?: 'buy' | 'rent') => {
   try {
     const storageKey = getStorageKey(mode);
-    await Preferences.set({
-      key: storageKey,
-      value: JSON.stringify(items),
-    });
+    await preferencesSet(storageKey, JSON.stringify(items));
   } catch (error) {
     console.error('[CartStore] Error saving cart to storage:', error);
   }
@@ -120,10 +117,7 @@ const syncCartWithMode = async () => {
 
 const savePlanToStorage = async (plan: MembershipPlan | null) => {
   try {
-    await Preferences.set({
-      key: PLAN_STORAGE_KEY,
-      value: JSON.stringify(plan),
-    });
+    await preferencesSet(PLAN_STORAGE_KEY, JSON.stringify(plan));
   } catch (error) {
     console.error('[CartStore] Error saving plan to storage:', error);
   }
@@ -263,21 +257,31 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
 // Initialize cart from storage on load
 if (typeof window !== 'undefined') {
-  syncCartWithMode();
-  loadPlanFromStorage().then((plan) => {
-    useCartStore.setState({ membershipPlan: plan });
+  syncCartWithMode().catch((error) => {
+    console.error('[CartStore] Error syncing cart on init:', error);
   });
+  loadPlanFromStorage()
+    .then((plan) => {
+      useCartStore.setState({ membershipPlan: plan });
+    })
+    .catch((error) => {
+      console.error('[CartStore] Error loading plan on init:', error);
+    });
 
   // Listen for levelFilter changes to sync cart
   const handleStorageChange = (e: StorageEvent) => {
     if (e.key === 'levelFilter') {
-      syncCartWithMode();
+      syncCartWithMode().catch((error) => {
+        console.error('[CartStore] Error syncing cart on storage change:', error);
+      });
     }
   };
   window.addEventListener('storage', handleStorageChange);
 
   // Also listen for custom events (for same-tab changes)
   window.addEventListener('levelFilterChanged', () => {
-    syncCartWithMode();
+    syncCartWithMode().catch((error) => {
+      console.error('[CartStore] Error syncing cart on levelFilterChanged:', error);
+    });
   });
 }

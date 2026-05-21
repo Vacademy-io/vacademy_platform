@@ -22,34 +22,28 @@ export function getActiveFields(
 }
 
 /**
- * Returns the initial set of selected ps_invite_payment_option_ids.
- * Priority:
- *   1. ?courseIds= URL param matched against package_session_id
- *   2. ?courseIds= URL param matched against ps_invite_payment_option_id (admin may pass either)
- *   3. DB preselected flag
+ * Returns the initial set of selected ps_invite_payment_option_ids from the URL only.
+ * DB preselected flag is intentionally ignored — preselection is URL-driven.
+ *   1. ?courseIds= matched against package_session_id
+ *   2. ?courseIds= matched against ps_invite_payment_option_id
+ *   3. No param → empty (no auto-selection)
  */
 export function resolveInitialSelection(
     mappings: ProductPageMappingResponse[],
     courseIdsParam?: string
 ): string[] {
-    if (courseIdsParam) {
-        const ids = new Set(courseIdsParam.split(',').map((s) => s.trim()).filter(Boolean));
+    if (!courseIdsParam) return [];
 
-        // Try package_session_id first (the canonical admin-generated URL format)
-        const byPsId = mappings
-            .filter((m) => ids.has(m.package_session_id) && m.status === 'ACTIVE')
-            .map((m) => m.ps_invite_payment_option_id);
-        if (byPsId.length > 0) return byPsId;
+    const ids = new Set(courseIdsParam.split(',').map((s) => s.trim()).filter(Boolean));
 
-        // Also accept ps_invite_payment_option_id directly (URLs copied from admin settings)
-        const byOptionId = mappings
-            .filter((m) => ids.has(m.ps_invite_payment_option_id) && m.status === 'ACTIVE')
-            .map((m) => m.ps_invite_payment_option_id);
-        if (byOptionId.length > 0) return byOptionId;
-    }
+    // Try package_session_id first (the canonical admin-generated URL format)
+    const byPsId = mappings
+        .filter((m) => ids.has(m.package_session_id) && m.status === 'ACTIVE')
+        .map((m) => m.ps_invite_payment_option_id);
+    if (byPsId.length > 0) return byPsId;
 
-    // Fall back to DB preselected flag
+    // Also accept ps_invite_payment_option_id directly
     return mappings
-        .filter((m) => m.preselected && m.status === 'ACTIVE')
+        .filter((m) => ids.has(m.ps_invite_payment_option_id) && m.status === 'ACTIVE')
         .map((m) => m.ps_invite_payment_option_id);
 }

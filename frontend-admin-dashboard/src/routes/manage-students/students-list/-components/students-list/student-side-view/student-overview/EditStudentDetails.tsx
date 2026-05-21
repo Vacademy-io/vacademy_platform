@@ -452,7 +452,6 @@ export const EditStudentDetails = () => {
                                             placeholder="123 456 7890"
                                             name="contact_number"
                                             control={form.control}
-                                            country="in"
                                             required={true}
                                         />
                                         <p className="text-subtitle text-danger-600">
@@ -656,7 +655,6 @@ export const EditStudentDetails = () => {
                                         placeholder="123 456 7890"
                                         name="father_mobile_number"
                                         control={form.control}
-                                        country="in"
                                         required={false}
                                     />
                                 </FormControl>
@@ -693,7 +691,6 @@ export const EditStudentDetails = () => {
                                         placeholder="123 456 7890"
                                         name="mother_mobile_number"
                                         control={form.control}
-                                        country="in"
                                         required={false}
                                     />
                                 </FormControl>

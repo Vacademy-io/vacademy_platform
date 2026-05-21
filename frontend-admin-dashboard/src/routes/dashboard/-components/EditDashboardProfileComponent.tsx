@@ -334,7 +334,6 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                                 name="institutePhoneNumber"
                                                                 control={form.control}
                                                                 labelStyle="text-base font-normal"
-                                                                country="in"
                                                                 required={false}
                                                             />
                                                         </FormControl>

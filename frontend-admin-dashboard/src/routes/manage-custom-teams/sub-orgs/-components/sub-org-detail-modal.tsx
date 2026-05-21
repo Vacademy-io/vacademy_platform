@@ -635,7 +635,7 @@ function AddUserToSubOrgSection({
                                 preferredCountries={
                                     getCachedPreferredCountries().length > 0
                                         ? getCachedPreferredCountries()
-                                        : ['us', 'gb', 'in', 'au']
+                                        : ['in', 'us', 'gb', 'au']
                                 }
                                 enableSearch
                                 placeholder="123 456 7890"

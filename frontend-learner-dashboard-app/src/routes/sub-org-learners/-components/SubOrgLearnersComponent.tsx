@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { AdminMappings, StudentMapping, getMembers, addMember, terminateMembers, AddMemberRequest, getInstituteCustomFields, InstituteCustomField } from '@/services/sub-organization-learner-management';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ import "react-phone-input-2/lib/bootstrap.css";
 import { BulkUploadModal } from './BulkUploadModal';
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { FieldRenderType, getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 
 interface SubOrgLearnersComponentProps {
   adminMappings: AdminMappings[];
@@ -28,6 +29,11 @@ interface SubOrgLearnersComponentProps {
 
 export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: SubOrgLearnersComponentProps) {
   const [selectedPackageSession, setSelectedPackageSession] = useState<string>('');
+  // Default selected country + picker order from the institute's preferred countries.
+  const { defaultCountry, preferredCountries } = useMemo(
+    () => getPreferredPhoneCountries(),
+    [],
+  );
   const [members, setMembers] = useState<StudentMapping[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -421,7 +427,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
           <Label htmlFor={fieldKey}>{displayName} {isMandatory && '*'}</Label>
           <div className={formData[fieldKey] && !validatePhoneNumber(formData[fieldKey]) ? "phone-input-error" : ""}>
             <PhoneInput
-              country={'au'}
+              country={defaultCountry}
               value={formData[fieldKey] || ''}
               onChange={(phone) => setFormData((prev: any) => ({ ...prev, [fieldKey]: phone.startsWith('+') ? phone : `+${phone}` }))}
               enableSearch={true}
@@ -431,7 +437,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               countryCodeEditable={false}
               enableAreaCodes={true}
               disableCountryGuess={false}
-              preferredCountries={["us", "gb", "in", "au"]}
+              preferredCountries={preferredCountries}
             />
           </div>
         </div>
@@ -525,7 +531,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                     <div>
                       <Label htmlFor="mobile_number">Mobile Number *</Label>
                       <PhoneInput
-                        country={'au'}
+                        country={defaultCountry}
+                        preferredCountries={preferredCountries}
                         value={formData.mobile_number}
                         onChange={(phone) => setFormData((prev: any) => ({ ...prev, mobile_number: phone.startsWith('+') ? phone : `+${phone}` }))}
                         inputClass="!w-full h-10 !rounded-md !border-input"

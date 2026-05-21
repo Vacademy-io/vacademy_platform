@@ -610,7 +610,6 @@ const AudienceResponseForm = ({
                     placeholder="123 456 7890"
                     name="parentMobile"
                     control={form.control}
-                    country="in"
                     required={true}
                   />
 

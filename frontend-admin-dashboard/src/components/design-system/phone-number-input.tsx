@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/bootstrap.css';
+import { getPreferredPhoneCountries } from '@/services/domain-routing';
 
 interface PhoneNumberInputProps {
     name: string;
@@ -19,6 +20,9 @@ interface PhoneNumberInputProps {
  * Standalone phone number input with country code selector.
  * Works with plain useState (no React Hook Form dependency).
  * Uses react-phone-input-2 internally.
+ *
+ * Defaults the selected country and orders the picker from the institute's
+ * configured preferred countries; an explicit `country` prop overrides this.
  */
 export default function PhoneNumberInput({
     name,
@@ -28,10 +32,18 @@ export default function PhoneNumberInput({
     required = false,
     placeholder = 'Enter phone number',
     className = '',
-    country = 'in',
+    country,
     disabled = false,
     error,
 }: PhoneNumberInputProps) {
+    const { effectiveCountry, preferredCountries } = useMemo(() => {
+        const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
+        return {
+            effectiveCountry: country ?? defaultCountry,
+            preferredCountries,
+        };
+    }, [country]);
+
     return (
         <div className={`flex flex-col gap-1.5 ${className}`}>
             {label && (
@@ -40,7 +52,8 @@ export default function PhoneNumberInput({
                 </label>
             )}
             <PhoneInput
-                country={country}
+                country={effectiveCountry}
+                preferredCountries={preferredCountries}
                 enableSearch={true}
                 placeholder={placeholder}
                 value={value}

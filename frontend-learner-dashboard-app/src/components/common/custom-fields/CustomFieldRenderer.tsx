@@ -16,6 +16,7 @@ import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { getTokenFromCookie, getTokenDecodedData } from "@/lib/auth/sessionUtility";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { TokenKey } from "@/constants/auth/tokens";
 import {
   FieldRenderType,
@@ -217,10 +218,12 @@ export const CustomFieldRenderer = ({
         />
       );
 
-    case FieldRenderType.PHONE:
+    case FieldRenderType.PHONE: {
+      const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
       return (
         <PhoneInput
-          country="in"
+          country={defaultCountry}
+          preferredCountries={preferredCountries}
           value={value || ""}
           onChange={(val) => {
             const formatted = val.startsWith("+") ? val : `+${val}`;
@@ -233,6 +236,7 @@ export const CustomFieldRenderer = ({
           containerStyle={{ width: "100%" }}
         />
       );
+    }
 
     case FieldRenderType.DATE:
       // Using native date input because the learner app's Calendar component

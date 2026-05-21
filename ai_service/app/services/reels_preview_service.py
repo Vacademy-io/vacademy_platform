@@ -700,13 +700,25 @@ def _extract_window_words(
 
 
 def _apply_importance(words: list[_Word], importance: list[int]) -> None:
-    """Write LLM-or-heuristic importance into the Word objects."""
+    """Write LLM-or-heuristic importance into the Word objects.
+
+    Also derives a default `keyword_type` for any importance-3 word that
+    the LLM didn't classify (the prompt currently doesn't ask for
+    keyword_type — see deferred work). The renderer reads keyword_type
+    to color-highlight captions; without it every word renders plain
+    white and the Hormozi/karaoke styles lose their punch. Defaulting
+    to "important" gets us the yellow-highlight on every high-impact
+    word — the main visual goal. Future: teach the LLM to distinguish
+    important / definition / warning explicitly.
+    """
     for w, imp in zip(words, importance):
         try:
             i = int(imp)
         except (TypeError, ValueError):
             i = 2
         w.importance = max(0, min(3, i))
+        if w.importance >= 3 and w.keyword_type is None:
+            w.keyword_type = "important"
 
 
 def _enforce_deterministic_floors(
@@ -902,11 +914,11 @@ Also produce:
 - title:     a working title ≤8 words, ≤60 chars, no quotes around it.
 - rationale: ≤20 words explaining why this clip is worth rendering. Mention the hook, the payoff, and one concrete content beat.
 
-Optionally enhance engagement with emoji punctuation:
-- Add an "emojis" array the same length as "importance".
-- MOST entries should be "" (no emoji). Tag emoji ONLY on words where a single icon meaningfully sharpens the message — typically a stat, named entity, action verb, or vivid noun.
-- 0-3 emoji per reel is the sweet spot; more becomes clutter. Pick the highest-impact words.
-- Examples that work: "million" → 💰, "growth" → 📈, "fast" → ⚡, "team" → 👥, "secret" → 🔒, "warning" → ⚠️, "amazing" → 🤯, "data" → 📊, "love" → ❤️.
+Required: emoji punctuation on high-impact words.
+- Output an "emojis" array EXACTLY the same length as "importance".
+- You MUST tag 2-4 emojis per reel (this is mandatory, not optional). Reels without emojis look flat — emojis are a proven retention lever.
+- Pick the 2-4 highest-impact words: a stat, a named entity, an action verb, or a vivid noun. The rest of the slots are "" (empty string).
+- Examples that work: "million" → 💰, "growth" → 📈, "fast" → ⚡, "team" → 👥, "secret" → 🔒, "warning" → ⚠️, "amazing" → 🤯, "data" → 📊, "love" → ❤️, "ancient" → 🏛️, "fire" → 🔥, "brain" → 🧠.
 - Skip emoji for: stopwords, filler, abstract terms ("thing", "way", "idea"), and words that already carry their meaning clearly enough through tone and context.
 
 Return ONLY valid JSON with this exact shape (no markdown, no commentary):
@@ -917,7 +929,7 @@ Return ONLY valid JSON with this exact shape (no markdown, no commentary):
   "emojis":     ["", "", "💰", "", "📈", "", ...]
 }
 The `importance` array MUST have exactly the same length as the words list given.
-The `emojis` array is optional; when present it MUST have the same length as `importance`."""
+The `emojis` array MUST be present, the same length as `importance`, and contain 2-4 non-empty emoji entries (rest are "")."""
 
 
 _TOPIC_KEYWORD_MAX_CHARS = 64

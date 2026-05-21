@@ -353,11 +353,30 @@ def _build_user_prompt(
     title: str,
     rationale: str,
     reel_time_transcript: str,
+    layout: str = "full_speaker_with_overlays",
 ) -> str:
+    # When the layout actually USES the bottom-half / background bgv,
+    # promote `background_concepts` from optional to required — without
+    # them, stacked / pip layouts get downgraded to full_speaker and the
+    # user's layout choice is silently ignored. Production audit
+    # 2026-05-21 reel-0b8d21629a4a hit this: stacked layout requested,
+    # LLM emitted no bg_concepts, downgrade fired, FE got full_speaker.
+    layout_hint = ""
+    if layout in ("stacked_speaker_with_broll", "pip_corner_speaker"):
+        layout_hint = (
+            f"\nLAYOUT IS `{layout}` — this layout REQUIRES bgv. "
+            "You MUST emit `background_concepts` with 2-5 entries. "
+            "Without them the layout is downgraded to full-speaker and "
+            "the user's choice is wasted. Even for abstract / philosophical "
+            "content, pick scene-level concepts that evoke the mood "
+            "(library shelves, candle flame, ocean waves, old manuscript) "
+            "rather than skipping the field.\n"
+        )
     return (
         f"Reel duration: {reel_duration_s:.2f}s.\n"
         f"Working title: {title}\n"
-        f"Why this clip was picked: {rationale}\n\n"
+        f"Why this clip was picked: {rationale}\n"
+        f"{layout_hint}\n"
         f"Reel-time transcript (seconds since reel start):\n{reel_time_transcript}\n\n"
         "Return the JSON object now."
     )
@@ -389,6 +408,7 @@ class LLMDirector:
         title: str,
         rationale: str,
         word_importance_reel_time: list[dict],
+        layout: str = "full_speaker_with_overlays",
     ) -> tuple[list[OverlaySpec], Optional[str], Optional[list[str]]]:
         """Returns (overlays, optional single bg_concept, optional bg_concepts list).
 
@@ -419,6 +439,7 @@ class LLMDirector:
             title=title.strip() or "Watch this",
             rationale=rationale.strip() or "Strong engagement signals.",
             reel_time_transcript=transcript_block,
+            layout=layout,
         )
 
         raw = await self._call_llm(user)

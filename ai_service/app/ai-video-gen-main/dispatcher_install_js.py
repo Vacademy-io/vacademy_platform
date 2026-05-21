@@ -788,7 +788,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             try { console.log("[SHOT-TELEM] shot=${e.id} enter"); } catch (_te) {}
 
                             // Tag every element currently in the shadow scope with
-                            // `data-vx-managed` so the CSS visibility safety net's
+                            // 'data-vx-managed' so the CSS visibility safety net's
                             // 5s force-reveal rule does NOT fire on elements that
                             // the dispatcher knows are owned by an active animation
                             // pipeline (their fades are handled by GSAP/anime, not
@@ -809,7 +809,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             // showed shot-root stuck at opacity 0 in the rendered MP4.
                             // Logging it at every exit (and in the catch) makes the
                             // failure mode visible in shot_telemetry.jsonl — easy to
-                            // grep for `root-opacity=0` to find blank shots before users do.
+                            // grep for 'root-opacity=0' to find blank shots before users do.
                             var __snapRootOpacity = function () {
                                 try {
                                     var _r = scope.querySelector('#shot-root') || scope.host;
@@ -856,7 +856,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                     if (sides[1] + sides[3] >= 100) return true; // left+right
                                 }
                                 // circle(0) / circle(0%) / circle(0px ...). Lookahead
-                                // `(?![\d.])` blocks matching the leading "0" of
+                                // '(?![\d.])' blocks matching the leading "0" of
                                 // "0.5em" or "05" as the full radius (no false fires
                                 // on visibly-sized small clip circles).
                                 if (/circle\(\s*0(?:\.0+)?(?:px|%|em|rem)?(?![\d.])/.test(cp)) return true;
@@ -883,7 +883,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
 
                             // Helper: walk the shadow scope and force any element
                             // out of a hidden inline state back to a visible neutral
-                            // state. `force` is true when the script threw (we no
+                            // state. 'force' is true when the script threw (we no
                             // longer trust ANY of its work); false for the success
                             // path, where we only repair elements that still look
                             // hidden AFTER the script ran (e.g. shot-5: clipPath
@@ -934,13 +934,13 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             // Walks the shadow scope for text-bearing elements
                             // whose intrinsic width exceeds the container's
                             // max-content width AND that would otherwise wrap
-                            // mid-word because of the universal `word-break:
-                            // break-word` foundation rule. For each such
+                            // mid-word because of the universal 'word-break:
+                            // break-word' foundation rule. For each such
                             // element, binary-searches a font-size scale
                             // between 0.55 and 1.0 of the computed font-size
                             // until the text fits on its allotted lines (or
                             // floor is reached). Applies the resulting size
-                            // as inline `font-size`.
+                            // as inline 'font-size'.
                             //
                             // This makes the recurring "UPS/C", "DREA/M"
                             // character-break bug essentially impossible: the

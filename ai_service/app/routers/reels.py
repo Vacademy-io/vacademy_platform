@@ -403,6 +403,9 @@ def _candidate_row_to_response(row) -> ReelCandidate:
             "first_last_mfcc_similarity", "has_verbal_cta_end",
             "word_cut_savings_needed_s", "word_cut_savings_pct",
             "speaker_moves_in_window",
+            # End-quality (Issue 4A — added 2026-05-21)
+            "end_quality_score", "end_last_word", "end_terminator",
+            "start_first_word", "start_bad_opener",
         )
     })
     return ReelCandidate(

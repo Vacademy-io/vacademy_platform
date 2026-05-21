@@ -13,7 +13,7 @@ import {
 import type { Control } from "react-hook-form";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 
 interface PhoneInputFieldProps {
   label: string;
@@ -28,8 +28,6 @@ interface PhoneInputFieldProps {
   onChange?: (value: string) => void;
 }
 
-const DEFAULT_PREFERRED_COUNTRIES = ["us", "gb", "in", "au"];
-
 const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
   label,
   name,
@@ -43,13 +41,13 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
 }) => {
   // Read institute-configured preferred countries from domain routing cache.
   // First entry becomes the default selected country; the full list is used
-  // to order options in the country picker dropdown.
+  // to order options in the country picker dropdown. An explicit `country`
+  // prop still wins for intentional callers.
   const { effectiveCountry, preferredCountries } = useMemo(() => {
-    const cached = getCachedPreferredCountries();
-    const list = cached.length > 0 ? cached : DEFAULT_PREFERRED_COUNTRIES;
+    const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
     return {
-      effectiveCountry: country ?? list[0] ?? "us",
-      preferredCountries: list,
+      effectiveCountry: country ?? defaultCountry,
+      preferredCountries,
     };
   }, [country]);
 

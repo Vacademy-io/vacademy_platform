@@ -183,7 +183,7 @@ const RegistrationStep = ({
   // domain routing) so the phone input defaults match the institute settings.
   const getPhoneCountryCode = (): string => {
     const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "gb";
+    const fallback = preferred[0] ?? "in";
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {

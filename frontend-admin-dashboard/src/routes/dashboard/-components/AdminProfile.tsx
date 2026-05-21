@@ -310,7 +310,6 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                                             name="phone"
                                                             control={form.control}
                                                             labelStyle="text-base font-normal"
-                                                            country="in"
                                                             required={false}
                                                         />
                                                     </FormControl>

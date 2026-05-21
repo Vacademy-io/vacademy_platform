@@ -464,7 +464,6 @@ export default function EditProfile() {
                         placeholder="Enter mobile number"
                         control={methods.control}
                         value={formData.contact_number}
-                        country="in"
                         onChange={(value) => handleChange("contact_number", value)}
                       />
                     </div>
@@ -644,7 +643,6 @@ export default function EditProfile() {
                         placeholder="Enter mobile number"
                         control={methods.control}
                         value={formData.parents_mobile_number}
-                        country="in"
                         onChange={(value) => handleChange("parents_mobile_number", value)}
                       />
                     </div>

@@ -87,6 +87,20 @@ export async function createInstituteTag(input: {
     return data;
 }
 
+/**
+ * Soft-delete an institute tag (marks it INACTIVE on the backend). Default
+ * system tags are rejected server-side. Existing user-tag links are kept on
+ * the row so historical data isn't lost — the tag just stops showing up in
+ * the institute tag list.
+ */
+export async function deleteInstituteTag(tagId: string): Promise<void> {
+    const instituteId = getCurrentInstituteId();
+    await authenticatedAxiosInstance({
+        method: 'DELETE',
+        url: `${BASE}/institutes/${instituteId}/tags/${tagId}`,
+    });
+}
+
 export async function addUsersToTagByName(tagName: string, userIds: string[]): Promise<BulkResult> {
     const instituteId = getCurrentInstituteId();
     const { data } = await authenticatedAxiosInstance<BulkResult>({

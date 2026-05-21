@@ -1331,7 +1331,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               OR s.username ILIKE '%' || :name || '%'
               OR s.email ILIKE '%' || :name || '%'
               OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
-              OR s.user_id LIKE :name || '%'
+              OR s.user_id ILIKE '%' || :name || '%'
               OR (
                   :name ~ '[0-9]'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
@@ -1457,12 +1457,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
             AND (
               CAST(:name AS TEXT) IS NULL
-              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
               OR s.full_name ILIKE '%' || :name || '%'
               OR s.username ILIKE '%' || :name || '%'
               OR s.email ILIKE '%' || :name || '%'
               OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
-              OR s.user_id LIKE :name || '%'
+              OR s.user_id ILIKE '%' || :name || '%'
               OR (
                   :name ~ '[0-9]'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
@@ -1484,11 +1483,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
             AND (
               CAST(:name AS TEXT) IS NULL
-              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
               OR s.full_name ILIKE '%' || :name || '%'
               OR s.username ILIKE '%' || :name || '%'
               OR s.email ILIKE '%' || :name || '%'
-              OR s.user_id LIKE :name || '%'
+              OR s.user_id ILIKE '%' || :name || '%'
               OR (
                   :name ~ '[0-9]'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
@@ -1544,12 +1542,11 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             )
             AND (
               CAST(:name AS TEXT) IS NULL
-              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
               OR s.full_name ILIKE '%' || :name || '%'
               OR s.username ILIKE '%' || :name || '%'
               OR s.email ILIKE '%' || :name || '%'
               OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
-              OR s.user_id LIKE :name || '%'
+              OR s.user_id ILIKE '%' || :name || '%'
               OR (
                   :name ~ '[0-9]'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
@@ -1570,11 +1567,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
             AND (
               CAST(:name AS TEXT) IS NULL
-              OR to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
               OR s.full_name ILIKE '%' || :name || '%'
               OR s.username ILIKE '%' || :name || '%'
               OR s.email ILIKE '%' || :name || '%'
-              OR s.user_id LIKE :name || '%'
+              OR s.user_id ILIKE '%' || :name || '%'
               OR (
                   :name ~ '[0-9]'
                   AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'

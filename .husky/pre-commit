@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+# Vacademy design-system commit gate.
+# Blocks commits that introduce UI drift (raw hex, arbitrary Tailwind values,
+# inline styles, banned icon libraries) in either frontend. Only staged,
+# changed UI files are checked — existing/legacy code is never touched.
+# Source of truth: frontend-admin-dashboard/docs/design-system/
+#
+# Activation (one-time, per clone): git config core.hooksPath .husky
+# (git stores hook paths locally, so each teammate runs this once.)
+
+files=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '^frontend-(admin-dashboard|learner-dashboard-app)/src/.*\.(tsx|ts|css)$' || true)
+
+if [ -z "$files" ]; then
+  exit 0
+fi
+
+# shellcheck disable=SC2086
+node scripts/design-lint.mjs $files
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo ""
+  echo "Commit blocked by the Vacademy design system. Fix the violations above"
+  echo "(see frontend-admin-dashboard/docs/design-system/), then re-stage and commit."
+  echo "To bypass in a genuine emergency: git commit --no-verify"
+fi
+
+exit $status

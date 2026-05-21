@@ -5,11 +5,24 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
-import { Filter, ChevronDown, ChevronUp, Search, SortAsc, ShoppingCart, Plus, Minus, BookOpen } from "lucide-react";
+import {
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  SortAsc,
+  ShoppingCart,
+  Plus,
+  Minus,
+  BookOpen,
+} from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
-import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 // EnrollmentPaymentDialog import removed - not used in catalog
@@ -32,22 +45,37 @@ const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
   </div>
 );
 
-const CourseImage: React.FC<CourseImageProps> = ({ previewImageUrl, alt, className }) => {
-  const isPlaceholder = !previewImageUrl ||
-    previewImageUrl.includes('/api/placeholder/') ||
-    previewImageUrl.trim() === '' ||
-    previewImageUrl === 'null' ||
-    previewImageUrl === 'undefined';
+const CourseImage: React.FC<CourseImageProps> = ({
+  previewImageUrl,
+  alt,
+  className,
+}) => {
+  const isPlaceholder =
+    !previewImageUrl ||
+    previewImageUrl.includes("/api/placeholder/") ||
+    previewImageUrl.trim() === "" ||
+    previewImageUrl === "null" ||
+    previewImageUrl === "undefined";
 
   if (isPlaceholder) {
     return <CoursePlaceholder title={alt} />;
   }
 
-  return <CourseImageWithState previewImageUrl={previewImageUrl} alt={alt} className={className} />;
+  return (
+    <CourseImageWithState
+      previewImageUrl={previewImageUrl}
+      alt={alt}
+      className={className}
+    />
+  );
 };
 
 // Separate component for handling actual image loading
-const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt, className }) => {
+const CourseImageWithState: React.FC<CourseImageProps> = ({
+  previewImageUrl,
+  alt,
+  className,
+}) => {
   const [courseImageUrl, setCourseImageUrl] = useState<string>("");
   const [loadingImage, setLoadingImage] = useState(true);
   const [imageError, setImageError] = useState(false);
@@ -100,7 +128,9 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
     return (
       <div className="aspect-video">
         <div className="w-full h-full bg-[hsl(var(--catalogue-bg-muted))] animate-pulse rounded-md flex items-center justify-center">
-          <div className="text-[hsl(var(--catalogue-text-muted))] text-xs">Loading...</div>
+          <div className="text-[hsl(var(--catalogue-text-muted))] text-xs">
+            Loading...
+          </div>
         </div>
       </div>
     );
@@ -118,11 +148,11 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({ previewImageUrl, alt
           setCourseImageUrl("");
         }}
         onLoad={(e) => {
-          e.currentTarget.style.opacity = '1';
+          e.currentTarget.style.opacity = "1";
         }}
         style={{
           opacity: 1,
-          transition: 'opacity 0.2s ease'
+          transition: "opacity 0.2s ease",
         }}
       />
     </div>
@@ -214,10 +244,11 @@ const FilterSection: React.FC<FilterSectionProps> = ({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           disabled={disabled}
-          className={`text-xs mt-1.5 flex items-center gap-1 ${disabled
-            ? "text-gray-400 cursor-not-allowed"
-            : "text-primary-600 hover:text-primary-700"
-            }`}
+          className={`text-xs mt-1.5 flex items-center gap-1 ${
+            disabled
+              ? "text-gray-400 cursor-not-allowed"
+              : "text-primary-600 hover:text-primary-700"
+          }`}
         >
           {isExpanded ? (
             <>
@@ -246,19 +277,32 @@ const CartControls: React.FC<{
     showQuantitySelector?: boolean;
     quantityMin?: number;
   };
-  addItem: (item: Omit<CartItem, 'quantity'>) => void;
+  addItem: (item: Omit<CartItem, "quantity">) => void;
   getItemByEnrollInviteId: (enrollInviteId: string) => CartItem | undefined;
   updateQuantity: (enrollInviteId: string, quantity: number) => void;
   removeItem: (enrollInviteId: string) => void;
-}> = ({ course, globalSettings, cartButtonConfig, addItem, getItemByEnrollInviteId, updateQuantity, removeItem }) => {
-  const cartItem = course.enrollInviteId ? getItemByEnrollInviteId(course.enrollInviteId) : undefined;
+}> = ({
+  course,
+  globalSettings,
+  cartButtonConfig,
+  addItem,
+  getItemByEnrollInviteId,
+  updateQuantity,
+  removeItem,
+}) => {
+  const cartItem = course.enrollInviteId
+    ? getItemByEnrollInviteId(course.enrollInviteId)
+    : undefined;
   const quantityMin = cartButtonConfig?.quantityMin ?? 1;
   const showAddToCartButton = cartButtonConfig?.showAddToCartButton !== false;
   const showQuantitySelector = cartButtonConfig?.showQuantitySelector !== false;
 
   // Only hide if payment is explicitly disabled AND cartButtonConfig is not provided
   // If cartButtonConfig is provided, always show the button (even for free courses)
-  if (!cartButtonConfig && (globalSettings?.payment?.enabled === false || course.price <= 0)) {
+  if (
+    !cartButtonConfig &&
+    (globalSettings?.payment?.enabled === false || course.price <= 0)
+  ) {
     return null;
   }
 
@@ -307,7 +351,7 @@ const CartControls: React.FC<{
         onClick={(e) => {
           e.stopPropagation();
           if (!course.enrollInviteId) {
-            toast.error('Cannot add item to cart: missing enroll invite ID');
+            toast.error("Cannot add item to cart: missing enroll invite ID");
             return;
           }
           addItem({
@@ -340,6 +384,157 @@ const CartControls: React.FC<{
   return null;
 };
 
+// ─── New course card (image + name + description + price + View/Add buttons) ──
+
+interface CourseCardProps {
+  course: Course;
+  globalSettings?: any;
+  showCartControls: boolean;
+  displayTitle: boolean;
+  displayDescription: boolean;
+  displayImage: boolean;
+  displayPrice: boolean;
+  displayLevel: boolean;
+  roundedEdges: boolean;
+  onView: () => void;
+  addItem: (item: Omit<CartItem, "quantity">) => void;
+  removeItem: (enrollInviteId: string) => void;
+  getItemByEnrollInviteId: (id: string) => CartItem | undefined;
+}
+
+const CourseCard: React.FC<CourseCardProps> = ({
+  course,
+  globalSettings,
+  showCartControls,
+  displayTitle,
+  displayDescription,
+  displayImage,
+  displayPrice,
+  displayLevel,
+  roundedEdges,
+  onView,
+  addItem,
+  removeItem,
+  getItemByEnrollInviteId,
+}) => {
+  const cartItem = course.enrollInviteId
+    ? getItemByEnrollInviteId(course.enrollInviteId)
+    : undefined;
+  const isInCart = !!cartItem;
+
+  return (
+    <div
+      className={`flex flex-col bg-white border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200 ${
+        roundedEdges ? "rounded-xl" : "rounded-none"
+      }`}
+    >
+      {/* Image with inner card border */}
+      {displayImage && (
+        <div className="p-3 pb-2">
+          <div className="overflow-hidden rounded-lg border border-gray-100">
+            <CourseImage
+              previewImageUrl={course.thumbnail}
+              alt={course.title}
+              className="w-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex flex-col flex-1 px-4 pb-4 pt-1">
+        {/* Level badge */}
+        {displayLevel && course.level && (
+          <span className="inline-block self-start px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md mb-2">
+            {course.level}
+          </span>
+        )}
+
+        {/* Name */}
+        {displayTitle && (
+          <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 mb-1.5">
+            {course.title}
+          </h3>
+        )}
+
+        {/* Description */}
+        {displayDescription &&
+          course.description &&
+          course.description !== "No description available" && (
+            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2 flex-1">
+              {course.description}
+            </p>
+          )}
+
+        {/* Price */}
+        {displayPrice && globalSettings?.payment?.enabled !== false && (
+          <PriceWithMrp
+            actual={course.price}
+            elevated={course.elevatedPrice}
+            currency={course.currency}
+            size="md"
+            className="text-primary-600"
+          />
+        )}
+
+        {/* Action buttons */}
+        <div className="flex gap-2 mt-auto">
+          <button
+            type="button"
+            onClick={onView}
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+          >
+            View
+          </button>
+          {showCartControls &&
+            course.enrollInviteId &&
+            (isInCart ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeItem(course.enrollInviteId!);
+                  toast.success(`${course.title} removed from cart`);
+                }}
+                className="flex-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 hover:border-red-400 transition-colors"
+              >
+                Remove
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!course.enrollInviteId) {
+                    toast.error(
+                      "Cannot add item to cart: missing enroll invite ID",
+                    );
+                    return;
+                  }
+                  addItem({
+                    id: course.id,
+                    title: course.title,
+                    price: course.price,
+                    image: course.thumbnail,
+                    level: course.level,
+                    packageSessionId: course.packageSessionId,
+                    enrollInviteId: course.enrollInviteId,
+                    levelId: course.levelId,
+                    courseId: course.courseId,
+                  });
+                  toast.success(`${course.title} added to cart!`);
+                }}
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+              >
+                Add
+              </button>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   title,
   showFilters,
@@ -351,18 +546,28 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   globalSettings,
 }) => {
   const navigate = useNavigate();
-  const { addItem, getItemByEnrollInviteId, updateQuantity, removeItem, getItemCount } = useCartStore();
+  const {
+    addItem,
+    getItemByEnrollInviteId,
+    updateQuantity,
+    removeItem,
+    getItemCount,
+  } = useCartStore();
 
   // Debug: Log cartButtonConfig to help diagnose issues
   useEffect(() => {
-    console.log('[CourseCatalogComponent] cartButtonConfig:', cartButtonConfig);
-    console.log('[CourseCatalogComponent] render.cardFields:', render?.cardFields);
+    console.log("[CourseCatalogComponent] cartButtonConfig:", cartButtonConfig);
+    console.log(
+      "[CourseCatalogComponent] render.cardFields:",
+      render?.cardFields,
+    );
   }, [cartButtonConfig, render?.cardFields]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOption, setSortOption] = useState("Newest");
+  const [totalApiElements, setTotalApiElements] = useState(0);
 
   // Filter states
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
@@ -374,7 +579,39 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
+  const itemsPerPage = 9;
+
+  // Derive filter options from loaded courses (before shouldShow* checks)
+  const levels = useMemo(
+    () =>
+      [...new Set(courses.map((c) => c.level).filter(Boolean))].map(
+        (level) => ({ id: level, name: toTitleCase(level) }),
+      ),
+    [courses],
+  );
+  const tags = useMemo(
+    () =>
+      [
+        ...new Set(
+          courses
+            .flatMap(
+              (c) =>
+                c.comma_separeted_tags
+                  ?.split(",")
+                  .map((t: string) => t.trim()) || [],
+            )
+            .filter(Boolean),
+        ),
+      ].map((tag) => ({ id: tag, name: tag })),
+    [courses],
+  );
+  const instructors = useMemo(
+    () =>
+      [...new Set(courses.map((c) => c.instructor).filter(Boolean))].map(
+        (instructor) => ({ id: instructor, name: instructor }),
+      ),
+    [courses],
+  );
 
   // Enrollment dialog state
   // Removed enrollment dialog state - all enrollment happens on details page
@@ -382,8 +619,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const cardFieldsSet = useMemo(
-    () => new Set((render?.cardFields ?? []).map((field) => field.toLowerCase())),
-    [render?.cardFields]
+    () =>
+      new Set((render?.cardFields ?? []).map((field) => field.toLowerCase())),
+    [render?.cardFields],
   );
 
   const isCardFieldEnabled = (field: string) =>
@@ -427,23 +665,38 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const filtersEnabled = showFilters !== false;
   const filterIds = useMemo(
     () => new Set((filtersConfig ?? []).map((filter) => filter.id)),
-    [filtersConfig]
+    [filtersConfig],
   );
   const defaultToAllFilters = filterIds.size === 0;
-  const shouldShowLevelFilter = filtersEnabled && (defaultToAllFilters || filterIds.has("level"));
-  const shouldShowTagsFilter = filtersEnabled && (defaultToAllFilters || filterIds.has("tags"));
+  const shouldShowLevelFilter =
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("level")) &&
+    levels.length > 1;
+  const shouldShowTagsFilter =
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("tags")) &&
+    tags.length > 0;
   const shouldShowInstructorFilter =
-    filtersEnabled && (defaultToAllFilters || filterIds.has("instructors") || filterIds.has("authors"));
+    filtersEnabled &&
+    (defaultToAllFilters ||
+      filterIds.has("instructors") ||
+      filterIds.has("authors")) &&
+    instructors.length > 1;
   const priceFilterConfig = useMemo(
     () =>
       filtersEnabled
-        ? (filtersConfig ?? []).find((filter) => filter.type === "range" && filter.field === "price")
+        ? (filtersConfig ?? []).find(
+            (filter) => filter.type === "range" && filter.field === "price",
+          )
         : undefined,
-    [filtersConfig, filtersEnabled]
+    [filtersConfig, filtersEnabled],
   );
   const shouldShowPriceFilter = filtersEnabled && Boolean(priceFilterConfig);
   const hasFiltersToShow =
-    shouldShowLevelFilter || shouldShowTagsFilter || shouldShowInstructorFilter || shouldShowPriceFilter;
+    shouldShowLevelFilter ||
+    shouldShowTagsFilter ||
+    shouldShowInstructorFilter ||
+    shouldShowPriceFilter;
   const shouldRenderFiltersPanel = filtersEnabled && hasFiltersToShow;
 
   const defaultPriceRange = useMemo<PriceRangeState>(() => {
@@ -458,10 +711,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     if (typeof max === "number") {
       normalized.max = max;
     }
-    return normalized.min !== undefined || normalized.max !== undefined ? normalized : null;
+    return normalized.min !== undefined || normalized.max !== undefined
+      ? normalized
+      : null;
   }, [priceFilterConfig]);
 
-  const [priceRange, setPriceRange] = useState<PriceRangeState>(defaultPriceRange);
+  const [priceRange, setPriceRange] =
+    useState<PriceRangeState>(defaultPriceRange);
 
   useEffect(() => {
     setPriceRange(defaultPriceRange);
@@ -476,7 +732,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       } else {
         updated[key] = numericValue;
       }
-      return updated.min === undefined && updated.max === undefined ? null : updated;
+      return updated.min === undefined && updated.max === undefined
+        ? null
+        : updated;
     });
   };
 
@@ -495,31 +753,36 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   // Check for level filter from sessionStorage on mount
   useEffect(() => {
-    const levelFilter = sessionStorage.getItem('levelFilter');
+    const levelFilter = sessionStorage.getItem("levelFilter");
     if (levelFilter) {
       // Set the level filter and clear it from sessionStorage after use
-      console.log('[CourseCatalogComponent] Applying level filter from sessionStorage:', levelFilter);
+      console.log(
+        "[CourseCatalogComponent] Applying level filter from sessionStorage:",
+        levelFilter,
+      );
       // Normalize the filter value to match the case in course data
       // We'll find the actual case from the courses once they load
       setSelectedLevels([levelFilter]);
-      sessionStorage.removeItem('levelFilter');
+      sessionStorage.removeItem("levelFilter");
     }
   }, []);
 
   // Normalize selectedLevels to match actual level values from courses (case-insensitive matching)
   useEffect(() => {
     if (courses.length > 0 && selectedLevels.length > 0) {
-      const actualLevels = [...new Set(courses.map(course => course.level))];
-      const normalizedLevels = selectedLevels.map(selected => {
+      const actualLevels = [...new Set(courses.map((course) => course.level))];
+      const normalizedLevels = selectedLevels.map((selected) => {
         // Find the actual level value that matches (case-insensitive)
-        const matched = actualLevels.find(actual =>
-          actual?.toLowerCase() === selected?.toLowerCase()
+        const matched = actualLevels.find(
+          (actual) => actual?.toLowerCase() === selected?.toLowerCase(),
         );
         return matched || selected; // Use matched value or keep original
       });
 
       // Only update if there's a difference (to avoid infinite loop)
-      if (normalizedLevels.some((level, idx) => level !== selectedLevels[idx])) {
+      if (
+        normalizedLevels.some((level, idx) => level !== selectedLevels[idx])
+      ) {
         setSelectedLevels(normalizedLevels);
       }
     }
@@ -530,25 +793,29 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     const fetchCourses = async () => {
       setIsLoading(true);
       try {
-        const response = await axios.post(urlCourseDetails, {
-          status: [],
-          level_ids: [],
-          faculty_ids: [],
-          search_by_name: "",
-          tag: [],
-          min_percentage_completed: 0,
-          max_percentage_completed: 0,
-        }, {
-          params: {
-            instituteId: instituteId,
-            page: 0,
-            size: 20, // Reasonable size for course catalog
-            sort: "createdAt,desc"
+        const response = await axios.post(
+          urlCourseDetails,
+          {
+            status: [],
+            level_ids: [],
+            faculty_ids: [],
+            search_by_name: "",
+            tag: [],
+            min_percentage_completed: 0,
+            max_percentage_completed: 0,
           },
-          headers: {
-            "Content-Type": "application/json",
+          {
+            params: {
+              instituteId: instituteId,
+              page: 0,
+              size: 50,
+              sort: "createdAt,desc",
+            },
+            headers: {
+              "Content-Type": "application/json",
+            },
           },
-        });
+        );
 
         // Transform API response to Course interface
         const apiCourses = response.data?.content || response.data || [];
@@ -558,13 +825,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         }
         const transformedCourses: Course[] = apiCourses.map((course: any) => {
           // Get the raw media ID (same priority as study library)
-          const thumbnailField = course.course_preview_image_media_id || course.course_banner_media_id || course.thumbnail_file_id;
+          const thumbnailField =
+            course.course_preview_image_media_id ||
+            course.course_banner_media_id ||
+            course.thumbnail_file_id;
           const thumbnailUrl = thumbnailField || "/api/placeholder/300/200";
 
           // Parse HTML content safely
           const parseHtmlContent = (htmlString: string) => {
             if (!htmlString) return "";
-            return htmlString.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+            return htmlString
+              .replace(/<[^>]*>/g, "")
+              .replace(/&nbsp;/g, " ")
+              .trim();
           };
 
           // Get pricing from search API response
@@ -577,11 +850,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               : undefined;
           const isFree = finalPrice === 0;
 
-
           return {
             id: course.id || course.packageId,
             title: course.package_name || "Untitled Course",
-            description: parseHtmlContent(course.course_html_description_html) || "No description available",
+            description:
+              parseHtmlContent(course.course_html_description_html) ||
+              "No description available",
             thumbnail: thumbnailUrl,
             bannerImage: thumbnailUrl, // Use the same image as banner for details page
             price: finalPrice,
@@ -589,39 +863,32 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             currency: course.currency,
             type: course.package_type || course.type || "General",
             level: course.level_name || "Beginner",
-            instructor: course.instructors?.[0]?.full_name || "Unknown Instructor",
-            duration: course.estimated_duration || course.duration || "Unknown Duration",
+            instructor:
+              course.instructors?.[0]?.full_name || "Unknown Instructor",
+            duration:
+              course.estimated_duration ||
+              course.duration ||
+              "Unknown Duration",
             rating: course.rating || 0,
             packageSessionId: course.package_session_id,
             enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
             sessionId: course.session_id,
             sessionName: course.session_name,
             // Add all other fields from the API response for dynamic filtering
-            ...course
+            ...course,
           };
         });
 
+        setTotalApiElements(
+          response.data?.totalElements || transformedCourses.length,
+        );
         setCourses(transformedCourses);
         setFilteredCourses(transformedCourses);
-
-        // Debug: Log available level values to help diagnose filtering
-        if (transformedCourses.length > 0) {
-          const uniqueLevels = [...new Set(transformedCourses.map(c => c.level || c.level_name))];
-          console.log('[CourseCatalogComponent] Available level values:', uniqueLevels);
-          // Log first course to see all available fields
-          if (transformedCourses[0]) {
-            console.log('[CourseCatalogComponent] Sample course fields:', {
-              level: transformedCourses[0].level,
-              level_name: transformedCourses[0].level_name,
-              allKeys: Object.keys(transformedCourses[0]).filter(k =>
-                k.toLowerCase().includes('buy') ||
-                k.toLowerCase().includes('rent')
-              )
-            });
-          }
-        }
       } catch (error) {
-        console.error("[CourseCatalogComponent] Error fetching courses:", error);
+        console.error(
+          "[CourseCatalogComponent] Error fetching courses:",
+          error,
+        );
         setCourses([]);
         setFilteredCourses([]);
       } finally {
@@ -641,35 +908,42 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       filtered = filtered.filter(
         (course) =>
           course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          course.description.toLowerCase().includes(searchTerm.toLowerCase())
+          course.description.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }
 
     // Apply level filter
     if (selectedLevels.length > 0) {
-      filtered = filtered.filter(course => {
+      filtered = filtered.filter((course) => {
         // Check if any selected level matches the course's level field
         const matchesLevel = selectedLevels.includes(course.level);
 
         // For Buy/Rent filters, also check level_name field directly from API
         // since "Buy" and "Rent" might be stored in level_name
-        const isBuyRentFilter = selectedLevels.some(level =>
-          level?.toLowerCase() === "buy" || level?.toLowerCase() === "rent"
+        const isBuyRentFilter = selectedLevels.some(
+          (level) =>
+            level?.toLowerCase() === "buy" || level?.toLowerCase() === "rent",
         );
 
         if (isBuyRentFilter) {
           // Check multiple possible fields where Buy/Rent might be stored
-          const levelName = (course.level_name || course.level || "").toString().trim();
-          const courseType = (course.type || course.package_type || "").toString().trim();
+          const levelName = (course.level_name || course.level || "")
+            .toString()
+            .trim();
+          const courseType = (course.type || course.package_type || "")
+            .toString()
+            .trim();
 
-          const matchesBuyRent = selectedLevels.some(level => {
+          const matchesBuyRent = selectedLevels.some((level) => {
             const filterValue = level.toString().trim();
             return (
               levelName.toLowerCase() === filterValue.toLowerCase() ||
               courseType.toLowerCase() === filterValue.toLowerCase() ||
               // Also check if any field in the course object contains Buy/Rent
-              Object.values(course).some(val =>
-                val && val.toString().toLowerCase() === filterValue.toLowerCase()
+              Object.values(course).some(
+                (val) =>
+                  val &&
+                  val.toString().toLowerCase() === filterValue.toLowerCase(),
               )
             );
           });
@@ -685,23 +959,37 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
     // Apply tag filter
     if (selectedTags.length > 0) {
-      filtered = filtered.filter(course => {
-        const courseTags = course.comma_separeted_tags?.split(',').map((tag: string) => tag.trim()) || [];
-        return selectedTags.some(tag => courseTags.includes(tag));
+      filtered = filtered.filter((course) => {
+        const courseTags =
+          course.comma_separeted_tags
+            ?.split(",")
+            .map((tag: string) => tag.trim()) || [];
+        return selectedTags.some((tag) => courseTags.includes(tag));
       });
     }
 
     // Apply instructor filter
     if (selectedInstructors.length > 0) {
-      filtered = filtered.filter(course => selectedInstructors.includes(course.instructor));
+      filtered = filtered.filter((course) =>
+        selectedInstructors.includes(course.instructor),
+      );
     }
 
     // Apply price range filter
-    if (shouldShowPriceFilter && priceRange && (priceRange.min !== undefined || priceRange.max !== undefined)) {
+    if (
+      shouldShowPriceFilter &&
+      priceRange &&
+      (priceRange.min !== undefined || priceRange.max !== undefined)
+    ) {
       filtered = filtered.filter((course) => {
-        const coursePrice = typeof course.price === "number" ? course.price : Number(course.price) || 0;
-        const meetsMin = priceRange.min !== undefined ? coursePrice >= priceRange.min : true;
-        const meetsMax = priceRange.max !== undefined ? coursePrice <= priceRange.max : true;
+        const coursePrice =
+          typeof course.price === "number"
+            ? course.price
+            : Number(course.price) || 0;
+        const meetsMin =
+          priceRange.min !== undefined ? coursePrice >= priceRange.min : true;
+        const meetsMax =
+          priceRange.max !== undefined ? coursePrice <= priceRange.max : true;
         return meetsMin && meetsMax;
       });
     }
@@ -709,10 +997,18 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     // Apply sorting
     switch (sortOption) {
       case "Newest":
-        filtered.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        filtered.sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime(),
+        );
         break;
       case "Oldest":
-        filtered.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
+        filtered.sort(
+          (a, b) =>
+            new Date(a.createdAt || 0).getTime() -
+            new Date(b.createdAt || 0).getTime(),
+        );
         break;
       case "Price: Low to High":
         filtered.sort((a, b) => a.price - b.price);
@@ -733,12 +1029,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
     setFilteredCourses(filtered);
     setCurrentPage(1); // Reset to first page when filters change
-  }, [courses, searchTerm, selectedLevels, selectedTags, selectedInstructors, sortOption, priceRange, shouldShowPriceFilter]);
+  }, [
+    courses,
+    searchTerm,
+    selectedLevels,
+    selectedTags,
+    selectedInstructors,
+    sortOption,
+    priceRange,
+    shouldShowPriceFilter,
+  ]);
 
   // Pagination
   const paginatedCourses = filteredCourses.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
   const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
 
@@ -756,7 +1061,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const toggleItem = (
     itemId: string,
     list: string[],
-    setter: (newList: string[]) => void
+    setter: (newList: string[]) => void,
   ) => {
     if (list.includes(itemId)) {
       setter(list.filter((i) => i !== itemId));
@@ -783,47 +1088,30 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     // Pass enroll_invite_id, banner image, and level as search params so details page can use them
     const searchParams = new URLSearchParams();
     if (course.enrollInviteId) {
-      searchParams.set('enrollInviteId', course.enrollInviteId);
+      searchParams.set("enrollInviteId", course.enrollInviteId);
     }
     if (course.packageSessionId) {
-      searchParams.set('packageSessionId', course.packageSessionId);
+      searchParams.set("packageSessionId", course.packageSessionId);
     }
     if (course.bannerImage) {
-      searchParams.set('bannerImage', course.bannerImage);
+      searchParams.set("bannerImage", course.bannerImage);
     }
     if (course.level) {
-      searchParams.set('level', course.level);
+      searchParams.set("level", course.level);
     }
 
     navigate({
-      to: `/${tagName}/${course.id}`,
-      search: searchParams.toString() ? {
-        enrollInviteId: course.enrollInviteId,
-        packageSessionId: course.packageSessionId,
-        bannerImage: course.bannerImage,
-        level: course.level
-      } : {}
+      to: `/${tagName}/${course.packageSessionId || course.id}`,
+      search: searchParams.toString()
+        ? {
+            enrollInviteId: course.enrollInviteId,
+            packageSessionId: course.packageSessionId,
+            bannerImage: course.bannerImage,
+            level: course.level,
+          }
+        : {},
     });
   };
-
-
-  // Get unique values for filters
-  const levels = [...new Set(courses.map(course => course.level))].map(level => ({
-    id: level,
-    name: toTitleCase(level)
-  }));
-
-  const tags = [...new Set(courses.flatMap(course =>
-    course.comma_separeted_tags?.split(',').map((tag: string) => tag.trim()) || []
-  ))].map(tag => ({
-    id: tag,
-    name: tag
-  }));
-
-  const instructors = [...new Set(courses.map(course => course.instructor))].map(instructor => ({
-    id: instructor,
-    name: instructor
-  }));
 
   const filterBadgeCount =
     selectedLevels.length +
@@ -840,7 +1128,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             <div className="h-6 bg-[hsl(var(--catalogue-bg-muted))] rounded w-1/4 mb-6"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-[hsl(var(--catalogue-bg-muted))] rounded-lg h-56"></div>
+                <div
+                  key={i}
+                  className="bg-[hsl(var(--catalogue-bg-muted))] rounded-lg h-56"
+                ></div>
               ))}
             </div>
           </div>
@@ -850,9 +1141,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   }
 
   return (
-    <div ref={scrollRef} className="py-6 bg-[hsl(var(--catalogue-bg-subtle))] w-full">
+    <div
+      ref={scrollRef}
+      className="py-6 bg-[hsl(var(--catalogue-bg-subtle))] w-full"
+    >
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <h2 className="text-xl sm:text-2xl font-bold text-[hsl(var(--catalogue-text-primary))] mb-4">{title}</h2>
+        <h2 className="text-xl sm:text-2xl font-bold text-[hsl(var(--catalogue-text-primary))] mb-4">
+          {title}
+        </h2>
 
         <div
           className={`flex flex-col ${shouldRenderFiltersPanel ? "lg:flex-row" : ""} gap-4 lg:gap-6`}
@@ -864,12 +1160,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   {/* Mobile Header */}
                   <div className="lg:hidden mb-3">
                     <button
-                      onClick={() => setIsMobileFilterExpanded(!isMobileFilterExpanded)}
+                      onClick={() =>
+                        setIsMobileFilterExpanded(!isMobileFilterExpanded)
+                      }
                       className="w-full flex items-center justify-between p-2 bg-[hsl(var(--catalogue-bg-subtle))] rounded-md hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <Filter size={16} className="text-[hsl(var(--catalogue-text-secondary))]" />
-                        <span className="text-sm font-medium text-[hsl(var(--catalogue-text-primary))]">Filters</span>
+                        <Filter
+                          size={16}
+                          className="text-[hsl(var(--catalogue-text-secondary))]"
+                        />
+                        <span className="text-sm font-medium text-[hsl(var(--catalogue-text-primary))]">
+                          Filters
+                        </span>
                         {hasActiveFilters && (
                           <span className="bg-primary-100 text-primary-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
                             {filterBadgeCount}
@@ -884,10 +1187,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                   </div>
 
                   {/* Filter Content - Hidden on mobile when collapsed */}
-                  <div className={`lg:block ${isMobileFilterExpanded ? "block" : "hidden"}`}>
+                  <div
+                    className={`lg:block ${isMobileFilterExpanded ? "block" : "hidden"}`}
+                  >
                     {/* Desktop Header */}
                     <div className="hidden lg:flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-bold text-gray-800">Filters</h2>
+                      <h2 className="text-xl font-bold text-gray-800">
+                        Filters
+                      </h2>
                       <div className="flex gap-1">
                         <Button
                           onClick={clearAllFilters}
@@ -908,7 +1215,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
                     {/* Mobile Header */}
                     <div className="lg:hidden flex justify-between items-center mb-4">
-                      <h2 className="text-lg font-bold text-gray-800">Filters</h2>
+                      <h2 className="text-lg font-bold text-gray-800">
+                        Filters
+                      </h2>
                       <div className="flex gap-1">
                         <Button
                           onClick={clearAllFilters}
@@ -929,20 +1238,35 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
                     {shouldShowLevelFilter && (
                       <FilterSection
-                        title={filtersConfig?.find((filter) => filter.id === "level")?.label ?? getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                        title={
+                          filtersConfig?.find((filter) => filter.id === "level")
+                            ?.label ??
+                          getTerminology(ContentTerms.Level, SystemTerms.Level)
+                        }
                         items={levels}
                         selectedItems={selectedLevels}
-                        handleChange={(id) => toggleItem(id, selectedLevels, setSelectedLevels)}
+                        handleChange={(id) =>
+                          toggleItem(id, selectedLevels, setSelectedLevels)
+                        }
                         disabled={levels.length === 0}
                       />
                     )}
 
                     {shouldShowTagsFilter && (
                       <FilterSection
-                        title={filtersConfig?.find((filter) => filter.id === "tags")?.label ?? getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)}
+                        title={
+                          filtersConfig?.find((filter) => filter.id === "tags")
+                            ?.label ??
+                          getTerminologyPlural(
+                            ContentTerms.PopularTag,
+                            SystemTerms.PopularTag,
+                          )
+                        }
                         items={tags}
                         selectedItems={selectedTags}
-                        handleChange={(id) => toggleItem(id, selectedTags, setSelectedTags)}
+                        handleChange={(id) =>
+                          toggleItem(id, selectedTags, setSelectedTags)
+                        }
                         disabled={tags.length === 0}
                       />
                     )}
@@ -950,12 +1274,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {shouldShowInstructorFilter && (
                       <FilterSection
                         title={
-                          filtersConfig?.find((filter) => filter.id === "instructors" || filter.id === "authors")
-                            ?.label ?? "Authors"
+                          filtersConfig?.find(
+                            (filter) =>
+                              filter.id === "instructors" ||
+                              filter.id === "authors",
+                          )?.label ?? "Authors"
                         }
                         items={instructors}
                         selectedItems={selectedInstructors}
-                        handleChange={(id) => toggleItem(id, selectedInstructors, setSelectedInstructors)}
+                        handleChange={(id) =>
+                          toggleItem(
+                            id,
+                            selectedInstructors,
+                            setSelectedInstructors,
+                          )
+                        }
                         disabled={instructors.length === 0}
                       />
                     )}
@@ -968,23 +1301,31 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center gap-2">
                             <div className="flex-1">
-                              <label className="block text-xs text-gray-500 mb-1">Min</label>
+                              <label className="block text-xs text-gray-500 mb-1">
+                                Min
+                              </label>
                               <input
                                 type="number"
                                 min={0}
                                 value={priceRange?.min ?? ""}
-                                onChange={(e) => handlePriceInputChange("min", e.target.value)}
+                                onChange={(e) =>
+                                  handlePriceInputChange("min", e.target.value)
+                                }
                                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                               />
                             </div>
                             <span className="text-gray-500 mt-6">-</span>
                             <div className="flex-1">
-                              <label className="block text-xs text-gray-500 mb-1">Max</label>
+                              <label className="block text-xs text-gray-500 mb-1">
+                                Max
+                              </label>
                               <input
                                 type="number"
                                 min={0}
                                 value={priceRange?.max ?? ""}
-                                onChange={(e) => handlePriceInputChange("max", e.target.value)}
+                                onChange={(e) =>
+                                  handlePriceInputChange("max", e.target.value)
+                                }
                                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
                               />
                             </div>
@@ -999,14 +1340,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           )}
 
           {/* Main Content Area */}
-          <div className={shouldRenderFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full"}>
+          <div
+            className={
+              shouldRenderFiltersPanel ? "w-full lg:w-3/4 order-2" : "w-full"
+            }
+          >
             {/* Search and Sort Bar */}
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow mb-6">
               <div className="flex flex-col sm:flex-row gap-4">
                 {/* Search */}
                 <div className="flex-1">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                    <Search
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      size={20}
+                    />
                     <input
                       type="text"
                       placeholder="Search courses..."
@@ -1020,7 +1368,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 {/* Sort */}
                 <div className="sm:w-48">
                   <div className="relative">
-                    <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                    <SortAsc
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      size={20}
+                    />
                     <select
                       value={sortOption}
                       onChange={(e) => setSortOption(e.target.value)}
@@ -1028,8 +1379,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     >
                       <option value="Newest">Newest</option>
                       <option value="Oldest">Oldest</option>
-                      <option value="Price: Low to High">Price: Low to High</option>
-                      <option value="Price: High to Low">Price: High to Low</option>
+                      <option value="Price: Low to High">
+                        Price: Low to High
+                      </option>
+                      <option value="Price: High to Low">
+                        Price: High to Low
+                      </option>
                       <option value="Rating">Rating</option>
                       <option value="Name A-Z">Name A-Z</option>
                       <option value="Name Z-A">Name Z-A</option>
@@ -1044,8 +1399,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
               {paginatedCourses.map((course, index) => (
                 <div
                   key={`${course.id}-${index}-${currentPage}`}
-                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${render?.styles?.roundedEdges !== false ? 'rounded-lg' : 'rounded-none'
-                    }`}
+                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${
+                    render?.styles?.roundedEdges !== false
+                      ? "rounded-lg"
+                      : "rounded-none"
+                  }`}
                   onClick={() => handleCourseClick(course)}
                 >
                   {/* Course Thumbnail */}
@@ -1083,18 +1441,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     {/* Course Info */}
                     <div className="flex flex-col gap-2">
                       {/* Price */}
-                      {displayPrice && globalSettings?.payment?.enabled !== false && (
-                        <PriceWithMrp
-                          actual={course.price}
-                          elevated={course.elevatedPrice}
-                          currency={course.currency}
-                          size="md"
-                          className="text-primary-600"
-                        />
-                      )}
+                      {displayPrice &&
+                        globalSettings?.payment?.enabled !== false && (
+                          <PriceWithMrp
+                            actual={course.price}
+                            elevated={course.elevatedPrice}
+                            currency={course.currency}
+                            size="md"
+                            className="text-primary-600"
+                          />
+                        )}
 
                       {/* Badges and Cart */}
-                      {(displayLevel || displayRating || shouldShowCartControls) && (
+                      {(displayLevel ||
+                        displayRating ||
+                        shouldShowCartControls) && (
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {displayLevel && (
@@ -1132,43 +1493,58 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             {/* No Results */}
             {filteredCourses.length === 0 && (
               <div className="text-center py-8">
-                <p className="text-gray-500 text-base">No courses found matching your criteria.</p>
+                <p className="text-gray-500 text-base">
+                  No courses found matching your criteria.
+                </p>
               </div>
             )}
 
-            {/* Pagination - Only show if there are multiple pages */}
+            {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex justify-center">
-                <div className="flex space-x-2">
-                  <Button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
                     disabled={currentPage === 1}
-                    className="px-3 py-2"
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Previous
-                  </Button>
+                  </button>
 
                   {[...Array(totalPages)].map((_, i) => (
-                    <Button
+                    <button
                       key={i + 1}
+                      type="button"
                       onClick={() => setCurrentPage(i + 1)}
-                      className={`px-3 py-2 ${currentPage === i + 1
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                        }`}
+                      className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        currentPage === i + 1
+                          ? "border-primary-600 bg-primary-600 text-white"
+                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
                     >
                       {i + 1}
-                    </Button>
+                    </button>
                   ))}
 
-                  <Button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
                     disabled={currentPage === totalPages}
-                    className="px-3 py-2"
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Next
-                  </Button>
+                  </button>
                 </div>
+                {totalApiElements > courses.length && (
+                  <p className="text-xs text-gray-400">
+                    Showing {courses.length} of {totalApiElements} courses
+                  </p>
+                )}
               </div>
             )}
           </div>

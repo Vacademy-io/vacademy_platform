@@ -14,6 +14,11 @@ import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { Preferences } from "@capacitor/preferences";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
+import {
+  resolveAdditionalCharges,
+  sumChargeAmounts,
+  ResolvedCharge,
+} from "../../-utils/additional-charges-util";
 
 
 // Helper for simple image loading in Rent loop
@@ -353,6 +358,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   emptyStateMessage = "Your cart is empty. Add some books!",
   styles = {},
   instituteId, // Accept instituteId prop
+  globalSettings,
   onlyLogic = false,
 }) => {
 
@@ -623,6 +629,17 @@ export const CartComponent: React.FC<CartComponentProps> = ({
   const roundedEdges = styles.roundedEdges ? "rounded-lg" : "";
   const backgroundColor = styles.backgroundColor || "#ffffff";
 
+  // Buy-mode additional charges (shipping). Rent mode is intentionally excluded —
+  // security deposit / rent-mode shipping is a separate piece of work.
+  const buyModeItemQty = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const resolvedAdditionalCharges = useMemo<ResolvedCharge[]>(() => {
+    if (isRentMode) return [];
+    return resolveAdditionalCharges(globalSettings, "buy", buyModeItemQty);
+  }, [globalSettings, isRentMode, buyModeItemQty]);
+  const additionalChargesTotal = sumChargeAmounts(resolvedAdditionalCharges);
+  const buyModeSubtotal = getTotal();
+  const buyModeGrandTotal = buyModeSubtotal + additionalChargesTotal;
+
   const paymentBanner = paymentMessage ? (
     <div className={`w-full p-4 mb-4 rounded-lg flex items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 ${paymentMessage.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' :
       paymentMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' :
@@ -840,14 +857,26 @@ export const CartComponent: React.FC<CartComponentProps> = ({
       {/* Checkout Button for Buy mode */}
       {items.length > 0 && !isRentMode && (
         <div className="mt-5 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
-          <div className="flex justify-between items-center pt-3 border-t border-gray-200 mb-3">
-            <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
-            <span className="text-base sm:text-lg font-bold text-gray-900">₹{getTotal().toFixed(2)}</span>
+          <div className="space-y-1.5 pt-2 mb-3">
+            <div className="flex justify-between items-center text-sm text-gray-700">
+              <span>Subtotal ({buyModeItemQty} {buyModeItemQty === 1 ? "book" : "books"})</span>
+              <span className="font-medium">₹{buyModeSubtotal.toFixed(2)}</span>
+            </div>
+            {resolvedAdditionalCharges.map((charge) => (
+              <div key={charge.key} className="flex justify-between items-center text-sm text-gray-700">
+                <span>{charge.label}</span>
+                <span className="font-medium">₹{charge.amount.toFixed(2)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+              <span className="text-base sm:text-lg font-semibold text-gray-900">Total</span>
+              <span className="text-base sm:text-lg font-bold text-gray-900">₹{buyModeGrandTotal.toFixed(2)}</span>
+            </div>
           </div>
 
           <Button
             onClick={() => {
-              console.log("[CartComponent] Proceeding to checkout (Buy) with items:", items);
+              console.log("[CartComponent] Proceeding to checkout (Buy) with items:", items, "charges:", resolvedAdditionalCharges);
               setIsCheckoutFormOpen(true);
             }}
             className="w-full bg-primary-400 hover:bg-primary-500 active:bg-primary-500 text-white font-semibold text-sm sm:text-base py-2.5 sm:py-3 rounded-lg shadow-md transition-all duration-200 active:scale-[0.98]"
@@ -862,10 +891,11 @@ export const CartComponent: React.FC<CartComponentProps> = ({
         open={isCheckoutFormOpen}
         onOpenChange={setIsCheckoutFormOpen}
         instituteId={instituteId || INSTITUTE_ID}
-        totalAmount={getTotal()}
+        totalAmount={buyModeGrandTotal}
         items={items}
         membershipPlan={membershipPlan}
         isRentMode={false}
+        additionalCharges={resolvedAdditionalCharges}
       />
     </div>
   );

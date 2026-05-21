@@ -1968,6 +1968,7 @@ export const SlideMaterial = ({
                 } catch {
                     toast.error(`Error in publishing the slide`);
                 }
+                return;
             }
 
             if (activeItem?.source_type == 'VIDEO' && activeItem?.splitScreenMode) {

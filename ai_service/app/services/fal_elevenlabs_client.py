@@ -157,15 +157,14 @@ def _content_hash(text: str, duration_s: float, loop: bool,
 
 def get_fal_api_key_from_env() -> Optional[str]:
     """Resolve the fal.ai API key. Mirrors `fal_veo_client.get_fal_api_key_from_env`
-    so all fal-backed clients pull from the same env vars.
+    so all fal-backed clients pull from the same env var.
 
-    Returns None if neither `FAL_API_KEY` nor legacy `FAL_KEY` is set so
-    the caller can degrade gracefully (audio pipeline becomes VO-only).
+    Returns None if `FAL_API_KEY` is not set so the caller can degrade
+    gracefully (audio pipeline becomes VO-only).
     """
-    for key in ("FAL_API_KEY", "FAL_KEY"):
-        v = os.environ.get(key)
-        if v and v.strip():
-            return v.strip()
+    v = os.environ.get("FAL_API_KEY")
+    if v and v.strip():
+        return v.strip()
     return None
 
 

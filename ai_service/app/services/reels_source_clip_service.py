@@ -162,6 +162,16 @@ def _even(n: int) -> int:
     return n - (n % 2)
 
 
+# Neighborhood window for sparse-coverage face-center fallback. When the
+# indexing pipeline only densely samples face_segments inside the
+# LLM-picked highlight, a reel cut from an adjacent non-highlight window
+# may have <30% in-window coverage. Pulling in segments within ±NEIGHBOR_S
+# of the window edges restores a stable static center for those cases
+# (production audit 2026-05-13, reel-9ad0255f2bb6).
+_FACE_CENTER_NEIGHBOR_S = 5.0
+_FACE_CENTER_NEIGHBOR_WEIGHT = 0.25
+
+
 def _compute_face_center(
     face_segments: list[dict],
     win_t_start: float,
@@ -171,38 +181,57 @@ def _compute_face_center(
     weighted by overlap duration. Falls back to image center (0.5, 0.5)
     if no face data is available.
 
-    A static center for the entire clip (vs time-varying crop) is the
-    Phase-1 simplification — produces a stable, predictable frame.
-    Time-varying crop is a polish item for later (Ken Burns on long
-    speaker-moves windows).
+    For sparse-coverage windows (indexing pipeline only densely sampled
+    the highlight), also pulls in segments within ±5s of the window edges
+    at reduced weight, so the static center remains anchored on the
+    speaker even when in-window coverage is thin.
     """
     if not face_segments:
         return 0.5, 0.5
 
-    total_overlap = 0.0
+    total_w = 0.0
     sum_cx = 0.0
     sum_cy = 0.0
+    nbr_start = win_t_start - _FACE_CENTER_NEIGHBOR_S
+    nbr_end = win_t_end + _FACE_CENTER_NEIGHBOR_S
     for seg in face_segments:
-        ss = float(seg.get("t_start") or 0.0)
-        se = float(seg.get("t_end") or 0.0)
-        # Overlap with the window.
-        ov_start = max(ss, win_t_start)
-        ov_end = min(se, win_t_end)
-        overlap = max(0.0, ov_end - ov_start)
-        if overlap <= 0:
+        try:
+            ss = float(seg.get("t_start") or 0.0)
+            se = float(seg.get("t_end") or 0.0)
+        except (TypeError, ValueError):
             continue
         bbox = seg.get("bbox_norm") or [0.5, 0.5, 0.0, 0.0]
         if len(bbox) < 4:
             continue
-        cx = float(bbox[0]) + float(bbox[2]) / 2.0
-        cy = float(bbox[1]) + float(bbox[3]) / 2.0
-        sum_cx += cx * overlap
-        sum_cy += cy * overlap
-        total_overlap += overlap
+        try:
+            cx = float(bbox[0]) + float(bbox[2]) / 2.0
+            cy = float(bbox[1]) + float(bbox[3]) / 2.0
+        except (TypeError, ValueError):
+            continue
+        # Full-weight overlap with window
+        ov_start = max(ss, win_t_start)
+        ov_end = min(se, win_t_end)
+        overlap = max(0.0, ov_end - ov_start)
+        if overlap > 0:
+            sum_cx += cx * overlap
+            sum_cy += cy * overlap
+            total_w += overlap
+            continue
+        # Reduced-weight overlap with neighborhood (segment lies outside
+        # window but within ±NEIGHBOR_S — useful when in-window coverage
+        # is sparse).
+        nbr_ov_start = max(ss, nbr_start)
+        nbr_ov_end = min(se, nbr_end)
+        nbr_overlap = max(0.0, nbr_ov_end - nbr_ov_start)
+        if nbr_overlap > 0:
+            w = nbr_overlap * _FACE_CENTER_NEIGHBOR_WEIGHT
+            sum_cx += cx * w
+            sum_cy += cy * w
+            total_w += w
 
-    if total_overlap <= 0:
+    if total_w <= 0:
         return 0.5, 0.5
-    return sum_cx / total_overlap, sum_cy / total_overlap
+    return sum_cx / total_w, sum_cy / total_w
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +262,12 @@ TRAJECTORY_MIN_MOVE_NORM = 0.01    # 1% of frame dimension
 # Real face_segments rarely exceed ~30 over a 60s window; this is a
 # safety valve for pathological inputs.
 TRAJECTORY_MAX_KEYFRAMES = 24
+
+# Minimum fraction of the window covered by face_segments before we trust
+# the trajectory. Below this, gaps between keyframes are large enough
+# that linear interpolation drifts off the speaker (audit issue #6).
+# Falls back to the (now neighborhood-aware) static crop.
+TRAJECTORY_MIN_COVERAGE = 0.5
 
 
 def _source_to_crop_time(t_source: float, trim_map: dict) -> Optional[float]:
@@ -283,7 +318,9 @@ def _build_crop_trajectory(
     if not face_segments:
         return []
 
+    win_duration = max(1e-6, win_t_end - win_t_start)
     raw: list[tuple[float, float, float]] = []
+    total_overlap = 0.0
     for seg in face_segments:
         try:
             ss = float(seg.get("t_start") or 0.0)
@@ -307,8 +344,15 @@ def _build_crop_trajectory(
         if crop_t is None:
             continue
         raw.append((crop_t, max(0.0, min(1.0, cx)), max(0.0, min(1.0, cy))))
+        total_overlap += (ov_end - ov_start)
 
     if not raw:
+        return []
+
+    # Sparse coverage → trajectory will interpolate over big gaps and
+    # drift off the speaker. Prefer the (neighborhood-aware) static crop.
+    coverage = total_overlap / win_duration
+    if coverage < TRAJECTORY_MIN_COVERAGE:
         return []
 
     raw.sort(key=lambda k: k[0])

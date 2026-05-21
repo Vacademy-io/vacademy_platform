@@ -89,7 +89,7 @@ const AddAssignmentDialog = ({
                     live_date: '',
                     end_date: '',
                     re_attempt_count: 0,
-                    comma_separated_media_ids: '',
+                    comma_separated_media_ids: 'types:',
                 },
                 is_loaded: true,
                 new_slide: true,

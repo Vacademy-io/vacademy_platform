@@ -93,6 +93,7 @@ const hasContent = (htmlString: string | undefined | null): boolean => {
 
 interface EnrollByInviteProps {
   vendor?: PaymentVendor;
+  utmParams?: Record<string, string>;
 }
 
 type BundledSessionMeta = {
@@ -110,7 +111,7 @@ type InvitePackageSession =
   | null
   | undefined;
 
-const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
+const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps = {}) => {
   // Ensure domain resolution runs on this public route to fetch fontFamily/tab branding from /resolve
   const domainRouting = useDomainRouting();
   const [paymentType, setPaymentType] = useState<string>("");
@@ -245,7 +246,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
   useEffect(() => {
     if (inviteData?.gtm_container_id && courseData.course && !hasFiredPageView.current) {
       hasFiredPageView.current = true;
-      pushPageView(courseData.course, paymentType);
+      pushPageView(courseData.course, paymentType, utmParams);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inviteData?.gtm_container_id, courseData.course]);
@@ -269,6 +270,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         paymentType,
         currency: enrollmentData.selectedPayment?.currency,
         amount: enrollmentData.selectedPayment?.amount,
+        utmParams,
       });
     }
   }, [currentStep]);
@@ -914,6 +916,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         vendor: getPaymentVendor(inviteData) || "STRIPE",
         currency: enrollmentData.selectedPayment?.currency,
         amount: enrollmentData.selectedPayment?.amount,
+        utmParams,
       });
     }
 
@@ -964,7 +967,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         }
         setError(errorData?.ex);
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "NONE", errorMessage: errorData?.ex || "Enrollment failed" });
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "NONE", errorMessage: errorData?.ex || "Enrollment failed", utmParams });
         }
       } finally {
         setLoading(false);
@@ -1031,7 +1034,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         }
         setError(errorData?.ex);
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "EWAY", errorMessage: errorData?.ex || "Payment failed" });
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "EWAY", errorMessage: errorData?.ex || "Payment failed", utmParams });
         }
         console.error(err);
       } finally {
@@ -1152,7 +1155,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         const cashfreeErrorMsg = (err as Error)?.message || errorData?.ex || "Failed to initiate Cashfree payment";
         setError(cashfreeErrorMsg);
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "CASHFREE", errorMessage: cashfreeErrorMsg });
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "CASHFREE", errorMessage: cashfreeErrorMsg, utmParams });
         }
         console.error("Cashfree enrollment error:", err);
       } finally {
@@ -1229,7 +1232,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
         }
         setError(errorData?.ex || "Failed to initiate payment");
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to initiate payment" });
+          pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to initiate payment", utmParams });
         }
         console.error("Razorpay enrollment error:", err);
         setLoading(false);
@@ -1307,7 +1310,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
       }
       setError(errorData?.ex);
       if (inviteData?.gtm_container_id) {
-        pushPaymentFailed({ courseName: courseData.course || "", vendor: "STRIPE", errorMessage: errorData?.ex || "Payment failed" });
+        pushPaymentFailed({ courseName: courseData.course || "", vendor: "STRIPE", errorMessage: errorData?.ex || "Payment failed", utmParams });
       }
       console.error(err);
     } finally {
@@ -1382,7 +1385,7 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           }
           setError(errorData?.ex || "Failed to complete enrollment");
           if (inviteData?.gtm_container_id) {
-            pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to complete enrollment" });
+            pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to complete enrollment", utmParams });
           }
           console.error("Razorpay completion error:", err);
         } finally {

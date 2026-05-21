@@ -542,27 +542,109 @@ def _heuristic_importance(
         else:
             # Numeric, capitalized, or long content word → keep (importance 2).
             importance.append(2)
-    title = _fallback_title(words)
+    # Pass the just-computed importance array so the title picker can use
+    # it as a salience signal. At this point `w.importance` is still the
+    # default (2) for every word — `_apply_importance` runs in the
+    # caller (`enrich`) only AFTER this function returns.
+    title = _fallback_title(words, importance=importance)
     rationale = _fallback_rationale(candidate_row)
     return title, rationale, importance
 
 
-def _fallback_title(words: list[_Word]) -> str:
-    """First ~6 meaningful words of the window, capitalized."""
+def _fallback_title(
+    words: list[_Word],
+    importance: Optional[list[int]] = None,
+) -> str:
+    """Heuristic title — runs when LLM enrichment fails or is unavailable.
+
+    Previously emitted the first 6 words verbatim. When the window started
+    mid-sentence (sentence-snap not yet fixed) the title looked like
+    "a there was a person you" — pure low-information particles. The user
+    surfaced this from a real production reel (2026-05-13 audit).
+
+    New strategy:
+      1. Score every word with `_word_salience` — importance + content-shape
+         signals (capitalization, numerics, length > 6 chars).
+      2. Pick the highest-salience anchor word (ties broken by earliest
+         index so the title leads with the speaker's first big word).
+      3. Build a 5-word phrase centered on the anchor (2 left + anchor +
+         2 right after dropping leading stopwords).
+      4. Title-case the result for visual polish.
+      5. If every word scores 0 (degenerate window of pure particles),
+         return "Reel highlight" rather than first-six-words.
+
+    `importance` may be passed in by `_heuristic_importance` (which has
+    the array in scope before it's applied to the word objects). When
+    None, the function reads `w.importance` directly — works for the
+    post-LLM path where `_apply_importance` has already run.
+    """
     if not words:
         return "Untitled clip"
-    pieces: list[str] = []
-    for w in words[:12]:
-        tok = w.text.strip(",.!?;:\"'()[]")
-        if not tok:
-            continue
-        pieces.append(tok)
-        if len(pieces) >= 6:
-            break
+
+    def _word_salience(idx: int, w: _Word) -> int:
+        tok = w.text.strip(",.!?;:\"'()[]").lower()
+        # Skip empties, stopwords, fillers. We previously also rejected
+        # `len(tok) <= 2` which threw away salient short tokens like
+        # "47", "10", "AI" — that filter is gone now. Punctuation strip
+        # handles "?" / "!" → empty. FILLER_WORDS ensures "um/uh/y'know"
+        # never anchor the title (else windows of pure filler would
+        # produce titles like "Um Uh You").
+        if not tok or tok in STOPWORDS or tok in FILLER_WORDS:
+            return 0
+        imp = (
+            importance[idx]
+            if (importance is not None and idx < len(importance))
+            else w.importance
+        )
+        # importance 0/1 → 0, 2 → 3, 3 → 6.
+        s = max(0, imp - 1) * 3
+        # Content-shape bonuses — help when importance is flat (e.g. the
+        # heuristic gives almost every content word importance=2).
+        if w.text[:1].isupper():
+            s += 2          # proper noun / sentence-start salience
+        if any(c.isdigit() for c in w.text):
+            s += 2          # numbers anchor attention
+        if len(tok) > 6:
+            s += 1          # longer content words bias toward topic words
+        return s
+
+    scored = [(_word_salience(i, w), i) for i, w in enumerate(words)]
+    # Anchor: max salience, then earliest index for ties (so a tied
+    # candidate at the front of the window wins — produces titles that
+    # lead with the speaker's first emphasis).
+    best_score, anchor_idx = max(scored, key=lambda x: (x[0], -x[1]))
+    if best_score == 0:
+        # Every word looks like a stopword/particle/filler. Last-resort
+        # fallback rather than emitting "a there was a person you".
+        return "Reel highlight"
+
+    # Build phrase: 2 words left + anchor + 2 words right. Trim leading
+    # stopwords from the picked span (but never drop the anchor itself).
+    lo = max(0, anchor_idx - 2)
+    hi = min(len(words), anchor_idx + 3)
+    pieces = [w.text.strip(",.!?;:\"'()[]") for w in words[lo:hi]]
+    pieces = [p for p in pieces if p]
+    anchor_in_pieces = anchor_idx - lo
+    while (
+        len(pieces) > 1
+        and anchor_in_pieces > 0
+        and pieces[0].lower() in STOPWORDS
+    ):
+        pieces = pieces[1:]
+        anchor_in_pieces -= 1
     if not pieces:
-        return "Untitled clip"
-    out = " ".join(pieces)
-    return out[:60] + ("…" if len(out) > 60 else "")
+        return "Reel highlight"
+    # Title-case each token, preserving existing capitalization for
+    # acronyms ("AI", "USA") and camelCase ("iPhone", "eBay"). Plain
+    # `.capitalize()` would lowercase everything after the first char
+    # which turns "AI" into "Ai".
+    def _smart_cap(tok: str) -> str:
+        if not tok or any(c.isupper() for c in tok):
+            return tok          # already has cased letters — leave alone
+        return tok.capitalize()  # plain lowercase or numeric → add a leading cap
+
+    out = " ".join(_smart_cap(p) for p in pieces)
+    return (out[:60] + "…") if len(out) > 60 else out
 
 
 def _fallback_rationale(candidate_row: Any) -> str:

@@ -26,6 +26,11 @@ import axios from "axios";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
 import { AddressForm, AddressFormHandle } from "./AddressForm";
+import {
+    ResolvedCharge,
+    buildChargeEnrollmentEntries,
+    sumChargeAmounts,
+} from "../../-utils/additional-charges-util";
 
 interface CheckoutFormProps {
     open: boolean;
@@ -35,6 +40,7 @@ interface CheckoutFormProps {
     items: any[];
     membershipPlan?: any;
     isRentMode?: boolean;
+    additionalCharges?: ResolvedCharge[];
 }
 
 export const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -45,6 +51,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     items,
     membershipPlan,
     isRentMode = false,
+    additionalCharges = [],
 }) => {
     const [email, setEmail] = useState("");
     const [fullName, setFullName] = useState("");
@@ -441,7 +448,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
                 // Build learner_package_session_enrollments array for each item
                 // Use per-item plan data resolved from each book's own enroll invite
-                const learnerPackageSessionEnrollments = items.map(item => {
+                const bookEnrollments = items.map(item => {
                     const itemPlan = perItemPlanData[item.enrollInviteId];
                     return {
                         package_session_id: item.packageSessionId || item.id,
@@ -451,11 +458,18 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     };
                 });
 
-                // Calculate total amount as sum of all package sessions
-                const calculatedTotalAmount = items.reduce(
+                // Append one enrollment entry per additional charge (e.g. shipping tier).
+                // Backend treats each entry identically — UserPlan + PaymentLog per entry,
+                // grouped under the same MP order ID. Amount is validated against the sum
+                // of each entry's PaymentPlan.actualPrice.
+                const chargeEnrollments = buildChargeEnrollmentEntries(additionalCharges);
+                const learnerPackageSessionEnrollments = [...bookEnrollments, ...chargeEnrollments];
+
+                const booksSubtotal = items.reduce(
                     (total, item) => total + (item.price * (item.quantity || 1)),
                     0
                 );
+                const calculatedTotalAmount = booksSubtotal + sumChargeAmounts(additionalCharges);
 
                 const buyPayload = {
                     user: userPayload,
@@ -776,18 +790,37 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 <AddressForm ref={addressFormRef} initial={initialAddressInputs} />
 
                                 {/* Compact Summary */}
-                                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
-                                        <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(0)}</span>
+                                {additionalCharges.length > 0 ? (
+                                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-1">
+                                        <div className="flex justify-between text-xs text-gray-700">
+                                            <span>Subtotal ({items.length} {items.length === 1 ? "item" : "items"})</span>
+                                            <span className="font-medium">₹{(totalAmount - sumChargeAmounts(additionalCharges)).toFixed(2)}</span>
+                                        </div>
+                                        {additionalCharges.map((charge) => (
+                                            <div key={charge.key} className="flex justify-between text-xs text-gray-700">
+                                                <span>{charge.label}</span>
+                                                <span className="font-medium">₹{charge.amount.toFixed(2)}</span>
+                                            </div>
+                                        ))}
+                                        <div className="flex justify-between items-center pt-1.5 border-t border-gray-200">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
+                                            <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(2)}</span>
+                                        </div>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="text-[10px] text-gray-400 font-medium block">{items.length} Items</span>
-                                        <span className="text-[10px] text-green-600 font-bold flex items-center justify-end gap-1">
-                                            <span className="w-1 h-1 bg-green-500 rounded-full" /> Secure
-                                        </span>
+                                ) : (
+                                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
+                                            <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(0)}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[10px] text-gray-400 font-medium block">{items.length} Items</span>
+                                            <span className="text-[10px] text-green-600 font-bold flex items-center justify-end gap-1">
+                                                <span className="w-1 h-1 bg-green-500 rounded-full" /> Secure
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </>
                         )}
                     </div>

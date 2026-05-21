@@ -53,9 +53,25 @@ _LLM_DEFAULT_MODEL = "anthropic/claude-3-5-haiku"
 # Spec validation bounds — matches research §12.2/§12.3 rules.
 HOOK_MAX_END_S = 2.6              # hook is the 0..~2.5s window
 MIN_OVERLAY_DURATION_S = 0.5      # too short = unreadable
-MAX_OVERLAY_DURATION_S = 4.0      # too long = stale on screen
+# Tightened 4.0 → 2.5 (Phase 2e cadence fix). A 4s overlay sits on
+# screen long after the speaker has moved past the moment — research
+# §12.3's "visual change every 2-4s" requires actual change, not static
+# text. 2.5s lets overlays punctuate without dominating.
+MAX_OVERLAY_DURATION_S = 2.5
 MAX_OVERLAY_WORDS = 6             # short-form ceiling for readability
 MAX_OVERLAY_CHARS = 60            # belt-and-suspenders against runaway text
+# Bumped 2 → 4 (Phase 2e cadence). With a 25s reel, hook+micro_hook+
+# loop_back = 3 visual events. Adding 4 emphasis overlays gets us to ~7
+# events, much closer to the research-recommended 2-4s visual-change
+# cadence. The audited 2026-05-13 reel had only 1 emphasis — see the
+# `_synth_emphasis` fallback below for the deterministic filler.
+MAX_EMPHASIS_OVERLAYS = 4
+# Below-this emphasis count triggers the deterministic synthesizer in
+# `_fill_missing_required`. Two is the visual-floor: with 0 or 1
+# emphasis overlays the mid-clip stretch between micro_hook and
+# loop_back goes 5-10s with no visual change, which research §12.3
+# flags as a retention killer for podcast-style content.
+MIN_EMPHASIS_TARGET = 2
 
 # Verbal-CTA opener list — overlays that telegraph "please follow me" kill
 # the loop-back effect (research §12.2). Reject overlays whose text matches
@@ -112,6 +128,16 @@ MAX_CONCEPT_WORDS = 4
 MIN_BG_CONCEPT_WORDS = 2
 MAX_BG_CONCEPT_WORDS = 5
 MAX_BG_CONCEPT_LEN = 50
+
+# Background-concepts SEQUENCE caps (Phase 2c.9). The renderer fetches one
+# Pexels clip per concept and stitches them via ffmpeg concat into the
+# bottom-half bgv track, so the bottom CHANGES as the reel progresses
+# instead of looping one static clip for 50s. 2 is the floor (single
+# clip = use the legacy single-concept path); 5 is the ceiling (each
+# clip ~5-10s of a 25-50s reel; more would feel choppy and explode the
+# parallel-fetch cost on Pexels).
+MIN_BG_CONCEPTS = 2
+MAX_BG_CONCEPTS = 5
 
 # animated_stat caps. `value` is the BIG number/word — short enough to
 # render at ~14vw without wrapping. `subtitle` is one supporting line.
@@ -219,7 +245,7 @@ The speaker's voice IS the narration — you do NOT write the script. Your job i
   2. **MICRO_HOOK** — re-engages attention near the middle.
   3. **LOOP_BACK** — echoes the hook in the final ~1 second so re-watches feel intentional.
 
-You may also include up to 2 optional **emphasis** text overlays tied to specific spoken phrases.
+You MUST emit AT LEAST 2 **emphasis** text overlays tied to specific spoken phrases (up to 4). Emphasis overlays are the workhorses of visual cadence — research §12.3 demands a visual change every 2-4 seconds, and hook+micro_hook+loop_back only cover 3 moments. Without emphasis overlays the middle stretch goes 5-10s with no visual change, which is a documented retention killer for podcast / lecture content. Aim for one every 6-8s of reel time. Reels with fewer than 2 emphasis overlays look sparse.
 
 You may include up to 3 **non-text visual** overlays total — across all four kinds combined (broll_video, broll_image, animated_stat, motion_graphic). These are **selective, not constant**. Many reels need ZERO visual overlays (emotional monologue, abstract reflection). Prefer fewer + better-aimed picks over carpet-bombing.
 
@@ -267,13 +293,20 @@ You may include up to 3 **non-text visual** overlays total — across all four k
   * **animated_stat** — `value` is the headline number/word, ≤12 chars ("47%", "2×", "14 YEARS", "$10M"). `subtitle` is the supporting copy, ≤32 chars ("of users churn", "in revenue last quarter"). Use ALL CAPS for `value` if it includes letters. `color_intent` drives accent color: "important" (yellow) for KPIs and big numbers, "warning" (red) for negative stats, "definition" (green) for breakthroughs/wins, "neutral" (white) default.
   * **motion_graphic** — `graphic_kind` MUST be one of `bar_chart` | `line_chart` | `pie_chart` | `comparison_icons`. `bars` is a list of `{"label": "<short>", "value": <number>}` items. Counts: bar_chart 2-3 / line_chart 2-5 / pie_chart 2-4 / comparison_icons exactly 2. Values numeric for bar_chart, line_chart, pie_chart (required — drives height / line position / proportion). Values OPTIONAL for comparison_icons (omit when non-numeric). Label cap: 14 chars (8 for line_chart since labels sit tight under the curve; 20 for comparison_icons since each card has more horizontal room).
 
-## Background concept (used only by stacked / pip layouts)
+## Background concepts (used only by stacked / pip layouts)
 
-If this reel's overall mood / scene can be captured in a short search query, ALSO emit a top-level `background_concept` field. It becomes the Pexels search for the "ambient glue" b-roll that fills the bottom half of `stacked_speaker_with_broll` or the background of `pip_corner_speaker`. Other layouts ignore it.
+For the "ambient glue" b-roll that fills the bottom half of `stacked_speaker_with_broll` or the background of `pip_corner_speaker`, emit a top-level `background_concepts` ARRAY of 2-5 Pexels search queries. The renderer fetches one clip per concept and stitches them into a sequence so the bottom half CHANGES as the speaker progresses through the reel — research §12.3 says static b-roll that loops for the whole reel feels visually flat.
 
-  * 2-5 words, ≤50 characters. Think Pexels search bar.
+  * 2-5 concepts per reel. Skip the field entirely if the speaker is abstract / introspective / philosophical — no usable scene to depict.
+  * Each concept is 2-5 words, ≤50 characters. Think Pexels search bar.
   * Capture the SCENE / MOOD, not a specific phrase: "podcast studio interview", "data analytics dashboard", "san francisco skyline", "team meeting whiteboard", "tech startup office".
-  * Skip (omit the field) if the speaker is abstract / introspective / philosophical — no usable scene to depict. The renderer's heuristic fallback will pick a single word, or the layout downgrades to full-speaker.
+  * Order the concepts to match the speaker's narrative arc — early concepts for the opening, later concepts for the payoff. They play back in the order you emit them.
+  * For backward compatibility you MAY also emit a single `background_concept` field (the legacy single-concept form). When both are present the array wins.
+
+  Examples:
+    * Tech podcast about AI: `["tech startup office", "data analytics dashboard", "ai robot futuristic"]`
+    * Math history lecture: `["ancient sanskrit manuscript", "indian temple architecture", "modern mathematics blackboard"]`
+    * Interview about teamwork: `["team meeting whiteboard", "diverse workplace collaboration", "celebration team success"]`
 
 ## If you can't produce a required text overlay
 
@@ -283,7 +316,8 @@ Omit it — a deterministic fallback will fill the slot. Don't pad with weak cop
 
 A single JSON object, no prose / markdown / commentary:
 {
-  "background_concept": "<2-5 word Pexels search, optional>",
+  "background_concepts": ["<concept 1>", "<concept 2>", "<concept 3>"],  // optional, 2-5 concepts
+  "background_concept": "<2-5 word Pexels search, optional, legacy single-concept form>",
   "overlays": [
     // Text:
     {"type": "hook"|"micro_hook"|"loop_back"|"emphasis",
@@ -355,24 +389,29 @@ class LLMDirector:
         title: str,
         rationale: str,
         word_importance_reel_time: list[dict],
-    ) -> tuple[list[OverlaySpec], Optional[str]]:
-        """Returns (validated OverlaySpec list, optional bg_concept).
+    ) -> tuple[list[OverlaySpec], Optional[str], Optional[list[str]]]:
+        """Returns (overlays, optional single bg_concept, optional bg_concepts list).
 
-        Both are derived from the SAME LLM call so we don't pay an extra
-        round-trip. The `bg_concept` is a 2-5 word Pexels search query
-        the LLM emits when the reel's overall mood maps to a depictable
-        scene; the director service uses it for layouts that need an
-        ambient bgv (stacked / pip_corner_speaker) and falls back to the
-        heuristic concept extractor if absent. Returns `(empty list,
-        None)` on any failure — caller's path handles both fallbacks.
+        All derived from the SAME LLM call — no extra round-trip:
+          * `overlays`: validated `OverlaySpec` list.
+          * `bg_concept`: legacy single 2-5 word Pexels query (Phase 2c.8).
+            Kept for backward compatibility with older candidates and
+            with the LLM occasionally emitting the singular field.
+          * `bg_concepts`: Phase 2c.9 — list of 2-5 Pexels queries that
+            the director stitches into a SEQUENCE of clips for the
+            stacked / pip layout bottom half. Caller prefers the sequence
+            over the single when both are present.
+
+        Returns `([], None, None)` on any failure — caller's path
+        handles all fallbacks.
 
         `word_importance_reel_time` should already be remapped through
         the trim_map — the LLM operates in reel-timeline coordinates.
         """
         if not self.enabled:
-            return [], None
+            return [], None, None
         if reel_duration_s <= 1.0 or not word_importance_reel_time:
-            return [], None
+            return [], None, None
 
         transcript_block = _format_transcript_for_prompt(word_importance_reel_time)
         user = _build_user_prompt(
@@ -384,18 +423,18 @@ class LLMDirector:
 
         raw = await self._call_llm(user)
         if not raw:
-            return [], None
+            return [], None, None
 
         try:
             payload = _extract_json_object(raw)
         except ValueError as e:
             logger.warning(f"[LLMDirector] JSON parse failed: {e}; raw={raw[:300]!r}")
-            return [], None
+            return [], None, None
 
         candidates = payload.get("overlays")
         if not isinstance(candidates, list):
             logger.warning(f"[LLMDirector] no 'overlays' array in response: {raw[:300]!r}")
-            return [], None
+            return [], None, None
 
         valid: list[OverlaySpec] = []
         for entry in candidates:
@@ -419,7 +458,8 @@ class LLMDirector:
             )
 
         bg_concept = _validate_background_concept(payload.get("background_concept"))
-        return valid, bg_concept
+        bg_concepts = _validate_background_concepts(payload.get("background_concepts"))
+        return valid, bg_concept, bg_concepts
 
     async def _call_llm(self, user_prompt: str) -> Optional[str]:
         """Reuses the same multi-attempt pattern as ReelsPreviewService:
@@ -583,6 +623,46 @@ def _validate_background_concept(raw: Any) -> Optional[str]:
         return None
     words = cleaned.split()
     if len(words) < MIN_BG_CONCEPT_WORDS or len(words) > MAX_BG_CONCEPT_WORDS:
+        return None
+    return cleaned
+
+
+def _validate_background_concepts(raw: Any) -> Optional[list[str]]:
+    """Clean + validate the LLM's top-level `background_concepts` array.
+
+    Each entry runs through the same validator as the single-concept
+    field (`_validate_background_concept`). Invalid entries are
+    SILENTLY DROPPED rather than nuking the whole sequence — a partially-
+    valid array of 3 concepts is still useful even if the LLM emitted a
+    4th malformed one.
+
+    Drops duplicates after normalization so we don't fetch the same
+    Pexels clip twice. Caps at MAX_BG_CONCEPTS — extras after the cap
+    are also dropped silently (the prompt asks for 2-5 so 6+ means the
+    LLM ignored guidance).
+
+    Returns None when:
+      * input isn't a list
+      * fewer than MIN_BG_CONCEPTS valid entries remain after filtering
+        (so we don't try to stitch a 1-clip "sequence")
+    Returns the cleaned list otherwise. Caller's resolver will fall
+    through to the single-concept path when None.
+    """
+    if not isinstance(raw, list) or not raw:
+        return None
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for entry in raw:
+        normalized = _validate_background_concept(entry)
+        if normalized is None:
+            continue
+        if normalized in seen:
+            continue
+        cleaned.append(normalized)
+        seen.add(normalized)
+        if len(cleaned) >= MAX_BG_CONCEPTS:
+            break
+    if len(cleaned) < MIN_BG_CONCEPTS:
         return None
     return cleaned
 
@@ -784,7 +864,7 @@ def _enforce_structural_rules(
 
     * At most one hook / micro_hook / loop_back — keep the earliest valid
       one for each type. (LLMs sometimes emit two "hooks".)
-    * At most 2 emphasis overlays.
+    * At most MAX_EMPHASIS_OVERLAYS (4) emphasis overlays.
     * Drop emphasis overlays that overlap the hook or loop_back windows —
       stacking different overlays in the same band looks busy.
     * At most `MAX_MEDIA_OVERLAYS` (3) media overlays. Drop any that
@@ -821,12 +901,13 @@ def _enforce_structural_rules(
             return False
         return a.t_start < b.t_end and b.t_start < a.t_end
 
-    # Cap emphasis at 2 and drop any that overlap hook / loop_back. We
-    # tolerate emphasis overlapping micro_hook because both can co-exist
-    # on the same beat — they're both small text overlays.
+    # Cap emphasis at MAX_EMPHASIS_OVERLAYS (4, Phase 2e cadence) and drop
+    # any that overlap hook / loop_back. We tolerate emphasis overlapping
+    # micro_hook because both can co-exist on the same beat — they're
+    # both small text overlays.
     emphases = [e for e in emphases if not _overlaps(e, hook) and not _overlaps(e, loop)]
     emphases.sort(key=lambda x: x.t_start)
-    emphases = emphases[:2]
+    emphases = emphases[:MAX_EMPHASIS_OVERLAYS]
 
     # Media: implicit hook / loop_back windows even if the LLM didn't
     # emit a hook/loop_back spec — those windows are STRUCTURALLY
@@ -937,6 +1018,37 @@ def _fill_missing_required(
         if micro is not None:
             additions.append(micro)
             logger.info("[LLMDirector] LLM omitted micro_hook — filled with deterministic synth")
+
+    # Emphasis floor (Phase 2e bug-followup). The 2026-05-13 audit showed
+    # the LLM emitting only 1 emphasis when the prompt asks for 2-4 —
+    # leaving a 5-10s mid-clip stretch with no visual change. We count
+    # LLM-emitted + just-synthesized emphasis specs (additions can include
+    # nothing yet because hook/micro_hook synths don't add emphasis), then
+    # top up to MIN_EMPHASIS_TARGET with deterministic picks from the
+    # speaker's highest-importance content words. The synthesizer respects
+    # hook / loop / micro_hook protection zones AND any existing emphasis
+    # so we never stack on what the LLM already shipped.
+    emphasis_count = sum(
+        1 for s in specs if s.type == "emphasis"
+    ) + sum(1 for s in additions if s.type == "emphasis")
+    if emphasis_count < MIN_EMPHASIS_TARGET:
+        needed = MIN_EMPHASIS_TARGET - emphasis_count
+        # `existing_specs` for the synth must include all current specs +
+        # already-added fillers so the synthesizer's protected-range
+        # computation is complete.
+        new_emphasis = _synth_emphasis(
+            existing_specs=specs + additions,
+            word_importance_reel_time=word_importance_reel_time,
+            reel_duration_s=reel_duration_s,
+            target_count=needed,
+        )
+        if new_emphasis:
+            additions.extend(new_emphasis)
+            logger.info(
+                f"[LLMDirector] LLM emitted {emphasis_count} emphasis "
+                f"(< MIN_EMPHASIS_TARGET={MIN_EMPHASIS_TARGET}); "
+                f"synthesized {len(new_emphasis)} more for cadence"
+            )
 
     if not additions:
         return specs
@@ -1049,6 +1161,119 @@ def _synth_micro_hook(
         text="WAIT FOR IT",
         color_intent="neutral",
     )
+
+
+# Minimum spacing between two emphasis overlays. Clusters of emphasis
+# read as visual noise; spacing them apart hits the research §12.3
+# "visual change every 2-4s" cadence cleanly.
+_MIN_EMPHASIS_SPACING_S = 3.0
+# Duration of each synthesized emphasis. Tight enough to punctuate, long
+# enough to read at 6vw font size — matches the LLM-emitted defaults.
+_SYNTH_EMPHASIS_DURATION_S = 1.5
+
+
+def _synth_emphasis(
+    existing_specs: list[OverlaySpec],
+    word_importance_reel_time: list[dict],
+    reel_duration_s: float,
+    target_count: int,
+) -> list[OverlaySpec]:
+    """Synthesize up to `target_count` emphasis overlays from the speaker's
+    own high-importance words. Used when the LLM emitted fewer than
+    MIN_EMPHASIS_TARGET (the audited 2026-05-13 reel hit this — LLM
+    emitted 1 emphasis when the prompt asked for 2-4).
+
+    Strategy mirrors `_synth_micro_hook`:
+      * Rank content words by (importance, length, position) — descending.
+      * Skip words in protected zones: hook window (0..HOOK_MAX_END_S),
+        loop-back window (last 1.5s), and any range already covered by
+        an existing spec (hook / micro_hook / loop_back / LLM-emitted
+        emphasis / visual overlay).
+      * Enforce `_MIN_EMPHASIS_SPACING_S` between picks so the synthesized
+        emphasis don't cluster.
+      * Each emphasis runs `_SYNTH_EMPHASIS_DURATION_S` from the word's
+        onset; t_end clamped to reel_duration - 0.1s.
+
+    Returns 0..target_count new OverlaySpecs. Caller (`_fill_missing_required`)
+    merges + sorts.
+    """
+    if target_count <= 0 or reel_duration_s < 4.0:
+        return []
+
+    hook_end = HOOK_MAX_END_S
+    loop_start = max(0.0, reel_duration_s - 1.5)
+    if loop_start <= hook_end:
+        # Reel too short to have a safe middle window for emphasis.
+        return []
+
+    # Blocked ranges: hook + loop windows + EVERY existing spec (whether
+    # text overlay or visual). Synthesized emphasis must not overlap any.
+    blocked: list[tuple[float, float]] = [
+        (0.0, hook_end),
+        (loop_start, reel_duration_s),
+    ]
+    for s in existing_specs:
+        blocked.append((s.t_start, s.t_end))
+
+    def _in_blocked(ts: float, te: float) -> bool:
+        for r_start, r_end in blocked:
+            if ts < r_end and r_start < te:
+                return True
+        return False
+
+    # Candidate words: importance ≥ 2, not stopwords, inside the safe
+    # middle band, room for a full SYNTH_EMPHASIS_DURATION_S window.
+    candidates: list[tuple[int, int, float, str]] = []
+    max_t_start = loop_start - _SYNTH_EMPHASIS_DURATION_S
+    for w in word_importance_reel_time:
+        try:
+            ts = float(w.get("t_start") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if ts < hook_end or ts > max_t_start:
+            continue
+        tok = str(w.get("word") or "").strip().strip(".,!?")
+        if not tok or tok.lower() in _FALLBACK_STOPWORDS:
+            continue
+        importance = int(w.get("importance") or 2)
+        if importance < 2:
+            continue
+        candidates.append((importance, len(tok), ts, tok))
+
+    # Sort by importance desc, then length desc, then earliest first
+    # (so when two words tie we prefer the one that comes earlier — it
+    # has more reel time to breathe before the next overlay).
+    candidates.sort(key=lambda x: (-x[0], -x[1], x[2]))
+
+    additions: list[OverlaySpec] = []
+    placed_starts: list[float] = []
+    for imp, _wlen, ts, tok in candidates:
+        if len(additions) >= target_count:
+            break
+        te = min(ts + _SYNTH_EMPHASIS_DURATION_S, reel_duration_s - 0.1)
+        if te - ts < MIN_OVERLAY_DURATION_S:
+            continue
+        if _in_blocked(ts, te):
+            continue
+        # Spacing check: don't place two synthesized emphasis within
+        # _MIN_EMPHASIS_SPACING_S of each other (clusters look noisy).
+        if any(abs(ts - p) < _MIN_EMPHASIS_SPACING_S for p in placed_starts):
+            continue
+        # Length cap on the synthesized text — single content word, ALL
+        # CAPS, matches the hook/micro_hook visual style.
+        text = tok.upper()
+        if len(text) > MAX_OVERLAY_CHARS:
+            text = text[:MAX_OVERLAY_CHARS]
+        color = "important" if imp >= 3 else "neutral"
+        additions.append(OverlaySpec(
+            type="emphasis",
+            t_start=ts,
+            t_end=te,
+            text=text,
+            color_intent=color,
+        ))
+        placed_starts.append(ts)
+    return additions
 
 
 def _trim_to_overlay_text(s: str) -> str:

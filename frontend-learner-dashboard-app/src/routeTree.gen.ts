@@ -46,6 +46,7 @@ import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-l
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
 import { Route as ReportsAttendanceIndexRouteImport } from './routes/reports/attendance/index'
 import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/live-class/index'
+import { Route as ProductPagesProductPageCodeIndexRouteImport } from './routes/product-pages/$productPageCode/index'
 import { Route as PlanningPlanningLogsIndexRouteImport } from './routes/planning/planning-logs/index'
 import { Route as PlanningActivityLogsIndexRouteImport } from './routes/planning/activity-logs/index'
 import { Route as ParentTrackerIndexRouteImport } from './routes/parent/tracker/index'
@@ -278,6 +279,12 @@ const RegisterLiveClassIndexRoute = RegisterLiveClassIndexRouteImport.update({
   path: '/register/live-class/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductPagesProductPageCodeIndexRoute =
+  ProductPagesProductPageCodeIndexRouteImport.update({
+    id: '/product-pages/$productPageCode/',
+    path: '/product-pages/$productPageCode/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const PlanningPlanningLogsIndexRoute =
   PlanningPlanningLogsIndexRouteImport.update({
     id: '/planning/planning-logs/',
@@ -583,6 +590,7 @@ export interface FileRoutesByFullPath {
   '/parent/tracker': typeof ParentTrackerIndexRoute
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
+  '/product-pages/$productPageCode': typeof ProductPagesProductPageCodeIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
@@ -664,6 +672,7 @@ export interface FileRoutesByTo {
   '/parent/tracker': typeof ParentTrackerIndexRoute
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
+  '/product-pages/$productPageCode': typeof ProductPagesProductPageCodeIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
@@ -747,6 +756,7 @@ export interface FileRoutesById {
   '/parent/tracker/': typeof ParentTrackerIndexRoute
   '/planning/activity-logs/': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs/': typeof PlanningPlanningLogsIndexRoute
+  '/product-pages/$productPageCode/': typeof ProductPagesProductPageCodeIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
   '/reports/attendance/': typeof ReportsAttendanceIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
@@ -831,6 +841,7 @@ export interface FileRouteTypes {
     | '/parent/tracker'
     | '/planning/activity-logs'
     | '/planning/planning-logs'
+    | '/product-pages/$productPageCode'
     | '/register/live-class'
     | '/reports/attendance'
     | '/study-library/courses'
@@ -912,6 +923,7 @@ export interface FileRouteTypes {
     | '/parent/tracker'
     | '/planning/activity-logs'
     | '/planning/planning-logs'
+    | '/product-pages/$productPageCode'
     | '/register/live-class'
     | '/reports/attendance'
     | '/study-library/courses'
@@ -994,6 +1006,7 @@ export interface FileRouteTypes {
     | '/parent/tracker/'
     | '/planning/activity-logs/'
     | '/planning/planning-logs/'
+    | '/product-pages/$productPageCode/'
     | '/register/live-class/'
     | '/reports/attendance/'
     | '/study-library/courses/'
@@ -1076,6 +1089,7 @@ export interface RootRouteChildren {
   ParentTrackerIndexRoute: typeof ParentTrackerIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningLogsIndexRoute: typeof PlanningPlanningLogsIndexRoute
+  ProductPagesProductPageCodeIndexRoute: typeof ProductPagesProductPageCodeIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
   ReportsAttendanceIndexRoute: typeof ReportsAttendanceIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
@@ -1360,6 +1374,13 @@ declare module '@tanstack/react-router' {
       path: '/register/live-class'
       fullPath: '/register/live-class'
       preLoaderRoute: typeof RegisterLiveClassIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/product-pages/$productPageCode/': {
+      id: '/product-pages/$productPageCode/'
+      path: '/product-pages/$productPageCode'
+      fullPath: '/product-pages/$productPageCode'
+      preLoaderRoute: typeof ProductPagesProductPageCodeIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planning/planning-logs/': {
@@ -1735,6 +1756,7 @@ const rootRouteChildren: RootRouteChildren = {
   ParentTrackerIndexRoute: ParentTrackerIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningLogsIndexRoute: PlanningPlanningLogsIndexRoute,
+  ProductPagesProductPageCodeIndexRoute: ProductPagesProductPageCodeIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
   ReportsAttendanceIndexRoute: ReportsAttendanceIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,

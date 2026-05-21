@@ -568,6 +568,22 @@ def _extract_topic_keywords(script_text: str) -> List[str]:
     return list(expanded)
 
 
+# Per-role intent phrases used as the semantic-search query. Describes the
+# FEEL of the sound (not its category) so the embedding model can rank the
+# bucket by what the cue is actually trying to communicate.
+_ROLE_INTENT_PHRASES: Dict[str, str] = {
+    "transition_whoosh": "smooth cinematic whoosh, brief scene transition, clean tail",
+    "transition_riser":  "building riser, ascending pitch, dramatic lead-in",
+    "ui_chime":          "gentle bell tone, soft chime, warm reveal sparkle",
+    "ui_positive":       "warm uplifting confirmation chime, success feedback, encouraging",
+    "ui_negative":       "soft descending tone, neutral error feedback, not harsh",
+    "ui_click":          "crisp short click, neutral UI tap, brief",
+    "data_reveal":       "subtle tonal tick, ascending pitch, data emerging, brief sparkle",
+    "impact":            "deep cinematic impact, full-spectrum thud, no metallic ring",
+    "ambient_loop":      "subtle ambient background texture, gentle, non-distracting",
+}
+
+
 def _build_sound_palette(
     cat: SoundCatalog,
     video_id: str,
@@ -576,29 +592,70 @@ def _build_sound_palette(
     """Pre-select 3-4 sound files per role for variety.
 
     Sounds within a role are rotated via a counter so consecutive
-    transitions don't reuse the same file. Topic-biased selection
-    from script keywords (money → coins, sports → whistle).
+    transitions don't reuse the same file.
+
+    Uses semantic search (`find_by_intent`) when the catalog has embeddings
+    loaded; otherwise falls back to keyword-overlap (`resolve_for_topic`)
+    which is the legacy behavior.
     """
     topic_kws = _extract_topic_keywords(script_text)
+    # Short, free-text version of the topic for semantic queries — first
+    # ~200 chars of the script gives the embedder enough signal without
+    # blowing token budget.
+    topic_text = (script_text or "").strip().replace("\n", " ")[:200]
+
+    has_semantic = getattr(cat, "_embeddings", None) is not None
+
     palette: Dict[str, Any] = {}
     for role in PALETTE_ROLES:
         if not cat.has_role(role):
             continue
-        # Pick up to 4 variations per role using different seeds
-        variations = []
+        variations: List[Dict[str, Any]] = []
         seen_urls: Set[str] = set()
-        for i in range(4):
-            seed = f"{video_id}:palette:{role}:{i}"
-            if topic_kws:
-                picked = cat.resolve_for_topic(role, topic_kws, seed_key=seed)
-            else:
-                picked = cat.resolve(role, seed_key=seed)
-            if picked and picked.get("url", "") not in seen_urls:
+        used_ids: Set[str] = set()
+
+        if has_semantic:
+            # Compose a query that pairs the role's intent with the video
+            # topic. Same query for all 4 picks; deduping via `used_ids`
+            # gives us the top-4 distinct semantic neighbors.
+            role_intent = _ROLE_INTENT_PHRASES.get(role, role.replace("_", " "))
+            query = f"{role_intent}. Context: {topic_text}" if topic_text else role_intent
+            for i in range(4):
+                picked = cat.find_by_intent(
+                    query,
+                    role=role,
+                    used_ids=used_ids,
+                    fallback_seed_salt=f"{video_id}:{i}",
+                )
+                if not picked:
+                    break
+                if picked.get("url", "") in seen_urls:
+                    # Same URL surfaced via a different file_id collision —
+                    # advance used_ids to force a different pick next iter.
+                    fid = picked.get("file_id")
+                    if fid:
+                        used_ids.add(fid)
+                    continue
                 variations.append(picked)
                 seen_urls.add(picked.get("url", ""))
+                fid = picked.get("file_id")
+                if fid:
+                    used_ids.add(fid)
+        else:
+            # Legacy keyword-overlap palette.
+            for i in range(4):
+                seed = f"{video_id}:palette:{role}:{i}"
+                if topic_kws:
+                    picked = cat.resolve_for_topic(role, topic_kws, seed_key=seed)
+                else:
+                    picked = cat.resolve(role, seed_key=seed)
+                if picked and picked.get("url", "") not in seen_urls:
+                    variations.append(picked)
+                    seen_urls.add(picked.get("url", ""))
+
         if variations:
-            palette[role] = variations  # List of dicts now, not single dict
-            palette[f"_{role}_counter"] = 0  # rotation counter
+            palette[role] = variations
+            palette[f"_{role}_counter"] = 0
     return palette
 
 
@@ -612,13 +669,28 @@ def _log_palette(
         entry = palette.get(role)
         if entry:
             if isinstance(entry, list):
-                name = entry[0].get("description", "")[:25]
-                parts.append(f"{role}={name} (+{len(entry)-1})")
+                first = entry[0]
+                name = first.get("description", "")[:25]
+                score = first.get("score")
+                score_str = f" s={score:.2f}" if score is not None else ""
+                parts.append(f"{role}={name}{score_str} (+{len(entry)-1})")
             else:
                 name = entry.get("description", "")[:35]
                 parts.append(f"{role}={name}")
     if parts:
         print(f"   🎵 Sound palette: {', '.join(parts)}")
+    # Per-role detailed audit so we can see exactly what was picked and why.
+    for role in PALETTE_ROLES:
+        entry = palette.get(role)
+        if isinstance(entry, list):
+            for i, v in enumerate(entry):
+                score = v.get("score")
+                score_str = f"score={score:.3f} " if score is not None else ""
+                print(
+                    f"   🎵 [palette] {role}[{i}] {score_str}"
+                    f"cat={v.get('category','')!r} "
+                    f"desc={v.get('description','')[:60]!r}"
+                )
     print(
         f"   🔊 Sound Planner placed {total_cues} cues across "
         f"{total_shots} shots"

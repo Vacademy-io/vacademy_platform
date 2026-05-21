@@ -41,7 +41,10 @@ public interface WorkflowRepository extends JpaRepository<Workflow, String> {
         "ws.lastRunAt as lastRunAt, ws.nextRunAt as nextRunAt, ws.createdAt as scheduleCreatedAt, ws.updatedAt as scheduleUpdatedAt, "
         +
         "wt.id as triggerId, wt.triggerEventName as triggerEventName, wt.description as triggerDescription, " +
-        "wt.status as triggerStatus, wt.createdAt as triggerCreatedAt, wt.updatedAt as triggerUpdatedAt " +
+        "wt.status as triggerStatus, wt.createdAt as triggerCreatedAt, wt.updatedAt as triggerUpdatedAt, " +
+        // event_applied_type + event_id let consumers filter by entity scope
+        // (e.g. show workflows linked to a specific audience / batch / session).
+        "wt.eventAppliedType as eventAppliedType, wt.eventId as eventId " +
         "FROM Workflow w LEFT JOIN WorkflowSchedule ws ON ws.workflowId = w.id " +
         "AND (:scheduleStatuses IS NULL OR UPPER(ws.status) IN :scheduleStatuses) " +
         "LEFT JOIN WorkflowTrigger wt ON wt.workflow = w " +

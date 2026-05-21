@@ -1762,11 +1762,24 @@ function RecordingTranscribeAction({
             toast.success('Transcription started');
         },
         onError: (err: unknown) => {
-            const httpStatus =
-                (err as { response?: { status?: number } })?.response?.status;
-            const msg =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-            if (httpStatus === 409) {
+            // Backend ErrorInfo is { url, ex, responseCode, date } — there is no
+            // `message` field, and the gateway maps the service's 409 to HTTP 511,
+            // so neither `response.data.message` nor `response.status === 409` ever
+            // matched (every failure fell through to the generic "Could not start
+            // transcription"). The human-readable reason lives in `ex`/`responseCode`,
+            // formatted like: 409 CONFLICT "Transcription already in progress (status=RUNNING)".
+            const data = (
+                err as {
+                    response?: { data?: { ex?: string; responseCode?: string; message?: string } };
+                }
+            )?.response?.data;
+            const raw = data?.ex ?? data?.responseCode ?? data?.message;
+            // Prefer the quoted reason; fall back to the raw string.
+            const msg = raw?.match(/"([^"]+)"/)?.[1] ?? raw;
+            // HTTP status is unreliable (511), so detect the "already in progress"
+            // conflict from the message text itself.
+            const alreadyRunning = /already in progress|CONFLICT/i.test(raw ?? '');
+            if (alreadyRunning) {
                 toast.info(msg ?? 'Transcription is already in progress');
             } else {
                 toast.error(msg ?? 'Could not start transcription');

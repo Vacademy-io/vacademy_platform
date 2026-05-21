@@ -3,6 +3,7 @@ import {
     BASE_URL,
     GET_WORKFLOW_DIAGRAM,
     LIST_WORKFLOWS_WITH_SCHEDULES,
+    WHATSAPP_TEMPLATE_BASE,
     WORKFLOW_SERVICE_BASE,
 } from '@/constants/urls';
 import {
@@ -448,6 +449,53 @@ export function getActionTypesQuery() {
 }
 
 export async function fetchTemplatesByType(instituteId: string, type: string): Promise<TemplateItem[]> {
+    // WhatsApp templates live in notification-service (whatsapp-templates/list).
+    // admin-core-service template endpoint is for legacy email/in-app templates and returns
+    // [] for WhatsApp — route accordingly and adapt the DTO to the TemplateItem shape.
+    // Exact-match on 'WHATSAPP' (not toUpperCase) so the parallel 'whatsapp' lowercase
+    // query in node-config-panel falls through to the legacy endpoint and returns [],
+    // avoiding duplicate template entries in the dropdown.
+    if (type === 'WHATSAPP') {
+        const response = await authenticatedAxiosInstance.get(`${WHATSAPP_TEMPLATE_BASE}/list`, {
+            params: { instituteId },
+        });
+        const list = Array.isArray(response.data) ? response.data : [];
+        return list
+            .filter((t: { status?: string }) => (t.status ?? '').toUpperCase() === 'APPROVED')
+            .map((t: {
+                id?: string;
+                name: string;
+                bodyText?: string;
+                status?: string;
+                bodyVariableNames?: string[];
+                bodySampleValues?: string[];
+            }): TemplateItem => {
+                const names = Array.isArray(t.bodyVariableNames) ? t.bodyVariableNames : [];
+                const samples = Array.isArray(t.bodySampleValues) ? t.bodySampleValues : [];
+                const placeholders: string[] = Array.from(
+                    (t.bodyText ?? '').matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)
+                ).map((m) => m[1] ?? '');
+                const keys = placeholders.length
+                    ? placeholders
+                    : names.length
+                        ? names
+                        : samples.map((_, i) => `${i + 1}`);
+                const dynamicParams: Record<string, string> = {};
+                keys.forEach((k, i) => {
+                    dynamicParams[k] = names[i] ?? samples[i] ?? k;
+                });
+                return {
+                    id: t.id ?? t.name,
+                    name: t.name,
+                    content: t.bodyText,
+                    status: t.status ?? 'APPROVED',
+                    type: 'WHATSAPP',
+                    dynamic_parameters: Object.keys(dynamicParams).length
+                        ? JSON.stringify(dynamicParams)
+                        : undefined,
+                };
+            });
+    }
     const response = await authenticatedAxiosInstance.get(
         `${BASE_URL}/admin-core-service/institute/template/v1/institute/${instituteId}/type/${type}`
     );

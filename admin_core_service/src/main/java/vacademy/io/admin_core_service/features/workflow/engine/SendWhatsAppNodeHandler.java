@@ -15,7 +15,6 @@ import vacademy.io.admin_core_service.features.workflow.dto.ForEachConfigDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.SendWhatsAppNodeDTO;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
-import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowExecutionLogger;
 
 import vacademy.io.admin_core_service.features.workflow.enums.ExecutionLogStatus;
@@ -137,7 +136,30 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             }
 
             log.info("Processing {} items for WhatsApp sending", items.size());
-            
+
+            // Read node-level templateName/templateVars/languageCode from raw config JSON.
+            // SendWhatsAppNodeDTO doesn't declare these fields (Jackson would drop them),
+            // but the frontend stores them at config root. Mirror SendEmailNodeHandler: pick
+            // them up here and inject into each iterated item so forEach.eval = "#ctx['item']"
+            // still produces a valid message map with templateName + templateVars.
+            String nodeLevelTemplateName = null;
+            Map<String, Object> nodeLevelTemplateVars = null;
+            String nodeLevelLanguageCode = null;
+            try {
+                com.fasterxml.jackson.databind.JsonNode configRoot = objectMapper.readTree(nodeConfigJson);
+                if (configRoot.has("templateName") && !configRoot.get("templateName").asText("").isBlank()) {
+                    nodeLevelTemplateName = configRoot.get("templateName").asText();
+                }
+                if (configRoot.has("templateVars") && configRoot.get("templateVars").isObject()) {
+                    nodeLevelTemplateVars = objectMapper.convertValue(configRoot.get("templateVars"), Map.class);
+                }
+                if (configRoot.has("languageCode") && !configRoot.get("languageCode").asText("").isBlank()) {
+                    nodeLevelLanguageCode = configRoot.get("languageCode").asText();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse node-level WhatsApp template config", e);
+            }
+
             // BACKWARD COMPATIBLE: Check both context keys for institute ID
             String instituteIdTemp = (String) context.get("instituteIdForWhatsapp"); // SEND_WHATSAPP format
             if (!StringUtils.hasText(instituteIdTemp)) {
@@ -175,7 +197,36 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             for (Object item : items) {
                 index++;
                 Map<String, Object> itemContext = new HashMap<>(context);
-                itemContext.put("item", item);
+
+                // Inject node-level templateName/templateVars/languageCode into the item so
+                // forEach.eval = "#ctx['item']" produces a complete message map. Items may be
+                // either Maps (DB rows / JSON) or Java beans (UserDTO from {#ctx['user']}) —
+                // convert beans to Map first.
+                if (nodeLevelTemplateName != null) {
+                    Map<String, Object> enrichedItem;
+                    if (item instanceof Map) {
+                        enrichedItem = new HashMap<>((Map<String, Object>) item);
+                    } else {
+                        try {
+                            enrichedItem = objectMapper.convertValue(item, Map.class);
+                            if (enrichedItem == null) enrichedItem = new HashMap<>();
+                        } catch (Exception e) {
+                            log.warn("Could not convert WhatsApp iteration item ({}) to Map: {}",
+                                    item != null ? item.getClass().getSimpleName() : "null", e.getMessage());
+                            enrichedItem = new HashMap<>();
+                        }
+                    }
+                    enrichedItem.put("templateName", nodeLevelTemplateName);
+                    if (nodeLevelTemplateVars != null) {
+                        enrichedItem.put("templateVars", nodeLevelTemplateVars);
+                    }
+                    if (nodeLevelLanguageCode != null && !enrichedItem.containsKey("languageCode")) {
+                        enrichedItem.put("languageCode", nodeLevelLanguageCode);
+                    }
+                    itemContext.put("item", enrichedItem);
+                } else {
+                    itemContext.put("item", item);
+                }
 
                 List<Map<String, Object>> messagesToSend = processForEachOperation(
                         nodeDTO.getForEach(), itemContext);
@@ -319,16 +370,29 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                             log.debug("COMBOT format detected - skipping template DB lookup for: {}", templateName);
                             finalParamMap = templateVars != null ? templateVars : new HashMap<>();
                         } else {
-                            // SEND_WHATSAPP format: Fetch Template from DB and validate params
+                            // SEND_WHATSAPP format: Best-effort Template lookup in admin_core's
+                            // `templates` table for param validation. Some institutes only have
+                            // their WhatsApp templates in notification_service's whatsapp_templates
+                            // table (created via the Message Templates UI), so a miss here is not
+                            // fatal — notification-service does its own template resolution on send.
                             String cacheKey = instituteId + ":" + templateName;
-                            Template template = templateCache.computeIfAbsent(cacheKey,
-                                    k -> templateRepository
-                                            .findByInstituteIdAndNameAndType(instituteId, templateName, "WHATSAPP")
-                                            .orElseThrow(() -> new VacademyException("Template not found with name: "
-                                                    + templateName + " for institute: " + instituteId)));
-
-                            // Build and validate params against template
-                            finalParamMap = buildValidatedParams(template, templateVars, userId);
+                            Template template = templateCache.get(cacheKey);
+                            if (template == null) {
+                                template = templateRepository
+                                        .findByInstituteIdAndNameAndType(instituteId, templateName, "WHATSAPP")
+                                        .orElse(null);
+                                if (template != null) {
+                                    templateCache.put(cacheKey, template);
+                                }
+                            }
+                            if (template != null) {
+                                finalParamMap = buildValidatedParams(template, templateVars, userId);
+                            } else {
+                                log.warn(
+                                        "Admin-core Template row not found for institute {} name {} — proceeding without param validation (notification-service will resolve from whatsapp_templates).",
+                                        instituteId, templateName);
+                                finalParamMap = templateVars != null ? templateVars : new HashMap<>();
+                            }
                         }
                         
                         Map<String, Map<String, String>> singleUser = Map.of(sanitizedMobile, finalParamMap);

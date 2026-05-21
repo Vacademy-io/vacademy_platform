@@ -604,7 +604,7 @@ export const getTranscriptionStatus = async (
 // Layer 3 — Create Assessment from a completed transcript
 // -------------------------------------------------------------------------
 
-export type AssessmentArtifactStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+export type AssessmentArtifactStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PUBLISHED';
 
 export interface GeneratedQuestion {
     id: string;

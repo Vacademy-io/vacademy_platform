@@ -232,11 +232,13 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                         nodeDTO.getForEach(), itemContext);
 
                 for (Map<String, Object> messageData : messagesToSend) {
-                    // BACKWARD COMPATIBLE: Accept both "mobileNumber" and "to" (COMBOT format)
-                    String mobileNumber = (String) messageData.get("mobileNumber");
-                    if (mobileNumber == null) {
-                        mobileNumber = (String) messageData.get("to"); // COMBOT compatibility
-                    }
+                    // BACKWARD COMPATIBLE: Accept camelCase, snake_case, and COMBOT 'to'.
+                    // UserDTO is serialized with snake_case keys (mobile_number) by the
+                    // shared ObjectMapper, so we have to look at both forms — mirrors the
+                    // IteratorProcessorStrategy.extractMobileNumber lookup order.
+                    String mobileNumber = firstNonBlank(messageData,
+                            "mobileNumber", "mobile_number", "mobile",
+                            "phoneNumber", "phone_number", "phone", "to");
                     
                     String templateName = (String) messageData.get("templateName");
                     String languageCode = (String) messageData.get("languageCode");
@@ -651,6 +653,23 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             finalParamMap.putAll(templateVarsFromAutomation); // Send all vars if no dynamic params defined
         }
         return finalParamMap;
+    }
+
+    /**
+     * Return the first non-blank string value from the given keys in a message map.
+     * Used to handle both camelCase and snake_case shapes (e.g. mobileNumber vs mobile_number)
+     * when the iteration item came from a bean serialized via a SnakeCase ObjectMapper.
+     */
+    private static String firstNonBlank(Map<String, Object> messageData, String... keys) {
+        for (String key : keys) {
+            Object value = messageData.get(key);
+            if (value == null) continue;
+            String stringValue = String.valueOf(value);
+            if (StringUtils.hasText(stringValue)) {
+                return stringValue;
+            }
+        }
+        return null;
     }
 
     /**

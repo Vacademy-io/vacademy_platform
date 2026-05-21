@@ -414,7 +414,18 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                           return out;
                       };
                       originalCode = _unwrapReadyListener(originalCode);
-                      const scopedCode = `
+                      // String.raw — NOT a plain template literal. Inside this block
+                      // we embed regex literals (`/circle\(\s*0.../`, `/scale\((0...)/`)
+                      // and JS escape-character literals that MUST keep their backslashes
+                      // intact. A plain template literal silently drops unrecognized
+                      // backslash escapes (`\(` → `(`, `\s` → `s`, `\d` → `d`), which
+                      // turned every regex below into an invalid `Unterminated group`
+                      // SyntaxError at `<script>` parse time — killing the LLM-authored
+                      // shot script entirely, leaving GSAP with zero registered tweens
+                      // and no animations in the rendered MP4. String.raw preserves all
+                      // backslashes verbatim while still doing `${...}` interpolation,
+                      // so embedded regexes work AND `${e.id}` still substitutes.
+                      const scopedCode = String.raw`
                         (function(scope) {
                             // Helper to resolve selectors in this shadow root
                             const resolve = (s) => {

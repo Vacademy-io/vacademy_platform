@@ -17,7 +17,7 @@ function RouteComponent() {
         const heading = (
             <div className="flex items-center gap-4">
                 <CaretLeft onClick={() => window.history.back()} className="cursor-pointer" />
-                <div>VSmart AI Tools</div>
+                <div>Chat with a Document</div>
             </div>
         );
 

@@ -45,7 +45,7 @@ function RouteComponent() {
     const sectionScrollMarginTopClass = 'scroll-mt-32';
 
     useEffect(() => {
-        setNavHeading('VSmart AI Tools');
+        setNavHeading('Teaching Assistant');
     }, [setNavHeading]);
 
     return (

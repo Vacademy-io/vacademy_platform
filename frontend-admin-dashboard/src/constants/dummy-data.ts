@@ -60,7 +60,7 @@ export const scheduleTestTabsData = [
 ];
 
 export const timeLimit = ['1 min', '2 min', '3 min', '5 min', '10 min', '15 min'];
-export const languageSupport = ['ENGLISH', 'HINDI'];
+export const languageSupport: [string, string] = ['ENGLISH', 'HINDI'];
 export const teachingMethod = [
     'Concept-First – Introduce the core idea before diving into details',
     'Storytelling – Explain concepts through engaging narratives',

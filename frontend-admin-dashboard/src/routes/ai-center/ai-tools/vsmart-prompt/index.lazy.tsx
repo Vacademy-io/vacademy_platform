@@ -1,4 +1,4 @@
-import { createLazyFileRoute } from '@tanstack/react-router';
+import { createLazyFileRoute, useSearch } from '@tanstack/react-router';
 import { GenerateQuestionsFromText } from './-components/GenerateQuestionsFromText';
 import { AICenterProvider } from '@/routes/ai-center/-contexts/useAICenterContext';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -12,12 +12,14 @@ export const Route = createLazyFileRoute('/ai-center/ai-tools/vsmart-prompt/')({
 
 function RouteComponent() {
     const { setNavHeading } = useNavHeadingStore();
+    const search = useSearch({ strict: false }) as { topic?: string };
+    const initialTopic = typeof search?.topic === 'string' ? search.topic : '';
 
     useEffect(() => {
         const heading = (
             <div className="flex items-center gap-4">
                 <CaretLeft onClick={() => window.history.back()} className="cursor-pointer" />
-                <div>VSmart AI Tools</div>
+                <div>Questions from a Topic</div>
             </div>
         );
 
@@ -27,7 +29,7 @@ function RouteComponent() {
     return (
         <LayoutContainer>
             <AICenterProvider>
-                <GenerateQuestionsFromText />
+                <GenerateQuestionsFromText initialTopic={initialTopic} />
             </AICenterProvider>
         </LayoutContainer>
     );

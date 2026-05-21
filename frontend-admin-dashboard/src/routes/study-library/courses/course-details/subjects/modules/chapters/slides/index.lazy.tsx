@@ -5,7 +5,7 @@ import { AdminSlidesView } from './admin/AdminSlidesView';
 import { NonAdminSlidesView } from './non-admin/NonAdminSlidesView';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { useMemo } from 'react';
-import { QuickAddView, type ChapterSearchParamsForQuickAdd } from './quick-add';
+import { QuickAddView, type ChapterSearchParamsForQuickAdd } from './-quick-add';
 
 interface ChapterSearchParams {
     courseId: string;

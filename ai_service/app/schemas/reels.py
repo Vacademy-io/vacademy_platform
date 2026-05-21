@@ -176,6 +176,12 @@ class WordImportance(BaseModel):
 class EnrichedCandidate(BaseModel):
     """Returned by /preview — adds LLM-derived fields to a scan candidate."""
     candidate_id: str
+    method: Optional[str] = Field(
+        default=None,
+        description='"llm" when the LLM call succeeded, "heuristic_fallback" when '
+        "we synthesized importance/title without an LLM call. Surface this on "
+        "the FE so users can see when enrichment quality is degraded.",
+    )
     title: str = Field(..., description="≤8-word working title")
     rationale: str = Field(..., description="≤20-word reason this clip is worth rendering")
     word_importance: list[WordImportance]

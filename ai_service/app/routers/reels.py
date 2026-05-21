@@ -445,6 +445,7 @@ def _enriched_dict_to_response(candidate_id: str, enriched: dict) -> EnrichedCan
     ]
     return EnrichedCandidate(
         candidate_id=candidate_id,
+        method=enriched.get("method"),
         title=str(enriched.get("title") or "Untitled"),
         rationale=str(enriched.get("rationale") or ""),
         word_importance=words,

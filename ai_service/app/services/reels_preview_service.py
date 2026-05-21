@@ -791,12 +791,35 @@ def _parse_llm_response(
     title = str(parsed.get("title") or "").strip()
     rationale = str(parsed.get("rationale") or "").strip()
     imp = parsed.get("importance")
-    if not isinstance(imp, list) or len(imp) != expected_len:
+    if not isinstance(imp, list):
         logger.warning(
-            f"[ReelsPreview] LLM importance array length mismatch: "
-            f"got {len(imp) if isinstance(imp, list) else type(imp)}, expected {expected_len}"
+            f"[ReelsPreview] LLM importance not a list: {type(imp)}"
         )
         return None
+    # Haiku occasionally returns an importance array that's 1-15% off from
+    # the word count (it collapses contractions, merges short tokens, etc).
+    # Throwing away the entire enrichment over a 1-word mismatch loses the
+    # title + rationale + emoji tagging too — a much worse outcome than
+    # padding/truncating with the default neutral importance (2). Reject
+    # only when the mismatch exceeds 20% — at that point the response is
+    # likely structurally broken and heuristic is safer.
+    got_len = len(imp)
+    delta_pct = abs(got_len - expected_len) / max(1, expected_len)
+    if delta_pct > 0.20:
+        logger.warning(
+            f"[ReelsPreview] LLM importance array length mismatch beyond 20% "
+            f"tolerance: got {got_len}, expected {expected_len}"
+        )
+        return None
+    if got_len != expected_len:
+        logger.info(
+            f"[ReelsPreview] LLM importance array off by {got_len - expected_len} "
+            f"(got {got_len}, expected {expected_len}); padding/truncating"
+        )
+        if got_len < expected_len:
+            imp = list(imp) + [2] * (expected_len - got_len)
+        else:
+            imp = list(imp)[:expected_len]
     if len(title) > 80:
         title = title[:77] + "…"
     if len(rationale) > 200:

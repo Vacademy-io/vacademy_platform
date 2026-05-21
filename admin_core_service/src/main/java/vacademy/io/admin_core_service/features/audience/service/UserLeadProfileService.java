@@ -19,6 +19,8 @@ import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepo
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.timeline.repository.TimelineEventRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 
 import java.sql.Timestamp;
 import java.util.*;
@@ -49,6 +51,8 @@ public class UserLeadProfileService {
     private final LeadScoreRepository leadScoreRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final TimelineEventRepository timelineEventRepository;
+    private final WorkflowTriggerService workflowTriggerService;
+    private final LeadTriggerContextBuilder leadTriggerContextBuilder;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -172,6 +176,7 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        String oldStatus = profile.getConversionStatus();
         profile.setConversionStatus(status);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
 
@@ -181,7 +186,9 @@ public class UserLeadProfileService {
             profile.setConvertedAt(null);
         }
 
-        return userLeadProfileRepository.save(profile);
+        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+        emitStatusChanged(saved, "CONVERSION_STATUS", oldStatus, status);
+        return saved;
     }
 
     /**
@@ -203,6 +210,7 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        String oldTier = profile.getLeadTier();
         String requested = tier.toUpperCase();
         String scoreDerived = profile.computeTier();
 
@@ -214,7 +222,36 @@ public class UserLeadProfileService {
         profile.setLeadTier(requested.equalsIgnoreCase(scoreDerived) ? null : requested);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
 
-        return userLeadProfileRepository.save(profile);
+        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+        emitStatusChanged(saved, "TIER", oldTier, requested);
+        return saved;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Workflow trigger emission (emit-only; the workflow engine handles delivery)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Emit LEAD_STATUS_CHANGED for a conversion-status or tier change on a user's lead profile. */
+    private void emitStatusChanged(UserLeadProfile profile, String changeType, String oldStatus, String newStatus) {
+        if (profile == null || Objects.equals(oldStatus, newStatus)) return;
+        Map<String, Object> ctx = leadTriggerContextBuilder.forUser(
+                profile.getInstituteId(), profile.getUserId(),
+                profile.getAssignedCounselorId(), profile.getAssignedCounselorName());
+        leadTriggerContextBuilder.put(ctx, "changeType", changeType);
+        leadTriggerContextBuilder.put(ctx, "oldStatus", oldStatus);
+        leadTriggerContextBuilder.put(ctx, "newStatus", newStatus);
+        safeEmit(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), profile.getUserId(),
+                profile.getInstituteId(), ctx);
+    }
+
+    /** Fire a workflow trigger, never letting an automation failure break the lead operation. */
+    private void safeEmit(String eventName, String eventId, String instituteId, Map<String, Object> ctx) {
+        if (instituteId == null || instituteId.isBlank()) return;
+        try {
+            workflowTriggerService.handleTriggerEvents(eventName, eventId, instituteId, ctx);
+        } catch (Exception ex) {
+            log.warn("[LeadTrigger] Failed to emit {} for eventId={}: {}", eventName, eventId, ex.getMessage());
+        }
     }
 
     /**
@@ -484,7 +521,15 @@ public class UserLeadProfileService {
         profile.setAssignedCounselorId(counselorId);
         profile.setAssignedCounselorName(counselorName);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
-        return userLeadProfileRepository.save(profile);
+        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+
+        // Emit only on an actual assignment (not when clearing the counselor).
+        if (counselorId != null && !counselorId.isBlank()) {
+            safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId,
+                    instituteId,
+                    leadTriggerContextBuilder.forUser(instituteId, userId, counselorId, counselorName));
+        }
+        return saved;
     }
 
     private UserLeadProfileDTO toDTO(UserLeadProfile p) {

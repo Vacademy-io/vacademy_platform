@@ -35,6 +35,9 @@ public class LeadFilterDTO {
     private String assignedCounselorId;     // Filter by assigned counselor
     private Boolean isUnassigned;           // True = only unassigned leads
 
+    // ── Pipeline status filter ──
+    private String leadStatusId;            // Filter by lead_status.id (custom pipeline stage)
+
     // ── Status Filters ──
     private java.util.List<String> overallStatuses;    // ENQUIRY, APPLICATION, ADMITTED, etc.
     private java.util.List<String> enquiryStatuses;     // ACTIVE, CONVERTED, etc.

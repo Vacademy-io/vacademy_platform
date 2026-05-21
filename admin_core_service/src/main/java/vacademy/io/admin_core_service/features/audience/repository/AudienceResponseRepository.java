@@ -3,9 +3,12 @@ package vacademy.io.admin_core_service.features.audience.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 
 import java.sql.Timestamp;
@@ -84,6 +87,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
+                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -159,6 +163,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
+                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -212,6 +217,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
+                        @Param("leadStatusId") String leadStatusId,
                         @Param("sourceType") String sourceType,
                         @Param("sourceId") String sourceId,
                         @Param("submittedFrom") Timestamp submittedFrom,
@@ -267,6 +273,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
+                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -312,6 +319,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
+                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -344,6 +352,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
+                        @Param("leadStatusId") String leadStatusId,
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,
@@ -546,5 +555,90 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         default Optional<AudienceResponse> findByAudienceIdAndDedupeKey(String audienceId, String dedupeKey) {
                 return findFirstByAudienceIdAndDedupeKeyAndIsDuplicateFalse(audienceId, dedupeKey);
         }
+
+        // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
+
+        /**
+         * Distinct institute IDs that currently have at least one open, non-opted-out lead.
+         * The scheduler iterates these and reads each institute's LEAD_SETTING to decide
+         * whether TAT / follow-up reminders are enabled before scanning its leads.
+         */
+        @Query(value = """
+                            SELECT DISTINCT a.institute_id
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        List<String> findInstituteIdsWithActiveLeads();
+
+        /**
+         * All open, assigned, unconverted leads for an institute, with the resolved counselor and the
+         * timestamp of that counselor's last action on the lead. The scheduler decides which SLA stage
+         * (TAT before/overdue, follow-up due/overdue) to emit per row in Java. Mirrors the counselor
+         * resolution of {@link #findLeadsWithFilters} (linked_users first, then user_lead_profile).
+         */
+        @Query(value = """
+                            SELECT ar.id AS leadId,
+                                   ar.user_id AS userId,
+                                   ar.student_user_id AS studentUserId,
+                                   ar.enquiry_id AS enquiryId,
+                                   ar.audience_id AS audienceId,
+                                   a.campaign_name AS campaignName,
+                                   a.institute_id AS instituteId,
+                                   ar.parent_name AS parentName,
+                                   ar.parent_email AS parentEmail,
+                                   ar.parent_mobile AS parentMobile,
+                                   ar.submitted_at AS submittedAt,
+                                   COALESCE(lu.user_id, ulp.assigned_counselor_id) AS counselorId,
+                                   ar.tat_reminder_stage AS tatReminderStage,
+                                   ar.tat_reminder_count AS tatReminderCount,
+                                   ar.tat_reminder_assignee_id AS tatReminderAssigneeId,
+                                   (SELECT MAX(te.created_at) FROM timeline_event te
+                                      WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                        AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                              OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                              OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                   ) AS lastCounselorActionAt
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
+                        """, nativeQuery = true)
+        List<LeadSlaCandidate> findSlaCandidatesForInstitute(@Param("instituteId") String instituteId);
+
+        /**
+         * Atomically claim a reminder stage for a lead. Returns 1 if this call won the claim (and the row
+         * was updated), 0 if another run/replica already emitted this exact stage+cycle (dedup key matches).
+         * Replica-safe via the row lock on the conditional WHERE — the scheduler emits the trigger only
+         * when this returns 1.
+         */
+        @Modifying
+        @Transactional
+        @Query(value = """
+                            UPDATE audience_response
+                               SET tat_reminder_dedup_key = :dedupKey,
+                                   tat_reminder_stage = :stage,
+                                   tat_reminder_assignee_id = :assigneeId,
+                                   tat_reminder_count = tat_reminder_count + 1,
+                                   tat_due_at = :dueAt
+                             WHERE id = :id
+                               AND (tat_reminder_dedup_key IS NULL OR tat_reminder_dedup_key <> :dedupKey)
+                        """, nativeQuery = true)
+        int claimTatReminderStage(@Param("id") String id,
+                        @Param("dedupKey") String dedupKey,
+                        @Param("stage") String stage,
+                        @Param("assigneeId") String assigneeId,
+                        @Param("dueAt") Timestamp dueAt);
 }
 

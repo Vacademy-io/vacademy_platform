@@ -63,4 +63,13 @@ public interface WorkflowWithScheduleProjection {
     LocalDateTime getTriggerCreatedAt();
 
     LocalDateTime getTriggerUpdatedAt();
+
+    // event_applied_type + event_id were missing in the original projection,
+    // which meant any consumer needing to filter workflows by audience/batch/
+    // session scope had to fetch each workflow's full DTO separately. Adding
+    // them here so the audience list's LinkedWorkflowsDialog (and any future
+    // entity-list-with-linked-workflows feature) can filter in one round trip.
+    String getEventAppliedType();
+
+    String getEventId();
 }

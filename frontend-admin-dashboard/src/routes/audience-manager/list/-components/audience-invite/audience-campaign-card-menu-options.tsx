@@ -1,6 +1,10 @@
 import { Button } from '@/components/ui/button';
-import { MoreVertical, Edit2, Trash2, Code, Code2, UserPlus, Upload, MessageSquare } from 'lucide-react';
+import {
+    MoreVertical, Edit2, Trash2, Code, Code2, UserPlus, Upload, MessageSquare,
+    Zap, Workflow as WorkflowIcon,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -28,6 +32,9 @@ import { ApiIntegrationDialog } from '../api-integration-dialog/ApiIntegrationDi
 import { EmbedCodeDialog } from '../embed-code-dialog/EmbedCodeDialog';
 import { LeadBulkImportDialog } from '../campaign-users/LeadBulkImportDialog';
 import { SendMessageDialog } from '../campaign-users/SendMessageDialog';
+import { LinkedWorkflowsDialog } from './linked-workflows-dialog';
+import { ConfigureAudienceWorkflowDialog } from './configure-audience-workflow-dialog';
+import { getActiveWorkflowsQuery } from '@/services/workflow-service';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -49,6 +56,8 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openEmbedDialog, setOpenEmbedDialog] = useState(false);
     const [openBulkImportDialog, setOpenBulkImportDialog] = useState(false);
     const [openSendMessageDialog, setOpenSendMessageDialog] = useState(false);
+    const [openLinkedWorkflowsDialog, setOpenLinkedWorkflowsDialog] = useState(false);
+    const [openConfigureWorkflowDialog, setOpenConfigureWorkflowDialog] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
     const bulkImportCustomFields = useMemo(
         () =>
@@ -130,6 +139,41 @@ export const AudienceCampaignCardMenuOptions = ({
         } as any);
     };
 
+    // Workflows linked to this campaign — used to display the count on the
+    // "View Linked Workflows" menu item. Shares the same query key as the
+    // workflow list page, so React Query dedupes the network call when both
+    // are open or already cached.
+    const { data: allWorkflows = [] } = useQuery({
+        ...getActiveWorkflowsQuery(instituteId ?? ''),
+        // Soft-load — don't block menu render on this. Default staleTime in the
+        // query is 5 min; refetch on dropdown open via React Query auto-revalidate.
+        enabled: !!instituteId,
+    });
+    // Match logic intentionally mirrors LinkedWorkflowsDialog so the count
+    // shown here is exactly what the dialog will display.
+    const linkedCount = useMemo(() => {
+        if (!campaignId) return 0;
+        return allWorkflows.filter((w) => {
+            const t = w.trigger;
+            if (!t || !t.trigger_event_name) return false;
+            // Keep in sync with AUDIENCE_TRIGGER_EVENTS in linked-workflows-dialog.tsx
+            if (t.trigger_event_name !== 'AUDIENCE_LEAD_SUBMISSION') return false;
+            return t.event_id === campaignId || t.event_id === null;
+        }).length;
+    }, [allWorkflows, campaignId]);
+
+    const handleConfigureWorkflow = () => {
+        if (!campaignId) {
+            toast.error('Campaign ID is missing');
+            return;
+        }
+        // Inline quick-create dialog — handles the two common cases
+        // (confirmation email + N-day follow-up) without taking the user out
+        // to the full workflow builder. For more complex flows the admin can
+        // still go through Communications → Workflows → Create.
+        setOpenConfigureWorkflowDialog(true);
+    };
+
     return (
         <>
             <DropdownMenu>
@@ -159,6 +203,20 @@ export const AudienceCampaignCardMenuOptions = ({
                     <DropdownMenuItem onClick={() => setOpenSendMessageDialog(true)}>
                         <MessageSquare className="mr-2 size-4" />
                         Send Message
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleConfigureWorkflow}>
+                        <Zap className="mr-2 size-4" />
+                        Configure Workflow
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setOpenLinkedWorkflowsDialog(true)}>
+                        <WorkflowIcon className="mr-2 size-4" />
+                        View Linked Workflows
+                        {linkedCount > 0 && (
+                            <span className="ml-auto rounded-full bg-primary-100 text-primary-700 px-2 py-0.5 text-[10px] font-semibold">
+                                {linkedCount}
+                            </span>
+                        )}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
@@ -239,6 +297,26 @@ export const AudienceCampaignCardMenuOptions = ({
                     instituteId={instituteId || ''}
                     customFields={bulkImportCustomFields}
                     leadCount={0}
+                />
+            )}
+
+            {campaignId && instituteId && (
+                <LinkedWorkflowsDialog
+                    open={openLinkedWorkflowsDialog}
+                    onOpenChange={setOpenLinkedWorkflowsDialog}
+                    audienceId={campaignId}
+                    audienceName={campaign.campaign_name || 'this campaign'}
+                    instituteId={instituteId}
+                />
+            )}
+
+            {campaignId && instituteId && (
+                <ConfigureAudienceWorkflowDialog
+                    open={openConfigureWorkflowDialog}
+                    onOpenChange={setOpenConfigureWorkflowDialog}
+                    audienceId={campaignId}
+                    audienceName={campaign.campaign_name || 'this campaign'}
+                    instituteId={instituteId}
                 />
             )}
         </>

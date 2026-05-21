@@ -351,14 +351,35 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
 
             {/* Suggested Courses expanded config */}
             {settings.suggestedCourses.enabled && (
-                <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
-                    <p className="mb-2 text-xs font-semibold text-violet-700 uppercase tracking-wide">Section Heading</p>
-                    <Input
-                        placeholder="People also buy"
-                        value={settings.suggestedCourses.heading}
-                        onChange={(e) => update({ suggestedCourses: { ...settings.suggestedCourses, heading: e.target.value } })}
-                        className="border-neutral-200 bg-neutral-50 focus:border-violet-400 focus:ring-violet-300"
-                    />
+                <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm space-y-3">
+                    <div>
+                        <p className="mb-2 text-xs font-semibold text-violet-700 uppercase tracking-wide">Section Heading</p>
+                        <Input
+                            placeholder="People also buy"
+                            value={settings.suggestedCourses.heading}
+                            onChange={(e) => update({ suggestedCourses: { ...settings.suggestedCourses, heading: e.target.value } })}
+                            className="border-neutral-200 bg-neutral-50 focus:border-violet-400 focus:ring-violet-300"
+                        />
+                    </div>
+                    <div>
+                        <p className="mb-2 text-xs font-semibold text-violet-700 uppercase tracking-wide">Show On Step</p>
+                        <div className="flex gap-2">
+                            {(['CART', 'FORM', 'BOTH'] as const).map((val) => (
+                                <button
+                                    key={val}
+                                    type="button"
+                                    onClick={() => update({ suggestedCourses: { ...settings.suggestedCourses, showOn: val } })}
+                                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                                        (settings.suggestedCourses.showOn ?? 'BOTH') === val
+                                            ? 'border-violet-300 bg-violet-50 text-violet-700'
+                                            : 'border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300'
+                                    }`}
+                                >
+                                    {val === 'CART' ? 'Cart' : val === 'FORM' ? 'Details' : 'Both'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

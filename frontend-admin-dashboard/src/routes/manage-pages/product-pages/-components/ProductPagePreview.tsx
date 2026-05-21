@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 interface ProductPagePreviewProps {
     productPageCode: string;
     instituteId: string;
+    /** Custom learner portal base URL (e.g. https://shiksha.example.com). When present, instituteId param is omitted. */
+    learnerPortalBaseUrl?: string;
     preselectedCourseIds?: string[];
     defaultStep?: string;
 }
 
-export const ProductPagePreview = ({ productPageCode, instituteId, preselectedCourseIds, defaultStep }: ProductPagePreviewProps) => {
+export const ProductPagePreview = ({ productPageCode, instituteId, learnerPortalBaseUrl, preselectedCourseIds, defaultStep }: ProductPagePreviewProps) => {
     if (!productPageCode) {
         return (
             <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-white py-20 text-center">
@@ -18,11 +20,17 @@ export const ProductPagePreview = ({ productPageCode, instituteId, preselectedCo
         );
     }
 
-    const courseIdsParam = preselectedCourseIds && preselectedCourseIds.length > 0
-        ? `&courseIds=${preselectedCourseIds.join(',')}`
-        : '';
-    const defaultTabParam = defaultStep ? `&defaultTab=${defaultStep}` : '';
-    const previewUrl = `${BASE_URL_LEARNER_DASHBOARD}/product-pages/${productPageCode}?instituteId=${instituteId}${courseIdsParam}${defaultTabParam}`;
+    // When a custom domain is configured, domain routing identifies the institute — skip ?instituteId=
+    const baseUrl = learnerPortalBaseUrl
+        ? (learnerPortalBaseUrl.startsWith('http') ? learnerPortalBaseUrl : `https://${learnerPortalBaseUrl}`)
+        : BASE_URL_LEARNER_DASHBOARD;
+
+    const params = new URLSearchParams();
+    if (!learnerPortalBaseUrl) params.set('instituteId', instituteId);
+    if (defaultStep) params.set('defaultTab', defaultStep);
+    if (preselectedCourseIds && preselectedCourseIds.length > 0) params.set('courseIds', preselectedCourseIds.join(','));
+    const qs = params.toString();
+    const previewUrl = `${baseUrl}/product-pages/${productPageCode}${qs ? `?${qs}` : ''}`;
 
     return (
         <div className="space-y-3">

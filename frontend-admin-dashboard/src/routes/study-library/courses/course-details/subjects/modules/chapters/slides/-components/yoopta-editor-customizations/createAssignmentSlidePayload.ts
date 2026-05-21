@@ -49,7 +49,7 @@ export function createAssignmentSlidePayload(
             live_date: '',
             end_date: '',
             re_attempt_count: 0,
-            comma_separated_media_ids: '',
+            comma_separated_media_ids: 'types:',
             questions: [],
         },
         quiz_slide: null,

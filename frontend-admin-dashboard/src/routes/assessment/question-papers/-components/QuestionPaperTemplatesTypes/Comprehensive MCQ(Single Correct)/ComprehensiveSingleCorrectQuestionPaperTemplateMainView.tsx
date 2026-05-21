@@ -76,37 +76,6 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplateMainView = ({
 
     return (
         <div className={className}>
-            <div className="-mb-8 flex justify-end">
-                <Popover>
-                    <PopoverTrigger>
-                        <Button variant="outline" type="button" className="cursor-pointer px-3">
-                            <Sliders size={32} />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent>
-                        <div className="mb-2 flex flex-col gap-4">
-                            <div className="flex w-full items-center justify-between">
-                                <h1 className="text-primary-500">Questions Settings</h1>
-                                <PopoverClose>
-                                    <X size={16} />
-                                </PopoverClose>
-                            </div>
-                            <SelectField
-                                label="Question Type"
-                                name={`questions.${currentQuestionIndex}.questionType`}
-                                options={QUESTION_TYPES.map((option, index) => ({
-                                    value: option.code,
-                                    label: option.display,
-                                    _id: index,
-                                }))}
-                                control={form.control}
-                                className="!w-full"
-                                required
-                            />
-                        </div>
-                    </PopoverContent>
-                </Popover>
-            </div>
             <div className="flex w-full flex-col !flex-nowrap items-start gap-1">
                 <span>Comprehension Text</span>
                 <FormField
@@ -195,6 +164,8 @@ export const ComprehensiveSingleCorrectQuestionPaperTemplateMainView = ({
                                                         value={field.value}
                                                         onBlur={field.onBlur}
                                                         onChange={field.onChange}
+                                                        minHeight={40}
+                                                        hideToolbar
                                                     />
                                                 </FormControl>
                                                 <FormMessage />

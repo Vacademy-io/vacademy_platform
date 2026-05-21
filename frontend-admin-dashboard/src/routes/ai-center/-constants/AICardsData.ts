@@ -8,96 +8,71 @@ export interface AIToolFeatureType {
 
 export interface AIToolCardDataType {
     title: string;
+    description?: string;
     features: AIToolFeatureType[];
 }
 
 export const AIToolCardData: AIToolCardDataType[] = [
     {
-        title: 'Generate Questions form AI',
+        title: 'Make a new question paper',
+        description: 'Start from a topic, a document, or a recording. Edit before you publish.',
         features: [
             {
                 key: 'assessment',
-                heading: 'Vsmart Upload',
-                subheading: 'Generate questions by uploading pdf, doc and ppt files',
-                tags: ['PDF, Doc & PPT', 'AI Analysis', 'Structured Questions'],
+                heading: 'Create a Question Paper',
+                subheading:
+                    'Drop a PDF, paste a topic, or upload audio. Get a draft you can edit before sending.',
+                tags: ['PDF, audio or topic', 'Ready in ~30s', 'Editable draft'],
                 route: '/ai-center/ai-tools/vsmart-upload',
-            },
-            {
-                key: 'audio',
-                heading: 'Vsmart Audio',
-                subheading: 'Generate questions by uploading audio files',
-                tags: ['Audio to Questions', 'MP3 & WAV', 'Lecture Support'],
-                route: '/ai-center/ai-tools/vsmart-audio',
-            },
-            {
-                key: 'text',
-                heading: 'Vsmart Topics',
-                subheading: 'Generate questions by providing topics',
-                tags: ['Topic Based', 'Instant Quiz', 'Custom Difficulty'],
-                route: '/ai-center/ai-tools/vsmart-prompt',
-            },
-            {
-                key: 'chat',
-                heading: 'Vsmart Chat',
-                subheading: 'Generate questions from chats',
-                tags: ['Chat with PDF', 'Interactive Refinement', 'Auto-Generate'],
-                route: '/ai-center/ai-tools/vsmart-chat',
             },
         ],
     },
     {
-        title: 'Extract Questions with AI',
+        title: 'Bring an existing paper online',
+        description: 'Turn printed or scanned papers into editable question sets.',
         features: [
             {
                 key: 'question',
-                heading: 'Vsmart Extract',
-                subheading: 'Extract questions by uploading pdf, doc and ppt files',
-                tags: ['Question Extraction', 'Pattern Recognition', 'Legacy Support'],
+                heading: 'Reuse Existing Questions',
+                subheading:
+                    'Upload a printed paper — photo, scan, or PDF — and get back a digital, editable question set.',
+                tags: ['Photo, scan or PDF', 'OCR handled for you', 'Save to question bank'],
                 route: '/ai-center/ai-tools/vsmart-extract',
-            },
-            {
-                key: 'image',
-                heading: 'Vsmart Image',
-                subheading: 'Extract questions by uploading images',
-                tags: ['Image to Text', 'OCR Technology', 'Handwritten Notes'],
-                route: '/ai-center/ai-tools/vsmart-image',
             },
         ],
     },
     {
-        title: 'Sort topic questions with AI',
+        title: 'Tidy your question bank',
+        description: 'Group questions by topic so you can reuse them next term.',
         features: [
             {
                 key: 'sortSplitPdf',
-                heading: 'Vsmart Organizer',
-                subheading: 'Sort specific questions from any topics, question numbers or page',
-                tags: ['Topic Sorting', 'Chapter Wise', 'Structured Output'],
+                heading: 'Organize My Question Bank',
+                subheading:
+                    'Auto-group questions by topic, or pick your own splits. Refine the result with drag and drop.',
+                tags: ['Auto-group by topic', 'Chapter-wise', 'Drag to refine'],
                 route: '/ai-center/ai-tools/vsmart-organizer',
-            },
-            {
-                key: 'sortTopicsPdf',
-                heading: 'Vsmart Sorter',
-                subheading: 'Get all the questions sorted by their topics',
-                tags: ['Custom Order', 'Topic Grouping', 'Flexible Flow'],
-                route: '/ai-center/ai-tools/vsmart-sorter',
             },
         ],
     },
     {
-        title: 'Lecture support with AI',
+        title: 'Plan and improve your lectures',
+        description: 'Draft a lesson before class. Get kind, specific feedback after.',
         features: [
             {
                 key: 'planLecture',
-                heading: 'Vsmart Lecturer',
-                subheading: 'Generate structured, time-based lectures with just a prompt',
-                tags: ['Lesson Planning', 'Time Management', 'Structured Flow'],
+                heading: 'Lesson Planner',
+                subheading:
+                    'Describe what you are teaching and how long you have. Get a draft plan you can refine.',
+                tags: ['Time-based timeline', 'Editable in place', 'Homework optional'],
                 route: '/ai-center/ai-tools/vsmart-lecture',
             },
             {
                 key: 'evaluateLecture',
-                heading: 'Vsmart Feedback',
-                subheading: 'Get feedback reports on your lecture performance',
-                tags: ['Performance Score', 'Audio Analysis', 'Actionable Tips'],
+                heading: 'Lecture Coach',
+                subheading:
+                    'Drop a recording of a lecture you taught. Get a clear, constructive review.',
+                tags: ['Pacing & engagement', 'Strong moments', 'Concrete suggestions'],
                 route: '/ai-center/ai-tools/vsmart-feedback',
             },
         ],

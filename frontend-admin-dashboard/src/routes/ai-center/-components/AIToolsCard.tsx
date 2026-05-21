@@ -21,7 +21,7 @@ export const AIToolsCard = ({ feature }: { feature: AIToolFeatureType }) => {
                     <div className="flex bg-primary-50 p-2 rounded-lg text-primary-500 group-hover:bg-primary-100 transition-colors">
                         <StarFour weight="fill" className="size-5" />
                     </div>
-                    <CardTitle className="text-base font-semibold text-gray-900 line-clamp-1">
+                    <CardTitle className="text-base font-semibold text-gray-900 line-clamp-2">
                         {feature.heading}
                     </CardTitle>
                 </div>

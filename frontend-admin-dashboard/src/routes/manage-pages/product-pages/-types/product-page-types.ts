@@ -84,6 +84,7 @@ export interface ProductPageSettings {
     suggestedCourses: {
         enabled: boolean;
         heading: string;
+        showOn?: 'CART' | 'FORM' | 'BOTH';
     };
     disableBackNavigation: boolean;
     coupon: {

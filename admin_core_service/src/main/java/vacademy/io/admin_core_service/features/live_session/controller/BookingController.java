@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.live_session.dto.*;
 import vacademy.io.admin_core_service.features.live_session.entity.BookingType;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
@@ -26,6 +27,11 @@ public class BookingController {
     // ==================== CREATE BOOKING ====================
 
     @PostMapping("/create")
+    @Auditable(
+            entityType = "LIVE_SESSION",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.id",
+            descriptionExpr = "'created booking ' + (#request?.title ?: '')")
     public ResponseEntity<LiveSession> createBooking(
             @RequestBody CreateBookingRequestDTO request,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -57,6 +63,11 @@ public class BookingController {
     // ==================== CANCEL BOOKING ====================
 
     @PostMapping("/cancel")
+    @Auditable(
+            entityType = "LIVE_SESSION",
+            action = "CANCEL",
+            entityIdExpr = "#request?.scheduleId",
+            descriptionExpr = "'cancelled live session booking'")
     public ResponseEntity<String> cancelBooking(
             @RequestBody CancelBookingRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -66,6 +77,11 @@ public class BookingController {
     // ==================== RESCHEDULE BOOKING ====================
 
     @PostMapping("/reschedule")
+    @Auditable(
+            entityType = "LIVE_SESSION",
+            action = "UPDATE",
+            entityIdExpr = "#request?.scheduleId",
+            descriptionExpr = "'rescheduled live session booking'")
     public ResponseEntity<String> rescheduleBooking(
             @RequestBody RescheduleBookingRequest request,
             @RequestAttribute("user") CustomUserDetails user) {

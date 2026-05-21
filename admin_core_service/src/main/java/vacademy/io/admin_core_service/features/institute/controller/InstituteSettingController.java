@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.institute.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.InstituteSettingDto;
 import vacademy.io.admin_core_service.features.institute.dto.settings.SettingDto;
@@ -20,6 +21,11 @@ public class InstituteSettingController {
     // ========================= SAVE/UPDATE ENDPOINTS =========================
     
     @PostMapping("/create-name-setting")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "CREATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'created naming settings'")
     public ResponseEntity<String> newNamingSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                                    @RequestParam("instituteId") String instituteId,
                                                    @RequestBody NameSettingRequest request){
@@ -27,6 +33,12 @@ public class InstituteSettingController {
     }
 
     @PostMapping("/update-name-setting")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'updated naming settings'",
+            captureBefore = "@instituteSettingManager.getSettingData(#userDetails, #instituteId, 'NAMING_SETTING').body")
     public ResponseEntity<String> updateNamingSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                                    @RequestParam("instituteId") String instituteId,
                                                    @RequestBody NameSettingRequest request){
@@ -36,6 +48,12 @@ public class InstituteSettingController {
     // Unified API for any setting key - handles both create and update
     // Supports: NAME_SETTING, COURSE_SETTING, CERTIFICATE_SETTING, CHATBOT_SETTING, etc.
     @PostMapping("/save-setting")
+    @Auditable(
+            entityType = "INSTITUTE_SETTING",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'updated ' + #settingKey?.toLowerCase()?.replace('_', ' ')",
+            captureBefore = "@instituteSettingManager.getSettingData(#userDetails, #instituteId, #settingKey).body")
     public ResponseEntity<String> saveSetting(@RequestAttribute("user")CustomUserDetails userDetails,
                                               @RequestParam("instituteId") String instituteId,
                                               @RequestParam("settingKey") String settingKey,

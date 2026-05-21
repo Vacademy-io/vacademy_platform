@@ -9,13 +9,21 @@ import type {
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
 const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>(['suborg-teams', 'notification-hub']);
 
+// Tabs that ship hidden until an institute admin opts them in via the
+// Display Settings UI. Distinct from admissions/fee-management which are
+// shipped hidden for historical sub-org reasons.
+const OPT_IN_TAB_IDS = new Set<string>(['admin-activity-logs']);
+
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({
         id: item.id,
         label: item.title,
         route: item.to,
         order: index + 1,
-        visible: item.id !== 'admissions' && item.id !== 'fee-management',
+        visible:
+            item.id !== 'admissions' &&
+            item.id !== 'fee-management' &&
+            !OPT_IN_TAB_IDS.has(item.id),
         subTabs:
             item.subItems?.map((sub, subIndex) => {
                 const id = sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`;

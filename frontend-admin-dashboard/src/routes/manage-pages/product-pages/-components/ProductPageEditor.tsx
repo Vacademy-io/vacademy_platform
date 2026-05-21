@@ -5,6 +5,7 @@ import { ArrowLeft, Save, AlertCircle, Copy, Check, Link } from 'lucide-react';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { useState } from 'react';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useProductPageEditor } from '../-hooks/use-product-page-editor';
 import { CourseSessionSelector } from './CourseSessionSelector';
 import { ProductPageSettingsCard } from './ProductPageSettingsCard';
@@ -22,10 +23,13 @@ const TABS = [
 ] as const;
 
 export const ProductPageEditor = () => {
-    const { productPageId } = useParams({ from: '/manage-pages/product-pages/editor/$productPageId' });
+    const { productPageId } = useParams({
+        from: '/manage-pages/product-pages/editor/$productPageId',
+    });
     const navigate = useNavigate();
     const { toast } = useToast();
     const instituteId = getCurrentInstituteId() || '';
+    const { instituteDetails } = useInstituteDetailsStore();
     const [codeCopied, setCodeCopied] = useState(false);
 
     const {
@@ -55,7 +59,8 @@ export const ProductPageEditor = () => {
 
     const handleSave = () => {
         save(undefined, {
-            onSuccess: () => toast({ title: 'Saved', description: 'Product page saved successfully' }),
+            onSuccess: () =>
+                toast({ title: 'Saved', description: 'Product page saved successfully' }),
             onError: () =>
                 toast({ title: 'Error', description: 'Failed to save', variant: 'destructive' }),
         });
@@ -63,9 +68,15 @@ export const ProductPageEditor = () => {
 
     const getLearnerUrl = () => {
         if (!page?.code) return '';
-        const base = `${BASE_URL_LEARNER_DASHBOARD}/product-pages/${page.code}?instituteId=${instituteId}`;
         const tab = settings?.defaultStep ?? 'CATALOG';
-        return `${base}&defaultTab=${tab}`;
+        const rawCustomDomain = instituteDetails?.learner_portal_base_url;
+        if (rawCustomDomain) {
+            const base = rawCustomDomain.startsWith('http')
+                ? rawCustomDomain
+                : `https://${rawCustomDomain}`;
+            return `${base}/product-pages/${page.code}?defaultTab=${tab}`;
+        }
+        return `${BASE_URL_LEARNER_DASHBOARD}/product-pages/${page.code}?instituteId=${instituteId}&defaultTab=${tab}`;
     };
 
     const copyCode = () => {
@@ -106,7 +117,7 @@ export const ProductPageEditor = () => {
             <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-6 py-3">
                 <button
                     onClick={() => navigate({ to: '/manage-pages/product-pages' })}
-                    className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-700 transition-colors"
+                    className="flex items-center gap-1.5 text-sm text-neutral-500 transition-colors hover:text-neutral-700"
                 >
                     <ArrowLeft className="size-4" />
                     Back
@@ -118,7 +129,7 @@ export const ProductPageEditor = () => {
                 <Input
                     value={name}
                     onChange={(e) => updateName(e.target.value)}
-                    className="h-8 max-w-xs border-transparent bg-transparent text-sm font-semibold shadow-none hover:border-neutral-200 focus:border-neutral-300 text-neutral-800"
+                    className="h-8 max-w-xs border-transparent bg-transparent text-sm font-semibold text-neutral-800 shadow-none hover:border-neutral-200 focus:border-neutral-300"
                     placeholder="Page name"
                 />
 
@@ -126,22 +137,17 @@ export const ProductPageEditor = () => {
                 {page?.code && (
                     <button
                         onClick={copyCode}
-                        className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] text-neutral-500 hover:bg-neutral-100 transition-colors"
+                        className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] text-neutral-500 transition-colors hover:bg-neutral-100"
                         title="Copy shareable link"
                     >
                         {codeCopied ? (
                             <>
                                 <Check className="size-3 text-success-600" />
-                                <span className="text-success-600 font-medium">Copied!</span>
+                                <span className="font-medium text-success-600">Copied!</span>
                             </>
                         ) : (
                             <>
-                                <Link className="size-3" />
-                                <span className="font-mono">{page.code}</span>
-                                <span className="text-neutral-300">·</span>
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-primary-500">
-                                    {settings?.defaultStep ?? 'CATALOG'}
-                                </span>
+                                <span className="font-medium">Copy Link</span>
                                 <Copy className="size-3 text-neutral-300" />
                             </>
                         )}
@@ -160,11 +166,11 @@ export const ProductPageEditor = () => {
 
                 <div className="ml-auto flex items-center gap-2">
                     {isDirty && (
-                        <span className="text-xs text-warning-600 font-medium">Unsaved changes</span>
+                        <span className="text-xs font-medium text-warning-600">
+                            Unsaved changes
+                        </span>
                     )}
-                    {saveError && (
-                        <span className="text-xs text-danger-600">Save failed</span>
-                    )}
+                    {saveError && <span className="text-xs text-danger-600">Save failed</span>}
                     <MyButton
                         scale="small"
                         buttonType="primary"
@@ -206,7 +212,8 @@ export const ProductPageEditor = () => {
                             <div className="mb-4">
                                 <h2 className="text-sm font-semibold text-neutral-800">Courses</h2>
                                 <p className="mt-0.5 text-xs text-neutral-500">
-                                    Select package sessions to include. Each uses its default invite — you can change it per session.
+                                    Select package sessions to include. Each uses its default invite
+                                    — you can change it per session.
                                 </p>
                             </div>
                             <CourseSessionSelector
@@ -224,7 +231,10 @@ export const ProductPageEditor = () => {
 
                     {activeTab === 'settings' && (
                         <div className="mx-auto max-w-2xl">
-                            <ProductPageSettingsCard settings={settings} onChange={updateSettings} />
+                            <ProductPageSettingsCard
+                                settings={settings}
+                                onChange={updateSettings}
+                            />
                         </div>
                     )}
 
@@ -239,6 +249,7 @@ export const ProductPageEditor = () => {
                             <ProductPagePreview
                                 productPageCode={page?.code || ''}
                                 instituteId={instituteId}
+                                learnerPortalBaseUrl={instituteDetails?.learner_portal_base_url}
                                 preselectedCourseIds={mappingRows
                                     .filter((r) => r.preselected && r.packageSessionId)
                                     .map((r) => r.packageSessionId)}

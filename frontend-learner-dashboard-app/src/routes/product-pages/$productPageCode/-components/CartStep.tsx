@@ -45,12 +45,16 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
         [pageData.page_json]
     );
     const allSuggestableIds = useMemo(() => new Set(Object.values(pageSuggestions).flat()), [pageSuggestions]);
+    // Include selected suggested courses too so the user can remove them via the suggestion card
     const suggestedIds = useMemo(() => [...new Set(
         selectedPsOptionIds.flatMap((id) => pageSuggestions[id] ?? [])
-    )].filter((id) => !selectedPsOptionIds.includes(id)), [selectedPsOptionIds, pageSuggestions]);
+    )], [selectedPsOptionIds, pageSuggestions]);
     const suggestedMappings = useMemo(() => pageData.mappings.filter(
         (m) => suggestedIds.includes(m.ps_invite_payment_option_id) && m.status === 'ACTIVE'
     ), [pageData.mappings, suggestedIds]);
+
+    const removeSuggested = (id: string) =>
+        setSelection(selectedPsOptionIds.filter((sid) => sid !== id));
 
     const subtotal = totalPrice();
     const finalAmt = finalPrice();
@@ -240,50 +244,68 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                     </div>}
 
                     {/* ── Suggested courses ─────────────────────────────── */}
-                    {settings.suggestedCourses?.enabled && suggestedMappings.length > 0 && (
-                        <div>
-                            <h2 className="mb-3 text-sm font-semibold text-gray-700">
-                                {settings.suggestedCourses.heading || 'People also buy'}
-                            </h2>
-                            <div className="flex gap-3 overflow-x-auto pb-2">
-                                {suggestedMappings.map((m) => {
-                                    const plan = m.payment_plan;
-                                    const initials = (m.package_name || plan?.name || 'C')
-                                        .trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
-                                    const label = m.package_name
-                                        ? `${m.package_name}${m.session_name ? ` · ${m.session_name}` : ''}`
-                                        : plan?.name || 'Course';
-                                    return (
-                                        <div
-                                            key={m.ps_invite_payment_option_id}
-                                            className="flex w-44 shrink-0 flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
-                                        >
+                    {(() => {
+                        const showOn = settings.suggestedCourses?.showOn ?? 'BOTH';
+                        const visible = settings.suggestedCourses?.enabled &&
+                            (showOn === 'CART' || showOn === 'BOTH') &&
+                            suggestedMappings.length > 0;
+                        if (!visible) return null;
+                        return (
+                            <div>
+                                <h2 className="mb-3 text-sm font-semibold text-gray-700">
+                                    {settings.suggestedCourses!.heading || 'People also buy'}
+                                </h2>
+                                <div className="flex gap-3 overflow-x-auto pb-2">
+                                    {suggestedMappings.map((m) => {
+                                        const plan = m.payment_plan;
+                                        const isAdded = selectedPsOptionIds.includes(m.ps_invite_payment_option_id);
+                                        const initials = (m.package_name || plan?.name || 'C')
+                                            .trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+                                        const label = m.package_name
+                                            ? `${m.package_name}${m.session_name ? ` · ${m.session_name}` : ''}`
+                                            : plan?.name || 'Course';
+                                        return (
                                             <div
-                                                className="mb-2.5 flex size-10 items-center justify-center rounded-xl text-sm font-bold text-white"
-                                                style={{ backgroundColor: primaryColor }}
+                                                key={m.ps_invite_payment_option_id}
+                                                className="flex w-44 shrink-0 flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
                                             >
-                                                {initials}
+                                                <div
+                                                    className="mb-2.5 flex size-10 items-center justify-center rounded-xl text-sm font-bold text-white"
+                                                    style={{ backgroundColor: primaryColor }}
+                                                >
+                                                    {initials}
+                                                </div>
+                                                <p className="mb-1 line-clamp-2 flex-1 text-xs font-semibold leading-snug text-gray-900">{label}</p>
+                                                <p className="mb-3 text-sm font-bold text-gray-900">
+                                                    {(plan?.actual_price ?? 0) > 0
+                                                        ? `${currencySymbol}${plan!.actual_price.toLocaleString()}`
+                                                        : 'Free'}
+                                                </p>
+                                                {isAdded ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeSuggested(m.ps_invite_payment_option_id)}
+                                                        className="w-full rounded-lg border border-red-400 py-1.5 text-xs font-semibold text-red-500 transition-colors hover:opacity-80"
+                                                    >
+                                                        − Remove
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleSelection(m.ps_invite_payment_option_id)}
+                                                        className="w-full rounded-lg border py-1.5 text-xs font-semibold transition-colors hover:opacity-80"
+                                                        style={{ borderColor: primaryColor, color: primaryColor }}
+                                                    >
+                                                        + Add
+                                                    </button>
+                                                )}
                                             </div>
-                                            <p className="mb-1 line-clamp-2 flex-1 text-xs font-semibold leading-snug text-gray-900">{label}</p>
-                                            <p className="mb-3 text-sm font-bold text-gray-900">
-                                                {(plan?.actual_price ?? 0) > 0
-                                                    ? `${currencySymbol}${plan!.actual_price.toLocaleString()}`
-                                                    : 'Free'}
-                                            </p>
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleSelection(m.ps_invite_payment_option_id)}
-                                                className="w-full rounded-lg border py-1.5 text-xs font-semibold transition-colors hover:opacity-80"
-                                                style={{ borderColor: primaryColor, color: primaryColor }}
-                                            >
-                                                + Add
-                                            </button>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                 </div>
             </div>
 

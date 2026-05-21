@@ -63,6 +63,7 @@ export function filterSidebarByRole(menuList: SidebarItemsType[]): SidebarItemsT
         'learner-insights', // Learner Live Activities
         'manage-institute', // Institute settings
         'settings', // Settings
+        'admin-activity-logs', // Admin audit trail
     ];
 
     return menuList

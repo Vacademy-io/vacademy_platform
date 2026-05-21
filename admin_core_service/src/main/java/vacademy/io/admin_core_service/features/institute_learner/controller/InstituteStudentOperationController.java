@@ -4,6 +4,7 @@ package vacademy.io.admin_core_service.features.institute_learner.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.LearnerBatchRegisterRequestDTO;
 import vacademy.io.admin_core_service.features.institute_learner.dto.StudentStatusUpdateRequestWrapper;
@@ -29,6 +30,10 @@ public class InstituteStudentOperationController {
 
 
     @PostMapping("/add-package-sessions")
+    @Auditable(
+            entityType = "LEARNER",
+            action = "ENROLL",
+            descriptionExpr = "'added ' + (#learnerBatchRegister?.userIds?.size() ?: 0) + ' learner(s) to batches'")
     public String addPackageSessionsToLearner(
             @RequestBody LearnerBatchRegisterRequestDTO learnerBatchRegister,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -37,6 +42,10 @@ public class InstituteStudentOperationController {
     }
 
     @PostMapping("/re-enroll-learner")
+    @Auditable(
+            entityType = "LEARNER",
+            action = "ENROLL",
+            descriptionExpr = "'re-enrolled learner ' + (#instituteStudentDTO?.userDetails?.fullName ?: #instituteStudentDTO?.userDetails?.email ?: '')")
     public ResponseEntity<?> reEnrollLearner(
             @RequestBody InstituteStudentDTO instituteStudentDTO,
             @RequestAttribute("user") CustomUserDetails user) {

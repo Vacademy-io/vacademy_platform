@@ -10,7 +10,11 @@ import { AssignmentSlide, Slide } from '../-hooks/use-slides';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
 import { convertDateFormat } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/Step1BasicInfo';
 import { convertToUTC } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
-import { AssignmentFormType } from '../-form-schemas/assignmentFormSchema';
+import {
+    AssignmentFormType,
+    decodeAllowedFileTypes,
+    encodeAllowedFileTypes,
+} from '../-form-schemas/assignmentFormSchema';
 import { parseHtmlToString } from '@/lib/utils';
 
 
@@ -442,7 +446,9 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
         re_attempt_count: assignmentSlide.reattemptCount,
         total_marks: assignmentSlide.totalMarks ?? null,
         passing_marks: assignmentSlide.passingMarks ?? null,
-        comma_separated_media_ids: '',
+        // Reuses the otherwise-unused comma_separated_media_ids column to carry
+        // the admin's allowed-file-types selection (prefixed with `types:`).
+        comma_separated_media_ids: encodeAllowedFileTypes(assignmentSlide.allowedFileTypes),
         questions: assignmentSlide.adaptive_marking_for_each_question.map((question, idx) => {
             return {
                 id: question.questionId,
@@ -721,6 +727,7 @@ const transformAssignmentSlide = (assignment: AssignmentSlide) => {
         reattemptCount: String(assignment?.re_attempt_count || 0),
         totalMarks: assignment?.total_marks ?? undefined,
         passingMarks: assignment?.passing_marks ?? undefined,
+        allowedFileTypes: decodeAllowedFileTypes(assignment?.comma_separated_media_ids),
         uploaded_question_paper: null,
         adaptive_marking_for_each_question:
             assignment?.questions?.map((question) => {

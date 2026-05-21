@@ -4,6 +4,7 @@ import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { ProductPageShell } from './-components/ProductPageShell';
 import { PaymentGatewayWrapper } from '@/components/common/enroll-by-invite/-components/payment-gateway-wrapper';
 import { handleGetProductPage } from './-services/product-page-service';
+import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { AlertTriangle } from 'lucide-react';
 import { resolveDomainRouting, getCurrentDomainInfo } from '@/services/domain-routing';
 import type { PaymentVendor } from '@/components/common/enroll-by-invite/-utils/payment-vendor-helper';
@@ -21,17 +22,14 @@ const productPageSearchSchema = z.object({
 
 type ProductPageSearch = z.infer<typeof productPageSearchSchema>;
 
+// fullscreen=true uses fixed inset-0 — immune to parent container height constraints
 function Spinner() {
-    return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50">
-            <div className="size-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
-        </div>
-    );
+    return <DashboardLoader fullscreen />;
 }
 
 function ErrorScreen({ title, message }: { title: string; message: string }) {
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 text-center">
+        <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
             <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-red-100">
                 <AlertTriangle className="size-10 text-red-500" />
             </div>
@@ -53,9 +51,20 @@ export const Route = createFileRoute('/product-pages/$productPageCode/')({
     pendingComponent: Spinner,
 });
 
+function parseProductPageCode(rawCode: string): { code: string; embeddedParams: URLSearchParams } {
+    const ampIdx = rawCode.indexOf('&');
+    if (ampIdx === -1) return { code: rawCode, embeddedParams: new URLSearchParams() };
+    return {
+        code: rawCode.slice(0, ampIdx),
+        embeddedParams: new URLSearchParams(rawCode.slice(ampIdx + 1)),
+    };
+}
+
 function RouteComponent() {
-    const { productPageCode } = Route.useParams();
+    const { productPageCode: rawCode } = Route.useParams();
     const search = Route.useSearch();
+    const { code: productPageCode, embeddedParams } = parseProductPageCode(rawCode);
+    const courseIds = search.courseIds ?? embeddedParams.get('courseIds') ?? undefined;
 
     // Resolve institute ID from domain routing (no navigation side effects — raw API call only)
     const { data: domainInstituteId, isLoading: domainLoading } = useQuery({
@@ -86,7 +95,7 @@ function RouteComponent() {
         <ProductPageLoader
             productPageCode={productPageCode}
             instituteId={resolvedInstituteId}
-            search={search}
+            search={{ ...search, courseIds }}
         />
     );
 }
@@ -108,6 +117,7 @@ function ProductPageLoader({
             <ProductPageShell
                 productPageCode={productPageCode}
                 instituteId={instituteId}
+                pageData={data}
                 courseIds={search.courseIds}
                 defaultTab={search.defaultTab}
                 utmParams={{

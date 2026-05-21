@@ -1,20 +1,40 @@
 import { getInstituteId } from '@/constants/helper';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     handleConvertPDFToHTML,
     handleGenerateAssessmentQuestions,
+    handleQueryGetListIndividualTopics,
     handleStartProcessUploadedFile,
 } from '@/routes/ai-center/-services/ai-center-service';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import GeneratePageWiseAssessment from './GeneratePageWiseAssessment';
-import { GenerateAssessmentDialog } from './GenerateAssessmentDialog';
-import { GenerateCard } from '@/routes/ai-center/-components/GenerateCard';
 import { useAICenter } from '@/routes/ai-center/-contexts/useAICenterContext';
 import AITasksList from '@/routes/ai-center/-components/AITasksList';
 import { UseFormReturn } from 'react-hook-form';
 import { SectionFormType } from '@/types/assessments/assessment-steps';
 import { getRandomTaskName } from '@/routes/ai-center/-utils/helper';
+import { ArrowRight, FilePdf, Sparkle, UploadSimple, X } from '@phosphor-icons/react';
+import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
+import {
+    relativeTime,
+    statusLabel,
+    statusStyles,
+    taskDisplayName,
+} from '@/routes/ai-center/-utils/format';
+import { GeneratingState } from '@/routes/ai-center/-components/GeneratingState';
+import { DraftingDonePanel } from '@/routes/ai-center/-components/DraftingDonePanel';
+import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
+import { languageSupport } from '@/constants/dummy-data';
+import {
+    QuestionConfigPanel,
+    buildQuestionPrompt,
+} from '@/routes/ai-center/-components/QuestionConfigPanel';
+
+const ACCEPTED_FORMATS = '.pdf,.doc,.docx,.ppt,.pptx,.html';
+const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'html'];
+
+type Phase = 'idle' | 'uploading' | 'processing' | 'ready' | 'generating';
 
 const GenerateAIAssessmentComponent = ({
     form,
@@ -24,49 +44,137 @@ const GenerateAIAssessmentComponent = ({
     currentSectionIndex?: number;
 }) => {
     const queryClient = useQueryClient();
-    const [allPagesGenerateQuestionsStatus, setAllPagesGenerateQuestionsStatus] = useState(false);
-    const [pageWiseGenerateQuestionsStatus, setPageWiseGenerateQuestionsStatus] = useState(false);
     const instituteId = getInstituteId();
-    const { setLoader, key, setKey } = useAICenter();
+    const { setLoader, setKey } = useAICenter();
     const { uploadFile } = useFileUpload();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const [openAssessmentDialog, setOpenAssessmentDialog] = useState(false);
+
+    const [phase, setPhase] = useState<Phase>('idle');
+    const [fileName, setFileName] = useState('');
     const [uploadedFilePDFId, setUploadedFilePDFId] = useState('');
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isDragActive, setIsDragActive] = useState(false);
+    const [enableTasksDialog, setEnableTasksDialog] = useState(false);
+
+    const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+    const [readyTask, setReadyTask] = useState<AITaskIndividualListInterface | null>(null);
+    const [openPreviewDialog, setOpenPreviewDialog] = useState(false);
+
+    const [numQuestions, setNumQuestions] = useState('10');
+    const [questionType, setQuestionType] = useState('MCQ');
+    const [difficulty, setDifficulty] = useState('Medium');
+    const [language, setLanguage] = useState(languageSupport[0]);
+
     const [htmlData, setHtmlData] = useState(null);
     const [openPageWiseAssessmentDialog, setOpenPageWiseAssessmentDialog] = useState(false);
-    const [fileUploading, setFileUploading] = useState(false);
+    const [pageWiseGenerateQuestionsStatus, setPageWiseGenerateQuestionsStatus] = useState(false);
 
-    const handleOpenAssessmentDialog = (open: boolean) => {
-        setOpenAssessmentDialog(open);
+    const { data: recentTasksData } = useQuery({
+        ...handleQueryGetListIndividualTopics('PDF_TO_QUESTIONS'),
+        staleTime: 30 * 1000,
+        refetchInterval:
+            pendingTaskId !== null && readyTask === null ? 5000 : false,
+    });
+
+    useEffect(() => {
+        if (!pendingTaskId || !Array.isArray(recentTasksData)) return;
+        const match = recentTasksData.find(
+            (t: AITaskIndividualListInterface) => t.id === pendingTaskId
+        );
+        if (!match) return;
+        if (match.status === 'COMPLETED') {
+            setReadyTask(match);
+        } else if (match.status === 'FAILED') {
+            setErrorMessage("We couldn't finish your paper. Want to try again?");
+            setPendingTaskId(null);
+        }
+    }, [recentTasksData, pendingTaskId]);
+
+    const recentTasks = useMemo(() => {
+        const list: AITaskIndividualListInterface[] = Array.isArray(recentTasksData)
+            ? recentTasksData
+            : [];
+        return [...list]
+            .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
+            .slice(0, 3);
+    }, [recentTasksData]);
+
+    const resetFile = () => {
+        setPhase('idle');
+        setFileName('');
+        setUploadedFilePDFId('');
+        setErrorMessage(null);
     };
 
-    const handleUploadClick = () => {
+    const processFile = async (file: File) => {
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+            setErrorMessage(`We can't read .${ext} files yet. Try PDF, Word, or PowerPoint.`);
+            return;
+        }
+        setErrorMessage(null);
+        setFileName(file.name);
+        setPhase('uploading');
         setKey('assessment');
-        fileInputRef.current?.click();
-    };
-
-    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
+        try {
             const fileId = await uploadFile({
                 file,
-                setIsUploading: setFileUploading,
+                setIsUploading: () => {},
                 userId: 'your-user-id',
                 source: instituteId,
                 sourceId: 'STUDENTS',
             });
-            if (fileId) {
-                const response = await handleStartProcessUploadedFile(fileId);
-                if (response) {
-                    setOpenAssessmentDialog(true);
-                    setUploadedFilePDFId(response.pdf_id);
-                }
+            if (!fileId) {
+                setErrorMessage("Upload didn't complete. Want to try again?");
+                resetFile();
+                return;
             }
-            event.target.value = '';
+            setPhase('processing');
+            const response = await handleStartProcessUploadedFile(fileId);
+            if (response?.pdf_id) {
+                setUploadedFilePDFId(response.pdf_id);
+                setPhase('ready');
+            } else {
+                setErrorMessage("We couldn't read this file. Try a different one?");
+                resetFile();
+            }
+        } catch (err) {
+            console.error(err);
+            setErrorMessage('Something went wrong while reading your file. Try again?');
+            resetFile();
         }
     };
 
-    /* Generate Assessment Complete */
+    const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            await processFile(file);
+        }
+        event.target.value = '';
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+            await processFile(file);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDragActive) setIsDragActive(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+    };
+
     const generateAssessmentMutation = useMutation({
         mutationFn: ({
             pdfId,
@@ -84,31 +192,35 @@ const GenerateAIAssessmentComponent = ({
             return handleGenerateAssessmentQuestions(pdfId, userPrompt, taskName, taskId || '');
         },
         onMutate: () => {
-            setAllPagesGenerateQuestionsStatus(true);
+            setPhase('generating');
         },
-        onSuccess: () => {
-            setAllPagesGenerateQuestionsStatus(false);
+        onSuccess: (response: unknown) => {
             setLoader(false);
             setKey(null);
+            const taskId = (response as { taskId?: string } | null)?.taskId ?? null;
+            setPendingTaskId(taskId);
+            setReadyTask(null);
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['GET_INDIVIDUAL_AI_LIST_DATA'] });
             }, 100);
         },
         onError: (error: unknown) => {
             console.log(error);
+            setPhase('ready');
+            setLoader(false);
+            setErrorMessage("We couldn't draft questions from this file. Want to try again?");
         },
     });
 
-    const pollGenerateAssessment = (prompt?: string, taskId?: string) => {
+    const pollGenerateAssessment = (_prompt?: string, taskId?: string) => {
         generateAssessmentMutation.mutate({
             pdfId: uploadedFilePDFId,
-            userPrompt: '',
+            userPrompt: buildQuestionPrompt(numQuestions, questionType, difficulty, language),
             taskName: getRandomTaskName(),
             taskId,
         });
     };
 
-    /* Generate Assessment Pagewise */
     const convertPollingCountRef = useRef(0);
     const convertPollingTimeoutIdRef = useRef<NodeJS.Timeout | null>(null);
     const MAX_CONVERT_ATTEMPTS = 10;
@@ -118,50 +230,35 @@ const GenerateAIAssessmentComponent = ({
         mutationFn: ({ pdfId, taskName }: { pdfId: string; taskName: string }) =>
             handleConvertPDFToHTML(pdfId, taskName),
         onSuccess: async (response) => {
-            // Check if response indicates pending state
             if (response?.status === 'pending') {
                 setPageWiseGenerateQuestionsStatus(true);
                 convertPendingRef.current = true;
-                // Don't schedule next poll - we'll wait for an error to resume
                 return;
             }
-
-            // Reset pending state
             convertPendingRef.current = false;
-
-            // If conversion is complete and we have HTML data
             if (response === 'Done' || response?.html) {
                 setPageWiseGenerateQuestionsStatus(false);
                 stopConvertPolling();
                 setHtmlData(response?.html);
                 setOpenPageWiseAssessmentDialog(true);
-
                 return;
             }
-
-            // If response exists but no HTML yet, schedule next poll
             scheduleNextConvertPoll();
         },
         onError: (error: unknown) => {
-            console.error('⛔️ Convert Error:', error);
-
-            // If we were in a pending state, resume polling on error
+            console.error('Convert error:', error);
             if (convertPendingRef.current) {
                 setPageWiseGenerateQuestionsStatus(true);
                 convertPendingRef.current = false;
                 scheduleNextConvertPoll();
                 return;
             }
-
-            // Increment count and check max attempts
             convertPollingCountRef.current += 1;
             if (convertPollingCountRef.current >= MAX_CONVERT_ATTEMPTS) {
                 setPageWiseGenerateQuestionsStatus(false);
                 stopConvertPolling();
                 return;
             }
-
-            // Schedule next poll if not max attempts yet
             scheduleNextConvertPoll();
         },
     });
@@ -174,11 +271,8 @@ const GenerateAIAssessmentComponent = ({
     };
 
     const scheduleNextConvertPoll = () => {
-        stopConvertPolling(); // Clear any existing timeout
-
-        // Only schedule next poll if not in pending state
+        stopConvertPolling();
         if (!convertPendingRef.current) {
-            console.log('Scheduling next conversion poll in 10 seconds');
             convertPollingTimeoutIdRef.current = setTimeout(() => {
                 pollConvertPDFToHTML();
             }, 10000);
@@ -186,74 +280,201 @@ const GenerateAIAssessmentComponent = ({
     };
 
     const pollConvertPDFToHTML = () => {
-        // Don't call API if in pending state
-        if (convertPendingRef.current) {
-            return;
-        }
+        if (convertPendingRef.current) return;
         handleConvertPDFToHTMLMutation.mutate({
             pdfId: uploadedFilePDFId,
             taskName: getRandomTaskName(),
         });
     };
 
-    const handleConvertPDFToHTMLFn = () => {
+    const handlePickPages = () => {
         if (!uploadedFilePDFId) return;
         stopConvertPolling();
         convertPollingCountRef.current = 0;
         convertPendingRef.current = false;
         setPageWiseGenerateQuestionsStatus(true);
-        // Make initial call
         pollConvertPDFToHTML();
     };
 
-    // Cleanup on component unmount
     useEffect(() => {
-        return () => {
-            stopConvertPolling();
-        };
+        return () => stopConvertPolling();
     }, []);
 
-    useEffect(() => {
-        if (key === 'assessment') {
-            if (fileUploading == true) setLoader(true);
-        }
-    }, [fileUploading, key]);
+    const fileChosen = phase !== 'idle' && fileName !== '';
+    const isWorking =
+        phase === 'uploading' || phase === 'processing' || phase === 'generating';
+    const workingLabel =
+        phase === 'uploading'
+            ? 'Reading your file…'
+            : phase === 'processing'
+              ? 'Getting your document ready…'
+              : phase === 'generating'
+                ? 'Drafting your paper — usually takes ~30 seconds.'
+                : pageWiseGenerateQuestionsStatus
+                  ? 'Preparing pages for you to pick…'
+                  : '';
 
     return (
-        <div className="flex flex-col items-start justify-start gap-8 sm:items-center">
-            <GenerateCard
-                handleUploadClick={handleUploadClick}
-                fileInputRef={fileInputRef}
-                handleFileChange={handleFileChange}
-                cardTitle="Generate Assessment"
-                cardDescription="Upload PDF/DOCX/PPT"
-                inputFormat=".pdf,.doc,.docx,.ppt,.pptx,.html"
-                keyProp="assessment"
-                pollGenerateAssessment={pollGenerateAssessment}
-                sectionsForm={form}
-                currentSectionIndex={currentSectionIndex}
+        <div className="flex w-full flex-col gap-8 px-4 pb-12 sm:px-8">
+            <header className="flex flex-col gap-1">
+                <h1 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
+                    Create a Question Paper
+                </h1>
+                <p className="text-sm text-gray-500">
+                    Drop a PDF, Word, or PowerPoint file. We&apos;ll draft questions you can
+                    edit before sending.
+                </p>
+            </header>
+
+            {!fileChosen ? (
+                <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed bg-white p-10 text-center transition-colors sm:p-14 ${
+                        isDragActive
+                            ? 'border-primary-400 bg-primary-50'
+                            : 'border-neutral-200 hover:border-primary-300 hover:bg-neutral-50'
+                    }`}
+                >
+                    <div className="flex size-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                        <UploadSimple size={26} weight="bold" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <p className="text-base font-medium text-gray-900">
+                            Drop your file here, or click to choose
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                            PDF, Word, or PowerPoint — up to a few hundred pages.
+                        </p>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex w-full flex-col gap-4">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                <FilePdf size={20} weight="fill" />
+                            </div>
+                            <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-sm font-medium text-gray-900">
+                                    {fileName}
+                                </span>
+                                <span className="text-xs text-neutral-500">
+                                    {phase === 'uploading' && 'Uploading…'}
+                                    {phase === 'processing' && 'Reading…'}
+                                    {phase === 'ready' && 'Ready to draft'}
+                                    {phase === 'generating' && 'Drafting in progress'}
+                                </span>
+                            </div>
+                        </div>
+                        {!isWorking && (
+                            <button
+                                type="button"
+                                onClick={resetFile}
+                                className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                                aria-label="Remove file"
+                            >
+                                <X size={18} />
+                            </button>
+                        )}
+                    </div>
+
+                    {readyTask ? (
+                        <DraftingDonePanel
+                            readyTask={readyTask}
+                            openPreview={openPreviewDialog}
+                            setOpenPreview={setOpenPreviewDialog}
+                            heading="Vsmart Upload"
+                            pollGenerateAssessment={pollGenerateAssessment}
+                            sectionsForm={form}
+                            currentSectionIndex={currentSectionIndex}
+                            onDraftAnother={() => {
+                                setReadyTask(null);
+                                setPendingTaskId(null);
+                                setErrorMessage(null);
+                                setNumQuestions('10');
+                                setQuestionType('MCQ');
+                                setDifficulty('Medium');
+                                setLanguage(languageSupport[0]);
+                                resetFile();
+                            }}
+                        />
+                    ) : phase === 'generating' || (pendingTaskId && !readyTask) ? (
+                        <GeneratingState
+                            title="Drafting your paper"
+                            subtitle="Reading your document and crafting questions. Usually ~30 seconds."
+                        />
+                    ) : phase === 'uploading' || phase === 'processing' ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                            <div className="size-4 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                            <p className="text-sm text-blue-900">{workingLabel}</p>
+                        </div>
+                    ) : pageWiseGenerateQuestionsStatus ? (
+                        <GeneratingState
+                            title="Preparing pages"
+                            subtitle="Getting your document ready to pick from."
+                        />
+                    ) : (
+                        phase === 'ready' && (
+                            <QuestionConfigPanel
+                                numQuestions={numQuestions}
+                                setNumQuestions={setNumQuestions}
+                                questionType={questionType}
+                                setQuestionType={setQuestionType}
+                                difficulty={difficulty}
+                                setDifficulty={setDifficulty}
+                                language={language}
+                                setLanguage={setLanguage}
+                                onSubmit={() => pollGenerateAssessment()}
+                                ctaLabel="Draft my paper"
+                                secondary={{
+                                    label: 'or pick specific pages →',
+                                    onClick: handlePickPages,
+                                }}
+                            />
+                        )
+                    )}
+                </div>
+            )}
+
+            {errorMessage && (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                    {errorMessage}
+                </div>
+            )}
+
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileInputChange}
+                className="hidden"
+                accept={ACCEPTED_FORMATS}
             />
-            <GenerateAssessmentDialog
-                open={openAssessmentDialog}
-                handleOpen={handleOpenAssessmentDialog}
-                handleGenerateCompleteFile={pollGenerateAssessment}
-                handleGeneratePageWise={handleConvertPDFToHTMLFn}
-                allPagesGenerateQuestionsStatus={allPagesGenerateQuestionsStatus}
-                pageWiseGenerateQuestionsStatus={pageWiseGenerateQuestionsStatus}
+
+            <RecentFilesPanel
+                tasks={recentTasks}
+                title="Your recent drafts"
+                fallbackLabel="Untitled draft"
+                emptyHint="Your drafts will appear here. Drop a file above to start your first one."
+                onOpenAll={() => setEnableTasksDialog(true)}
             />
+
             <GeneratePageWiseAssessment
                 openPageWiseAssessmentDialog={openPageWiseAssessmentDialog}
                 setOpenPageWiseAssessmentDialog={setOpenPageWiseAssessmentDialog}
                 htmlData={htmlData}
             />
-            {generateAssessmentMutation.status === 'success' && (
-                <AITasksList
-                    heading="Vsmart Upload"
-                    enableDialog={true}
-                    sectionsForm={form}
-                    currentSectionIndex={currentSectionIndex}
-                />
-            )}
+
+            <AITasksList
+                heading="Vsmart Upload"
+                enableDialog={enableTasksDialog}
+                setEnableDialog={setEnableTasksDialog}
+                pollGenerateAssessment={pollGenerateAssessment}
+                sectionsForm={form}
+                currentSectionIndex={currentSectionIndex}
+            />
         </div>
     );
 };

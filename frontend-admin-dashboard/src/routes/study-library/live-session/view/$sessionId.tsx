@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
@@ -7,6 +7,7 @@ import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, processRecording, getTranscriptionStatus } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
+import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
@@ -957,54 +958,61 @@ function ViewLiveSession() {
                                     </div>
                                 </CardHeader>
                                 <Separator />
-                                <CardContent className="space-y-3 p-6">
-                                    {allRecordings.map((rec, idx) => (
-                                        <div
-                                            key={rec.recordingId || idx}
-                                            className="flex items-center justify-between rounded-lg border bg-card p-4 transition-all hover:bg-muted/30"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex size-10 items-center justify-center rounded-full bg-red-50 text-red-500">
-                                                    <Play className="size-4" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-sm font-medium">
-                                                        {RECORDING_LABELS[rec.type ?? ''] ?? `Recording ${idx + 1}`}
+                                <CardContent className="space-y-3 p-4 sm:p-6">
+                                    {allRecordings.map((rec, idx) => {
+                                        const url =
+                                            rec.playbackUrl ||
+                                            (rec.fileId && recordingUrls[rec.fileId]) ||
+                                            null;
+                                        return (
+                                            <div
+                                                key={rec.recordingId || idx}
+                                                className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                                            >
+                                                {/* Info column */}
+                                                <div className="flex min-w-0 items-center gap-3">
+                                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500">
+                                                        <Play className="size-4" />
                                                     </div>
-                                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                        {isRecurring && (
-                                                            <span>{format(new Date(rec.date), 'MMM d, yyyy')}</span>
-                                                        )}
-                                                        {rec.startTime && (
-                                                            <span className="flex items-center gap-1">
-                                                                <Clock className="size-3" />
-                                                                {format(new Date(rec.startTime), 'p')}
-                                                            </span>
-                                                        )}
-                                                        {rec.durationSeconds > 0 && (
-                                                            <span className="flex items-center gap-1">
-                                                                <Timer className="size-3" />
-                                                                {formatDuration(rec.durationSeconds)}
-                                                            </span>
-                                                        )}
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate text-sm font-medium text-foreground">
+                                                            {RECORDING_LABELS[rec.type ?? ''] ?? `Recording ${idx + 1}`}
+                                                        </div>
+                                                        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                                            {isRecurring && (
+                                                                <span className="whitespace-nowrap">
+                                                                    {format(new Date(rec.date), 'MMM d, yyyy')}
+                                                                </span>
+                                                            )}
+                                                            {rec.startTime && (
+                                                                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                                                    <Clock className="size-3" />
+                                                                    {format(new Date(rec.startTime), 'p')}
+                                                                </span>
+                                                            )}
+                                                            {rec.durationSeconds > 0 && (
+                                                                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                                                    <Timer className="size-3" />
+                                                                    {formatDuration(rec.durationSeconds)}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {(() => {
-                                                    const url = rec.playbackUrl || (rec.fileId && recordingUrls[rec.fileId]) || null;
-                                                    if (!url) return (
+
+                                                {/* Actions — uniform monochrome ghost buttons. Wrap on narrow widths so nothing clips. */}
+                                                <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
+                                                    {!url ? (
                                                         <span className="text-xs text-muted-foreground">
-                                                            {rec.fileId ? 'Loading...' : 'No URL available'}
+                                                            {rec.fileId ? 'Loading…' : 'No URL available'}
                                                         </span>
-                                                    );
-                                                    return (
+                                                    ) : (
                                                         <>
                                                             <a
                                                                 href={url}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+                                                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                                                             >
                                                                 <Play className="size-3" />
                                                                 Play
@@ -1013,25 +1021,28 @@ function ViewLiveSession() {
                                                                 href={url}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
+                                                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                                                             >
                                                                 <Download className="size-3" />
                                                                 Download
                                                             </a>
                                                         </>
-                                                    );
-                                                })()}
-                                                <RecordingYoutubeAction
-                                                    rec={rec}
-                                                    featureEnabled={youtubeFeatureEnabled}
-                                                />
-                                                <RecordingTranscribeAction
-                                                    rec={rec}
-                                                    batches={sessionData?.schedule?.package_session_details ?? undefined}
-                                                />
+                                                    )}
+                                                    <RecordingYoutubeAction
+                                                        rec={rec}
+                                                        featureEnabled={youtubeFeatureEnabled}
+                                                    />
+                                                    <RecordingTranscribeAction
+                                                        rec={rec}
+                                                        batches={
+                                                            sessionData?.schedule
+                                                                ?.package_session_details ?? undefined
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </CardContent>
                             </Card>
                         ) : groupedSchedules.some((day) =>
@@ -1670,15 +1681,68 @@ function RecordingTranscribeAction({
     const [detectedLanguage, setDetectedLanguage] = useState<string | undefined>(rec.detectedLanguage);
     const [errorMessage, setErrorMessage] = useState<string | undefined>(rec.transcriptionError);
     const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
+    const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
+    const [sourceTextUrl, setSourceTextUrl] = useState<string | undefined>();
+    const [englishTextUrl, setEnglishTextUrl] = useState<string | undefined>();
 
     const handleData = useCallback((data: RecordingTranscriptionStatus) => {
         setStatus(data.status);
         setDetectedLanguage(data.detectedLanguage ?? undefined);
         setErrorMessage(data.errorMessage ?? undefined);
+        setSourceTextUrl(data.sourceTextUrl ?? undefined);
+        setEnglishTextUrl(data.englishTextUrl ?? undefined);
     }, []);
 
+    // Alert the user on the RUNNING → COMPLETED transition. Two channels:
+    //   1. Sonner toast (only visible when the tab has focus).
+    //   2. Web Notifications API (visible even when the tab is in the
+    //      background or another app is foreground), best-effort.
+    // We only fire on a real transition — not when the COMPLETED status
+    // is loaded on initial mount — so the user isn't spammed every time
+    // they re-open the page.
+    const prevStatusRef = useRef<TranscriptStatus | null>(rec.transcriptStatus ?? null);
+    useEffect(() => {
+        const prev = prevStatusRef.current;
+        prevStatusRef.current = status;
+        if (status !== 'COMPLETED') return;
+        if (prev !== 'QUEUED' && prev !== 'RUNNING') return;
+        const labelTitle = 'Transcript ready';
+        const labelBody = detectedLanguage
+            ? `Your recording transcript (${detectedLanguage.toUpperCase()}) finished processing.`
+            : 'Your recording transcript finished processing.';
+        toast.success(`${labelTitle} — ${labelBody}`);
+        // Web Notifications — request permission lazily on the first
+        // transcript completion the user sees. If they decline once,
+        // the browser remembers and we never re-prompt.
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+            const fire = () => {
+                try {
+                    new Notification(labelTitle, {
+                        body: labelBody,
+                        icon: '/favicon.ico',
+                        tag: `transcript-${rec.recordingId}`,
+                    });
+                } catch {
+                    // Some browsers throw if the page is sandboxed —
+                    // safe to swallow, the toast already fired.
+                }
+            };
+            if (Notification.permission === 'granted') {
+                fire();
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then((perm) => {
+                    if (perm === 'granted') fire();
+                });
+            }
+        }
+    }, [status, detectedLanguage, rec.recordingId]);
+
     // Polling: only active while a job is in flight. Halts on terminal state.
+    // We still do one initial fetch on mount even when COMPLETED so we can
+    // load the sourceTextUrl/englishTextUrl needed by the viewer modal —
+    // the list endpoint doesn't include those fields.
     const polling = status === 'QUEUED' || status === 'RUNNING';
+    const needsUrls = status === 'COMPLETED' && !sourceTextUrl && !englishTextUrl;
     useQuery({
         queryKey: ['recording-transcribe', rec.scheduleId, rec.recordingId],
         queryFn: async () => {
@@ -1686,8 +1750,8 @@ function RecordingTranscribeAction({
             handleData(data);
             return data;
         },
-        enabled: polling,
-        refetchInterval: 30_000,
+        enabled: polling || needsUrls,
+        refetchInterval: polling ? 30_000 : false,
         refetchOnWindowFocus: false,
     });
 
@@ -1711,33 +1775,32 @@ function RecordingTranscribeAction({
     });
 
     if (status === 'COMPLETED') {
+        // Single entrypoint when transcript is ready — opens an actions
+        // dialog where the teacher picks between generating an assessment
+        // or generating study notes. Keeps the recording row uncluttered.
         return (
             <>
-                <span
-                    className="flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700"
-                    title={detectedLanguage ? `Detected language: ${detectedLanguage}` : 'Transcript ready'}
+                <button
+                    onClick={() => setTranscriptModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-primary-300 bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
+                    title="View transcript and choose a next action"
                 >
                     <FileAudio className="size-3" />
-                    Transcript Ready
-                    {detectedLanguage && (
-                        <span className="ml-0.5 flex items-center gap-0.5 rounded bg-green-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-green-800">
-                            <Languages className="size-2.5" />
-                            {detectedLanguage}
-                        </span>
-                    )}
-                </span>
-
-                {/* Follow-up action: opens CreateAssessmentFromRecordingModal which
-                    drives the Layer-3 backend pipeline (admin-core fetches transcript,
-                    calls ai-service Gemini, stores generated questions). */}
-                <button
-                    onClick={() => setAssessmentModalOpen(true)}
-                    className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
-                    title="Generate an assessment (MCQs + title) from this transcript"
-                >
-                    <FileText className="size-3" />
-                    Create Assessment
+                    Show Transcript
                 </button>
+
+                <TranscriptActionsDialog
+                    open={transcriptModalOpen}
+                    onOpenChange={setTranscriptModalOpen}
+                    sourceTextUrl={sourceTextUrl}
+                    englishTextUrl={englishTextUrl}
+                    detectedLanguage={detectedLanguage}
+                    recordingTitle={rec.recordingId}
+                    onCreateAssessment={() => {
+                        setTranscriptModalOpen(false);
+                        setAssessmentModalOpen(true);
+                    }}
+                />
 
                 <CreateAssessmentFromRecordingModal
                     open={assessmentModalOpen}
@@ -1746,6 +1809,8 @@ function RecordingTranscribeAction({
                     recordingId={rec.recordingId}
                     detectedLanguage={detectedLanguage}
                     batches={batches}
+                    sourceTextUrl={sourceTextUrl}
+                    englishTextUrl={englishTextUrl}
                 />
             </>
         );

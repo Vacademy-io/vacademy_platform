@@ -19,6 +19,7 @@ import {
     Books,
     Code,
     UserList,
+    Notebook,
 } from '@phosphor-icons/react';
 import { StorageKey } from '@/constants/storage/storage';
 import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -383,6 +384,13 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         id: 'settings',
         title: 'Settings',
         to: '/settings',
+        category: 'CRM',
+    },
+    {
+        icon: Notebook,
+        id: 'admin-activity-logs',
+        title: 'Admin Activity Logs',
+        to: '/admin-activity-logs',
         category: 'CRM',
     },
 

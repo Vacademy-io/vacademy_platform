@@ -53,9 +53,20 @@ export const Route = createFileRoute('/product-pages/$productPageCode/')({
     pendingComponent: Spinner,
 });
 
+function parseProductPageCode(rawCode: string): { code: string; embeddedParams: URLSearchParams } {
+    const ampIdx = rawCode.indexOf('&');
+    if (ampIdx === -1) return { code: rawCode, embeddedParams: new URLSearchParams() };
+    return {
+        code: rawCode.slice(0, ampIdx),
+        embeddedParams: new URLSearchParams(rawCode.slice(ampIdx + 1)),
+    };
+}
+
 function RouteComponent() {
-    const { productPageCode } = Route.useParams();
+    const { productPageCode: rawCode } = Route.useParams();
     const search = Route.useSearch();
+    const { code: productPageCode, embeddedParams } = parseProductPageCode(rawCode);
+    const courseIds = search.courseIds ?? embeddedParams.get('courseIds') ?? undefined;
 
     // Resolve institute ID from domain routing (no navigation side effects — raw API call only)
     const { data: domainInstituteId, isLoading: domainLoading } = useQuery({
@@ -86,7 +97,7 @@ function RouteComponent() {
         <ProductPageLoader
             productPageCode={productPageCode}
             instituteId={resolvedInstituteId}
-            search={search}
+            search={{ ...search, courseIds }}
         />
     );
 }

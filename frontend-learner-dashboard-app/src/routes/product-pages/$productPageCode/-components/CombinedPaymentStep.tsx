@@ -152,12 +152,64 @@ export const CombinedPaymentStep = ({
         }
     };
 
+    const orderSummaryContent = (
+        <>
+            <div className="border-b border-gray-100 px-5 py-4">
+                <h2 className="font-semibold text-gray-900">Order Summary</h2>
+            </div>
+            <div className="divide-y divide-gray-100">
+                {selectedMappings.map((m) => {
+                    const mapping = pageData.mappings.find(
+                        (pm) => pm.ps_invite_payment_option_id === m.ps_invite_payment_option_id
+                    );
+                    const nameParts = [mapping?.package_name, mapping?.level_name, mapping?.session_name].filter(Boolean);
+                    const courseName = nameParts.join(' | ') || mapping?.payment_plan?.name || 'Course';
+                    return (
+                        <div key={m.ps_invite_payment_option_id} className="px-5 py-3">
+                            <p className="mb-1 text-xs font-semibold text-gray-800 leading-snug">{courseName}</p>
+                            <div className="flex justify-between text-sm text-gray-500">
+                                <span>{mapping?.payment_plan?.name}</span>
+                                <span className="font-medium text-gray-900">
+                                    {m.amount > 0 ? `${currency} ${m.amount.toLocaleString()}` : 'Free'}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="space-y-2 border-t border-gray-100 px-5 py-4">
+                {discountAmount > 0 && (
+                    <div className="flex justify-between text-sm text-green-600">
+                        <span>Coupon ({couponCode})</span>
+                        <span>− {currency} {discountAmount.toLocaleString()}</span>
+                    </div>
+                )}
+                {subtotal !== amount && (
+                    <div className="flex justify-between text-sm text-gray-400 line-through">
+                        <span>Subtotal</span>
+                        <span>{currency} {subtotal.toLocaleString()}</span>
+                    </div>
+                )}
+                <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
+                    <span>Total</span>
+                    <span>{currency} {amount.toLocaleString()}</span>
+                </div>
+                <p className="text-right text-xs text-gray-400">All prices in {currency}</p>
+            </div>
+        </>
+    );
+
     return (
         <>
             {/* Two-column body */}
             <div className="mx-auto max-w-3xl px-4 py-8 lg:flex lg:items-start lg:gap-8">
                 {/* Left: payment form */}
                 <div className="min-w-0 flex-1">
+                    {/* Order summary — mobile only, shown above the payment form */}
+                    <div className="mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:hidden">
+                        {orderSummaryContent}
+                    </div>
+
                     <h1 className="mb-1 text-xl font-bold text-gray-900">Payment</h1>
                     <p className="mb-6 text-sm text-gray-500">
                         Complete your enrollment for {selectedPsOptionIds.length} course{selectedPsOptionIds.length !== 1 ? 's' : ''}
@@ -250,50 +302,9 @@ export const CombinedPaymentStep = ({
                 </div>
 
                 {/* Right: order summary (desktop only) */}
-                <div className="mt-6 hidden lg:mt-0 lg:block lg:w-72 lg:shrink-0">
+                <div className="hidden lg:mt-0 lg:block lg:w-72 lg:shrink-0">
                     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                        <div className="border-b border-gray-100 px-5 py-4">
-                            <h2 className="font-semibold text-gray-900">Order Summary</h2>
-                        </div>
-                        <div className="divide-y divide-gray-100">
-                            {selectedMappings.map((m) => {
-                                const mapping = pageData.mappings.find(
-                                    (pm) => pm.ps_invite_payment_option_id === m.ps_invite_payment_option_id
-                                );
-                                const nameParts = [mapping?.package_name, mapping?.level_name, mapping?.session_name].filter(Boolean);
-                                const courseName = nameParts.join(' | ') || mapping?.payment_plan?.name || 'Course';
-                                return (
-                                    <div key={m.ps_invite_payment_option_id} className="px-5 py-3">
-                                        <p className="mb-1 text-xs font-semibold text-gray-800 leading-snug">{courseName}</p>
-                                        <div className="flex justify-between text-sm text-gray-500">
-                                            <span>{mapping?.payment_plan?.name}</span>
-                                            <span className="font-medium text-gray-900">
-                                                {m.amount > 0 ? `${currency} ${m.amount.toLocaleString()}` : 'Free'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        <div className="space-y-2 border-t border-gray-100 px-5 py-4">
-                            {discountAmount > 0 && (
-                                <div className="flex justify-between text-sm text-green-600">
-                                    <span>Coupon ({couponCode})</span>
-                                    <span>− {currency} {discountAmount.toLocaleString()}</span>
-                                </div>
-                            )}
-                            {subtotal !== amount && (
-                                <div className="flex justify-between text-sm text-gray-400 line-through">
-                                    <span>Subtotal</span>
-                                    <span>{currency} {subtotal.toLocaleString()}</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between pt-1 text-base font-bold text-gray-900">
-                                <span>Total</span>
-                                <span>{currency} {amount.toLocaleString()}</span>
-                            </div>
-                            <p className="text-right text-xs text-gray-400">All prices in {currency}</p>
-                        </div>
+                        {orderSummaryContent}
                     </div>
                 </div>
             </div>

@@ -84,19 +84,8 @@ export const ProductPageShell = ({
           ? "FORM"
           : "CATALOG";
 
-    const initial = resolveInitialSelection(pageData.mappings, courseIds);
-
-    // Suggested course IDs must never be auto-selected — they are opt-in only.
-    const pageJson = parseSafeJson<PageJson>(pageData.page_json, DEFAULT_PAGE_JSON);
-    const allSuggestedIds = new Set(Object.values(pageJson.suggestions ?? {}).flat());
-
-    const finalSelection =
-      initial.length > 0 || startStep === "CATALOG"
-        ? initial
-        : pageData.mappings
-            .filter((m) => m.status === "ACTIVE" && !allSuggestedIds.has(m.ps_invite_payment_option_id))
-            .map((m) => m.ps_invite_payment_option_id);
-    setSelection(finalSelection);
+    // Priority: URL courseIds → DB preselected → empty. Never auto-select all.
+    setSelection(resolveInitialSelection(pageData.mappings, courseIds));
 
     const utmFiltered = Object.fromEntries(
       Object.entries(utmParams).filter(([, v]) => v !== undefined),
@@ -118,7 +107,10 @@ export const ProductPageShell = ({
     if (gtmId) {
       injectGtm(gtmId);
       gtmFired.current = true;
-      pushProductPageView(productPageCode, settings.defaultStep, utmParams);
+      const utmFiltered = Object.fromEntries(
+        Object.entries(utmParams).filter(([, v]) => v !== undefined),
+      ) as Record<string, string>;
+      pushProductPageView(productPageCode, settings.defaultStep, utmFiltered);
     }
   }, []);
 

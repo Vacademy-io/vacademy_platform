@@ -10,8 +10,13 @@ import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import LeadStatusesManager from './LeadStatusesManager';
+import LeadSlaSettings from './LeadSlaSettings';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+// NOTE: Lead statuses and TAT/Follow-up SLA config now live in dedicated DB tables
+// (LeadStatusesManager + LeadSlaSettings). The LEAD_SETTING JSON only keeps the
+// scoring/visibility config below.
 
 export interface LeadSettingsData {
     /** If false, all lead-related UI (scores, tiers, sidebar tab) is hidden across the institute. */
@@ -19,22 +24,17 @@ export interface LeadSettingsData {
 
     /** Scoring factor weights. Must sum to 100. */
     scoringWeights: {
-        sourceQuality: number;        // default 25
-        profileCompleteness: number;  // default 30
-        recency: number;              // default 25
-        engagement: number;           // default 20
+        sourceQuality: number;
+        profileCompleteness: number;
+        recency: number;
+        engagement: number;
     };
 
     /** Max days before recency score starts decaying. */
     recencyDecayDays: number;
 
-    /** Show lead score badge in the enquiries table. */
     showScoreInEnquiryTable: boolean;
-
-    /** Show lead score badge in the contacts table. */
     showScoreInContactsTable: boolean;
-
-    /** Show lead score badge in the students list table. */
     showScoreInStudentsTable: boolean;
 }
 
@@ -64,7 +64,13 @@ const fetchLeadSettings = async (): Promise<LeadSettingsData> => {
         url: GET_INSITITUTE_SETTINGS,
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    return response.data?.data?.[SETTING_KEY]?.data ?? DEFAULT_LEAD_SETTINGS;
+    const saved = response.data?.data?.[SETTING_KEY]?.data as Partial<LeadSettingsData> | undefined;
+    if (!saved) return DEFAULT_LEAD_SETTINGS;
+    return {
+        ...DEFAULT_LEAD_SETTINGS,
+        ...saved,
+        scoringWeights: { ...DEFAULT_LEAD_SETTINGS.scoringWeights, ...saved.scoringWeights },
+    };
 };
 
 const saveLeadSettings = async (data: LeadSettingsData): Promise<void> => {
@@ -75,8 +81,6 @@ const saveLeadSettings = async (data: LeadSettingsData): Promise<void> => {
         { params: { instituteId, settingKey: SETTING_KEY } }
     );
 };
-
-// ─── Weight validation helper ─────────────────────────────────────────────────
 
 function weightsSum(w: LeadSettingsData['scoringWeights']): number {
     return w.sourceQuality + w.profileCompleteness + w.recency + w.engagement;
@@ -108,10 +112,6 @@ export default function LeadSettings() {
             toast.success('Lead settings saved');
             setHasChanges(false);
             queryClient.invalidateQueries({ queryKey: ['lead-settings'] });
-            // Also invalidate the hook's actual key so manage-students / manage-contacts /
-            // enquiries pages refetch and apply the new enabled flag immediately —
-            // otherwise the LeadScoreBadge / Counsellor column stay visible for up to
-            // 5 minutes (staleTime) after admin toggles lead off.
             queryClient.invalidateQueries({ queryKey: ['lead-settings-config'] });
         },
         onError: () => {
@@ -155,8 +155,8 @@ export default function LeadSettings() {
                 <CardHeader>
                     <CardTitle>Lead Management System</CardTitle>
                     <CardDescription>
-                        Controls whether lead scoring, tier badges, and the lead sidebar tab are
-                        visible institute-wide. Disabling hides all lead UI without deleting data.
+                        Controls whether lead scoring, tier badges, and the lead sidebar tab are visible
+                        institute-wide. Disabling hides all lead UI without deleting data.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -175,7 +175,7 @@ export default function LeadSettings() {
 
             {settings.enabled && (
                 <>
-                    {/* ── Table Visibility ── */}
+                    {/* ── Score Badge Visibility ── */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Score Badge Visibility</CardTitle>
@@ -210,8 +210,8 @@ export default function LeadSettings() {
                         <CardHeader>
                             <CardTitle>Scoring Weights</CardTitle>
                             <CardDescription>
-                                Each factor contributes its weight percentage to the final score
-                                (0–100). Weights must sum to exactly 100.
+                                Each factor contributes its weight percentage to the final score (0–100).
+                                Weights must sum to exactly 100.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -234,9 +234,7 @@ export default function LeadSettings() {
                                             min={0}
                                             max={100}
                                             value={settings.scoringWeights[key]}
-                                            onChange={(e) =>
-                                                updateWeight(key, parseInt(e.target.value, 10) || 0)
-                                            }
+                                            onChange={(e) => updateWeight(key, parseInt(e.target.value, 10) || 0)}
                                             className="w-16 text-center"
                                         />
                                         <span className="text-sm text-muted-foreground">%</span>
@@ -248,7 +246,13 @@ export default function LeadSettings() {
 
                             <div className="flex items-center justify-between text-sm">
                                 <span className="font-medium">Total</span>
-                                <span className={weightError ? 'font-bold text-red-600' : 'font-bold text-green-600'}>
+                                <span
+                                    className={
+                                        weightError
+                                            ? 'font-bold text-danger-600'
+                                            : 'font-bold text-success-600'
+                                    }
+                                >
                                     {weightTotal} / 100
                                     {weightError && ' — must equal 100'}
                                 </span>
@@ -256,13 +260,13 @@ export default function LeadSettings() {
                         </CardContent>
                     </Card>
 
-                    {/* ── Recency Config ── */}
+                    {/* ── Recency Decay ── */}
                     <Card>
                         <CardHeader>
                             <CardTitle>Recency Decay</CardTitle>
                             <CardDescription>
-                                Number of days before a lead's recency score starts to decay toward 0.
-                                A lead submitted today scores 100 for recency; one submitted{' '}
+                                Number of days before a lead&apos;s recency score starts to decay toward 0. A
+                                lead submitted today scores 100 for recency; one submitted{' '}
                                 {settings.recencyDecayDays} days ago scores ~50.
                             </CardDescription>
                         </CardHeader>
@@ -282,20 +286,26 @@ export default function LeadSettings() {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* ── Score / visibility save (its own action; statuses + reminders save separately) ── */}
+                    <div className="flex items-center justify-end">
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            onClick={handleSave}
+                            disable={saving || !hasChanges}
+                        >
+                            {saving ? 'Saving…' : 'Save scoring settings'}
+                        </MyButton>
+                    </div>
+
+                    {/* ── TAT + Follow-up reminders (table-backed) ── */}
+                    <LeadSlaSettings />
+
+                    {/* ── Lead Statuses (table-backed CRUD) ── */}
+                    <LeadStatusesManager />
                 </>
             )}
-
-            {/* ── Save ── */}
-            <div className="flex justify-end">
-                <MyButton
-                    buttonType="primary"
-                    scale="medium"
-                    onClick={handleSave}
-                    disable={saving || !hasChanges}
-                >
-                    {saving ? 'Saving…' : 'Save Lead Settings'}
-                </MyButton>
-            </div>
         </div>
     );
 }

@@ -44,6 +44,14 @@ public enum WorkflowTriggerEvent {
     MEMBERSHIP_EXPIRY,
     ENROLLMENT_REPORTS,
 
+    // Lead TAT / Follow-up SLA (emit-only; delivery handled by the workflow engine)
+    LEAD_ASSIGNED_TO_COUNSELOR,
+    LEAD_TAT_REMINDER_BEFORE,
+    LEAD_TAT_OVERDUE,
+    FOLLOW_UP_DUE,
+    FOLLOW_UP_OVERDUE,
+    LEAD_STATUS_CHANGED,
+
     // Assessment (cross-service via internal HTTP)
     ASSESSMENT_CREATE,
     ASSESSMENT_START,

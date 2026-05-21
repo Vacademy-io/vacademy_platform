@@ -13,6 +13,7 @@ import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselo
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
+import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -665,6 +666,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         retry: 1,
     });
 
+    // Institute's configurable lead statuses (table-backed; seeded New/Converted/Lost).
+    const { statuses: leadStatuses } = useLeadStatuses();
+
     const { mutate: changeStatus, isPending: changingStatus } = useMutation({
         mutationFn: (status: string) => updateLeadStatus(userId, instituteId, status),
         onSuccess: (_data, status) => {
@@ -828,42 +832,32 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             {/* ── Status control ── */}
             <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
                 <p className="mb-1.5 text-xs text-muted-foreground">Lead Status</p>
-                <div className="flex gap-1.5">
-                    {(
-                        [
-                            {
-                                value: 'LEAD',
-                                label: 'Lead',
-                                active: 'bg-blue-100 text-blue-700 ring-1 ring-blue-300',
-                                hover: 'hover:bg-blue-50',
-                            },
-                            {
-                                value: 'CONVERTED',
-                                label: 'Converted',
-                                active: 'bg-green-100 text-green-700 ring-1 ring-green-300',
-                                hover: 'hover:bg-green-50',
-                            },
-                            {
-                                value: 'LOST',
-                                label: 'Lost',
-                                active: 'bg-red-100 text-red-700 ring-1 ring-red-300',
-                                hover: 'hover:bg-red-50',
-                            },
-                        ] as const
-                    ).map((s) => (
-                        <button
-                            key={s.value}
-                            onClick={() => changeStatus(s.value)}
-                            disabled={changingStatus}
-                            className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-                                profile.conversion_status === s.value
-                                    ? s.active
-                                    : `bg-neutral-50 text-neutral-500 ${s.hover}`
-                            }`}
-                        >
-                            {s.label}
-                        </button>
-                    ))}
+                <div className="flex flex-wrap gap-1.5">
+                    {leadStatuses.map((s) => {
+                        const active = profile.conversion_status === s.status_key;
+                        return (
+                            <button
+                                key={s.id}
+                                onClick={() => changeStatus(s.status_key)}
+                                disabled={changingStatus}
+                                className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
+                                    active ? '' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
+                                }`}
+                                // Inline style: status colour is arbitrary user-picked hex (active state).
+                                style={
+                                    active
+                                        ? {
+                                              backgroundColor: `${s.color}1A`,
+                                              color: s.color,
+                                              boxShadow: `inset 0 0 0 1px ${s.color}55`,
+                                          }
+                                        : undefined
+                                }
+                            >
+                                {s.label}
+                            </button>
+                        );
+                    })}
                 </div>
                 {isConverted && (
                     <p className="mt-2 text-[11px] text-green-600">

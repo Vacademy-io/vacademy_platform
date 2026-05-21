@@ -62,8 +62,17 @@ public class LeadDetailDTO {
     private String overallStatus;
     private String conversionStatus;
     private String enquiryId;
+    /** Custom pipeline status (from the linked enquiry's enquiry_status, e.g. NEW / INTERESTED). */
+    private String leadStatus;
 
     // ── Opt-Out Source ──
     private String sourceAudienceName; // name of the audience the user opted out FROM
+
+    // ── TAT / Follow-up SLA badge (visual only; derived from the scheduler's persisted state) ──
+    private Timestamp tatDueAt;          // submitted_at + tatHours, stamped by the SLA scheduler
+    private String tatReminderStage;     // canonical stage last emitted: TAT_BEFORE / TAT_OVERDUE / FOLLOW_UP_DUE / FOLLOW_UP_OVERDUE
+    private Boolean tatOverdue;          // TAT breached and counselor hasn't acted
+    private Boolean tatDueSoon;          // inside a "before TAT" / follow-up-due window
+    private Boolean followUpOverdue;     // follow-up SLA crossed
 }
 

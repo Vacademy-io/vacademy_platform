@@ -26,7 +26,10 @@ import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 import vacademy.io.admin_core_service.features.enquiry.entity.LinkedUsers;
 import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
 import vacademy.io.admin_core_service.features.enquiry.repository.LinkedUsersRepository;
+import vacademy.io.admin_core_service.features.audience.service.LeadTriggerContextBuilder;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
@@ -75,6 +78,25 @@ public class EnquiryService {
 
     @Autowired
     private TimelineEventService timelineEventService;
+
+    @Autowired
+    private WorkflowTriggerService workflowTriggerService;
+
+    @Autowired
+    private LeadTriggerContextBuilder leadTriggerContextBuilder;
+
+    /**
+     * Resolve the institute that owns an enquiry via its linked audience_response → audience.
+     * Returns null if the enquiry isn't linked to a campaign (emit is then skipped).
+     */
+    private String resolveInstituteIdForEnquiry(String enquiryId) {
+        if (!StringUtils.hasText(enquiryId)) return null;
+        return audienceResponseRepository.findByEnquiryId(enquiryId)
+                .map(AudienceResponse::getAudienceId)
+                .flatMap(audienceRepository::findById)
+                .map(a -> a.getInstituteId())
+                .orElse(null);
+    }
 
     public AdminEnquiryDetailResponseDTO getAdminEnquiryDetails(String enquiryId) {
         // Step 1: Fetch the Enquiry itself
@@ -344,6 +366,12 @@ public class EnquiryService {
         // Fetch all matching enquiries in one query
         List<Enquiry> enquiries = enquiryRepository.findAllById(uuids);
 
+        // Capture old statuses before applying, so LEAD_STATUS_CHANGED can carry oldStatus.
+        Map<String, String> oldEnquiryStatusById = new HashMap<>();
+        for (Enquiry enquiry : enquiries) {
+            oldEnquiryStatusById.put(enquiry.getId().toString(), enquiry.getEnquiryStatus());
+        }
+
         // Apply updates (only non-null fields)
         for (Enquiry enquiry : enquiries) {
             if (StringUtils.hasText(request.getEnquiryStatus())) {
@@ -384,6 +412,29 @@ public class EnquiryService {
                     "Enquiry Status Updated",
                     desc.toString(),
                     metadata);
+
+            // Emit-only LEAD_STATUS_CHANGED for the (custom) status change; engine handles delivery.
+            try {
+                String instituteId = resolveInstituteIdForEnquiry(enquiry.getId().toString());
+                if (StringUtils.hasText(instituteId)) {
+                    String newStatus = StringUtils.hasText(request.getEnquiryStatus())
+                            ? request.getEnquiryStatus() : enquiry.getEnquiryStatus();
+                    Map<String, Object> ctx = new HashMap<>();
+                    leadTriggerContextBuilder.put(ctx, "instituteId", instituteId);
+                    leadTriggerContextBuilder.put(ctx, "enquiryId", enquiry.getId().toString());
+                    leadTriggerContextBuilder.put(ctx, "changeType", "ENQUIRY_STATUS");
+                    leadTriggerContextBuilder.put(ctx, "oldStatus",
+                            oldEnquiryStatusById.get(enquiry.getId().toString()));
+                    leadTriggerContextBuilder.put(ctx, "newStatus", newStatus);
+                    leadTriggerContextBuilder.put(ctx, "conversionStatus", request.getConversionStatus());
+                    workflowTriggerService.handleTriggerEvents(
+                            WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(),
+                            enquiry.getId().toString(), instituteId, ctx);
+                }
+            } catch (Exception ex) {
+                logger.warn("[LeadTrigger] Failed to emit LEAD_STATUS_CHANGED for enquiry {}: {}",
+                        enquiry.getId(), ex.getMessage());
+            }
         }
 
         logger.info("Bulk updated {} enquiries. Status: {}, ConversionStatus: {}",
@@ -471,6 +522,25 @@ public class EnquiryService {
                     "Counselor Assigned",
                     "Assigned counselor: " + cName,
                     Map.of("counselor_id", request.getCounselorId(), "counselor_name", cName));
+        }
+
+        // Emit-only: workflow engine handles delivery. Best-effort; never breaks the link.
+        try {
+            String instituteId = resolveInstituteIdForEnquiry(request.getSourceId());
+            if (StringUtils.hasText(instituteId)) {
+                Map<String, Object> ctx = new HashMap<>();
+                leadTriggerContextBuilder.put(ctx, "instituteId", instituteId);
+                leadTriggerContextBuilder.put(ctx, "enquiryId", request.getSourceId());
+                leadTriggerContextBuilder.put(ctx, "counselorId", request.getCounselorId());
+                leadTriggerContextBuilder.put(ctx, "counselorName",
+                        assignedUser != null ? assignedUser.getFullName() : null);
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(),
+                        request.getSourceId(), instituteId, ctx);
+            }
+        } catch (Exception ex) {
+            logger.warn("[LeadTrigger] Failed to emit LEAD_ASSIGNED_TO_COUNSELOR for enquiry {}: {}",
+                    request.getSourceId(), ex.getMessage());
         }
 
         return "Counselor linked successfully";

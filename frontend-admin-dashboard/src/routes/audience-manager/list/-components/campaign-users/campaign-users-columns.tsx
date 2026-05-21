@@ -9,6 +9,9 @@ import {
     CampaignFormCustomField,
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { TatStatusBadge } from '@/components/shared/tat-status-badge';
+import { LeadStatusChip } from '@/components/shared/lead-status-chip';
+import type { CustomLeadStatus } from '@/hooks/use-lead-settings';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 import type { LatestNoteSummary } from '@/hooks/use-latest-notes-batch';
 import {
@@ -67,6 +70,12 @@ export interface CampaignUserTable {
         profile_pic_file_id?: string | null;
     };
     _custom_field_values?: Record<string, string | null>;
+    // TAT / follow-up SLA badge (visual only)
+    _tat_overdue?: boolean | null;
+    _tat_due_soon?: boolean | null;
+    _follow_up_overdue?: boolean | null;
+    // Custom pipeline status (enquiry_status)
+    _lead_status?: string | null;
     [key: string]: any; // Allow dynamic custom field properties
 }
 
@@ -130,7 +139,8 @@ export const generateDynamicColumns = (
     leadProfiles?: Record<string, LeadProfileSummary>,
     latestNotes?: Record<string, LatestNoteSummary>,
     onAddNote?: (userId: string, userName: string) => void,
-    onAssignCounsellor?: (userId: string, userName: string) => void
+    onAssignCounsellor?: (userId: string, userName: string) => void,
+    customStatuses?: CustomLeadStatus[]
 ): ColumnDef<CampaignUserTable>[] => {
     // When a select-row callback is provided, render a "Details" column first —
     // matching manage-students and manage-contacts so the side-view affordance is
@@ -345,12 +355,21 @@ export const generateDynamicColumns = (
                         >
                             <div className="flex flex-col gap-0.5">
                                 <span>{displayValue}</span>
-                                {leadProfile && leadProfile.conversion_status !== 'CONVERTED' && (
-                                    <LeadScoreBadge
-                                        score={leadProfile.best_score}
-                                        tier={leadProfile.lead_tier}
-                                        size="sm"
-                                    />
+                                {isNameFieldCell && (
+                                    <div className="flex flex-wrap items-center gap-1">
+                                        {leadProfile && leadProfile.conversion_status !== 'CONVERTED' && (
+                                            <LeadScoreBadge
+                                                score={leadProfile.best_score}
+                                                tier={leadProfile.lead_tier}
+                                                size="sm"
+                                            />
+                                        )}
+                                        <TatStatusBadge
+                                            tatOverdue={row.original._tat_overdue}
+                                            tatDueSoon={row.original._tat_due_soon}
+                                            followUpOverdue={row.original._follow_up_overdue}
+                                        />
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -360,6 +379,25 @@ export const generateDynamicColumns = (
         });
     } catch (error) {
         console.error('❌ Error generating dynamic columns:', error);
+    }
+
+    // Lead status (custom pipeline stage) column — colored chip from the institute's configured statuses.
+    if (customStatuses && customStatuses.length > 0) {
+        columns.push({
+            id: 'lead_status',
+            header: 'Status',
+            size: 160,
+            minSize: 120,
+            maxSize: 200,
+            cell: ({ row }) =>
+                row.original._lead_status ? (
+                    <div className="p-3">
+                        <LeadStatusChip status={row.original._lead_status} statuses={customStatuses} />
+                    </div>
+                ) : (
+                    <div className="p-3 text-sm text-neutral-400">—</div>
+                ),
+        });
     }
 
     // Counsellor column — uses the batched LeadProfileSummary so we don't

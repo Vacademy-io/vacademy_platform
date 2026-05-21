@@ -163,6 +163,14 @@ export const TRIGGER_EVENTS = [
     'SUB_ORG_MEMBER_TERMINATION',
     'AUDIENCE_LEAD_SUBMISSION',
     'INSTALLMENT_DUE_REMINDER',
+    // Lead TAT / Follow-up SLA (emit-only; backend emits, workflow delivers).
+    // Also surfaced dynamically via the backend trigger-events catalog.
+    'LEAD_ASSIGNED_TO_COUNSELOR',
+    'LEAD_TAT_REMINDER_BEFORE',
+    'LEAD_TAT_OVERDUE',
+    'FOLLOW_UP_DUE',
+    'FOLLOW_UP_OVERDUE',
+    'LEAD_STATUS_CHANGED',
 ] as const;
 
 // Execution Log types

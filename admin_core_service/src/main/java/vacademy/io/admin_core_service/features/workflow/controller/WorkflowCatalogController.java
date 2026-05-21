@@ -215,6 +215,13 @@ public class WorkflowCatalogController {
         // CRM
         eventMeta.put("MEMBERSHIP_EXPIRY", new String[]{"Membership Expiry", "Fires when a user's membership/subscription is about to expire", "CRM", "USER_PLAN"});
         eventMeta.put("ENROLLMENT_REPORTS", new String[]{"Enrollment Reports", "Fires periodically for generating enrollment reports", "CRM", "INSTITUTE"});
+        // Lead TAT / Follow-up SLA (emit-only; the workflow you bind here decides the channel/template/recipients)
+        eventMeta.put("LEAD_ASSIGNED_TO_COUNSELOR", new String[]{"Lead Assigned to Counselor", "Fires when a lead is assigned or reassigned to a counselor", "CRM", "AUDIENCE"});
+        eventMeta.put("LEAD_TAT_REMINDER_BEFORE", new String[]{"Lead TAT Reminder (Before Breach)", "Fires when an unacted lead is approaching its TAT/SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("LEAD_TAT_OVERDUE", new String[]{"Lead TAT Overdue", "Fires when the counselor has not acted on a lead by its TAT/SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("FOLLOW_UP_DUE", new String[]{"Follow-up Due", "Fires when a lead follow-up is approaching its SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("FOLLOW_UP_OVERDUE", new String[]{"Follow-up Overdue", "Fires when a lead follow-up has crossed its SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("LEAD_STATUS_CHANGED", new String[]{"Lead Status Changed", "Fires when a lead's status/tier changes (carries oldStatus and newStatus)", "CRM", "AUDIENCE"});
         // Assessment
         eventMeta.put("ASSESSMENT_CREATE", new String[]{"Assessment Created", "Fires when a new assessment is created", "Assessment", "ASSESSMENT"});
         eventMeta.put("ASSESSMENT_START", new String[]{"Assessment Started", "Fires when a student starts an assessment attempt", "Assessment", "ASSESSMENT"});

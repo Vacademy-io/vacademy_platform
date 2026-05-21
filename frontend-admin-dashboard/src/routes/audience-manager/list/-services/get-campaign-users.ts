@@ -32,6 +32,14 @@ export interface CampaignLeadUser {
     };
     custom_field_values?: Record<string, string>;
     custom_field_metadata?: Record<string, unknown>;
+    // ── TAT / Follow-up SLA badge (visual only) ──
+    tat_due_at?: string | null;
+    tat_reminder_stage?: string | null;
+    tat_overdue?: boolean | null;
+    tat_due_soon?: boolean | null;
+    follow_up_overdue?: boolean | null;
+    /** Custom pipeline status (enquiry_status), e.g. NEW / INTERESTED. */
+    lead_status?: string | null;
 }
 
 export interface CampaignLeadsResponse {
@@ -62,6 +70,8 @@ export interface CampaignLeadsRequest {
     search_query?: string;
     // Lead-temperature bucket: 'HOT' | 'WARM' | 'COLD'. Omitted = all tiers.
     lead_tier?: string;
+    // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
+    lead_status_id?: string;
     // Per-dropdown-field filters. Each entry narrows the result to responses
     // whose custom_field_values row matches ({field_id, value}). Multiple
     // entries are AND-combined on the backend.
@@ -96,6 +106,7 @@ export const fetchCampaignLeads = async (
                 submitted_to_local: payload.submitted_to_local,
                 search_query: payload.search_query,
                 lead_tier: payload.lead_tier,
+                lead_status_id: payload.lead_status_id,
                 custom_field_filters: payload.custom_field_filters,
                 conversion_status_filter: payload.conversion_status_filter,
                 sort_by: payload.sort_by,

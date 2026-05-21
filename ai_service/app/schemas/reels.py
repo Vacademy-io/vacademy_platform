@@ -83,6 +83,13 @@ class ScoreBreakdown(BaseModel):
     word_cut_savings_needed_s: Optional[float] = None
     word_cut_savings_pct: Optional[float] = None
     speaker_moves_in_window: Optional[int] = None
+    # End-quality (Issue 4A — measures whether the snapped window opens
+    # and closes at real sentence boundaries vs trailing mid-thought).
+    end_quality_score: Optional[float] = None
+    end_last_word: Optional[str] = None
+    end_terminator: Optional[str] = None        # "punctuation" | "continuator" | "no_punct"
+    start_first_word: Optional[str] = None
+    start_bad_opener: Optional[bool] = None
 
 
 class ReelCandidate(BaseModel):
@@ -173,6 +180,19 @@ class WordImportance(BaseModel):
     emoji: Optional[str] = None
 
 
+class TranscriptCorrection(BaseModel):
+    """LLM-applied transcript fix (Issue 1B' — Raven→Ravana class).
+
+    Emitted by the same /preview LLM call that scores importance. Each
+    entry documents one token replacement that was actually applied to
+    the word_importance list (i.e. `count >= 1`).
+    """
+    original: str = Field(..., description="ASR token before correction")
+    corrected: str = Field(..., description="What the LLM replaced it with")
+    reason: str = Field("", description="One-line cultural / topical justification")
+    count: int = Field(1, description="How many times the token was replaced in this window")
+
+
 class EnrichedCandidate(BaseModel):
     """Returned by /preview — adds LLM-derived fields to a scan candidate."""
     candidate_id: str
@@ -188,6 +208,12 @@ class EnrichedCandidate(BaseModel):
     cut_plan: list[CutSpan]
     predicted_output_duration_s: float = Field(
         ..., description="Recomputed after the cut plan is finalized"
+    )
+    transcript_corrections: list[TranscriptCorrection] = Field(
+        default_factory=list,
+        description="LLM-suggested token rewrites that were applied "
+        "(e.g. ASR 'raven' → 'Ravana' when context implies Ramayana). "
+        "Empty when nothing needed correcting.",
     )
 
 

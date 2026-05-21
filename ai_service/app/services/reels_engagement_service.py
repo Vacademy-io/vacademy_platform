@@ -151,8 +151,12 @@ def score_windows(
     face_segments: list[dict] = context.get("face_segments") or []
 
     # Pre-index everything we'll query repeatedly for O(1) / O(log n) lookups.
-    sentence_starts = [s.get("start", 0.0) for s in transcript]
-    sentence_ends = [s.get("end", 0.0) for s in transcript]
+    # Real sentence boundaries come from `_build_sentence_boundaries`, which
+    # filters out Whisper segment edges that aren't true sentence terminators
+    # (last word is a continuator like "the/a/and/of/using"). 27% of Whisper
+    # "segments" in production data end mid-sentence at a pause; the helper
+    # drops those + prefers punctuation-derived boundaries when available.
+    sentence_starts, sentence_ends = _build_sentence_boundaries(transcript)
     energy_series = prosody.get("energy_series") or []   # [{t, rms or v}]
     pitch_series = prosody.get("pitch_series") or []     # [{t, hz or v}]
     pauses = prosody.get("pauses") or []                  # [{start, end, duration_s}]
@@ -247,14 +251,15 @@ def score_windows(
             continue
 
         composite = _composite(hook, pacing, info, loop)
-        # Boundary-quality bonus (Phase 2e bug-followup): nudges cleanly-
-        # snapped windows above mid-sentence picks. Capped at 100 so the
-        # bonus can't push a 95 candidate to 105.
-        boundary_bonus = _boundary_quality_bonus(
-            win_start, win_end, sentence_starts, sentence_ends,
-        )
-        composite = min(100.0, composite + boundary_bonus)
-        breakdown["boundary_quality_bonus"] = round(boundary_bonus, 1)
+        # End-quality adjustment (Issue 4A — production audit 2026-05-21).
+        # The previous boundary-alignment bonus was a math no-op (every
+        # window got +10 because snap_to_sentence forced edges to align).
+        # _end_quality_score measures the ACTUAL last-word + first-word
+        # content of the snapped window, so mid-sentence picks pay the
+        # penalty directly. Bounded to keep composite in [0, 100].
+        eq_delta, eq_breakdown = _end_quality_score(win_start, win_end, transcript)
+        composite = max(0.0, min(100.0, composite + eq_delta))
+        breakdown.update(eq_breakdown)
         score = ScoreVec(
             hook=hook, pacing=pacing, info=info, loop=loop, composite=composite,
             breakdown=breakdown,
@@ -282,8 +287,170 @@ def score_windows(
 
 
 # ---------------------------------------------------------------------------
+# Sentence-boundary detection (Issue 3 fix — production audit 2026-05-21)
+#
+# Whisper segments speech at PAUSES, not at semantic sentence terminators.
+# 27% of Whisper segment-ends in the audited Indian-English lecture ended
+# with a continuator word ("the/a/of/using/called/this/...") — they're
+# mid-sentence false boundaries. Two signals fix this:
+#
+#   1. **Punctuation** (Issue 3B): when a segment's text contains `.`, `?`,
+#      `!`, the real sentence end is AT THE PUNCTUATION, not at segment_end.
+#      Walk word-by-word to find the timestamp of the punctuated word.
+#   2. **Continuator-word check** (Issue 3A): segments ending in a known
+#      continuator are not sentence terminators. Drop their segment_end
+#      from the sentence-boundary set entirely.
+# ---------------------------------------------------------------------------
+
+# Words that strongly suggest the speaker hasn't finished a thought. If a
+# Whisper segment ends with one of these, the segment_end is a pause, not
+# a sentence terminator. List curated against the production data:
+# 120/450 Whisper segments in the audited lecture ended with one of these.
+_CONTINUATOR_WORDS = frozenset({
+    # Articles / determiners
+    "a", "an", "the", "this", "that", "these", "those", "my", "your",
+    "our", "their", "his", "her", "its",
+    # Prepositions
+    "of", "in", "on", "at", "to", "for", "with", "by", "as", "from",
+    "into", "onto", "about", "over", "under", "between", "through",
+    # Conjunctions / connectives
+    "and", "or", "but", "so", "yet", "then", "than", "if", "because",
+    "while", "until", "though", "although", "since", "unless",
+    # Auxiliary / linking verbs
+    "is", "was", "are", "were", "be", "been", "being", "am",
+    "have", "has", "had", "do", "does", "did",
+    "will", "would", "can", "could", "should", "may", "might", "must",
+    "shall",
+    # Common participle / continuation cues
+    "using", "called", "named", "based", "doing", "going", "getting",
+    "making", "saying", "trying",
+    # Pronouns (often start a continuation)
+    "i", "we", "you", "they", "he", "she", "it",
+    # Question / discourse fragments
+    "what", "which", "who", "whom", "whose", "where", "when", "why", "how",
+})
+
+# Characters that mark a TRUE sentence end inside Whisper segment text.
+_SENTENCE_TERMINATORS = frozenset(".!?")
+
+
+def _build_sentence_boundaries(
+    transcript: list[dict],
+) -> tuple[list[float], list[float]]:
+    """Return (sentence_starts, sentence_ends) using punctuation when
+    Whisper emitted it, and falling back to segment edges otherwise —
+    but dropping false-positive ends that trail a continuator word.
+
+    Boundary detection order per segment:
+      1. Walk the segment's `words` array. Every time a word ends with
+         `.`, `!`, or `?`, record its `end` timestamp as a sentence_end
+         AND the NEXT word's `start` (if any) as a sentence_start. This
+         captures sentences that finish MID-segment — Whisper sometimes
+         packs two sentences into one segment ("Right. Now look here.").
+      2. If the segment had no punctuation, use `segment.end` as a
+         candidate sentence_end ONLY when the last word is not a
+         continuator. Otherwise drop it: that boundary is a pause.
+      3. `segment.start` is always a candidate sentence_start (the
+         start side has fewer false positives — speakers usually pause
+         BEFORE starting a new thought).
+
+    The two arrays are returned sorted, deduplicated within 50ms.
+    """
+    starts: list[float] = []
+    ends: list[float] = []
+
+    def _dedup_sort(arr: list[float]) -> list[float]:
+        arr.sort()
+        out: list[float] = []
+        for v in arr:
+            if not out or v - out[-1] > 0.05:
+                out.append(v)
+        return out
+
+    for seg in transcript:
+        seg_start = float(seg.get("start") or 0.0)
+        seg_end = float(seg.get("end") or 0.0)
+        if seg_end <= seg_start:
+            continue
+        starts.append(seg_start)
+
+        words = seg.get("words") or []
+        found_punct = False
+        for i, w in enumerate(words):
+            token = (w.get("word") or "").strip()
+            if not token:
+                continue
+            # Punctuation-derived inner boundary (Issue 3B).
+            if token[-1] in _SENTENCE_TERMINATORS and len(token) > 1:
+                try:
+                    w_end = float(w.get("end") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                ends.append(w_end)
+                found_punct = True
+                # Next word starts the next sentence.
+                if i + 1 < len(words):
+                    try:
+                        nxt_start = float(words[i + 1].get("start") or 0.0)
+                        if nxt_start > 0:
+                            starts.append(nxt_start)
+                    except (TypeError, ValueError):
+                        pass
+
+        if found_punct:
+            # If the last word also ended in punctuation, seg_end has
+            # already been captured. If not, seg_end is the trailing
+            # continuation — apply continuator-check before keeping it.
+            last_word = (words[-1].get("word") or "").strip() if words else ""
+            last_stripped = last_word.rstrip(",.!?;:\"')]").lower()
+            if last_word and last_word[-1] in _SENTENCE_TERMINATORS:
+                pass  # already captured
+            elif last_stripped and last_stripped not in _CONTINUATOR_WORDS:
+                ends.append(seg_end)
+        else:
+            # No internal punctuation. Issue 3A: drop seg_end if the
+            # last word is a continuator — that's a pause, not a
+            # sentence end.
+            last_word = (words[-1].get("word") or "").strip() if words else ""
+            if not last_word:
+                # No words; fall back to segment text.
+                text = (seg.get("text") or "").strip()
+                last_word = text.split()[-1] if text else ""
+            last_stripped = last_word.rstrip(",.!?;:\"')]").lower()
+            if last_stripped and last_stripped not in _CONTINUATOR_WORDS:
+                ends.append(seg_end)
+            # else: dropped — this segment boundary is a pause, not a
+            # sentence end. The snap algorithm will look at the NEXT
+            # real sentence end past this point.
+
+    return _dedup_sort(starts), _dedup_sort(ends)
+
+
+# ---------------------------------------------------------------------------
 # Window boundary snapping
 # ---------------------------------------------------------------------------
+
+# Snap tolerances (R1 — production audit 2026-05-21).
+#
+# Pre-fix: 0.5s start / 1.0s end. Worked because Whisper segment boundaries
+# appeared every ~5s, so a real boundary was always within 1s of any raw
+# window edge. After Issue 3 dropped 27% of false boundaries, real
+# boundaries are 8-15s apart on Indian-English / code-mixed sources. The
+# original tolerances now reject windows whose nearest real boundary is
+# 2-6s away — even though that boundary is still the right answer.
+#
+# New behavior: prefer close real boundaries when available, but ALWAYS
+# snap to the nearest real boundary even if it's far. The end-quality
+# penalty (_end_quality_score) handles the case where snapping shifts
+# the window past a continuator — that window pays −10 and naturally
+# ranks below cleanly-snapped picks.
+_SNAP_START_TOLERANCE_S = 4.0   # was 0.5; widened for sparser real boundaries
+_SNAP_END_TOLERANCE_S = 4.0     # was 1.0; widened symmetrically
+# How far past win_max we'll extend if the next real sentence end falls
+# beyond it. The end-quality penalty + diversity filter handle the
+# resulting score, but we cap so the window doesn't grow unboundedly.
+_SNAP_WIN_MAX_OVERSHOOT_S = 8.0
+
 
 def _snap_window_to_sentence(
     raw_start: float,
@@ -295,59 +462,114 @@ def _snap_window_to_sentence(
     win_min: float,
     win_max: float,
 ) -> tuple[Optional[float], Optional[float]]:
-    """Snap window edges to nearest sentence boundary within 200ms tolerance.
+    """Snap window edges to nearest real sentence boundary.
 
-    If snapping pushes width outside [win_min, win_max], we extend the end
-    to the next sentence end to bring duration back into range.
+    Real boundaries (after Issue 3's continuator + punctuation filtering)
+    are 8-15s apart on Indian-English sources. The wider tolerances
+    accept far-but-real boundaries; the end-quality penalty
+    differentiates the resulting candidates.
+
+    If snapping leaves the window under win_min, extends to the next
+    real sentence end up to win_max + _SNAP_WIN_MAX_OVERSHOOT_S. Returns
+    (None, None) when there's no usable boundary within that envelope.
     """
     if not transcript:
         return (raw_start, min(duration_s, raw_end))
 
-    # Snap start: move forward to nearest sentence start within 0.5s, else
-    # keep raw_start (we allow mid-word starts in pathological cases — the
-    # word-cut planner can clean them up later).
+    # Snap start: prefer the closest sentence_start within tolerance. If
+    # multiple candidates exist, pick the EARLIEST one to include the
+    # speaker's full lead-in (Phase 2e selection-quality finding).
     new_start = raw_start
+    best_start = None
+    best_start_dist = _SNAP_START_TOLERANCE_S + 1
     for s_start in sentence_starts:
-        if s_start > raw_start + 0.5:
+        if s_start > raw_start + _SNAP_START_TOLERANCE_S:
             break
-        if abs(s_start - raw_start) <= 0.5:
-            new_start = s_start
-            break
-
-    # Snap end: move forward to nearest sentence end within 1.0s.
-    new_end = raw_end
-    for s_end in sentence_ends:
-        if s_end < raw_end - 1.0:
+        if s_start < raw_start - _SNAP_START_TOLERANCE_S:
             continue
-        if s_end > raw_end + 1.0:
-            break
-        new_end = s_end
-        break
+        dist = abs(s_start - raw_start)
+        if dist < best_start_dist or (
+            dist == best_start_dist and best_start is not None and s_start < best_start
+        ):
+            best_start = s_start
+            best_start_dist = dist
+    if best_start is not None:
+        new_start = best_start
 
-    # If duration is now under win_min, grow to the next sentence end.
+    # Snap end: prefer the closest sentence_end within tolerance. Bias
+    # toward LATER ends so the window is more likely to include a real
+    # payoff sentence (and the end-quality scorer rewards punctuated ends).
+    new_end = raw_end
+    best_end = None
+    best_end_dist = _SNAP_END_TOLERANCE_S + 1
+    for s_end in sentence_ends:
+        if s_end < raw_end - _SNAP_END_TOLERANCE_S:
+            continue
+        if s_end > raw_end + _SNAP_END_TOLERANCE_S:
+            break
+        dist = abs(s_end - raw_end)
+        if dist < best_end_dist or (
+            dist == best_end_dist and best_end is not None and s_end > best_end
+        ):
+            best_end = s_end
+            best_end_dist = dist
+    if best_end is not None:
+        new_end = best_end
+    else:
+        # No real boundary within tolerance. raw_end may happen to coincide
+        # with a Whisper segment edge that _build_sentence_boundaries dropped
+        # as a false boundary (continuator-ending). Reach forward to the
+        # NEXT real sentence end, capped at win_max + overshoot — better to
+        # extend a window than to lock it on a known mid-sentence position.
+        extension_cap = win_max + _SNAP_WIN_MAX_OVERSHOOT_S
+        for s_end in sentence_ends:
+            if s_end <= raw_end:
+                continue
+            if s_end - new_start > extension_cap:
+                break
+            new_end = s_end
+            break
+
+    # If duration is now under win_min, extend to the next real sentence
+    # end. Allow overshoot up to _SNAP_WIN_MAX_OVERSHOOT_S past win_max
+    # so we don't reject the candidate just because real boundaries are
+    # sparse — the end-quality scorer + diversity filter sort it later.
     if new_end - new_start < win_min:
+        extension_cap = win_max + _SNAP_WIN_MAX_OVERSHOOT_S
+        extended = False
         for s_end in sentence_ends:
             if s_end <= new_end:
                 continue
             if s_end - new_start >= win_min:
-                new_end = s_end
+                if s_end - new_start <= extension_cap:
+                    new_end = s_end
+                    extended = True
                 break
-        else:
-            # Couldn't extend — abandon.
-            return (None, None)
+        if not extended:
+            # No real boundary reachable within the overshoot envelope.
+            # Fall back to raw_end clamped to win_max — the window won't
+            # land cleanly but the end-quality penalty makes it visible.
+            new_end = min(raw_end, new_start + win_max)
+            if new_end - new_start < win_min:
+                return (None, None)
 
-    # If duration overshoots win_max, shrink to a closer sentence end.
+    # If duration overshoots win_max (after extension or directly), pull
+    # back to a closer real sentence end. We accept down to win_min,
+    # otherwise leave it (end-quality will penalize).
     if new_end - new_start > win_max:
+        target_end = new_end
         for s_end in reversed(sentence_ends):
             if s_end >= new_end:
                 continue
-            if new_end - s_end <= 0 or s_end - new_start <= 0:
-                continue
-            if s_end - new_start <= win_max and s_end - new_start >= win_min:
-                new_end = s_end
+            duration = s_end - new_start
+            if win_min <= duration <= win_max:
+                target_end = s_end
                 break
+        new_end = target_end
 
     new_end = min(new_end, duration_s)
+    if new_end - new_start < win_min:
+        return (None, None)
     return (new_start, new_end)
 
 
@@ -835,46 +1057,146 @@ def _composite(hook: float, pacing: float, info: float, loop: float) -> float:
 # enough to handle floating-point rounding from the snap logic upstream.
 _BOUNDARY_SNAP_TOLERANCE_S = 0.05
 
-# Composite-score bonuses for clean sentence boundaries. +10 when BOTH
-# edges land on sentence boundaries (rare-but-best — clean opening +
-# clean payoff). +5 when ONE edge snaps. Bias is intentionally additive
-# (not an axis-weight change) so we don't have to retune the geometric-
-# mean weights — a window with weak hook can't be saved by a clean
-# boundary, but two equal-engagement windows are correctly ordered with
-# the cleaner one on top. Matches the audit doc's "+5 to +10 bonus" call.
-_BOUNDARY_BONUS_BOTH = 10.0
-_BOUNDARY_BONUS_ONE = 5.0
+# Direct end-quality scoring (Issue 4A — production audit 2026-05-21).
+#
+# The previous design (_boundary_quality_bonus, kept as a wrapper for
+# backward compat) was a mathematical no-op: `_snap_window_to_sentence`
+# already forces every candidate to align with a sentence boundary, so
+# the post-snap alignment check always returned the +10 bonus.
+#
+# New design measures THE CONTENT of the first/last word in the snapped
+# window — independent of whether the edge aligned with Whisper's segment
+# boundaries. Continuator first/last words → penalty. Real sentence
+# starters / terminators → small bonus. This is the signal the user
+# perceives ("starts/ends mid-sentence"), measured directly.
+_END_QUALITY_PENALTY_CONTINUATOR = -10.0  # last word is "the"/"a"/...
+_END_QUALITY_PENALTY_NO_PUNCT = -3.0      # ends without punctuation
+_END_QUALITY_BONUS_PUNCT = 5.0            # ends in . ! ?
+_START_QUALITY_BONUS_CAPITAL = 2.0        # first content word is capitalized
+
+# Words a clean sentence does NOT start with (filler / discourse).
+_BAD_OPENER_WORDS = frozenset({
+    "so", "and", "but", "or", "now", "okay", "yeah", "well", "actually",
+    "literally", "basically", "i", "we", "you", "they", "anyway", "right",
+    "like", "um", "uh", "hmm",
+})
 
 
-def _boundary_quality_bonus(
+def _end_quality_score(
     win_start: float,
     win_end: float,
-    sentence_starts: list[float],
-    sentence_ends: list[float],
-) -> float:
-    """Composite-score bonus for windows that begin AND end at sentence
-    boundaries. Surfaces "complete thought" picks above mid-sentence picks.
+    transcript: list[dict],
+) -> tuple[float, dict]:
+    """Direct measurement of how 'finished' the window's last sentence
+    feels + how clean its opener is. Returns (delta, breakdown_keys).
 
-    Returns:
-      `_BOUNDARY_BONUS_BOTH` (+10)  when both edges snap within tolerance
-      `_BOUNDARY_BONUS_ONE`  (+5)   when only one edge snaps
-      0.0                           when neither snaps
+    delta combines:
+      +5  if the last word ends in . ! ? (real terminator)
+      -10 if the last word is a continuator (the/a/of/and/using/...)
+      -3  otherwise (segment edge with no punctuation, no continuator)
+      +2  if the first content word is capitalized AND not a bad opener
 
-    Empty sentence arrays return 0 — no boundaries means no signal.
+    breakdown_keys are merged into the ScoreVec breakdown so the FE/diag
+    can see exactly why a candidate was ranked where it was.
     """
-    if not sentence_starts or not sentence_ends:
-        return 0.0
-    start_clean = any(
-        abs(win_start - s) <= _BOUNDARY_SNAP_TOLERANCE_S for s in sentence_starts
-    )
-    end_clean = any(
-        abs(win_end - e) <= _BOUNDARY_SNAP_TOLERANCE_S for e in sentence_ends
-    )
-    if start_clean and end_clean:
-        return _BOUNDARY_BONUS_BOTH
-    if start_clean or end_clean:
-        return _BOUNDARY_BONUS_ONE
-    return 0.0
+    breakdown: dict = {
+        "end_quality_score": 0.0,
+        "end_last_word": None,
+        "end_terminator": None,
+        "start_first_word": None,
+        "start_bad_opener": None,
+    }
+    if not transcript:
+        return 0.0, breakdown
+
+    # Find the LAST word inside the window. Walking from the right
+    # avoids scanning the whole transcript.
+    last_word_text: str = ""
+    for s in reversed(transcript):
+        ss = float(s.get("start") or 0.0)
+        if ss > win_end:
+            continue
+        words = s.get("words") or []
+        for w in reversed(words):
+            try:
+                we = float(w.get("end") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if win_start <= we <= win_end:
+                last_word_text = (w.get("word") or "").strip()
+                break
+        if last_word_text:
+            break
+        # Segments without per-word data: fall back to seg text. L1 fix —
+        # we need BOTH end <= win_end AND end > win_start (segment must
+        # actually overlap the window, not just precede it).
+        if not (s.get("words") or []):
+            se = float(s.get("end") or 0.0)
+            if se <= win_end and se > win_start:
+                text = (s.get("text") or "").strip()
+                if text:
+                    last_word_text = text.split()[-1]
+                    break
+
+    # Find FIRST content word inside the window.
+    first_word_text: str = ""
+    for s in transcript:
+        se = float(s.get("end") or 0.0)
+        if se < win_start:
+            continue
+        words = s.get("words") or []
+        for w in words:
+            try:
+                ws = float(w.get("start") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if win_start <= ws <= win_end:
+                first_word_text = (w.get("word") or "").strip()
+                break
+        if first_word_text:
+            break
+        # Segments without per-word data: fall back to seg text. L1 fix —
+        # segment must start before win_end AND end after win_start.
+        if not (s.get("words") or []):
+            ss = float(s.get("start") or 0.0)
+            if ss >= win_start and ss <= win_end:
+                text = (s.get("text") or "").strip()
+                if text:
+                    first_word_text = text.split()[0]
+                    break
+
+    delta = 0.0
+    breakdown["end_last_word"] = last_word_text or None
+    breakdown["start_first_word"] = first_word_text or None
+
+    # END side ---------------------------------------------------------
+    # B1 fix — strip outer quotes/brackets BEFORE the terminator check.
+    # `"foo."` ends in `"`, not in `.`; we'd misclassify as no_punct.
+    if last_word_text:
+        end_outer_stripped = last_word_text.rstrip("\"')]>")
+        end_inner_stripped = end_outer_stripped.rstrip(",;:").lower()
+        if end_outer_stripped and end_outer_stripped[-1] in _SENTENCE_TERMINATORS:
+            delta += _END_QUALITY_BONUS_PUNCT
+            breakdown["end_terminator"] = "punctuation"
+        elif end_inner_stripped.rstrip(".!?") in _CONTINUATOR_WORDS:
+            delta += _END_QUALITY_PENALTY_CONTINUATOR
+            breakdown["end_terminator"] = "continuator"
+        else:
+            delta += _END_QUALITY_PENALTY_NO_PUNCT
+            breakdown["end_terminator"] = "no_punct"
+
+    # START side -------------------------------------------------------
+    if first_word_text:
+        first_stripped = first_word_text.strip("\"'([<").rstrip(",.!?;:>])").lower()
+        is_bad = first_stripped in _BAD_OPENER_WORDS
+        breakdown["start_bad_opener"] = is_bad
+        if not is_bad and first_word_text and first_word_text[0].isupper():
+            delta += _START_QUALITY_BONUS_CAPITAL
+
+    breakdown["end_quality_score"] = round(delta, 1)
+    return delta, breakdown
+
+
 
 
 def _diversify(

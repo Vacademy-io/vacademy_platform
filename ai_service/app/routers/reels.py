@@ -451,6 +451,7 @@ def _enriched_dict_to_response(candidate_id: str, enriched: dict) -> EnrichedCan
         word_importance=words,
         cut_plan=cuts,
         predicted_output_duration_s=float(enriched.get("predicted_output_duration_s") or 0.0),
+        transcript_corrections=enriched.get("transcript_corrections") or [],
     )
 
 

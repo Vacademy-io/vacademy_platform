@@ -561,6 +561,27 @@ class ReelsSourceClipService:
         source_h = int(source_resolution[1])
         face_segments = context.get("face_segments") or []
 
+        # Issue 2C — on-demand dense face detection when indexer coverage
+        # is thin. The indexer samples at 1fps over the WHOLE video so its
+        # 2s-min-segment threshold drops short head-turns. For a 40s reel
+        # window we may end up with 5 sparse segments + 18s of untracked
+        # gaps. _densify re-runs FaceMesh at 5fps on JUST the window when
+        # in-window coverage < 70%; sub-50ms gap → dense segments. Returns
+        # None if dense run produced nothing useful → we keep the sparse
+        # data and the existing crop fallback handles it. ~5-15s of CPU
+        # cost per render when it fires.
+        from .reels_face_densify_service import densify_face_segments
+        dense_segments = densify_face_segments(
+            source_url=source_url,
+            win_t_start=win_t_start,
+            win_t_end=win_t_end,
+            existing_segments=face_segments,
+        )
+        if dense_segments is not None:
+            face_segments = dense_segments
+            ctx.extra_metadata["face_densify_fired"] = True
+            ctx.extra_metadata["face_segments_count"] = len(dense_segments)
+
         # Static crop center is used for sizing the crop box (size is FIXED
         # for the whole reel — only position varies over time). Centered on
         # the overlap-weighted face position so the BOX shape never goes

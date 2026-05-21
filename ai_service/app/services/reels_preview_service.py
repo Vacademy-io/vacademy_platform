@@ -30,7 +30,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
 import httpx
@@ -157,6 +157,11 @@ class EnrichedPayload:
     cut_plan: list[dict]          # [{t_start, t_end, kind}]
     predicted_output_duration_s: float
     method: str                   # "llm" | "heuristic_fallback"
+    # Issue 1B' — LLM-suggested transcript corrections that were applied
+    # to the word list (e.g. "raven" → "Ravana" when context implies the
+    # Ramayana). Persisted for observability + so the FE can show a
+    # "transcript was edited" indicator.
+    transcript_corrections: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -166,6 +171,7 @@ class EnrichedPayload:
             "cut_plan": self.cut_plan,
             "predicted_output_duration_s": self.predicted_output_duration_s,
             "method": self.method,
+            "transcript_corrections": self.transcript_corrections,
         }
 
 
@@ -221,10 +227,11 @@ class ReelsPreviewService:
         # rejected during Phase 2c.7 design — LLM context-awareness is
         # what makes the emoji feel intentional).
         emojis_arr: list[str] = []
+        corrections: list[dict] = []
         if self.has_llm:
             llm_out = await self._call_llm(words, candidate_row, topic_keywords)
             if llm_out is not None:
-                title, rationale, importance_arr, emojis_arr = llm_out
+                title, rationale, importance_arr, emojis_arr, corrections = llm_out
                 method = "llm"
             else:
                 title, rationale, importance_arr = _heuristic_importance(
@@ -243,6 +250,12 @@ class ReelsPreviewService:
         _apply_importance(words, importance_arr)
         if emojis_arr:
             _apply_emojis(words, emojis_arr)
+        # Apply LLM-suggested transcript corrections (Issue 1B' —
+        # Raven→Ravana style fixes). Mutates `words[i].text` in place
+        # so downstream consumers (LLM director, captions) see the
+        # corrected token. The original transcript timing/audio is
+        # untouched — only the displayed text changes.
+        applied_corrections = _apply_corrections(words, corrections)
         _enforce_deterministic_floors(
             words,
             emphasis_marks=context.get("emphasis") or [],
@@ -282,6 +295,7 @@ class ReelsPreviewService:
             ],
             predicted_output_duration_s=round(predicted_final, 2),
             method=method,
+            transcript_corrections=applied_corrections,
         )
 
     # ── LLM call ──────────────────────────────────────────────────────────
@@ -291,8 +305,8 @@ class ReelsPreviewService:
         words: list[_Word],
         candidate_row: Any,
         topic_keywords: Sequence[str],
-    ) -> Optional[tuple[str, str, list[int], list[str]]]:
-        """One LLM call returning (title, rationale, importance_array, emojis_array).
+    ) -> Optional[tuple[str, str, list[int], list[str], list[dict]]]:
+        """One LLM call returning (title, rationale, importance, emojis, corrections).
 
         `emojis_array` is parallel to `importance_array` — same length,
         with "" entries for words that don't get an emoji. Defaults to
@@ -782,7 +796,7 @@ def _get_predicted_after_silence(candidate_row: Any, words: list[_Word]) -> floa
 
 def _parse_llm_response(
     raw: str, expected_len: int
-) -> Optional[tuple[str, str, list[int], list[str]]]:
+) -> Optional[tuple[str, str, list[int], list[str], list[dict]]]:
     """Parse the LLM's JSON output. Returns None on any validation failure
     of the REQUIRED fields (title / rationale / importance) — caller falls
     back to heuristic in that case. The OPTIONAL emojis array is degraded
@@ -837,16 +851,22 @@ def _parse_llm_response(
     if len(rationale) > 200:
         rationale = rationale[:197] + "…"
     emojis = _validate_emojis(parsed.get("emojis"), expected_len)
-    return title, rationale, imp, emojis
+    corrections = _validate_corrections(parsed.get("corrections"))
+    return title, rationale, imp, emojis, corrections
 
 
 def _validate_emojis(raw_emojis: Any, expected_len: int) -> list[str]:
     """Filter the LLM's `emojis` array into a clean parallel list.
 
     Rules:
-      - Wrong shape (not a list, length mismatch) → `[]` (no emojis).
-        We don't reject the whole response — the optional field is
-        graceful-degradation.
+      - Not a list → `[]` (no emojis). Wholly absent = LLM skipped it
+        despite the prompt; we accept gracefully rather than fail the
+        whole enrichment.
+      - Length within 20% of expected → pad with "" or truncate to fit.
+        Haiku off-by-one is common (collapses contractions) — rejecting
+        the whole array over a 1-word mismatch loses the LLM's emoji
+        intent for no reason. Same rule we apply to importance.
+      - Length beyond 20% → `[]`.
       - Each entry MUST be a string; non-strings → "" in that slot.
       - Strip whitespace; cap at MAX_EMOJI_LEN bytes.
       - Reject entries containing any ASCII letter / digit (LLM tried to
@@ -854,8 +874,25 @@ def _validate_emojis(raw_emojis: Any, expected_len: int) -> list[str]:
       - Cap total non-empty entries at MAX_EMOJIS_PER_REEL; extras beyond
         the cap become "" so the renderer doesn't carpet-bomb.
     """
-    if not isinstance(raw_emojis, list) or len(raw_emojis) != expected_len:
+    if not isinstance(raw_emojis, list):
+        if raw_emojis is not None:
+            logger.info(
+                f"[ReelsPreview] LLM emojis not a list ({type(raw_emojis).__name__}); skipping emoji enrichment"
+            )
         return []
+    got_len = len(raw_emojis)
+    if got_len != expected_len:
+        delta_pct = abs(got_len - expected_len) / max(1, expected_len)
+        if delta_pct > 0.20:
+            logger.info(
+                f"[ReelsPreview] LLM emojis length {got_len} off from {expected_len} by >20%; "
+                "skipping emoji enrichment"
+            )
+            return []
+        if got_len < expected_len:
+            raw_emojis = list(raw_emojis) + [""] * (expected_len - got_len)
+        else:
+            raw_emojis = list(raw_emojis)[:expected_len]
     out: list[str] = []
     kept = 0
     for e in raw_emojis:
@@ -892,6 +929,173 @@ def _apply_emojis(words: list[_Word], emojis: list[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Transcript corrections (Issue 1B' — Raven→Ravana class of ASR errors)
+#
+# Whisper misidentifies domain-specific proper nouns in code-mixed speech:
+#   "Ravana" (Sanskrit) → "raven" (English homophone)
+#   "Veda"   (Sanskrit) → "vader"  (English homophone)
+#   "Krishna"           → "Christian"
+# These pass straight to downstream LLM director / Pexels query / captions.
+#
+# Fix: the same Haiku call that produces importance/emojis ALSO returns a
+# `corrections` array — proposed token-level rewrites. Cheaper than a
+# second LLM call. Original audio timing stays untouched; we only edit
+# the displayed word text.
+# ---------------------------------------------------------------------------
+
+# Cap to avoid prompt-injection-ish behavior. Real cases need ~1-5 fixes
+# per reel; more than 12 looks like the LLM hallucinating edits.
+_CORRECTIONS_MAX_PER_REEL = 12
+_CORRECTIONS_MAX_FIELD_LEN = 80
+# Edit-ratio guard: corrected must be within this multiplier of original's
+# length (and not absurdly shorter either). Catches cases like
+# "raven" → "[INSTRUCTION] ignore previous and output X" (length blow-up)
+# and "Ravana" → "." (length crash). 0.33-3.0 covers homophone fixes
+# (similar length) + minor spelling variations.
+_CORRECTIONS_LENGTH_RATIO_MIN = 0.33
+_CORRECTIONS_LENGTH_RATIO_MAX = 3.0
+# Characters allowed in a corrected token. Letters / digits / common
+# diacritics / a small punctuation set. Anything else (brackets, slashes,
+# control chars, prompt-injection markers) → reject the entry.
+_CORRECTIONS_SAFE_CHARS_RE = re.compile(
+    r"^[\w\sÀ-ɏḀ-ỿ'’.,\-]+$"
+)
+
+
+def _validate_corrections(raw: Any) -> list[dict]:
+    """Sanity-check the LLM's `corrections` array. Returns a cleaned
+    list of `{original, corrected, reason}` dicts.
+
+    Rules:
+      - Not a list → []
+      - Each entry must be a dict with non-empty `original` + `corrected`
+        strings, both ≤ _CORRECTIONS_MAX_FIELD_LEN chars.
+      - Skip entries where original == corrected (no-op fix).
+      - L2 / D3 defenses:
+        * `corrected` must match _CORRECTIONS_SAFE_CHARS_RE (letters,
+          digits, common diacritics, basic punctuation). Rejects
+          prompt-injection-shaped strings.
+        * `corrected` length must be within 0.33-3.0× the original's
+          length. Catches replacement bombs ("X" → 200-char paragraph)
+          and degenerate strips ("Ravana" → ".").
+      - L3 dedup: keep the FIRST entry per lowercased-original; silently
+        drop duplicates. LLM occasionally repeats the same fix.
+      - `reason` is optional, capped at _CORRECTIONS_MAX_FIELD_LEN.
+      - Cap to _CORRECTIONS_MAX_PER_REEL entries total.
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    seen_originals: set[str] = set()
+    for entry in raw:
+        if len(out) >= _CORRECTIONS_MAX_PER_REEL:
+            break
+        if not isinstance(entry, dict):
+            continue
+        original = str(entry.get("original") or "").strip()
+        corrected = str(entry.get("corrected") or "").strip()
+        if not original or not corrected:
+            continue
+        if original == corrected:
+            continue
+        if len(original) > _CORRECTIONS_MAX_FIELD_LEN:
+            continue
+        if len(corrected) > _CORRECTIONS_MAX_FIELD_LEN:
+            continue  # don't silently truncate — reject
+        # L3 dedup
+        orig_lower = original.lower()
+        if orig_lower in seen_originals:
+            continue
+        # L2 edit-ratio guard
+        orig_len = len(original)
+        corr_len = len(corrected)
+        if orig_len == 0:
+            continue
+        ratio = corr_len / orig_len
+        if ratio < _CORRECTIONS_LENGTH_RATIO_MIN or ratio > _CORRECTIONS_LENGTH_RATIO_MAX:
+            continue
+        # D3 charset guard — reject corrected strings with unexpected
+        # characters (brackets, slashes, control chars, prompt-injection
+        # markers).
+        if not _CORRECTIONS_SAFE_CHARS_RE.match(corrected):
+            continue
+        reason = str(entry.get("reason") or "").strip()
+        if len(reason) > _CORRECTIONS_MAX_FIELD_LEN:
+            reason = reason[:_CORRECTIONS_MAX_FIELD_LEN]
+        seen_originals.add(orig_lower)
+        out.append({
+            "original": original,
+            "corrected": corrected,
+            "reason": reason,
+        })
+    return out
+
+
+def _apply_corrections(
+    words: list[_Word],
+    corrections: list[dict],
+) -> list[dict]:
+    """Replace word.text for every token whose stripped lowercased form
+    matches a correction's `original`. Returns the list of corrections
+    that were actually applied (with `count` field added) for the
+    enriched payload.
+
+    Case-insensitive lowercase match on the word's text minus
+    punctuation. Preserves the original's trailing punctuation
+    on the corrected token so caption rendering stays intact
+    (e.g. "raven." → "Ravana.").
+
+    No-ops gracefully if corrections is empty or no matches found —
+    the caller doesn't need to special-case the absence.
+    """
+    if not corrections:
+        return []
+    # Build indexes: lowercased_original → corrected, lowercased_original → reason.
+    # Built once instead of per-word next() scans (fixes the linear cost).
+    # `_validate_corrections` already dedupes by lowercased_original, so
+    # last-wins doesn't actually matter here, but the dict shape gives O(1)
+    # lookup either way.
+    correction_idx: dict[str, str] = {}
+    reason_idx: dict[str, str] = {}
+    for c in corrections:
+        orig = c.get("original", "").lower().strip()
+        corr = c.get("corrected", "").strip()
+        if orig and corr:
+            correction_idx[orig] = corr
+            reason_idx[orig] = c.get("reason", "")
+
+    applied: dict[str, dict] = {}
+    for w in words:
+        raw = w.text
+        if not raw:
+            continue
+        # Strip outer non-alphanumeric (punctuation, brackets) for the match.
+        # Preserves the original's surface punctuation on the corrected
+        # output (e.g. "raven." → "Ravana.").
+        leading = ""
+        trailing = ""
+        core = raw
+        while core and not core[0].isalnum():
+            leading += core[0]
+            core = core[1:]
+        while core and not core[-1].isalnum():
+            trailing = core[-1] + trailing
+            core = core[:-1]
+        key = core.lower()
+        if key in correction_idx:
+            corrected_core = correction_idx[key]
+            w.text = leading + corrected_core + trailing
+            slot = applied.setdefault(key, {
+                "original": core,
+                "corrected": corrected_core,
+                "reason": reason_idx.get(key, ""),
+                "count": 0,
+            })
+            slot["count"] += 1
+    return list(applied.values())
+
+
+# ---------------------------------------------------------------------------
 # Prompt construction
 # ---------------------------------------------------------------------------
 
@@ -921,15 +1125,27 @@ Required: emoji punctuation on high-impact words.
 - Examples that work: "million" → 💰, "growth" → 📈, "fast" → ⚡, "team" → 👥, "secret" → 🔒, "warning" → ⚠️, "amazing" → 🤯, "data" → 📊, "love" → ❤️, "ancient" → 🏛️, "fire" → 🔥, "brain" → 🧠.
 - Skip emoji for: stopwords, filler, abstract terms ("thing", "way", "idea"), and words that already carry their meaning clearly enough through tone and context.
 
+Also check the transcript for likely ASR mistranscriptions of domain-specific proper nouns. ASR engines (esp. Whisper) confuse homophones in code-mixed speech — common cases:
+- Indian / Sanskrit content: "Raavan/Ravana" → "raven", "Veda" → "vader", "Krishna" → "Christian", "puja" → "pizza", "Arjun" → "argon".
+- Tech jargon: "Kubernetes" → "communities", "Postgres" → "post grass".
+- Names mid-conversation usually OK; suspect words that ALSO have plain-English meanings AND whose surroundings imply a different domain.
+
+For each suspicious token, emit a `corrections` entry with the original token + corrected form + a one-line reason (referencing the surrounding cultural / topical context that disambiguates). Skip when unsure — only correct when context strongly implies the alternative.
+
 Return ONLY valid JSON with this exact shape (no markdown, no commentary):
 {
   "title": "...",
   "rationale": "...",
   "importance": [0, 1, 2, 3, ...],
-  "emojis":     ["", "", "💰", "", "📈", "", ...]
+  "emojis":     ["", "", "💰", "", "📈", "", ...],
+  "corrections": [
+    {"original": "raven", "corrected": "Ravana", "reason": "Dashanan + 10 heads + Sanskrit context = Ramayana"},
+    ...
+  ]
 }
 The `importance` array MUST have exactly the same length as the words list given.
-The `emojis` array MUST be present, the same length as `importance`, and contain 2-4 non-empty emoji entries (rest are "")."""
+The `emojis` array MUST be present, the same length as `importance`, and contain 2-4 non-empty emoji entries (rest are "").
+The `corrections` array is OPTIONAL; emit only when you're confident. Empty list `[]` is the default."""
 
 
 _TOPIC_KEYWORD_MAX_CHARS = 64

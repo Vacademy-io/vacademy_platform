@@ -35,6 +35,7 @@ import {
     publishAssessmentFromRecording,
     type AssessmentArtifact,
     type CreateAssessmentFromRecordingRequest,
+    type GeneratedQuestion,
 } from '../-services/utils';
 import {
     QUESTION_TYPES,
@@ -478,7 +479,10 @@ function QuestionTypePickerStep({
         }
     };
 
-    const accentClasses: Record<string, { bg: string; ring: string; text: string }> = {
+    const accentClasses: Record<
+        'sky' | 'violet' | 'emerald' | 'amber' | 'rose',
+        { bg: string; ring: string; text: string }
+    > = {
         sky: { bg: 'bg-sky-50', ring: 'ring-sky-200', text: 'text-sky-700' },
         violet: { bg: 'bg-violet-50', ring: 'ring-violet-200', text: 'text-violet-700' },
         emerald: { bg: 'bg-emerald-50', ring: 'ring-emerald-200', text: 'text-emerald-700' },
@@ -1485,7 +1489,7 @@ function suggestTitleFromTranscript(text: string): string {
     if (!cleaned) return '';
     // First sentence by Latin or Devanagari punctuation.
     const m = cleaned.match(/^([^.!?।]{8,120}[.!?।])/);
-    let candidate = m ? m[1] : cleaned.slice(0, 90);
+    let candidate = m?.[1] ?? cleaned.slice(0, 90);
     candidate = candidate.replace(/[.!?।]+$/, '').trim();
     // Cap word count to keep titles compact.
     const words = candidate.split(/\s+/);

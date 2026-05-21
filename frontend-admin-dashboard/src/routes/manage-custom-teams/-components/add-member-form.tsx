@@ -366,7 +366,6 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                                             name="mobileNumber"
                                             placeholder="123 456 7890"
                                             control={control}
-                                            country="in"
                                             required={true}
                                         />
                                     </div>

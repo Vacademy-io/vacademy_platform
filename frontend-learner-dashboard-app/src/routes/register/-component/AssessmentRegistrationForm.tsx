@@ -979,7 +979,6 @@ const AssessmentRegistrationForm = () => {
                                   placeholder="123 456 7890"
                                   name={`${key}.value`}
                                   control={form.control}
-                                  country="in"
                                   required
                                 />
                               </FormControl>

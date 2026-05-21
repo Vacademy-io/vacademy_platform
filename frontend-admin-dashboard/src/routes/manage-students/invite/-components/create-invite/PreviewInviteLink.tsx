@@ -561,7 +561,6 @@ const PreviewInviteLink = ({ form, levelName, instituteLogo }: PreviewInviteLink
                                                                             control={
                                                                                 registrationForm.control
                                                                             }
-                                                                            country="in"
                                                                             required
                                                                         />
                                                                     </FormControl>

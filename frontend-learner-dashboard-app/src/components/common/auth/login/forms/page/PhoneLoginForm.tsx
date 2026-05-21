@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,6 +30,7 @@ import { REQUEST_WHATSAPP_OTP, VERIFY_WHATSAPP_OTP_LOGIN } from "@/constants/url
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 
 const phoneSchema = z.object({
@@ -64,6 +65,10 @@ export function PhoneLoginForm({
     allowEmailOtpAuth?: boolean;
 }) {
     const [isOtpSent, setIsOtpSent] = useState(false);
+    const { defaultCountry, preferredCountries } = useMemo(
+        () => getPreferredPhoneCountries(),
+        [],
+    );
     const [phoneDial, setPhoneDial] = useState("");
     const [timer, setTimer] = useState(0);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -392,7 +397,8 @@ export function PhoneLoginForm({
                                                         <label className="text-[13px] font-bold text-gray-700 block mb-1">WhatsApp Number</label>
                                                         <div className="relative flex-1">
                                                             <PhoneInput
-                                                                country="in"
+                                                                country={defaultCountry}
+                                                                preferredCountries={preferredCountries}
                                                                 value={field.value}
                                                                 onChange={(value) => field.onChange(value)}
                                                                 inputClass={`!w-full !px-3 !py-2 !pl-12 !h-[45px] !bg-gray-50/50 hover:!bg-white !border ${phoneForm.formState.errors.phone ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-0`}

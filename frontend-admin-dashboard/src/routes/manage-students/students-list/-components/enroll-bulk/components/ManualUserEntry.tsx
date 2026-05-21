@@ -11,6 +11,7 @@ import {
     CustomField,
 } from '@/services/custom-field-settings';
 import { useUserIdentifierSetting } from '@/services/user-identifier-setting';
+import { getPreferredPhoneCountries } from '@/services/domain-routing';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -204,6 +205,12 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
     );
     const [submitted, setSubmitted] = useState(false);
 
+    // Default selected country + picker order from the institute's preferred countries.
+    const { defaultCountry, preferredCountries } = useMemo(
+        () => getPreferredPhoneCountries(),
+        [],
+    );
+
     // Reset form whenever edit target changes — entering edit (load row),
     // switching edit target (reload row), or exiting edit (back to empty add).
     useEffect(() => {
@@ -383,7 +390,8 @@ export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }:
                                     {phoneRequired && <span className="text-danger-500"> *</span>}
                                 </Label>
                                 <PhoneInput
-                                    country="in"
+                                    country={defaultCountry}
+                                    preferredCountries={preferredCountries}
                                     enableSearch={true}
                                     placeholder="123 456 7890"
                                     value={row.mobile_number}

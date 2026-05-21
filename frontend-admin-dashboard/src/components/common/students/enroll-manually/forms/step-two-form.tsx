@@ -408,7 +408,6 @@ export const StepTwoForm = ({
                                                             placeholder="123 456 7890"
                                                             name={fieldKey}
                                                             control={form.control}
-                                                            country="in"
                                                             required={fieldConfig.required}
                                                         />
                                                     </FormControl>
@@ -437,7 +436,6 @@ export const StepTwoForm = ({
                                                             placeholder="123 456 7890"
                                                             name={fieldKey}
                                                             control={form.control}
-                                                            country="in"
                                                             required={fieldConfig.required}
                                                         />
                                                     </FormControl>

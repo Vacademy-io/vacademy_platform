@@ -160,6 +160,18 @@ public class InstituteSettingService {
         defaultData.put("taxLabel", "Tax");
         defaultData.put("currency", "INR");
         defaultData.put("sendInvoiceEmail", false);
+        // Country + tax components: the operating country, the institute's own tax
+        // registration number (e.g. GSTIN/VAT no.) and a list of named tax components
+        // (label + rate). These are injectable into invoice templates via the
+        // {{country}}, {{tax_registration_number}} and {{tax_components}} placeholders.
+        Map<String, Object> country = new HashMap<>();
+        country.put("code", "");
+        country.put("name", "");
+        country.put("taxRegistrationNumber", "");
+        // HSN/SAC code (SAC for services such as courses). Injectable via {{hsn_code}}.
+        country.put("hsnSacCode", "");
+        country.put("taxComponents", new ArrayList<>());
+        defaultData.put("country", country);
         GenericSettingRequest request = GenericSettingRequest.builder()
                 .settingName("Invoice Setting")
                 .settingData(defaultData)

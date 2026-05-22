@@ -14,6 +14,7 @@ import vacademy.io.common.institute.entity.Institute;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Internal data structure for building invoice information
@@ -63,6 +64,14 @@ public class InvoiceData {
     
     // Line items for template
     private List<InvoiceLineItemData> lineItems;
+
+    /**
+     * Aggregated tax-component breakdown for the {{tax_components}} placeholder,
+     * computed per line item by package type and summed across the invoice. Each
+     * entry holds: label, rate (percent), amount. Null/empty when no tax components
+     * are configured (the legacy single-rate tax path is used instead).
+     */
+    private List<Map<String, Object>> aggregatedTaxComponents;
 }
 
 

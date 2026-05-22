@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 
 @Data
 @NoArgsConstructor
@@ -29,11 +30,14 @@ public class TimelineEventRequestDTO {
 
         private String description;
 
-        private Object metadata; // Arbitrary JSON data
+        private Object metadata;
 
         /** Optional — pin this event to the top of the timeline */
         private Boolean isPinned;
 
         /** Optional — link this event to a student for cross-stage visibility */
         private String studentUserId;
+
+        /** Defaults to ACTIVITY if not provided. Frontend should pass JOURNEY only for system-level events. */
+        private TimelineCategory category;
 }

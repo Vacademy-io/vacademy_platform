@@ -65,6 +65,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Random;
 import java.util.stream.Collectors;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.common.exceptions.VacademyException;
 
 /**
@@ -159,6 +160,9 @@ public class AudienceService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService userLeadProfileService;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -286,6 +290,8 @@ public class AudienceService {
         if (StringUtils.hasText(audienceDTO.getSettingJson())) {
             audience.setSettingJson(audienceDTO.getSettingJson());
         }
+        // Allow explicit null to clear the floor; only update when the field is present in the request
+        audience.setDefaultInitialScore(audienceDTO.getDefaultInitialScore());
 
         Audience updated = audienceRepository.save(audience);
 
@@ -326,6 +332,7 @@ public class AudienceService {
                 .sendRespondentEmail(audience.getSendRespondentEmail())
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
+                .defaultInitialScore(audience.getDefaultInitialScore())
                 .createdByUserId(audience.getCreatedByUserId())
                 .instituteCustomFields(customFields)
                 .build();
@@ -392,6 +399,7 @@ public class AudienceService {
                 .sendRespondentEmail(audience.getSendRespondentEmail())
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
+                .defaultInitialScore(audience.getDefaultInitialScore())
                 .createdByUserId(audience.getCreatedByUserId())
                 .build());
     }
@@ -445,11 +453,13 @@ public class AudienceService {
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId) // Set user_id if created successfully
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                        .initialScore(audience.getDefaultInitialScore())
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);
                 logger.info("Saved audience response with ID: {} and user_id: {}",
                         savedResponse.getId(), userId != null ? userId : "null");
+                logLeadSubmitted(savedResponse);
 
                 // 3. Save custom field values
                 if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
@@ -749,11 +759,13 @@ public class AudienceService {
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId)
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                        .initialScore(audience.getDefaultInitialScore())
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);
                 logger.info("[V2] Saved audience response with ID: {} and user_id: {}",
                         savedResponse.getId(), userId);
+                logLeadSubmitted(savedResponse);
 
                 // 3. Save custom field values
                 if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
@@ -982,6 +994,7 @@ public class AudienceService {
                             .percentileRank(score.getPercentileRank())
                             .scoringFactors(factors)
                             .lastCalculatedAt(score.getLastCalculatedAt())
+                            .isManualOverride(Boolean.TRUE.equals(score.getIsManualOverride()))
                             .build();
                 })
                 .orElse(LeadScoreDTO.builder()
@@ -989,6 +1002,103 @@ public class AudienceService {
                         .rawScore(0)
                         .tier("COLD")
                         .build());
+    }
+
+    /**
+     * Manually set the score for a lead. Pass null to clear the override and restore calculated score.
+     * Writes directly to raw_score so the score propagates everywhere (badges, lists, profile).
+     */
+    @Transactional
+    public LeadScoreDTO setManualScore(String responseId, Integer score, String actorId, String actorName) {
+        if (score != null && (score < 0 || score > 100)) {
+            throw new IllegalArgumentException("Score must be between 0 and 100");
+        }
+        LeadScore leadScore = leadScoreRepository.findByAudienceResponseId(responseId)
+                .orElseThrow(() -> new RuntimeException("Lead score not found for response: " + responseId));
+
+        Integer oldScore = leadScore.getRawScore();
+
+        if (score != null) {
+            // Distribute the manual score proportionally across all 4 factors (uniform factor score = target),
+            // then apply largest-remainder so contributions sum exactly to the target score.
+            int[] weights = { 25, 30, 25, 20 };
+            String[] keys = { "source_quality", "profile_completeness", "recency", "engagement" };
+            int[] contributions = new int[4];
+            double[] remainders = new double[4];
+            int floorSum = 0;
+            for (int i = 0; i < 4; i++) {
+                double exact = score * weights[i] / 100.0;
+                contributions[i] = (int) exact;
+                remainders[i] = exact - contributions[i];
+                floorSum += contributions[i];
+            }
+            Integer[] order = { 0, 1, 2, 3 };
+            java.util.Arrays.sort(order, (a, b) -> Double.compare(remainders[b], remainders[a]));
+            int leftover = score - floorSum;
+            for (int i = 0; i < leftover; i++) contributions[order[i]]++;
+
+            java.util.Map<String, Object> factors = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < 4; i++) {
+                factors.put(keys[i], java.util.Map.of(
+                        "score", score,
+                        "weight", weights[i],
+                        "contribution", contributions[i]));
+            }
+            String factorsJson = null;
+            try {
+                factorsJson = new ObjectMapper().writeValueAsString(factors);
+            } catch (Exception e) {
+                logger.warn("Failed to serialize manual scoring factors for response={}", responseId, e);
+            }
+
+            leadScore.setRawScore(score);
+            leadScore.setScoringFactorsJson(factorsJson);
+            leadScore.setIsManualOverride(true);
+            leadScore.setLastCalculatedAt(new java.sql.Timestamp(System.currentTimeMillis()));
+            leadScoreRepository.save(leadScore);
+        } else {
+            // Clear override — unlock auto-recalculation and immediately restore the computed score.
+            leadScore.setIsManualOverride(false);
+            leadScoreRepository.save(leadScore);
+            leadScoringService.recalculateScore(responseId);
+        }
+
+        // Rebuild UserLeadProfile so best_score / lead_tier propagate to all displays.
+        AudienceResponse response = null;
+        try {
+            response = audienceResponseRepository.findById(responseId).orElse(null);
+            if (response != null) {
+                String userId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+                if (userId != null) {
+                    userLeadProfileService.buildOrUpdateProfile(userId, leadScore.getInstituteId());
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to rebuild user_lead_profile after manual score update for response={}", responseId, e);
+        }
+
+        // Log the manual score override as a journey event.
+        try {
+            String title = score != null
+                    ? "Score manually set to " + score
+                    : "Manual score override cleared";
+            java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
+            if (oldScore != null) meta.put("old_score", oldScore);
+            if (score != null) meta.put("new_score", score);
+            meta.put("override_active", score != null);
+            if (actorName != null) meta.put("actor_name", actorName);
+            timelineEventService.logJourneyEvent(
+                    "AUDIENCE_RESPONSE", responseId,
+                    LeadJourneyActionType.MANUAL_SCORE_UPDATE,
+                    "ADMIN", actorId, actorName,
+                    title, null,
+                    meta,
+                    response != null ? response.getStudentUserId() : null);
+        } catch (Exception e) {
+            logger.warn("Failed to log MANUAL_SCORE_UPDATE journey event for response={}: {}", responseId, e.getMessage(), e);
+        }
+
+        return getLeadScore(responseId);
     }
 
     /**
@@ -1117,6 +1227,7 @@ public class AudienceService {
                 .parentMobile(requestDTO.getParentMobile())
                 .overallStatus("ENQUIRY")
                 .dedupeKey(dedupeKey)
+                .initialScore(audience.getDefaultInitialScore())
                 .build();
 
         // Check for duplicate within this campaign
@@ -1133,6 +1244,7 @@ public class AudienceService {
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
         logger.info("Saved audience response with ID: {} linked to enquiry: {} with parent user_id: {}",
                 savedResponse.getId(), enquiryId, parentUserId);
+        logLeadSubmitted(savedResponse);
 
         // STEP 4b: Calculate initial lead score (real-time)
         try {
@@ -1307,6 +1419,26 @@ public class AudienceService {
 
                 logger.info("Successfully linked counselor {} to enquiry {}", finalCounsellorId, enquiry.getId());
                 emitLeadAssigned(instituteId, audienceId, enquiry.getId().toString(), finalCounsellorId);
+
+                // Log journey event — covers both manual and pool-based (auto) assignments
+                try {
+                    String assignmentSource = StringUtils.hasText(counsellorId) ? "MANUAL" : "AUTO";
+                    timelineEventService.logJourneyEvent(
+                            "ENQUIRY", enquiry.getId().toString(),
+                            LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                            StringUtils.hasText(counsellorId) ? "ADMIN" : "SYSTEM",
+                            finalCounsellorId, null,
+                            "Counselor assigned",
+                            "Counselor assigned via " + assignmentSource,
+                            Map.of("counselor_id", finalCounsellorId,
+                                   "assignment_source", assignmentSource,
+                                   "audience_id", audienceId != null ? audienceId : ""),
+                            null
+                    );
+                } catch (Exception e) {
+                    logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
+                            enquiry.getId(), e.getMessage());
+                }
             } else {
                 logger.warn("Counselor validation failed for counselorId: {}", finalCounsellorId);
                 enquiry.setAssignedUserId(false);
@@ -2503,10 +2635,12 @@ public class AudienceService {
                 .sourceId(formProvider + "_WEBHOOK")
                 .userId(userId)
                 .workflowActivateDayAt(workflowActivateDayAt)
+                .initialScore(audience.getDefaultInitialScore())
                 .build();
 
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
         logger.info("Saved audience response: responseId={}, userId={}", savedResponse.getId(), userId);
+        logLeadSubmitted(savedResponse);
 
         // 3. Map field_name to custom_field_id and save custom field values
         if (processedData.getFormFields() != null && !processedData.getFormFields().isEmpty()) {
@@ -3197,6 +3331,22 @@ public class AudienceService {
                         logger.info("Updated counselor assignment to: {}", updatedCounsellorId);
                         emitLeadAssigned(instituteId, response.getAudienceId(),
                                 response.getEnquiryId(), updatedCounsellorId);
+
+                        try {
+                            timelineEventService.logJourneyEvent(
+                                    "ENQUIRY", response.getEnquiryId(),
+                                    LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                                    "ADMIN", updatedCounsellorId, null,
+                                    "Counselor reassigned",
+                                    "Counselor manually reassigned",
+                                    Map.of("counselor_id", updatedCounsellorId,
+                                           "assignment_source", "MANUAL"),
+                                    null
+                            );
+                        } catch (Exception e) {
+                            logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
+                                    response.getEnquiryId(), e.getMessage());
+                        }
                     } else {
                         logger.warn("Counselor validation failed for ID: {}, skipping counselor update",
                                 requestDTO.getCounsellorId());
@@ -4078,5 +4228,33 @@ public class AudienceService {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }
         return sb.toString();
+    }
+
+    /**
+     * Log a LEAD_SUBMITTED journey event after any audience response is first persisted.
+     * Called from all submit paths (v1, v2, with-enquiry, webhook) so the journey timeline
+     * always starts with this event regardless of how the lead was captured.
+     * Best-effort — failures do not block the submission.
+     */
+    private void logLeadSubmitted(AudienceResponse savedResponse) {
+        try {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("source_type", savedResponse.getSourceType() != null ? savedResponse.getSourceType() : "");
+            if (savedResponse.getAudienceId() != null) metadata.put("audience_id", savedResponse.getAudienceId());
+            if (savedResponse.getSourceId() != null) metadata.put("source_id", savedResponse.getSourceId());
+
+            timelineEventService.logJourneyEvent(
+                    "AUDIENCE_RESPONSE", savedResponse.getId(),
+                    LeadJourneyActionType.LEAD_SUBMITTED,
+                    "SYSTEM", null, "System",
+                    "Lead submitted",
+                    "Lead captured from " + (savedResponse.getSourceType() != null ? savedResponse.getSourceType() : "UNKNOWN"),
+                    metadata,
+                    savedResponse.getStudentUserId()
+            );
+        } catch (Exception e) {
+            logger.warn("Failed to log LEAD_SUBMITTED journey event for response {}: {}",
+                    savedResponse.getId(), e.getMessage(), e);
+        }
     }
 }

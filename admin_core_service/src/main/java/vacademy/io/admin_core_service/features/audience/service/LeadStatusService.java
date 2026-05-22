@@ -14,6 +14,8 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRepos
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusHistoryRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -39,6 +41,7 @@ public class LeadStatusService {
     private final AudienceRepository audienceRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder leadTriggerContextBuilder;
+    private final TimelineEventService timelineEventService;
 
     /**
      * Starter statuses seeded the first time an institute opens Lead Statuses.
@@ -198,12 +201,61 @@ public class LeadStatusService {
                 .source(source != null ? source : "MANUAL")
                 .build());
 
+        logStatusChangeToTimeline(saved, oldStatusId, target, actorUserId, source);
         emitStatusChanged(saved, instituteId, oldStatusId, target);
         return saved;
     }
 
     public List<LeadStatusHistory> getHistory(String audienceResponseId) {
         return leadStatusHistoryRepository.findByAudienceResponseIdOrderByChangedAtDesc(audienceResponseId);
+    }
+
+    private void logStatusChangeToTimeline(AudienceResponse lead, String oldStatusId,
+                                            LeadStatus target, String actorUserId, String source) {
+        try {
+            String fromStatusKey = null;
+            String fromStatusLabel = null;
+            if (oldStatusId != null) {
+                LeadStatus from = leadStatusRepository.findById(oldStatusId).orElse(null);
+                if (from != null) {
+                    fromStatusKey = from.getStatusKey();
+                    fromStatusLabel = from.getLabel();
+                }
+            }
+
+            LeadJourneyActionType actionType = switch (target.getStatusKey()) {
+                case "CONVERTED" -> LeadJourneyActionType.LEAD_CONVERTED;
+                case "LOST"      -> LeadJourneyActionType.LEAD_LOST;
+                default          -> LeadJourneyActionType.STATUS_CHANGED;
+            };
+
+            String actorType = (source != null && !"MANUAL".equalsIgnoreCase(source)) ? "SYSTEM" : "ADMIN";
+            String title = switch (actionType) {
+                case LEAD_CONVERTED -> "Lead Converted";
+                case LEAD_LOST      -> "Lead Closed";
+                default             -> "Status changed to " + target.getLabel();
+            };
+
+            Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+            metadata.put("from_status_id", oldStatusId != null ? oldStatusId : "");
+            metadata.put("from_status_key", fromStatusKey != null ? fromStatusKey : "");
+            metadata.put("from_status_label", fromStatusLabel != null ? fromStatusLabel : "");
+            metadata.put("to_status_id", target.getId());
+            metadata.put("to_status_key", target.getStatusKey());
+            metadata.put("to_status_label", target.getLabel());
+            metadata.put("source", source != null ? source : "MANUAL");
+
+            timelineEventService.logJourneyEvent(
+                    "AUDIENCE_RESPONSE", lead.getId(),
+                    actionType,
+                    actorType, actorUserId, null,
+                    title, null,
+                    metadata,
+                    lead.getStudentUserId());
+        } catch (Exception ex) {
+            log.warn("[LeadStatus] Failed to log status-change to timeline for lead {}: {}",
+                    lead.getId(), ex.getMessage());
+        }
     }
 
     private void emitStatusChanged(AudienceResponse lead, String instituteId, String oldStatusId, LeadStatus target) {

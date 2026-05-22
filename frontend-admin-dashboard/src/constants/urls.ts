@@ -91,6 +91,10 @@ export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
+export const GET_LEAD_SCORE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
+export const SET_MANUAL_LEAD_SCORE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score/manual`;
 export const GET_USER_LEAD_PROFILES_BATCH = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profiles/batch`;
 export const MARK_LEAD_CONVERTED = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/mark-converted`;
 export const UPDATE_LEAD_STATUS = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/update-status`;
@@ -100,6 +104,7 @@ export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/us
 export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
 export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
@@ -628,9 +633,15 @@ export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/su
 export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
 // Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
 export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
-// Invoices (per user) — used by the sub-org analytics dashboard
+// Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
+export const GET_INVOICES_BY_INSTITUTE = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/institute/${instituteId}`;
+export const GET_INVOICE_DOWNLOAD_URL = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/download`;
+export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/create`;
+export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot
 export const INSTRUCTOR_COPILOT_BASE = `${BASE_URL}/admin-core-service/instructor-copilot/v1`;

@@ -280,3 +280,10 @@ export const GET_PRODUCT_PAGE_BY_CODE = (code: string, instituteId: string) =>
 export const VALIDATE_PRODUCT_PAGE_COUPON = `${PRODUCT_PAGE_OPEN_URL}/validate-coupon`;
 export const PRODUCT_PAGE_FORM_SUBMIT = `${PRODUCT_PAGE_OPEN_URL}/form-submit`;
 export const PRODUCT_PAGE_ENROLL = `${PRODUCT_PAGE_OPEN_URL}/enroll`;
+
+// Invoice payment (open — no auth required for viewing; auth required for initiating)
+export const GET_INVOICE_PUBLIC = (invoiceId: string) =>
+  `${BASE_URL}/admin-core-service/open/v1/invoices/${invoiceId}`;
+export const INITIATE_INVOICE_PAYMENT = (invoiceId: string) =>
+  `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/initiate-payment`;
+export const GET_PAYMENT_COMPLETION_STATUS = `${BASE_URL}/admin-core-service/open/v1/payment-log/status`;

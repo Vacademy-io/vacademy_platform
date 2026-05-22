@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.*;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -26,6 +28,9 @@ public class AudienceController {
 
     @Autowired
     private UserLeadProfileService userLeadProfileService;
+
+    @Autowired
+    private TimelineEventService timelineEventService;
 
     @PostMapping("/campaign")
     public ResponseEntity<String> createCampaign(
@@ -181,6 +186,21 @@ public class AudienceController {
     }
 
     /**
+     * Manually set (or clear) the score for a lead.
+     * PUT /admin-core-service/v1/audience/lead/{responseId}/score/manual
+     * Body: { "score": 75 }  — pass null to clear the override.
+     */
+    @PutMapping("/lead/{responseId}/score/manual")
+    public ResponseEntity<LeadScoreDTO> setManualScore(
+            @PathVariable String responseId,
+            @RequestBody java.util.Map<String, Integer> body,
+            @RequestAttribute("user") CustomUserDetails user) {
+        Integer score = body.get("score");
+        LeadScoreDTO result = audienceService.setManualScore(responseId, score, user.getUserId(), user.getUsername());
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * Force recalculate all lead scores for a campaign.
      * POST /admin-core-service/v1/audience/campaign/{audienceId}/recalculate-scores
      */
@@ -285,8 +305,23 @@ public class AudienceController {
             @RequestParam String userId,
             @RequestParam String instituteId,
             @RequestParam String counselorId,
-            @RequestParam(required = false) String counselorName) {
+            @RequestParam(required = false) String counselorName,
+            @RequestAttribute("user") CustomUserDetails user) {
         userLeadProfileService.assignCounselor(userId, instituteId, counselorId, counselorName);
+        try {
+            timelineEventService.logJourneyEvent(
+                    "USER_LEAD_PROFILE", userId,
+                    LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                    "ADMIN", user.getUserId(), user.getUsername(),
+                    "Counselor assigned",
+                    "Assigned to " + (counselorName != null ? counselorName : counselorId),
+                    Map.of("counselor_id", counselorId,
+                           "counselor_name", counselorName != null ? counselorName : "",
+                           "assigned_by", user.getUsername() != null ? user.getUsername() : ""),
+                    userId);
+        } catch (Exception e) {
+            // best-effort — don't fail the assignment if logging fails
+        }
         return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
     }
 }

@@ -1,10 +1,10 @@
-import { BASE_URL } from '@/constants/urls';
-import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
-
-const getAccessToken = (): string | null => getTokenFromCookie(TokenKey.accessToken);
-
-const INVOICES_BASE_URL = `${BASE_URL}/admin-core-service/v1/invoices`;
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import {
+    GET_INVOICES_BY_USER,
+    GET_INVOICES_BY_INSTITUTE,
+    GET_INVOICE_DOWNLOAD_URL,
+    POST_ADMIN_CREATE_INVOICE,
+} from '@/constants/urls';
 
 export interface InvoiceLineItemDTO {
     id: string;
@@ -47,15 +47,10 @@ export interface InvoicePaginatedResponse {
 }
 
 export async function fetchUserInvoices(userId: string): Promise<InvoiceDTO[]> {
-    const token = getAccessToken();
-    const response = await fetch(`${INVOICES_BASE_URL}/user/${userId}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-    });
-    if (!response.ok) throw new Error(`Failed to fetch invoices: ${response.status}`);
-    return response.json();
+    const response = await authenticatedAxiosInstance.get<InvoiceDTO[]>(
+        GET_INVOICES_BY_USER(userId)
+    );
+    return response.data;
 }
 
 export async function fetchInstituteInvoices(
@@ -69,26 +64,62 @@ export async function fetchInstituteInvoices(
         endDate?: string;
     }
 ): Promise<InvoicePaginatedResponse> {
-    const params = new URLSearchParams({
+    const params: Record<string, string> = {
         page: String(page),
         size: String(size),
-    });
-    if (filters?.userId) params.set('userId', filters.userId);
-    if (filters?.status) params.set('status', filters.status);
-    if (filters?.startDate) params.set('startDate', filters.startDate);
-    if (filters?.endDate) params.set('endDate', filters.endDate);
+    };
+    if (filters?.userId) params['userId'] = filters.userId;
+    if (filters?.status) params['status'] = filters.status;
+    if (filters?.startDate) params['startDate'] = filters.startDate;
+    if (filters?.endDate) params['endDate'] = filters.endDate;
 
-    const token = getAccessToken();
-    const response = await fetch(`${INVOICES_BASE_URL}/institute/${instituteId}?${params}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-    });
-    if (!response.ok) throw new Error(`Failed to fetch invoices: ${response.status}`);
-    return response.json();
+    const response = await authenticatedAxiosInstance.get<InvoicePaginatedResponse>(
+        GET_INVOICES_BY_INSTITUTE(instituteId),
+        { params }
+    );
+    return response.data;
 }
 
 export function getInvoiceDownloadUrl(invoiceId: string): string {
-    return `${INVOICES_BASE_URL}/${invoiceId}/download`;
+    return GET_INVOICE_DOWNLOAD_URL(invoiceId);
+}
+
+// ─── Admin Invoice Creation ───────────────────────────────────────────────────
+
+export interface AdminInvoiceLineItemRequest {
+    description: string;
+    quantity: number;
+    unit_price: number;
+    item_type?: string;
+}
+
+export interface AdminCreateInvoiceRequest {
+    user_ids: string[];
+    institute_id: string;
+    line_items: AdminInvoiceLineItemRequest[];
+    currency: string;
+    due_date: string;
+    notes?: string;
+}
+
+export interface AdminInvoicePaymentLinkResponse {
+    invoice_id: string;
+    invoice_number: string;
+    user_id: string;
+    total_amount: number;
+    currency: string;
+    status: string;
+    due_date: string;
+    payment_link: string;
+    pdf_url: string | null;
+}
+
+export async function createAdminInvoice(
+    request: AdminCreateInvoiceRequest
+): Promise<AdminInvoicePaymentLinkResponse[]> {
+    const response = await authenticatedAxiosInstance.post<AdminInvoicePaymentLinkResponse[]>(
+        POST_ADMIN_CREATE_INVOICE,
+        request
+    );
+    return response.data;
 }

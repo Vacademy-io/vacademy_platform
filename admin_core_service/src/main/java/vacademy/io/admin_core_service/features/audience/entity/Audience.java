@@ -63,6 +63,10 @@ public class Audience {
     @Column(name = "setting_json", columnDefinition = "TEXT")
     private String settingJson; // JSON settings for the audience campaign
 
+    /** Floor score applied to every new lead in this campaign. Overrides the institute-level default. Null = no floor. */
+    @Column(name = "default_initial_score")
+    private Integer defaultInitialScore;
+
     @Column(name = "created_by_user_id")
     private String createdByUserId;
 
@@ -90,6 +94,7 @@ public class Audience {
         this.sendRespondentEmail = dto.getSendRespondentEmail();
         this.sessionId = dto.getSessionId();
         this.settingJson = dto.getSettingJson();
+        this.defaultInitialScore = dto.getDefaultInitialScore();
         this.createdByUserId = dto.getCreatedByUserId();
     }
 }

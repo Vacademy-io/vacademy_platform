@@ -523,7 +523,9 @@ public class UserLeadProfileService {
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
         UserLeadProfile saved = userLeadProfileRepository.save(profile);
 
-        // Emit only on an actual assignment (not when clearing the counselor).
+        // Emit workflow trigger only on actual assignment (not on clear).
+        // Journey event logging (COUNSELOR_ASSIGNED) is done by the caller (AudienceController)
+        // to keep TimelineEventService free of circular dependencies.
         if (counselorId != null && !counselorId.isBlank()) {
             safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId,
                     instituteId,

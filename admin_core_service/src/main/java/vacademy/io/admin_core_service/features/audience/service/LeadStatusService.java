@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.audience.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.dto.LeadStatusDTO;
 import vacademy.io.admin_core_service.features.audience.entity.Audience;
@@ -60,6 +61,22 @@ public class LeadStatusService {
             seedDefaults(instituteId);
         }
         return leadStatusRepository.findByInstituteIdAndIsActiveTrueOrderByDisplayOrderAsc(instituteId);
+    }
+
+    /**
+     * Seed the New / Converted / Lost system defaults for an institute if it has none. Idempotent.
+     *
+     * <p>Called from the institute-signup flow so a new institute has its statuses immediately
+     * (not just lazily on first GET). Runs in its OWN transaction (REQUIRES_NEW) so a failure here
+     * — e.g. if the lead_status table is missing because migrations haven't run — is isolated and
+     * can never roll back institute creation.</p>
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void ensureDefaultsSeeded(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return;
+        if (leadStatusRepository.countByInstituteId(instituteId) == 0) {
+            seedDefaults(instituteId);
+        }
     }
 
     private void seedDefaults(String instituteId) {

@@ -8,8 +8,10 @@
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { BASE_URL } from '@/constants/urls';
 
-const BASE = '/admin-core-service/v1/lead-status';
+// authenticatedAxiosInstance has no baseURL, so endpoints must include the backend host.
+const BASE = `${BASE_URL}/admin-core-service/v1/lead-status`;
 
 export interface LeadStatus {
     id: string;

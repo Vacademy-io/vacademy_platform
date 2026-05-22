@@ -46,15 +46,26 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
   if (!template) return null;
 
   const getIcon = () => {
-    return template.type === 'EMAIL' ? (
-      <FileText className="size-5" />
-    ) : (
+    return template.type === 'WHATSAPP' ? (
       <MessageCircle className="size-5" />
+    ) : (
+      <FileText className="size-5" />
     );
   };
 
   const getTemplateTypeLabel = () => {
-    return template.type === 'EMAIL' ? 'Email' : 'WhatsApp';
+    switch (template.type) {
+      case 'EMAIL':
+        return 'Email';
+      case 'WHATSAPP':
+        return 'WhatsApp';
+      case 'INVOICE':
+        return 'Invoice (PDF)';
+      case 'INVOICE_EMAIL':
+        return 'Invoice Email';
+      default:
+        return 'Template';
+    }
   };
 
   const handleUseTemplate = () => {
@@ -155,15 +166,16 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({
                   </div>
                 )}
                 {template.content ? (
-                  template.type === 'EMAIL' ? (
+                  // WhatsApp is plain text; EMAIL / INVOICE / INVOICE_EMAIL are HTML.
+                  template.type === 'WHATSAPP' ? (
+                    <div className="text-sm text-gray-900 whitespace-pre-wrap">
+                      {stripHtml(template.content)}
+                    </div>
+                  ) : (
                     <div
                       className="prose prose-sm max-w-none"
                       dangerouslySetInnerHTML={{ __html: template.content }}
                     />
-                  ) : (
-                    <div className="text-sm text-gray-900 whitespace-pre-wrap">
-                      {stripHtml(template.content)}
-                    </div>
                   )
                 ) : (
                   <div className="flex items-center justify-center h-32 text-gray-500 text-sm">

@@ -10,7 +10,10 @@ import {
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { TatStatusBadge } from '@/components/shared/tat-status-badge';
+import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
 import { LeadStatusChip } from '@/components/shared/lead-status-chip';
+import { LeadStatusSelect } from '@/components/shared/lead-status-select';
+import { type LeadStatus } from '@/hooks/use-lead-statuses';
 import type { CustomLeadStatus } from '@/hooks/use-lead-settings';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 import type { LatestNoteSummary } from '@/hooks/use-latest-notes-batch';
@@ -70,12 +73,16 @@ export interface CampaignUserTable {
         profile_pic_file_id?: string | null;
     };
     _custom_field_values?: Record<string, string | null>;
-    // TAT / follow-up SLA badge (visual only)
+    // TAT / follow-up SLA deadlines + badge (visual only)
+    _tat_due_at?: string | null;
+    _follow_up_due_at?: string | null;
     _tat_overdue?: boolean | null;
     _tat_due_soon?: boolean | null;
     _follow_up_overdue?: boolean | null;
     // Custom pipeline status (enquiry_status)
     _lead_status?: string | null;
+    // Audience response id — required to update the lead status inline.
+    _response_id?: string | null;
     [key: string]: any; // Allow dynamic custom field properties
 }
 
@@ -140,7 +147,10 @@ export const generateDynamicColumns = (
     latestNotes?: Record<string, LatestNoteSummary>,
     onAddNote?: (userId: string, userName: string) => void,
     onAssignCounsellor?: (userId: string, userName: string) => void,
-    customStatuses?: CustomLeadStatus[]
+    customStatuses?: CustomLeadStatus[],
+    // Full status catalog (with ids) + refetch enable the inline editable status.
+    leadStatusCatalog?: LeadStatus[],
+    onLeadStatusUpdated?: () => void
 ): ColumnDef<CampaignUserTable>[] => {
     // When a select-row callback is provided, render a "Details" column first —
     // matching manage-students and manage-contacts so the side-view affordance is
@@ -381,22 +391,74 @@ export const generateDynamicColumns = (
         console.error('❌ Error generating dynamic columns:', error);
     }
 
-    // Lead status (custom pipeline stage) column — colored chip from the institute's configured statuses.
-    if (customStatuses && customStatuses.length > 0) {
+    // Lead status (custom pipeline stage) column — inline-editable chip when the
+    // full catalog + a response id are available, otherwise a read-only chip.
+    const hasEditableStatus = !!(leadStatusCatalog && leadStatusCatalog.length > 0);
+    if (hasEditableStatus || (customStatuses && customStatuses.length > 0)) {
         columns.push({
             id: 'lead_status',
             header: 'Status',
             size: 160,
             minSize: 120,
             maxSize: 200,
-            cell: ({ row }) =>
-                row.original._lead_status ? (
+            cell: ({ row }) => {
+                if (hasEditableStatus && row.original._response_id) {
+                    return (
+                        <div className="p-3">
+                            <LeadStatusSelect
+                                responseId={row.original._response_id}
+                                currentStatus={row.original._lead_status}
+                                statuses={leadStatusCatalog as LeadStatus[]}
+                                onUpdated={onLeadStatusUpdated}
+                            />
+                        </div>
+                    );
+                }
+                return row.original._lead_status ? (
                     <div className="p-3">
-                        <LeadStatusChip status={row.original._lead_status} statuses={customStatuses} />
+                        <LeadStatusChip
+                            status={row.original._lead_status}
+                            statuses={customStatuses ?? []}
+                        />
                     </div>
                 ) : (
                     <div className="p-3 text-sm text-neutral-400">—</div>
-                ),
+                );
+            },
+        });
+    }
+
+    // SLA deadline columns (reach-out / follow-up) — shown with the other lead-ops columns.
+    if (onAssignCounsellor) {
+        columns.push({
+            id: 'reach_out_by',
+            header: 'Reach out by',
+            size: 150,
+            minSize: 120,
+            maxSize: 180,
+            cell: ({ row }) => (
+                <div className="p-3">
+                    <SlaDeadlineCell
+                        dueAt={row.original._tat_due_at}
+                        overdue={row.original._tat_overdue}
+                    />
+                </div>
+            ),
+        });
+        columns.push({
+            id: 'follow_up_by',
+            header: 'Follow up by',
+            size: 150,
+            minSize: 120,
+            maxSize: 180,
+            cell: ({ row }) => (
+                <div className="p-3">
+                    <SlaDeadlineCell
+                        dueAt={row.original._follow_up_due_at}
+                        overdue={row.original._follow_up_overdue}
+                    />
+                </div>
+            ),
         });
     }
 

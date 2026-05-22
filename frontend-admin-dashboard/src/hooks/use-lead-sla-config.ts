@@ -7,6 +7,8 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 
+// authenticatedAxiosInstance has no baseURL and there's no Vite dev proxy for
+// /admin-core-service, so the endpoint must include the backend host.
 // authenticatedAxiosInstance has no baseURL, so endpoints must include the backend host.
 const BASE = `${BASE_URL}/admin-core-service/v1/lead-sla-config`;
 

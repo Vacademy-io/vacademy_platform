@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { convertToLocalDateTime } from '@/constants/helper';
+import { parseHtmlToString } from '@/lib/utils';
 import type { ColumnDef } from '@tanstack/react-table';
 import { MyTable } from '@/components/design-system/table';
 import {
@@ -41,7 +42,8 @@ import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { TatStatusBadge } from '@/components/shared/tat-status-badge';
-import { LeadStatusChip } from '@/components/shared/lead-status-chip';
+import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
+import { LeadStatusSelect } from '@/components/shared/lead-status-select';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -427,7 +429,13 @@ export const RecentLeadsPage = () => {
                     const notesBlock = recent
                         .map((n, idx) => {
                             const label = n.title?.trim() || 'Note';
-                            const body = n.description?.trim() || '';
+                            // Notes may be rich text (HTML) — export as plain text.
+                            const rawBody = n.description ?? '';
+                            const body = (
+                                /<\/?[a-z][^>]*>/i.test(rawBody)
+                                    ? parseHtmlToString(rawBody)
+                                    : rawBody
+                            ).trim();
                             const date = n.created_at ? convertToLocalDateTime(n.created_at) : '';
                             return [
                                 `${idx + 1}. ${label} - ${body}`,
@@ -652,20 +660,11 @@ interface RecentLeadsTableProps {
 const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { setSelectedStudent } = useStudentSidebar();
+    const queryClient = useQueryClient();
 
     const leadSettings = useLeadSettings();
-    // Table-backed lead status catalog (colors for the Status chip).
+    // Table-backed lead status catalog (ids + colors for the editable Status chip).
     const { statuses: leadStatusCatalog } = useLeadStatuses();
-    const leadStatusOptions = useMemo(
-        () =>
-            leadStatusCatalog.map((s) => ({
-                key: s.status_key,
-                label: s.label,
-                color: s.color,
-                order: s.display_order,
-            })),
-        [leadStatusCatalog]
-    );
     // Show lead-score badges only when the lead system is on AND the institute
     // has the per-table flag enabled. Recent Leads is treated as an enquiry
     // surface for this gate (these are raw form submissions).
@@ -796,17 +795,48 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                 size: 160,
                 minSize: 120,
                 maxSize: 200,
-                cell: ({ row }) =>
-                    row.original.lead_status ? (
-                        <div className="p-3">
-                            <LeadStatusChip
-                                status={row.original.lead_status}
-                                statuses={leadStatusOptions}
-                            />
-                        </div>
-                    ) : (
-                        <div className="p-3 text-sm text-neutral-400">—</div>
-                    ),
+                cell: ({ row }) => (
+                    <div className="p-3">
+                        <LeadStatusSelect
+                            responseId={row.original.response_id}
+                            currentStatus={row.original.lead_status}
+                            statuses={leadStatusCatalog}
+                            onUpdated={() =>
+                                queryClient.invalidateQueries({ queryKey: ['recent-leads'] })
+                            }
+                        />
+                    </div>
+                ),
+            });
+            cols.push({
+                id: 'reach_out_by',
+                header: 'Reach out by',
+                size: 150,
+                minSize: 120,
+                maxSize: 180,
+                cell: ({ row }) => (
+                    <div className="p-3">
+                        <SlaDeadlineCell
+                            dueAt={row.original.tat_due_at}
+                            overdue={row.original.tat_overdue}
+                        />
+                    </div>
+                ),
+            });
+            cols.push({
+                id: 'follow_up_by',
+                header: 'Follow up by',
+                size: 150,
+                minSize: 120,
+                maxSize: 180,
+                cell: ({ row }) => (
+                    <div className="p-3">
+                        <SlaDeadlineCell
+                            dueAt={row.original.follow_up_due_at}
+                            overdue={row.original.follow_up_overdue}
+                        />
+                    </div>
+                ),
             });
             cols.push({
                 id: 'counsellor',
@@ -914,7 +944,8 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
         counsellorProfiles,
         notesByUserId,
         handleSelectLead,
-        leadStatusOptions,
+        leadStatusCatalog,
+        queryClient,
     ]);
 
     const tableData = useMemo(() => {
@@ -955,7 +986,12 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                     />
                 )}
             </div>
-            <StudentSidebar selectedTab="overview" examType="EXAM" isStudentList={false} />
+            <StudentSidebar
+                selectedTab="overview"
+                examType="EXAM"
+                isStudentList={false}
+                defaultLeadProfile
+            />
 
             {noteTarget && (
                 <AddLeadNoteDialog

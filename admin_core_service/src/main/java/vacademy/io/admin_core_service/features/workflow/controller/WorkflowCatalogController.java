@@ -269,6 +269,66 @@ public class WorkflowCatalogController {
         return ResponseEntity.ok(types);
     }
 
+    /**
+     * Context variables available per lead trigger event, so the "Create sample template" UI
+     * (Trigger workflow → Communication) can offer insertable tokens that map to the ctx keys
+     * the workflow engine reads via SpEL (e.g. {@code #ctx['parentName']}). Keys mirror what
+     * {@link vacademy.io.admin_core_service.features.audience.service.LeadTriggerContextBuilder}
+     * and the lead SLA scheduler put on the context. Returns a map of event name → list of
+     * {key, label}. Events not listed have no lead-specific variables.
+     */
+    @GetMapping("/trigger-context-variables")
+    public ResponseEntity<Map<String, List<Map<String, String>>>> getTriggerContextVariables() {
+        // Common keys present on every lead-row emit (forLead / SLA scheduler).
+        List<Map<String, String>> base = new ArrayList<>(List.of(
+                ctxVar("instituteId", "Institute ID"),
+                ctxVar("leadId", "Lead ID"),
+                ctxVar("userId", "Parent user ID"),
+                ctxVar("studentUserId", "Student user ID"),
+                ctxVar("enquiryId", "Enquiry ID"),
+                ctxVar("audienceId", "Campaign (audience) ID"),
+                ctxVar("poolId", "Counselor pool ID"),
+                ctxVar("campaignName", "Campaign name"),
+                ctxVar("counselorId", "Counselor user ID"),
+                ctxVar("counselorName", "Counselor name"),
+                ctxVar("parentName", "Parent name"),
+                ctxVar("parentEmail", "Parent email"),
+                ctxVar("parentMobile", "Parent mobile")));
+
+        // TAT / follow-up reminders add SLA timing keys.
+        List<Map<String, String>> sla = new ArrayList<>(base);
+        sla.addAll(List.of(
+                ctxVar("tatStage", "SLA stage (TAT_BEFORE / TAT_OVERDUE / FOLLOW_UP_DUE / FOLLOW_UP_OVERDUE)"),
+                ctxVar("stageLabel", "Stage label (e.g. BEFORE_30M)"),
+                ctxVar("notifyRoles", "Roles to notify"),
+                ctxVar("dueAt", "Deadline (ISO timestamp)"),
+                ctxVar("minutesToBreach", "Minutes until breach")));
+
+        // Status changes add the old/new status keys.
+        List<Map<String, String>> status = new ArrayList<>(base);
+        status.addAll(List.of(
+                ctxVar("changeType", "Change type (CONVERSION_STATUS / TIER / ENQUIRY_STATUS / LEAD_STATUS)"),
+                ctxVar("oldStatus", "Previous status"),
+                ctxVar("newStatus", "New status"),
+                ctxVar("conversionStatus", "Conversion status")));
+
+        Map<String, List<Map<String, String>>> out = new LinkedHashMap<>();
+        out.put(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), base);
+        out.put(WorkflowTriggerEvent.LEAD_TAT_REMINDER_BEFORE.name(), sla);
+        out.put(WorkflowTriggerEvent.LEAD_TAT_OVERDUE.name(), sla);
+        out.put(WorkflowTriggerEvent.FOLLOW_UP_DUE.name(), sla);
+        out.put(WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(), sla);
+        out.put(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), status);
+        return ResponseEntity.ok(out);
+    }
+
+    private static Map<String, String> ctxVar(String key, String label) {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("key", key);
+        m.put("label", label);
+        return m;
+    }
+
     @GetMapping("/actions")
     public ResponseEntity<List<CatalogItemDTO>> getActionTypes() {
         List<CatalogItemDTO> actions = List.of(

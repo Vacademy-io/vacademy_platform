@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
+import { DotsThreeVertical, PencilSimple, Lightning, Trash } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MyButton } from '@/components/design-system/button';
@@ -21,11 +22,20 @@ import {
     AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
     AssignmentMode,
     CounselorPoolDTO,
     useCounselorPools,
     useDeletePool,
 } from '@/services/counselor-pool';
+import { getInstituteId } from '@/constants/helper';
+import { TriggerWorkflowDialog } from './TriggerWorkflowDialog';
 
 const MODE_LABEL: Record<AssignmentMode, string> = {
     MANUAL: 'Manual',
@@ -44,6 +54,8 @@ export default function PoolsList() {
     const { data: pools, isLoading } = useCounselorPools();
     const { mutate: deletePool, isPending: deleting } = useDeletePool();
     const [poolToDelete, setPoolToDelete] = useState<CounselorPoolDTO | null>(null);
+    const [triggerPool, setTriggerPool] = useState<CounselorPoolDTO | null>(null);
+    const instituteId = getInstituteId() ?? '';
 
     // Routes are new and not yet picked up by routeTree.gen.ts at type-check time;
     // cast keeps the build green until the generator regenerates the tree.
@@ -133,17 +145,50 @@ export default function PoolsList() {
                                         {countDistinctCounselors(pool.members)} counselors
                                     </span>
                                 </div>
-                                <div className="flex justify-end gap-2 pt-1">
-                                    <button
-                                        type="button"
-                                        className="text-xs text-red-600 hover:underline"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setPoolToDelete(pool);
-                                        }}
-                                    >
-                                        Delete
-                                    </button>
+                                <div className="flex justify-end pt-1">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <button
+                                                type="button"
+                                                aria-label="Pool actions"
+                                                className="rounded-md p-1 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <DotsThreeVertical size={18} weight="bold" />
+                                            </button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                            align="end"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <DropdownMenuItem
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    goToEdit(pool.id);
+                                                }}
+                                            >
+                                                <PencilSimple size={16} /> Edit
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setTriggerPool(pool);
+                                                }}
+                                            >
+                                                <Lightning size={16} /> Trigger workflow
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                                className="text-danger-600 focus:text-danger-600"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPoolToDelete(pool);
+                                                }}
+                                            >
+                                                <Trash size={16} /> Delete
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
                                 </div>
                             </CardContent>
                         </Card>
@@ -186,6 +231,16 @@ export default function PoolsList() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {triggerPool && (
+                <TriggerWorkflowDialog
+                    open={!!triggerPool}
+                    onOpenChange={(open) => !open && setTriggerPool(null)}
+                    instituteId={instituteId}
+                    poolId={triggerPool.id}
+                    scopeLabel={triggerPool.name}
+                />
+            )}
         </div>
     );
 }

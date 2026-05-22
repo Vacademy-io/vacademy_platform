@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.audience.service;
 
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience;
+import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +28,29 @@ public class LeadTriggerContextBuilder {
     public static final String STAGE_FOLLOW_UP_DUE = "FOLLOW_UP_DUE";
     public static final String STAGE_FOLLOW_UP_OVERDUE = "FOLLOW_UP_OVERDUE";
 
+    private final CounselorPoolAudienceRepository poolAudienceRepository;
+
+    public LeadTriggerContextBuilder(CounselorPoolAudienceRepository poolAudienceRepository) {
+        this.poolAudienceRepository = poolAudienceRepository;
+    }
+
+    /**
+     * Resolve the counselor pool that owns an audience, so pool-scoped workflow triggers
+     * can fire alongside institute-level ones. Each audience belongs to at most one pool
+     * (UNIQUE constraint), so this is a single lookup. Returns null when the audience isn't
+     * pooled. Best-effort — never throws into the emit path.
+     */
+    public String resolvePoolId(String audienceId) {
+        if (audienceId == null || audienceId.isBlank()) return null;
+        try {
+            return poolAudienceRepository.findByAudienceId(audienceId)
+                    .map(CounselorPoolAudience::getPoolId)
+                    .orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Context anchored on a specific lead row (audience_response). */
     public Map<String, Object> forLead(AudienceResponse ar, String instituteId, String campaignName,
                                        String counselorId, String counselorName) {
@@ -37,6 +62,7 @@ public class LeadTriggerContextBuilder {
             put(ctx, "studentUserId", ar.getStudentUserId());
             put(ctx, "enquiryId", ar.getEnquiryId());
             put(ctx, "audienceId", ar.getAudienceId());
+            put(ctx, "poolId", resolvePoolId(ar.getAudienceId()));
             put(ctx, "parentName", ar.getParentName());
             put(ctx, "parentEmail", ar.getParentEmail());
             put(ctx, "parentMobile", ar.getParentMobile());

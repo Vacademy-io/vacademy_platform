@@ -113,9 +113,6 @@ public class AudienceService {
     private WorkflowTriggerService workflowTriggerService;
 
     @Autowired
-    private LeadTriggerContextBuilder leadTriggerContextBuilder;
-
-    @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
     @Autowired
@@ -152,10 +149,10 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository leadScoreRepository;
 
     @Autowired
-    private vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
+    private vacademy.io.admin_core_service.features.counselor_pool.service.CounselorAssignmentService counselorAssignmentService;
 
     @Autowired
-    private vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository userLeadProfileRepository;
+    private UserLeadProfileService userLeadProfileService;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -474,6 +471,23 @@ public class AudienceService {
                     logger.error("Failed to calculate initial lead score for response {}: {}",
                             savedResponse.getId(), e.getMessage());
                     // Non-blocking — lead is still saved even if scoring fails
+                }
+
+                // 3c. Counselor pool auto-assignment. If the audience belongs to a pool, the
+                // pool's mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this
+                // lead and writes that to user_lead_profile.assigned_counselor_id. MANUAL pools
+                // and audiences not in any pool return Optional.empty() and we leave the lead
+                // unassigned. Non-blocking — submission still succeeds if routing fails.
+                final String leadUserIdForAssignment = userId;
+                final String instituteIdForAssignment = instituteId;
+                try {
+                    counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+                            .ifPresent(counselorUserId ->
+                                    userLeadProfileService.assignCounselor(
+                                            leadUserIdForAssignment, instituteIdForAssignment, counselorUserId, null));
+                } catch (Exception e) {
+                    logger.error("Failed to auto-assign counselor for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
                 }
 
                 // 4. Build custom field map for email
@@ -1303,7 +1317,6 @@ public class AudienceService {
                 enquiryRepository.save(enquiry);
 
                 logger.info("Successfully linked counselor {} to enquiry {}", finalCounsellorId, enquiry.getId());
-                emitLeadAssigned(instituteId, audienceId, enquiry.getId().toString(), finalCounsellorId);
             } else {
                 logger.warn("Counselor validation failed for counselorId: {}", finalCounsellorId);
                 enquiry.setAssignedUserId(false);
@@ -1314,30 +1327,6 @@ public class AudienceService {
             enquiry.setAssignedUserId(false);
             enquiryRepository.save(enquiry);
             logger.info("No counselor assigned to enquiry: {}", enquiry.getId());
-        }
-    }
-
-    /**
-     * Emit LEAD_ASSIGNED_TO_COUNSELOR. Emit-only — the workflow engine (bound via the institute's
-     * automation) decides the channel/template/recipients. Never lets an automation failure break
-     * the assignment.
-     */
-    private void emitLeadAssigned(String instituteId, String audienceId, String enquiryId, String counselorId) {
-        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(counselorId)) return;
-        try {
-            Map<String, Object> ctx = new HashMap<>();
-            leadTriggerContextBuilder.put(ctx, "instituteId", instituteId);
-            leadTriggerContextBuilder.put(ctx, "audienceId", audienceId);
-            leadTriggerContextBuilder.put(ctx, "enquiryId", enquiryId);
-            leadTriggerContextBuilder.put(ctx, "counselorId", counselorId);
-            workflowTriggerService.handleTriggerEvents(
-                    WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(),
-                    StringUtils.hasText(audienceId) ? audienceId : enquiryId,
-                    instituteId,
-                    ctx);
-        } catch (Exception ex) {
-            logger.warn("[LeadTrigger] Failed to emit LEAD_ASSIGNED_TO_COUNSELOR for enquiry {}: {}",
-                    enquiryId, ex.getMessage());
         }
     }
 
@@ -1571,7 +1560,6 @@ public class AudienceService {
                 && !filterDTO.getInstituteId().isBlank()) {
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
-                    filterDTO.getLeadStatusId(),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -1591,7 +1579,6 @@ public class AudienceService {
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
-                filterDTO.getLeadStatusId(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),
@@ -1663,16 +1650,6 @@ public class AudienceService {
         Map<String, String> enquiryIdToCounselor = enquiryIds.isEmpty() ? Collections.emptyMap()
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds).stream()
                         .collect(Collectors.toMap(LinkedUsers::getSourceId, LinkedUsers::getUserId, (a, b) -> a));
-
-        // Lead status = the user's conversion_status (the value the profile widget sets). The frontend
-        // resolves it to a label/colour via the configurable status catalog. Keys align (LEAD/CONVERTED/LOST).
-        Map<String, String> userIdToConversionStatus = userIds.isEmpty() ? Collections.emptyMap()
-                : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
-                        .filter(p -> p.getConversionStatus() != null)
-                        .collect(Collectors.toMap(
-                                vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
-                                vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getConversionStatus,
-                                (a, b) -> a));
 
         // Batch fetch all custom field values for these responses
         List<CustomFieldValues> allCfValues = customFieldValuesRepository
@@ -1755,8 +1732,6 @@ public class AudienceService {
                     .overallStatus(response.getOverallStatus())
                     .conversionStatus(response.getConversionStatus())
                     .enquiryId(response.getEnquiryId())
-                    .leadStatus(response.getUserId() != null
-                            ? userIdToConversionStatus.get(response.getUserId()) : null)
                     .parentName(response.getParentName())
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
@@ -1767,12 +1742,6 @@ public class AudienceService {
                     .assignedCounselorId(counselorId)
                     .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
                             ? sourceAudienceIdToName.get(response.getSourceId()) : null)
-                    .tatDueAt(response.getTatDueAt())
-                    .tatReminderStage(response.getTatReminderStage())
-                    .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(response.getTatReminderStage()))
-                    .followUpOverdue(LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(response.getTatReminderStage()))
-                    .tatDueSoon(LeadTriggerContextBuilder.STAGE_TAT_BEFORE.equals(response.getTatReminderStage())
-                            || LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE.equals(response.getTatReminderStage()))
                     .build();
         });
     }
@@ -3120,8 +3089,6 @@ public class AudienceService {
 
                         updatedCounsellorId = requestDTO.getCounsellorId();
                         logger.info("Updated counselor assignment to: {}", updatedCounsellorId);
-                        emitLeadAssigned(instituteId, response.getAudienceId(),
-                                response.getEnquiryId(), updatedCounsellorId);
                     } else {
                         logger.warn("Counselor validation failed for ID: {}, skipping counselor update",
                                 requestDTO.getCounsellorId());

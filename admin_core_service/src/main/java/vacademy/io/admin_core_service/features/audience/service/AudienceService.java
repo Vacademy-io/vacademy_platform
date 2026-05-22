@@ -157,6 +157,9 @@ public class AudienceService {
     @Autowired
     private vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository userLeadProfileRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
+
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
 
@@ -1581,7 +1584,7 @@ public class AudienceService {
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     pageable);
-            return mapResponsesToLeadDetails(all);
+            return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
 
         // Serialize dropdown filters to a JSON array string the native query
@@ -1611,7 +1614,15 @@ public class AudienceService {
                 filterDTO.getSortDirection(),
                 pageable);
 
-        return mapResponsesToLeadDetails(responses);
+        // Resolve the institute for SLA-deadline computation: the filter usually carries it, else
+        // derive it from the campaign's audience (all leads here belong to one audience → one institute).
+        String campaignInstituteId = filterDTO.getInstituteId();
+        if ((campaignInstituteId == null || campaignInstituteId.isBlank())
+                && filterDTO.getAudienceId() != null) {
+            campaignInstituteId = audienceRepository.findById(filterDTO.getAudienceId())
+                    .map(Audience::getInstituteId).orElse(null);
+        }
+        return mapResponsesToLeadDetails(responses, campaignInstituteId);
     }
 
     private String serializeCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
@@ -1636,7 +1647,7 @@ public class AudienceService {
         }
     }
 
-    private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses) {
+    private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses, String instituteId) {
         List<AudienceResponse> content = responses.getContent();
 
         // Batch fetch UserDTOs
@@ -1655,6 +1666,38 @@ public class AudienceService {
                 leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
                         .collect(Collectors.toMap(LeadScore::getAudienceResponseId, s -> s, (a, b) -> a));
 
+        // SLA deadlines: read the institute's TAT / follow-up config once. tatHours / followUpSlaHours
+        // stay null when the institute hasn't enabled that SLA, so we don't show a meaningless deadline.
+        Integer tatHours = null;
+        Integer followUpSlaHours = null;
+        if (instituteId != null && !instituteId.isBlank()) {
+            try {
+                vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla =
+                        leadSlaConfigService.getSchedulerConfig(instituteId);
+                if (sla != null) {
+                    if (sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
+                        tatHours = sla.getTatReminder().getTatHours();
+                    }
+                    if (sla.getFollowUp() != null && sla.getFollowUp().isEnabled()) {
+                        followUpSlaHours = sla.getFollowUp().getFollowUpSlaHours();
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to read SLA config for institute {}: {}", instituteId, ex.getMessage());
+            }
+        }
+        // Follow-up deadline needs each lead's last counselor action — only fetch when follow-up SLA is on.
+        final Integer followUpSlaHoursFinal = followUpSlaHours;
+        final Integer tatHoursFinal = tatHours;
+        Map<String, Timestamp> lastActionByResponseId = (followUpSlaHours == null || responseIds.isEmpty())
+                ? Collections.emptyMap()
+                : audienceResponseRepository.findLastCounselorActionByResponseIds(responseIds).stream()
+                        .filter(p -> p.getLeadId() != null && p.getLastActionAt() != null)
+                        .collect(Collectors.toMap(
+                                vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                                vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLastActionAt,
+                                (a, b) -> a));
+
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
         List<String> enquiryIds = content.stream()
                 .map(AudienceResponse::getEnquiryId)
@@ -1672,6 +1715,21 @@ public class AudienceService {
                         .collect(Collectors.toMap(
                                 vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
                                 vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getConversionStatus,
+                                (a, b) -> a));
+
+        // Pipeline status: prefer the lead's lead_status_id (set from the leads UI via the
+        // lead-status API) resolved to its catalog key; fall back to conversion_status for
+        // legacy leads never moved onto the new status system.
+        List<String> leadStatusIds = content.stream()
+                .map(AudienceResponse::getLeadStatusId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, String> leadStatusIdToKey = leadStatusIds.isEmpty() ? Collections.emptyMap()
+                : leadStatusRepository.findAllById(leadStatusIds).stream()
+                        .collect(Collectors.toMap(
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
                                 (a, b) -> a));
 
         // Batch fetch all custom field values for these responses
@@ -1738,6 +1796,17 @@ public class AudienceService {
             String counselorId = response.getEnquiryId() != null
                     ? enquiryIdToCounselor.get(response.getEnquiryId()) : null;
 
+            // Reach-out deadline = submitted_at + tatHours (computed live when TAT is on; else the
+            // scheduler-stamped value, which may be null). Follow-up deadline = last counselor action
+            // + followUpSlaHours (null until the counselor has acted at least once).
+            Timestamp computedTatDueAt = (tatHoursFinal != null && response.getSubmittedAt() != null)
+                    ? Timestamp.from(response.getSubmittedAt().toInstant().plusSeconds(tatHoursFinal * 3600L))
+                    : response.getTatDueAt();
+            Timestamp lastAction = lastActionByResponseId.get(response.getId());
+            Timestamp computedFollowUpDueAt = (followUpSlaHoursFinal != null && lastAction != null)
+                    ? Timestamp.from(lastAction.toInstant().plusSeconds(followUpSlaHoursFinal * 3600L))
+                    : null;
+
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
                     .audienceId(response.getAudienceId())
@@ -1755,8 +1824,13 @@ public class AudienceService {
                     .overallStatus(response.getOverallStatus())
                     .conversionStatus(response.getConversionStatus())
                     .enquiryId(response.getEnquiryId())
-                    .leadStatus(response.getUserId() != null
-                            ? userIdToConversionStatus.get(response.getUserId()) : null)
+                    .leadStatus(
+                            response.getLeadStatusId() != null
+                                    && leadStatusIdToKey.containsKey(response.getLeadStatusId())
+                                ? leadStatusIdToKey.get(response.getLeadStatusId())
+                                : (response.getUserId() != null
+                                        ? userIdToConversionStatus.get(response.getUserId())
+                                        : null))
                     .parentName(response.getParentName())
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
@@ -1767,7 +1841,8 @@ public class AudienceService {
                     .assignedCounselorId(counselorId)
                     .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
                             ? sourceAudienceIdToName.get(response.getSourceId()) : null)
-                    .tatDueAt(response.getTatDueAt())
+                    .tatDueAt(computedTatDueAt)
+                    .followUpDueAt(computedFollowUpDueAt)
                     .tatReminderStage(response.getTatReminderStage())
                     .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(response.getTatReminderStage()))
                     .followUpOverdue(LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(response.getTatReminderStage()))

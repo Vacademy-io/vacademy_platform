@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 
@@ -87,7 +88,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -163,7 +164,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -273,7 +274,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -319,7 +320,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -616,6 +617,36 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                         """, nativeQuery = true)
         List<LeadSlaCandidate> findSlaCandidatesForInstitute(@Param("instituteId") String instituteId);
+
+        /**
+         * For a set of leads, the timestamp of each lead's assigned counselor's most recent action on it
+         * (max timeline_event.created_at). Used to compute the follow-up deadline shown in the leads tables.
+         * Counselor resolution mirrors {@link #findSlaCandidatesForInstitute} (linked_users, then profile).
+         * Leads with no counselor or no counselor action return a null lastActionAt.
+         */
+        @Query(value = """
+                            SELECT ar.id AS leadId,
+                                   (SELECT MAX(te.created_at) FROM timeline_event te
+                                      WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                        AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                              OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                              OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                   ) AS lastActionAt
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE ar.id IN (:responseIds)
+                        """, nativeQuery = true)
+        List<LeadLastActionProjection> findLastCounselorActionByResponseIds(
+                        @Param("responseIds") List<String> responseIds);
 
         /**
          * Atomically claim a reminder stage for a lead. Returns 1 if this call won the claim (and the row

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { NotePencil } from '@phosphor-icons/react';
 import type { LatestNoteEvent } from '@/hooks/use-latest-notes-batch';
+import { parseHtmlToString } from '@/lib/utils';
 
 interface LeadActivityNotesCellProps {
     /** Recent events (most-recent first), capped server-side at 5. */
@@ -22,7 +23,10 @@ const formatTimestamp = (iso: string | undefined | null) =>
         : '';
 
 const NoteCard = ({ note }: { note: LatestNoteEvent }) => {
-    const desc = note.description?.trim();
+    // Notes may be rich text (HTML). Show a clean plain-text preview in the cell
+    // so markup never leaks into the table.
+    const raw = note.description ?? '';
+    const desc = (/<\/?[a-z][^>]*>/i.test(raw) ? parseHtmlToString(raw) : raw).trim();
     return (
         <div className="rounded-md bg-neutral-50 px-2 py-1.5">
             <div className="flex items-center gap-1.5">

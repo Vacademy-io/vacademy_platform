@@ -5,8 +5,11 @@
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { BASE_URL } from '@/constants/urls';
 
-const BASE = '/admin-core-service/v1/lead-sla-config';
+// authenticatedAxiosInstance has no baseURL and there's no Vite dev proxy for
+// /admin-core-service, so the endpoint must include the backend host.
+const BASE = `${BASE_URL}/admin-core-service/v1/lead-sla-config`;
 
 export interface LeadSlaSettings {
     tat_enabled: boolean;

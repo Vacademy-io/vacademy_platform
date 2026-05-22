@@ -8,8 +8,12 @@
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { BASE_URL } from '@/constants/urls';
 
-const BASE = '/admin-core-service/v1/lead-status';
+// authenticatedAxiosInstance has no baseURL and there's no Vite dev proxy for
+// /admin-core-service, so the endpoint must include the backend host or it hits
+// the frontend origin and returns no statuses.
+const BASE = `${BASE_URL}/admin-core-service/v1/lead-status`;
 
 export interface LeadStatus {
     id: string;

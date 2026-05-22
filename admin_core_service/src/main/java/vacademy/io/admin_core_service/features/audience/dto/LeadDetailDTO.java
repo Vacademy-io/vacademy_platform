@@ -68,8 +68,9 @@ public class LeadDetailDTO {
     // ── Opt-Out Source ──
     private String sourceAudienceName; // name of the audience the user opted out FROM
 
-    // ── TAT / Follow-up SLA badge (visual only; derived from the scheduler's persisted state) ──
-    private Timestamp tatDueAt;          // submitted_at + tatHours, stamped by the SLA scheduler
+    // ── TAT / Follow-up SLA (deadlines computed live from SLA config; badges from scheduler state) ──
+    private Timestamp tatDueAt;          // reach-out deadline = submitted_at + tatHours (computed live when TAT enabled)
+    private Timestamp followUpDueAt;     // follow-up deadline = last counselor action + followUpSlaHours (null until acted)
     private String tatReminderStage;     // canonical stage last emitted: TAT_BEFORE / TAT_OVERDUE / FOLLOW_UP_DUE / FOLLOW_UP_OVERDUE
     private Boolean tatOverdue;          // TAT breached and counselor hasn't acted
     private Boolean tatDueSoon;          // inside a "before TAT" / follow-up-due window

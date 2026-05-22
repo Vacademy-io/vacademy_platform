@@ -115,6 +115,36 @@ public class InvoiceService {
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     /**
+     * Unicode font for the invoice PDF. Candidates are checked in order; the first
+     * one present on the classpath is embedded (under the family names templates
+     * use) so glyphs like the rupee sign (₹) render. If NONE is present, the PDF
+     * falls back to the base-14 font (current behavior) and currency symbols fall
+     * back to ASCII — so this is fully backward compatible.
+     *
+     * To enable the real symbols, drop a Unicode TTF (e.g. NotoSans-Regular.ttf or
+     * DejaVuSans.ttf) into src/main/resources/fonts/.
+     */
+    private static final String[] INVOICE_FONT_CANDIDATES = {
+            "/fonts/NotoSans-Regular.ttf",
+            "/fonts/DejaVuSans.ttf",
+    };
+    private static final String RESOLVED_INVOICE_FONT_PATH = resolveInvoiceFontResource();
+    private static final boolean UNICODE_INVOICE_FONT_AVAILABLE = RESOLVED_INVOICE_FONT_PATH != null;
+
+    private static String resolveInvoiceFontResource() {
+        for (String path : INVOICE_FONT_CANDIDATES) {
+            try (java.io.InputStream is = InvoiceService.class.getResourceAsStream(path)) {
+                if (is != null) {
+                    return path;
+                }
+            } catch (Exception ignored) {
+                // try next candidate
+            }
+        }
+        return null;
+    }
+
+    /**
      * Main method to generate invoice after payment confirmation
      * This method supports multiple payment logs for a single invoice (v2
      * multi-package enrollments)
@@ -1286,8 +1316,13 @@ public class InvoiceService {
                 String safeAlt = escapeXmlAttributeValue(
                         (institute.getInstituteName() != null ? institute.getInstituteName() : "Logo")
                                 + " Logo");
-                return "<div class=\"logo-container\"><img src=\"" + safeLogoUrl + "\" alt=\""
-                        + safeAlt + "\" /></div>";
+                // Inline size constraints so the logo never overflows, regardless of
+                // whether the template defines .logo-container CSS (custom / sample
+                // templates often don't).
+                return "<div class=\"logo-container\" style=\"max-width:200px;\">"
+                        + "<img src=\"" + safeLogoUrl + "\" alt=\"" + safeAlt + "\""
+                        + " style=\"max-width:200px;max-height:80px;width:auto;height:auto;display:block;\" />"
+                        + "</div>";
             }
         } catch (Exception e) {
             log.warn("Failed to get logo URL for institute: {}. Error: {}",
@@ -1544,6 +1579,11 @@ public class InvoiceService {
         return "INR";
     }
 
+    /** INR symbol: the ₹ glyph when a Unicode font is embedded, else ASCII "Rs. ". */
+    private String inrCurrencySymbol() {
+        return UNICODE_INVOICE_FONT_AVAILABLE ? "₹" : "Rs. ";
+    }
+
     /**
      * Get currency symbol based on currency code
      * This method ensures we never return "#" or invalid symbols
@@ -1551,7 +1591,7 @@ public class InvoiceService {
     private String getCurrencySymbol(String currencyCode) {
         if (currencyCode == null || currencyCode.trim().isEmpty()) {
             log.debug("Currency code is null or empty, defaulting to INR symbol");
-            return "₹"; // Default to INR symbol
+            return inrCurrencySymbol();
         }
 
         // Normalize currency code: trim whitespace and convert to uppercase
@@ -1561,7 +1601,7 @@ public class InvoiceService {
         if (normalizedCurrency.length() < 3 || normalizedCurrency.equals("#") ||
                 normalizedCurrency.matches("^[#\\$€£¥₹]+$")) {
             log.warn("Invalid currency code detected: '{}', defaulting to INR symbol", currencyCode);
-            return "₹";
+            return inrCurrencySymbol();
         }
 
         // Log the currency code being used for debugging
@@ -1570,7 +1610,7 @@ public class InvoiceService {
 
         switch (normalizedCurrency) {
             case "INR":
-                return "₹";
+                return inrCurrencySymbol();
             case "USD":
                 return "$";
             case "EUR":
@@ -1586,13 +1626,13 @@ public class InvoiceService {
             case "SGD":
                 return "S$";
             case "AED":
-                return "د.إ"; // UAE Dirham
+                return "AED "; // UAE Dirham (ASCII so it renders in the PDF font)
             default:
                 log.warn("Unknown currency code: '{}', defaulting to INR symbol instead of using code as symbol",
                         normalizedCurrency);
                 // Always default to INR symbol for unknown currencies to avoid showing invalid
                 // symbols
-                return "₹";
+                return inrCurrencySymbol();
         }
     }
 
@@ -1616,13 +1656,7 @@ public class InvoiceService {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
 
-            builder.useFont(() -> {
-                try {
-                    return this.getClass().getResourceAsStream("/fonts/Arial.ttf");
-                } catch (Exception e) {
-                    return null;
-                }
-            }, "Arial");
+            registerInvoicePdfFonts(builder);
 
             String processedHtml = processImagesForPdf(htmlWithCss);
             String sanitized = sanitizeToXhtml(processedHtml);
@@ -1652,6 +1686,23 @@ public class InvoiceService {
         } catch (Exception e) {
             log.error("Error generating PDF from HTML", e);
             throw new VacademyException("Failed to generate PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Register the embedded Unicode font (if present) under the family names that
+     * invoice templates commonly reference, so existing, custom and sample
+     * templates all pick it up and render glyphs like ₹. When no font is bundled,
+     * this is a no-op and the renderer uses its base-14 fallback (unchanged
+     * behavior) — nothing breaks.
+     */
+    private void registerInvoicePdfFonts(PdfRendererBuilder builder) {
+        if (!UNICODE_INVOICE_FONT_AVAILABLE) {
+            return;
+        }
+        String[] families = { "Arial", "Helvetica", "Cairo", "sans-serif", "NotoSans", "DejaVu Sans" };
+        for (String family : families) {
+            builder.useFont(() -> InvoiceService.class.getResourceAsStream(RESOLVED_INVOICE_FONT_PATH), family);
         }
     }
 

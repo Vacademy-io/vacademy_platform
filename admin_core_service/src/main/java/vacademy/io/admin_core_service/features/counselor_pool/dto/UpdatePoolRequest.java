@@ -20,4 +20,13 @@ public class UpdatePoolRequest {
     /** MANUAL | ROUND_ROBIN | TIME_BASED. Switching modes does NOT clear shifts or members. */
     @JsonProperty("assignment_mode")
     private String assignmentMode;
+
+    /**
+     * PER_DAY | SAME_HOURS_ALL_DAYS. Frontend sends this when admin picks a
+     * schedule pattern from the empty state. Changing pattern with existing
+     * shift rows in the pool is rejected at the service layer — admin must
+     * clear the schedule first.
+     */
+    @JsonProperty("schedule_pattern")
+    private String schedulePattern;
 }

@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.counselor_pool.dto.*;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.*;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.AssignmentMode;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.PoolStatus;
+import vacademy.io.admin_core_service.features.counselor_pool.enums.SchedulePattern;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.*;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -42,11 +43,14 @@ public class CounselorPoolService {
             throw new VacademyException("A pool with this name already exists in the institute");
         }
 
+        String schedulePattern = resolveSchedulePattern(request.getSchedulePattern());
+
         CounselorPool pool = CounselorPool.builder()
                 .instituteId(request.getInstituteId())
                 .name(request.getName())
                 .description(request.getDescription())
                 .assignmentMode(request.getAssignmentMode())
+                .schedulePattern(schedulePattern)
                 .createdBy(createdByUserId)
                 .build();
         pool = poolRepository.save(pool);
@@ -84,6 +88,16 @@ public class CounselorPoolService {
         if (request.getAssignmentMode() != null) {
             validateAssignmentMode(request.getAssignmentMode());
             pool.setAssignmentMode(request.getAssignmentMode());
+        }
+        if (request.getSchedulePattern() != null) {
+            String newPattern = resolveSchedulePattern(request.getSchedulePattern());
+            // Switching pattern with shifts already configured would silently break the
+            // editor's "trust the column" load path. Force admin to clear the schedule first.
+            if (!newPattern.equals(pool.getSchedulePattern())
+                    && poolShiftRepository.findByPoolIdOrderByDayOfWeekAscStartTimeAsc(poolId).size() > 0) {
+                throw new VacademyException("Cannot change schedule_pattern while shifts exist. Clear the schedule first.");
+            }
+            pool.setSchedulePattern(newPattern);
         }
         poolRepository.save(pool);
 
@@ -336,6 +350,22 @@ public class CounselorPoolService {
         }
     }
 
+    /**
+     * Validates the schedule_pattern string. Returns null when input is null
+     * or blank — the column is nullable so the UI can distinguish "not picked
+     * yet" (NULL) from "explicitly picked X".
+     */
+    private static String resolveSchedulePattern(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return SchedulePattern.valueOf(raw).name();
+        } catch (IllegalArgumentException e) {
+            throw new VacademyException("schedule_pattern must be one of PER_DAY, SAME_HOURS_ALL_DAYS");
+        }
+    }
+
     private static void requireNonBlank(String value, String message) {
         if (value == null || value.isBlank()) {
             throw new VacademyException(message);
@@ -356,6 +386,7 @@ public class CounselorPoolService {
                 .name(p.getName())
                 .description(p.getDescription())
                 .assignmentMode(p.getAssignmentMode())
+                .schedulePattern(p.getSchedulePattern())
                 .createdBy(p.getCreatedBy())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())

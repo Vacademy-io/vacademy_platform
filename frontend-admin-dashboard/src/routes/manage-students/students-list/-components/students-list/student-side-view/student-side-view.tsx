@@ -98,6 +98,7 @@ export const StudentSidebar = ({
     applicantId,
     className,
     packageSessionId,
+    defaultLeadProfile,
 }: {
     selectedTab?: string;
     examType?: string;
@@ -108,6 +109,8 @@ export const StudentSidebar = ({
     applicantId?: string;
     className?: string;
     packageSessionId?: string;
+    /** Open the Lead Profile tab by default each time a lead is opened (lead lists). */
+    defaultLeadProfile?: boolean;
 }) => {
     const { state } = useSidebar();
     const [category, setCategory] = useState('overview');
@@ -161,6 +164,26 @@ export const StudentSidebar = ({
             setCategory('enquiry');
         }
     }, [applicantId, enquiryId, tabSettings]);
+
+    // Lead lists (Lead List / Recent Leads): open the Lead Profile tab by default
+    // each time a lead is opened — but only when the lead tab is actually available.
+    useEffect(() => {
+        if (
+            defaultLeadProfile &&
+            selectedStudent?.user_id &&
+            tabSettings?.leadTab &&
+            !leadSettings.isLoading &&
+            leadSettings.enabled
+        ) {
+            setCategory('lead');
+        }
+    }, [
+        defaultLeadProfile,
+        selectedStudent?.user_id,
+        tabSettings,
+        leadSettings.isLoading,
+        leadSettings.enabled,
+    ]);
 
     useEffect(() => {
         const fetchImageUrl = async () => {

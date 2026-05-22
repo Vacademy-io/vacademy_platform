@@ -31,8 +31,10 @@ export interface RecentLeadDetail {
         string,
         { fieldName?: string; field_name?: string; fieldType?: string; field_type?: string }
     >;
-    // ── TAT / Follow-up SLA badge (visual only) ──
+    // ── TAT / Follow-up SLA (deadlines + badge; visual only) ──
     tat_due_at?: string | null;
+    /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */
+    follow_up_due_at?: string | null;
     tat_reminder_stage?: string | null;
     tat_overdue?: boolean | null;
     tat_due_soon?: boolean | null;

@@ -10,6 +10,13 @@ import Image from '@tiptap/extension-image';
 import TextAlign from '@tiptap/extension-text-align';
 import Placeholder from '@tiptap/extension-placeholder';
 import Highlight from '@tiptap/extension-highlight';
+import {
+  TextB,
+  TextItalic,
+  TextUnderline,
+  ListNumbers,
+  ListBullets,
+} from '@phosphor-icons/react';
 import TextStyle from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
@@ -43,6 +50,9 @@ type TipTapEditorProps = {
   addTableRow?: { nonce: number };
   // Optional: hide the toolbar entirely (compact / inline use). Editor still accepts input.
   hideToolbar?: boolean;
+  // Optional: render a slim, Slack-style toolbar (text formatting + lists + code
+  // only) instead of the full media/table/math toolbar. Ignored when hideToolbar.
+  minimalToolbar?: boolean;
 };
 
 export function TipTapEditor({
@@ -56,6 +66,7 @@ export function TipTapEditor({
   editable = true,
   addTableRow,
   hideToolbar = false,
+  minimalToolbar = false,
 }: TipTapEditorProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -1001,7 +1012,17 @@ export function TipTapEditor({
       className={`rounded-md border bg-white shadow-sm ${className || ''}`.trim()}
       style={{ width: '100%', maxHeight: 'inherit', minHeight: 'inherit' }}
     >
-      {editable && !hideToolbar && (
+      {editable && !hideToolbar && minimalToolbar && (
+        <div className="flex flex-wrap items-center gap-0.5 border-b p-1.5 text-neutral-600">
+          <button type="button" title="Bold" aria-label="Bold" onClick={() => editor?.chain().focus().toggleBold().run()} className={`rounded p-1.5 hover:bg-neutral-100 ${editor?.isActive('bold') ? 'bg-neutral-200 text-neutral-900' : ''}`}><TextB className="size-4" weight="bold" /></button>
+          <button type="button" title="Italic" aria-label="Italic" onClick={() => editor?.chain().focus().toggleItalic().run()} className={`rounded p-1.5 hover:bg-neutral-100 ${editor?.isActive('italic') ? 'bg-neutral-200 text-neutral-900' : ''}`}><TextItalic className="size-4" weight="bold" /></button>
+          <button type="button" title="Underline" aria-label="Underline" onClick={() => editor?.chain().focus().toggleUnderline().run()} className={`rounded p-1.5 hover:bg-neutral-100 ${editor?.isActive('underline') ? 'bg-neutral-200 text-neutral-900' : ''}`}><TextUnderline className="size-4" weight="bold" /></button>
+          <div className="mx-1 h-5 w-px bg-neutral-200" />
+          <button type="button" title="Ordered List" aria-label="Ordered List" onClick={() => editor?.chain().focus().toggleOrderedList().run()} className={`rounded p-1.5 hover:bg-neutral-100 ${editor?.isActive('orderedList') ? 'bg-neutral-200 text-neutral-900' : ''}`}><ListNumbers className="size-4" /></button>
+          <button type="button" title="Bullet List" aria-label="Bullet List" onClick={() => editor?.chain().focus().toggleBulletList().run()} className={`rounded p-1.5 hover:bg-neutral-100 ${editor?.isActive('bulletList') ? 'bg-neutral-200 text-neutral-900' : ''}`}><ListBullets className="size-4" /></button>
+        </div>
+      )}
+      {editable && !hideToolbar && !minimalToolbar && (
         <div className="flex flex-wrap items-center gap-1 overflow-x-auto border-b p-2 text-sm">
           <div className="flex items-center gap-1">
             <button type="button" title="Bold" onClick={() => editor?.chain().focus().toggleBold().run()} className={`rounded px-2 py-1 hover:bg-neutral-100 ${editor?.isActive('bold') ? 'bg-neutral-200' : ''}`}>B</button>

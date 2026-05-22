@@ -8,9 +8,17 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { RichTextEditor } from '@/components/editor/RichTextEditor';
+import { parseHtmlToString } from '@/lib/utils';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { CREATE_TIMELINE_EVENT } from '@/constants/urls';
+import { CallRecordingInput } from '@/components/shared/lead-calls/CallRecordingInput';
+import {
+    type CallActivity,
+    callActivityToMetadata,
+    isCallActivityEmpty,
+} from '@/components/shared/lead-calls/call-activity';
 import {
     NotePencil,
     Phone,
@@ -46,7 +54,18 @@ export const AddLeadNoteDialog = ({
 }: AddLeadNoteDialogProps) => {
     const [noteText, setNoteText] = useState('');
     const [actionType, setActionType] = useState('NOTE');
+    const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const queryClient = useQueryClient();
+
+    // The rich text editor emits HTML — check the rendered text for emptiness.
+    const isNoteEmpty = !parseHtmlToString(noteText).trim();
+
+    // For Call Log, a recording / call details alone are enough to submit.
+    const callMeta =
+        actionType === 'CALL_LOG' && !isCallActivityEmpty(callActivity)
+            ? callActivityToMetadata(callActivity as CallActivity)
+            : undefined;
+    const canSubmit = !isNoteEmpty || callMeta !== undefined;
 
     const createMutation = useMutation({
         mutationFn: async () => {
@@ -59,6 +78,7 @@ export const AddLeadNoteDialog = ({
                 title: label,
                 description: noteText.trim(),
                 student_user_id: userId,
+                metadata: callMeta,
             });
             return response.data;
         },
@@ -66,6 +86,7 @@ export const AddLeadNoteDialog = ({
             toast.success('Note added');
             setNoteText('');
             setActionType('NOTE');
+            setCallActivity(null);
             queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
             queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
             onSuccess?.();
@@ -78,6 +99,7 @@ export const AddLeadNoteDialog = ({
         if (createMutation.isPending) return;
         setNoteText('');
         setActionType('NOTE');
+        setCallActivity(null);
         onOpenChange(false);
     };
 
@@ -108,19 +130,26 @@ export const AddLeadNoteDialog = ({
                             </button>
                         ))}
                     </div>
-                    <textarea
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        placeholder="Type your note here…"
-                        rows={4}
-                        autoFocus
-                        className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
+                    <div
+                        className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                                if (noteText.trim()) createMutation.mutate();
+                                e.preventDefault();
+                                if (canSubmit) createMutation.mutate();
                             }
                         }}
-                    />
+                    >
+                        <RichTextEditor
+                            value={noteText}
+                            onChange={setNoteText}
+                            placeholder="Type your note here…"
+                            minHeight={96}
+                            minimalToolbar
+                        />
+                    </div>
+                    {actionType === 'CALL_LOG' && (
+                        <CallRecordingInput value={callActivity} onChange={setCallActivity} />
+                    )}
                     <p className="text-[10px] text-neutral-400">Ctrl+Enter to submit</p>
                 </div>
 
@@ -130,7 +159,7 @@ export const AddLeadNoteDialog = ({
                     </Button>
                     <Button
                         onClick={() => createMutation.mutate()}
-                        disabled={createMutation.isPending || !noteText.trim()}
+                        disabled={createMutation.isPending || !canSubmit}
                     >
                         {createMutation.isPending ? 'Saving…' : 'Add Note'}
                     </Button>

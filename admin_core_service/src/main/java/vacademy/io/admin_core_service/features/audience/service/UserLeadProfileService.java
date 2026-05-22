@@ -240,6 +240,7 @@ public class UserLeadProfileService {
         leadTriggerContextBuilder.put(ctx, "changeType", changeType);
         leadTriggerContextBuilder.put(ctx, "oldStatus", oldStatus);
         leadTriggerContextBuilder.put(ctx, "newStatus", newStatus);
+        enrichWithLeadContact(ctx, profile.getUserId());
         safeEmit(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), profile.getUserId(),
                 profile.getInstituteId(), ctx);
     }
@@ -251,6 +252,35 @@ public class UserLeadProfileService {
             workflowTriggerService.handleTriggerEvents(eventName, eventId, instituteId, ctx);
         } catch (Exception ex) {
             log.warn("[LeadTrigger] Failed to emit {} for eventId={}: {}", eventName, eventId, ex.getMessage());
+        }
+    }
+
+    /**
+     * Add the lead's parent contact + pool to a user-grain ctx so communication workflows
+     * (SEND_EMAIL / SEND_WHATSAPP) have a recipient — the same fields AUDIENCE_LEAD_SUBMISSION
+     * and the TAT scheduler already carry. Sourced from the user's audience_response (prefers
+     * one that actually has a contact). Best-effort; never breaks the emit.
+     */
+    private void enrichWithLeadContact(Map<String, Object> ctx, String userId) {
+        if (userId == null || userId.isBlank()) return;
+        try {
+            List<AudienceResponse> responses = audienceResponseRepository.findByUserId(userId);
+            if (responses == null || responses.isEmpty()) return;
+            AudienceResponse ar = responses.stream()
+                    .filter(r -> (r.getParentEmail() != null && !r.getParentEmail().isBlank())
+                            || (r.getParentMobile() != null && !r.getParentMobile().isBlank()))
+                    .findFirst()
+                    .orElse(responses.get(0));
+            leadTriggerContextBuilder.put(ctx, "parentName", ar.getParentName());
+            leadTriggerContextBuilder.put(ctx, "parentEmail", ar.getParentEmail());
+            leadTriggerContextBuilder.put(ctx, "parentMobile", ar.getParentMobile());
+            leadTriggerContextBuilder.put(ctx, "audienceId", ar.getAudienceId());
+            leadTriggerContextBuilder.put(ctx, "enquiryId", ar.getEnquiryId());
+            leadTriggerContextBuilder.put(ctx, "studentUserId", ar.getStudentUserId());
+            leadTriggerContextBuilder.put(ctx, "poolId",
+                    leadTriggerContextBuilder.resolvePoolId(ar.getAudienceId()));
+        } catch (Exception e) {
+            log.warn("[LeadTrigger] Failed to enrich lead contact for user {}: {}", userId, e.getMessage());
         }
     }
 
@@ -525,9 +555,10 @@ public class UserLeadProfileService {
 
         // Emit only on an actual assignment (not when clearing the counselor).
         if (counselorId != null && !counselorId.isBlank()) {
-            safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId,
-                    instituteId,
-                    leadTriggerContextBuilder.forUser(instituteId, userId, counselorId, counselorName));
+            Map<String, Object> ctx = leadTriggerContextBuilder.forUser(
+                    instituteId, userId, counselorId, counselorName);
+            enrichWithLeadContact(ctx, userId);
+            safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId, instituteId, ctx);
         }
         return saved;
     }

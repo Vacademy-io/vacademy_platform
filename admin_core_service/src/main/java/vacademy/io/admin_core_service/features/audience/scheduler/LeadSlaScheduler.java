@@ -44,8 +44,9 @@ public class LeadSlaScheduler {
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder ctxBuilder;
 
-    /** 15-minute cadence so 30-minute "before" windows are honoured. Server timezone. */
-    @Scheduled(cron = "0 */15 * * * ?")
+    /** 30-minute cadence (server timezone). "Before" reminder windows shorter than the scan
+     *  interval may be skipped, so configure before-windows of 30 minutes or more. */
+    @Scheduled(cron = "0 */30 * * * ?")
     public void scanLeadSlas() {
         List<String> instituteIds = audienceResponseRepository.findInstituteIdsWithActiveLeads();
         if (instituteIds.isEmpty()) return;
@@ -118,6 +119,9 @@ public class LeadSlaScheduler {
         ctxBuilder.put(ctx, "studentUserId", c.getStudentUserId());
         ctxBuilder.put(ctx, "enquiryId", c.getEnquiryId());
         ctxBuilder.put(ctx, "audienceId", c.getAudienceId());
+        // Pool scope: lets pool-scoped triggers (event_applied_type=POOL, eventId=poolId) fire
+        // alongside institute-level ones. Null when the lead's audience isn't pooled.
+        ctxBuilder.put(ctx, "poolId", ctxBuilder.resolvePoolId(c.getAudienceId()));
         ctxBuilder.put(ctx, "campaignName", c.getCampaignName());
         ctxBuilder.put(ctx, "counselorId", counselorId);
         ctxBuilder.put(ctx, "parentName", c.getParentName());

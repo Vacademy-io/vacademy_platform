@@ -418,6 +418,32 @@ export function getTriggerEventsCatalogQuery() {
     });
 }
 
+/** A single context variable available to a lead trigger event (for the template token picker). */
+export interface TriggerContextVariable {
+    key: string;
+    label: string;
+}
+
+/**
+ * Per-event context variables for lead triggers — powers the "Create sample template" token
+ * palette. Returns a map of event name → variables. Events without lead-specific variables
+ * are omitted. Backed by GET /workflow/catalog/trigger-context-variables.
+ */
+export async function fetchTriggerContextVariables(): Promise<Record<string, TriggerContextVariable[]>> {
+    const response = await authenticatedAxiosInstance.get(
+        `${WORKFLOW_SERVICE_BASE}/catalog/trigger-context-variables`
+    );
+    return response.data ?? {};
+}
+
+export function getTriggerContextVariablesQuery() {
+    return queryOptions({
+        queryKey: ['WORKFLOW_CATALOG_TRIGGER_CONTEXT_VARS'],
+        queryFn: fetchTriggerContextVariables,
+        staleTime: 600_000,
+    });
+}
+
 export async function fetchEventAppliedTypesCatalog(): Promise<CatalogItem[]> {
     const response = await authenticatedAxiosInstance.get(
         `${WORKFLOW_SERVICE_BASE}/catalog/event-applied-types`

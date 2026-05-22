@@ -5,6 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -12,6 +13,7 @@ import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import LeadStatusesManager from './LeadStatusesManager';
 import LeadSlaSettings from './LeadSlaSettings';
+import PoolsList from './pools/PoolsList';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // NOTE: Lead statuses and TAT/Follow-up SLA config now live in dedicated DB tables
@@ -141,15 +143,65 @@ export default function LeadSettings() {
         save(settings);
     };
 
-    if (isLoading) {
-        return <div className="p-6 text-sm text-muted-foreground">Loading lead settings…</div>;
-    }
-
     const weightTotal = weightsSum(settings.scoringWeights);
     const weightError = weightTotal !== 100;
 
     return (
-        <div className="space-y-6 p-6">
+        <div className="p-6">
+            <Tabs defaultValue="config" className="w-full">
+                <TabsList className="mb-4">
+                    <TabsTrigger value="config">Configuration</TabsTrigger>
+                    <TabsTrigger value="pools">Pools</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="config" className="space-y-6">
+                    {isLoading ? (
+                        <div className="text-sm text-muted-foreground">Loading lead settings…</div>
+                    ) : (
+                        <ConfigSection
+                            settings={settings}
+                            update={update}
+                            updateWeight={updateWeight}
+                            weightTotal={weightTotal}
+                            weightError={weightError}
+                            handleSave={handleSave}
+                            saving={saving}
+                            hasChanges={hasChanges}
+                        />
+                    )}
+                </TabsContent>
+
+                <TabsContent value="pools">
+                    <PoolsList />
+                </TabsContent>
+            </Tabs>
+        </div>
+    );
+}
+
+interface ConfigSectionProps {
+    settings: LeadSettingsData;
+    update: (patch: Partial<LeadSettingsData>) => void;
+    updateWeight: (key: keyof LeadSettingsData['scoringWeights'], value: number) => void;
+    weightTotal: number;
+    weightError: boolean;
+    handleSave: () => void;
+    saving: boolean;
+    hasChanges: boolean;
+}
+
+function ConfigSection({
+    settings,
+    update,
+    updateWeight,
+    weightTotal,
+    weightError,
+    handleSave,
+    saving,
+    hasChanges,
+}: ConfigSectionProps) {
+    return (
+        <div className="space-y-6">
             {/* ── Enable / Disable Lead System ── */}
             <Card>
                 <CardHeader>

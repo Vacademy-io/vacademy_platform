@@ -222,18 +222,48 @@ export const StudentSidebar = ({
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 shadow-sm backdrop-blur-sm">
-                    <div className="flex flex-col gap-2 px-3 py-2">
-                        {/* Header with close button - enhanced with gradient */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="h-4 w-0.5 rounded-full bg-gradient-to-b from-primary-500 to-primary-400"></div>
-                                <h2 className="bg-gradient-to-r from-neutral-800 to-neutral-600 bg-clip-text text-sm font-semibold text-transparent">
-                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
-                                </h2>
+                    <div className="flex flex-col gap-2 px-3 pb-2 pt-0">
+                        {/* Compact title row: label + avatar + name + status + close */}
+                        <div className="flex items-center gap-2">
+                            <div className="h-5 w-0.5 shrink-0 rounded-full bg-gradient-to-b from-primary-500 to-primary-400"></div>
+
+                            <div className="group relative shrink-0">
+                                <div className="relative flex size-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-primary-500/20 transition-all duration-300 group-hover:ring-primary-500/40">
+                                    {faceLoader ? (
+                                        <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                    ) : imageUrl ? (
+                                        <img
+                                            src={imageUrl}
+                                            alt="Profile"
+                                            className="size-full object-cover"
+                                        />
+                                    ) : (
+                                        <DummyProfile className="size-5 text-neutral-400" />
+                                    )}
+                                </div>
+                                <div className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-white bg-green-500"></div>
                             </div>
+
+                            <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                                <span className="truncate text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
+                                </span>
+                                {selectedStudent?.full_name && (
+                                    <h2 className="truncate bg-gradient-to-r from-neutral-800 to-neutral-600 bg-clip-text text-sm font-semibold text-transparent">
+                                        {selectedStudent.full_name}
+                                    </h2>
+                                )}
+                            </div>
+
+                            {selectedStudent?.status && (
+                                <div className="shrink-0">
+                                    <StatusChips status={selectedStudent.status} />
+                                </div>
+                            )}
+
                             <button
                                 onClick={toggleSidebar}
-                                className="group rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
+                                className="group shrink-0 rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
                                 aria-label="Close"
                             >
                                 <X className="size-4 text-neutral-500 transition-colors duration-200 group-hover:text-red-500" />
@@ -327,36 +357,6 @@ export const StudentSidebar = ({
                 </SidebarHeader>
 
                 <div className="flex-1 overflow-y-auto p-3">
-                    {/* Compact student profile header */}
-                    <div className="group mb-3 flex items-center gap-2.5 rounded-lg border border-neutral-100 bg-gradient-to-r from-neutral-50/50 to-primary-50/30 p-2.5">
-                        <div className="relative shrink-0">
-                            <div className="relative flex size-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-primary-500/20 ring-offset-1 ring-offset-white transition-all duration-300 group-hover:ring-primary-500/40">
-                                {faceLoader ? (
-                                    <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                                ) : imageUrl ? (
-                                    <img
-                                        src={imageUrl}
-                                        alt="Profile"
-                                        className="size-full object-cover"
-                                    />
-                                ) : (
-                                    <DummyProfile className="size-7 text-neutral-400" />
-                                )}
-                            </div>
-
-                            {/* Online status indicator */}
-                            <div className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-white bg-green-500"></div>
-                        </div>
-
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                            <h3 className="truncate text-sm font-semibold text-neutral-800 transition-colors duration-300 group-hover:text-primary-500">
-                                {selectedStudent?.full_name}
-                            </h3>
-                            <div className="shrink-0">
-                                <StatusChips status={selectedStudent?.status || 'INACTIVE'} />
-                            </div>
-                        </div>
-                    </div>
                     {/* Audience-form responses card — only on the Lead tab.
                         Renders only when the side view was opened from a lead
                         row (campaign-users / recent-leads); manage-students

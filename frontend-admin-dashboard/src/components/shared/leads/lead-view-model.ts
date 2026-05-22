@@ -253,7 +253,10 @@ export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
         phone: (row.phone_number as string) || row._user?.mobile_number || '-',
         audience: (row._audience_campaign_name as string) || (row.opted_out_from as string) || '-',
         submittedDisplay: row.submittedAt || '-',
-        submittedIso: row.submittedAt,
+        // `row.submittedAt` is the formatted display string. The raw ISO lives
+        // on `_submitted_iso` (set by the campaign-users row transformation);
+        // pass that so `new Date(...)` + date-fns `format` work correctly.
+        submittedIso: typeof row._submitted_iso === 'string' ? row._submitted_iso : undefined,
         responseId: row._response_id ?? undefined,
         leadStatus: row._lead_status,
         tatOverdue: row._tat_overdue,

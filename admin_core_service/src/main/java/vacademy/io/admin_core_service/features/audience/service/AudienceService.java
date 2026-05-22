@@ -113,9 +113,6 @@ public class AudienceService {
     private WorkflowTriggerService workflowTriggerService;
 
     @Autowired
-    private LeadTriggerContextBuilder leadTriggerContextBuilder;
-
-    @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
     @Autowired
@@ -152,10 +149,10 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository leadScoreRepository;
 
     @Autowired
-    private vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
+    private vacademy.io.admin_core_service.features.counselor_pool.service.CounselorAssignmentService counselorAssignmentService;
 
     @Autowired
-    private vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository userLeadProfileRepository;
+    private UserLeadProfileService userLeadProfileService;
 
     @Autowired
     private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
@@ -477,6 +474,39 @@ public class AudienceService {
                     logger.error("Failed to calculate initial lead score for response {}: {}",
                             savedResponse.getId(), e.getMessage());
                     // Non-blocking — lead is still saved even if scoring fails
+                }
+
+                // 3c. Counselor pool auto-assignment. If the audience belongs to a pool, the
+                // pool's mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this
+                // lead and writes that to user_lead_profile.assigned_counselor_id. MANUAL pools
+                // and audiences not in any pool return Optional.empty() and we leave the lead
+                // unassigned. The full_name lookup mirrors what the manual-assign UI does so
+                // the Counsellor column on lead-list pages renders the name (the UI checks
+                // assigned_counselor_name; an id-without-name shows up as Unassigned).
+                // Non-blocking — submission still succeeds if routing fails.
+                final String leadUserIdForAssignment = userId;
+                final String instituteIdForAssignment = instituteId;
+                try {
+                    counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+                            .ifPresent(counselorUserId -> {
+                                String counselorName = null;
+                                try {
+                                    List<UserDTO> fetched = authService
+                                            .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+                                    if (!fetched.isEmpty() && fetched.get(0) != null) {
+                                        counselorName = fetched.get(0).getFullName();
+                                    }
+                                } catch (Exception nameLookupFailure) {
+                                    logger.warn("Could not fetch counselor name for {}: {}",
+                                            counselorUserId, nameLookupFailure.getMessage());
+                                }
+                                userLeadProfileService.assignCounselor(
+                                        leadUserIdForAssignment, instituteIdForAssignment,
+                                        counselorUserId, counselorName);
+                            });
+                } catch (Exception e) {
+                    logger.error("Failed to auto-assign counselor for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
                 }
 
                 // 4. Build custom field map for email
@@ -1306,7 +1336,6 @@ public class AudienceService {
                 enquiryRepository.save(enquiry);
 
                 logger.info("Successfully linked counselor {} to enquiry {}", finalCounsellorId, enquiry.getId());
-                emitLeadAssigned(instituteId, audienceId, enquiry.getId().toString(), finalCounsellorId);
             } else {
                 logger.warn("Counselor validation failed for counselorId: {}", finalCounsellorId);
                 enquiry.setAssignedUserId(false);
@@ -1317,30 +1346,6 @@ public class AudienceService {
             enquiry.setAssignedUserId(false);
             enquiryRepository.save(enquiry);
             logger.info("No counselor assigned to enquiry: {}", enquiry.getId());
-        }
-    }
-
-    /**
-     * Emit LEAD_ASSIGNED_TO_COUNSELOR. Emit-only — the workflow engine (bound via the institute's
-     * automation) decides the channel/template/recipients. Never lets an automation failure break
-     * the assignment.
-     */
-    private void emitLeadAssigned(String instituteId, String audienceId, String enquiryId, String counselorId) {
-        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(counselorId)) return;
-        try {
-            Map<String, Object> ctx = new HashMap<>();
-            leadTriggerContextBuilder.put(ctx, "instituteId", instituteId);
-            leadTriggerContextBuilder.put(ctx, "audienceId", audienceId);
-            leadTriggerContextBuilder.put(ctx, "enquiryId", enquiryId);
-            leadTriggerContextBuilder.put(ctx, "counselorId", counselorId);
-            workflowTriggerService.handleTriggerEvents(
-                    WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(),
-                    StringUtils.hasText(audienceId) ? audienceId : enquiryId,
-                    instituteId,
-                    ctx);
-        } catch (Exception ex) {
-            logger.warn("[LeadTrigger] Failed to emit LEAD_ASSIGNED_TO_COUNSELOR for enquiry {}: {}",
-                    enquiryId, ex.getMessage());
         }
     }
 
@@ -1574,7 +1579,6 @@ public class AudienceService {
                 && !filterDTO.getInstituteId().isBlank()) {
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
-                    filterDTO.getLeadStatusId(),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -1594,7 +1598,6 @@ public class AudienceService {
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
-                filterDTO.getLeadStatusId(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),
@@ -3195,8 +3198,6 @@ public class AudienceService {
 
                         updatedCounsellorId = requestDTO.getCounsellorId();
                         logger.info("Updated counselor assignment to: {}", updatedCounsellorId);
-                        emitLeadAssigned(instituteId, response.getAudienceId(),
-                                response.getEnquiryId(), updatedCounsellorId);
                     } else {
                         logger.warn("Counselor validation failed for ID: {}, skipping counselor update",
                                 requestDTO.getCounsellorId());

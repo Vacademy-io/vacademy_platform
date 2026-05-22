@@ -10,7 +10,8 @@ export { LeadCounsellor } from './lead-counsellor';
 export { LeadActionsMenu } from './lead-actions-menu';
 export { LeadEmptyState } from './lead-empty-state';
 export { LeadSourcePill } from './lead-source-pill';
-export { LeadTable, type LeadSortKey, type LeadSortState } from './lead-table';
+export { LeadTable } from './lead-table';
+export { LeadPagination } from './lead-pagination';
 export {
     LeadInlineSelect,
     LEAD_STATUS_OPTIONS,

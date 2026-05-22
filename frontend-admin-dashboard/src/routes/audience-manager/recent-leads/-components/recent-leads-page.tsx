@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { MyPagination } from '@/components/design-system/pagination';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
@@ -43,11 +42,10 @@ import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselo
 import {
     LeadEmptyState,
     LeadTable,
+    LeadPagination,
     useUpdateLeadTier,
     recentLeadToVM,
     type LeadActionHandlers,
-    type LeadSortKey,
-    type LeadSortState,
 } from '@/components/shared/leads';
 
 const ALL_AUDIENCES_VALUE = '__ALL__';
@@ -146,8 +144,6 @@ const RecentLeadsContent = () => {
     const { statuses: leadStatusCatalog } = useLeadStatuses();
 
     // Table UI state
-    const [sort, setSort] = useState<LeadSortState>({ key: 'submitted', dir: 'desc' });
-    const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
 
     const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(null);
@@ -247,11 +243,6 @@ const RecentLeadsContent = () => {
     const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps);
     const { notesByUserId } = useLatestNotesBatch(userIds, showOps);
 
-    // Reset selection whenever the result set changes.
-    useEffect(() => {
-        setSelectedKeys(new Set());
-    }, [data]);
-
     const invalidateKeys = [['recent-leads'], ['lead-profiles-batch']];
     const updateTier = useUpdateLeadTier({ invalidateKeys });
 
@@ -269,27 +260,6 @@ const RecentLeadsContent = () => {
     );
 
     const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
-
-    // Selection
-    const onToggleKey = (key: string) =>
-        setSelectedKeys((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-        });
-    const onToggleAll = () =>
-        setSelectedKeys((prev) => {
-            const allSelected = vms.length > 0 && vms.every((v) => prev.has(v.key));
-            return allSelected ? new Set() : new Set(vms.map((v) => v.key));
-        });
-
-    const handleSortChange = (key: LeadSortKey) =>
-        setSort((prev) =>
-            prev.key === key
-                ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-                : { key, dir: key === 'name' ? 'asc' : 'desc' }
-        );
 
     const toggleColumn = (id: string) =>
         setHiddenColumns((prev) => {
@@ -457,11 +427,6 @@ const RecentLeadsContent = () => {
             setIsExporting(false);
         }
     };
-    const handleExportSelected = async () => {
-        const leads = (data?.content ?? []).filter((l) => selectedKeys.has(recentLeadToVM(l).key));
-        await exportLeadsCsv(leads, 'recent_leads_selected');
-    };
-
     // Active filter chips
     const chips: { label: string; onRemove: () => void }[] = [];
     if (appliedSearch)
@@ -494,20 +459,9 @@ const RecentLeadsContent = () => {
                 {totalElements.toLocaleString()} {totalElements === 1 ? 'Lead' : 'Leads'}
             </h1>
 
-            {/* Toolbar — left filters, right actions */}
+            {/* Toolbar — left filters, right actions (search lives in its own row below) */}
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-1 flex-wrap items-center gap-2">
-                    <div className="relative min-w-64 flex-1">
-                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            type="text"
-                            value={searchInput}
-                            onChange={(e) => setSearchInput(e.target.value)}
-                            placeholder="Search name, email or phone"
-                            className="h-10 w-full pl-8"
-                            aria-label="Search leads"
-                        />
-                    </div>
+                <div className="flex flex-wrap items-center gap-2">
                     {showOps && (
                         <Select value={tierFilter} onValueChange={setTier}>
                             <SelectTrigger className="h-10 w-36">
@@ -625,15 +579,11 @@ const RecentLeadsContent = () => {
                         size="sm"
                         variant="outline"
                         className="h-10"
-                        onClick={selectedKeys.size > 0 ? handleExportSelected : handleExportAll}
+                        onClick={handleExportAll}
                         disabled={isExporting || !data?.totalElements}
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
-                        {isExporting
-                            ? 'Exporting…'
-                            : selectedKeys.size > 0
-                              ? `Export (${selectedKeys.size})`
-                              : 'Export'}
+                        {isExporting ? 'Exporting…' : 'Export'}
                     </Button>
                 </div>
             </div>
@@ -667,47 +617,41 @@ const RecentLeadsContent = () => {
                 </div>
             )}
 
-            {/* Bulk selection bar — the toolbar Export button downloads the selection. */}
-            {selectedKeys.size > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5">
-                    <span className="text-sm font-semibold text-primary-700">
-                        {selectedKeys.size} selected
-                    </span>
-                    <span className="text-xs text-primary-600">
-                        Use “Export ({selectedKeys.size})” above to download these leads.
-                    </span>
-                    <button
-                        type="button"
-                        onClick={() => setSelectedKeys(new Set())}
-                        className="ml-auto text-xs font-medium text-primary-700 hover:underline"
-                    >
-                        Clear
-                    </button>
+            {/* Search + result count — its own row, mirroring the reference layout */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="relative w-full sm:w-80">
+                    <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                    <Input
+                        type="text"
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search leads"
+                        className="h-10 w-full pl-8"
+                        aria-label="Search leads"
+                    />
                 </div>
-            )}
-
-            {/* Showing N of total */}
-            <div className="flex items-center justify-end gap-2 text-sm text-neutral-500">
-                <span>Showing</span>
-                <Select
-                    value={String(pageSize)}
-                    onValueChange={(v) => {
-                        setPageSize(Number(v));
-                        setPage(0);
-                    }}
-                >
-                    <SelectTrigger className="h-8 w-20">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {PAGE_SIZE_OPTIONS.map((n) => (
-                            <SelectItem key={n} value={String(n)}>
-                                {n}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-                <span>of {totalElements.toLocaleString()} results</span>
+                <div className="flex items-center gap-2 text-sm text-neutral-500">
+                    <span>Showing</span>
+                    <Select
+                        value={String(pageSize)}
+                        onValueChange={(v) => {
+                            setPageSize(Number(v));
+                            setPage(0);
+                        }}
+                    >
+                        <SelectTrigger className="h-8 w-20">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {PAGE_SIZE_OPTIONS.map((n) => (
+                                <SelectItem key={n} value={String(n)}>
+                                    {n}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <span>of {totalElements.toLocaleString()} results</span>
+                </div>
             </div>
 
             {/* Table */}
@@ -734,11 +678,6 @@ const RecentLeadsContent = () => {
                             isLoading={isLoading}
                             actions={actions}
                             onStatusUpdated={handleStatusUpdated}
-                            selectedKeys={selectedKeys}
-                            onToggleKey={onToggleKey}
-                            onToggleAll={onToggleAll}
-                            sort={sort}
-                            onSortChange={handleSortChange}
                             hiddenColumns={hiddenColumns}
                             emptyState={
                                 <LeadEmptyState
@@ -775,9 +714,7 @@ const RecentLeadsContent = () => {
             </SidebarProvider>
 
             {/* Pagination */}
-            {totalPages > 1 && (
-                <MyPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-            )}
+            <LeadPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
     );
 };

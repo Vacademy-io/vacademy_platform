@@ -1,17 +1,6 @@
-import { useMemo, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import {
-    Envelope,
-    Phone,
-    Clock,
-    CaretUpDown,
-    CaretUp,
-    CaretDown,
-    Plus,
-    UserPlus,
-    ArrowsClockwise,
-} from '@phosphor-icons/react';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Envelope, Phone, Clock, Plus, UserPlus, ArrowsClockwise } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
@@ -24,26 +13,19 @@ import type { LeadCardVM } from './lead-view-model';
 import type { LeadActionHandlers, LeadTier } from './lead-actions';
 import { LeadAvatar } from './lead-avatar';
 import { LeadInlineSelect, LEAD_TIER_OPTIONS } from './lead-inline-select';
-import { LeadActionsMenu } from './lead-actions-menu';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
 import { LeadEmptyState } from './lead-empty-state';
 
 /**
- * LeadTable — the premium Orbitra-style leads table: light sentence-case headers
- * with sort chevrons, airy rows, avatar + name + relative-time, contact, a
+ * LeadTable — the premium Orbitra-style leads table: light sentence-case headers,
+ * airy rows, avatar + name + relative-time, contact, a
  * neutral source pill, an editable custom-status chip, lead-score bar, editable
  * tier pill, TAT / follow-up SLA deadlines, counsellor owner, a compact activity
  * line, and round mail/call/⋯ row actions revealed on hover. Purpose-built (the
  * platform MyTable can't reproduce this look) but assembled from platform
  * primitives + tokens so it stays on the design system.
  */
-
-export type LeadSortKey = 'name' | 'status' | 'tier' | 'score' | 'submitted';
-export interface LeadSortState {
-    key: LeadSortKey;
-    dir: 'asc' | 'desc';
-}
 
 /** Per-user activity-notes summary (latest events + total count). */
 export interface LeadNotesSummary {
@@ -64,11 +46,6 @@ interface LeadTableProps {
     actions: LeadActionHandlers;
     /** Called after an inline status change so the parent can refetch. */
     onStatusUpdated?: () => void;
-    selectedKeys: Set<string>;
-    onToggleKey: (key: string) => void;
-    onToggleAll: () => void;
-    sort: LeadSortState;
-    onSortChange: (key: LeadSortKey) => void;
     hiddenColumns?: Set<string>;
     emptyState?: ReactNode;
 }
@@ -76,15 +53,12 @@ interface LeadTableProps {
 interface Col {
     id: string;
     header: string;
-    sortKey?: LeadSortKey;
     thClass?: string;
     show: boolean;
     /** Stops a cell click from bubbling to the row's open-side-view handler. */
     interactive?: boolean;
     render: (vm: LeadCardVM, profile?: LeadProfileSummary) => ReactNode;
 }
-
-const TIER_RANK: Record<string, number> = { HOT: 3, WARM: 2, COLD: 1 };
 
 const relativeTime = (iso?: string | null) => {
     if (!iso) return '';
@@ -118,28 +92,26 @@ function ActivityCell({ summary, onAdd }: { summary?: LeadNotesSummary; onAdd: (
     const body = (/<\/?[a-z][^>]*>/i.test(raw) ? parseHtmlToString(raw) : raw).trim();
     const text = body || latest.title;
     return (
-        <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm text-neutral-700" title={text}>
-                    {text}
-                </p>
-                <p className="mt-0.5 truncate text-xs text-neutral-400">
+        <div className="min-w-0">
+            <p className="line-clamp-2 text-sm text-neutral-700" title={text}>
+                {text}
+            </p>
+            <div className="mt-0.5 flex items-center justify-between gap-2">
+                <span className="truncate text-xs text-neutral-400">
                     {relativeTime(latest.created_at)}
-                    {latest.actor_name ? ` · ${latest.actor_name}` : ''}
-                </p>
+                </span>
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onAdd();
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-0.5 text-xs text-neutral-500 opacity-0 transition focus-within:opacity-100 hover:border-primary-300 hover:text-primary-600 group-hover/row:opacity-100"
+                >
+                    <Plus className="size-3" />
+                    Add note
+                </button>
             </div>
-            <button
-                type="button"
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onAdd();
-                }}
-                title="Add note"
-                aria-label="Add note"
-                className="mt-0.5 shrink-0 rounded-full border border-neutral-200 p-1 text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:border-primary-200 hover:text-primary-600 group-hover/row:opacity-100"
-            >
-                <Plus className="size-3.5" />
-            </button>
         </div>
     );
 }
@@ -154,51 +126,16 @@ export function LeadTable({
     isLoading,
     actions,
     onStatusUpdated,
-    selectedKeys,
-    onToggleKey,
-    onToggleAll,
-    sort,
-    onSortChange,
     hiddenColumns,
     emptyState,
 }: LeadTableProps) {
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
 
-    const sortedVms = useMemo(() => {
-        const arr = [...vms];
-        const dir = sort.dir === 'asc' ? 1 : -1;
-        arr.sort((a, b) => {
-            if (sort.key === 'name') return a.name.localeCompare(b.name) * dir;
-            if (sort.key === 'status') {
-                return (a.leadStatus ?? '').localeCompare(b.leadStatus ?? '') * dir;
-            }
-            if (sort.key === 'tier') {
-                const ra = TIER_RANK[(profOf(a)?.lead_tier ?? '').toUpperCase()] ?? 0;
-                const rb = TIER_RANK[(profOf(b)?.lead_tier ?? '').toUpperCase()] ?? 0;
-                return (ra - rb) * dir;
-            }
-            if (sort.key === 'score') {
-                const ra = profOf(a)?.best_score ?? -1;
-                const rb = profOf(b)?.best_score ?? -1;
-                return (ra - rb) * dir;
-            }
-            const ta = a.submittedIso ? Date.parse(a.submittedIso) : 0;
-            const tb = b.submittedIso ? Date.parse(b.submittedIso) : 0;
-            return (ta - tb) * dir;
-        });
-        return arr;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [vms, sort, profiles]);
-
-    const allSelected = vms.length > 0 && vms.every((v) => selectedKeys.has(v.key));
-    const someSelected = vms.some((v) => selectedKeys.has(v.key));
-
     const allCols: Col[] = [
         {
             id: 'name',
             header: 'Lead name',
-            sortKey: 'name',
             thClass: 'min-w-56',
             show: true,
             render: (vm) => (
@@ -274,7 +211,6 @@ export function LeadTable({
         {
             id: 'status',
             header: 'Lead status',
-            sortKey: 'status',
             thClass: 'w-40',
             show: showOps,
             interactive: true,
@@ -290,7 +226,6 @@ export function LeadTable({
         {
             id: 'score',
             header: 'Lead score',
-            sortKey: 'score',
             thClass: 'w-44',
             show: showScore,
             interactive: true,
@@ -303,7 +238,6 @@ export function LeadTable({
         {
             id: 'tier',
             header: 'Tier',
-            sortKey: 'tier',
             thClass: 'w-28',
             show: showOps,
             interactive: true,
@@ -376,9 +310,9 @@ export function LeadTable({
                             }}
                             title="Reassign counsellor"
                             aria-label="Reassign counsellor"
-                            className="shrink-0 rounded-full border border-neutral-200 p-1 text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:border-primary-200 hover:text-primary-600 group-hover/row:opacity-100"
+                            className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:bg-primary-50 hover:text-primary-600 group-hover/row:opacity-100"
                         >
-                            <ArrowsClockwise className="size-3.5" />
+                            <ArrowsClockwise className="size-4" />
                         </button>
                     </div>
                 );
@@ -403,7 +337,6 @@ export function LeadTable({
         {
             id: 'submitted',
             header: 'Submitted',
-            sortKey: 'submitted',
             thClass: 'min-w-32',
             show: true,
             render: (vm) => (
@@ -427,89 +360,55 @@ export function LeadTable({
             <table className="w-full border-collapse text-sm">
                 <thead>
                     <tr className="border-b border-neutral-200 bg-neutral-50 text-left">
-                        <th className="w-12 px-4 py-3">
-                            <Checkbox
-                                checked={
-                                    allSelected ? true : someSelected ? 'indeterminate' : false
-                                }
-                                onCheckedChange={onToggleAll}
-                                aria-label="Select all"
-                            />
-                        </th>
                         {cols.map((c) => (
                             <th
                                 key={c.id}
                                 className={cn(
-                                    'whitespace-nowrap px-4 py-3 text-center text-xs font-medium text-neutral-500',
+                                    'whitespace-nowrap px-4 py-3 text-xs font-medium text-neutral-500',
+                                    c.id === 'name' &&
+                                        'sticky left-0 z-20 border-r border-neutral-200 bg-neutral-50',
                                     c.thClass
                                 )}
                             >
-                                {c.sortKey ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => onSortChange(c.sortKey!)}
-                                        className="inline-flex items-center gap-1 hover:text-neutral-700"
-                                    >
-                                        {c.header}
-                                        {sort.key === c.sortKey ? (
-                                            sort.dir === 'asc' ? (
-                                                <CaretUp className="size-3" />
-                                            ) : (
-                                                <CaretDown className="size-3" />
-                                            )
-                                        ) : (
-                                            <CaretUpDown className="size-3 text-neutral-300" />
-                                        )}
-                                    </button>
-                                ) : (
-                                    c.header
-                                )}
+                                {c.header}
                             </th>
                         ))}
-                        <th className="w-16 px-4 py-3" />
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                     {isLoading
                         ? Array.from({ length: 8 }).map((_, i) => (
                               <tr key={i}>
-                                  <td className="px-4 py-3.5">
-                                      <Skeleton className="size-4 rounded" />
-                                  </td>
                                   {cols.map((c) => (
-                                      <td key={c.id} className="px-4 py-3.5">
+                                      <td
+                                          key={c.id}
+                                          className={cn(
+                                              'px-4 py-3.5',
+                                              c.id === 'name' &&
+                                                  'sticky left-0 z-10 border-r border-neutral-200 bg-white'
+                                          )}
+                                      >
                                           <Skeleton className="h-6 w-40" />
                                       </td>
                                   ))}
-                                  <td className="px-4 py-3.5" />
                               </tr>
                           ))
-                        : sortedVms.map((vm) => {
+                        : vms.map((vm) => {
                               const profile = profOf(vm);
-                              const selected = selectedKeys.has(vm.key);
                               return (
                                   <tr
                                       key={vm.key}
                                       onClick={() => actions.onOpenDetails(vm)}
-                                      className={cn(
-                                          'group/row cursor-pointer transition-colors',
-                                          selected ? 'bg-primary-50/40' : 'hover:bg-neutral-50/60'
-                                      )}
+                                      className="group/row cursor-pointer transition-colors hover:bg-neutral-50"
                                   >
-                                      <td
-                                          className="px-4 py-3.5 align-middle"
-                                          onClick={(e) => e.stopPropagation()}
-                                      >
-                                          <Checkbox
-                                              checked={selected}
-                                              onCheckedChange={() => onToggleKey(vm.key)}
-                                              aria-label={`Select ${vm.name}`}
-                                          />
-                                      </td>
                                       {cols.map((c) => (
                                           <td
                                               key={c.id}
-                                              className="px-4 py-3.5 align-middle"
+                                              className={cn(
+                                                  'px-4 py-3.5 align-middle',
+                                                  c.id === 'name' &&
+                                                      'sticky left-0 z-10 border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50'
+                                              )}
                                               onClick={
                                                   c.interactive
                                                       ? (e) => e.stopPropagation()
@@ -519,21 +418,6 @@ export function LeadTable({
                                               {c.render(vm, profile)}
                                           </td>
                                       ))}
-                                      <td
-                                          className="px-4 py-3.5 align-middle"
-                                          onClick={(e) => e.stopPropagation()}
-                                      >
-                                          <div className="flex items-center justify-end">
-                                              <LeadActionsMenu
-                                                  vm={vm}
-                                                  currentTier={profile?.lead_tier}
-                                                  currentStatus={vm.leadStatus}
-                                                  showOps={showOps}
-                                                  actions={actions}
-                                                  className="size-8 rounded-full border border-neutral-200"
-                                              />
-                                          </div>
-                                      </td>
                                   </tr>
                               );
                           })}

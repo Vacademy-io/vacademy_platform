@@ -2258,11 +2258,15 @@ export function SettingsPopover(props: SettingsPopoverProps) {
     // user isn't sure what's set; it always wins over localStorage stickiness
     // because the localStorage save effect picks up the new value next render.
     // For vimMode, also drop the legacy `model` field — DEFAULT_OPTIONS.model
-    // is `''` and shipping that would undo the P2-12 sunset.
+    // is `''` and shipping that would undo the P2-12 sunset. `onOptionsChange`
+    // treats a missing `model` as "default model" downstream.
     const handleResetToDefaults = () => {
-        props.onOptionsChange(
-            props.vimMode ? { ...DEFAULT_OPTIONS, model: undefined } : DEFAULT_OPTIONS
-        );
+        if (props.vimMode) {
+            const { model: _model, ...rest } = DEFAULT_OPTIONS;
+            props.onOptionsChange(rest as Omit<GenerateVideoRequest, 'prompt'>);
+        } else {
+            props.onOptionsChange(DEFAULT_OPTIONS);
+        }
         props.onReviewModeChange?.(false);
     };
 

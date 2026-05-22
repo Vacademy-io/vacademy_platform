@@ -559,7 +559,7 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/courses" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:text-white"
+                      className="stat-card-courses [.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:text-white"
                       iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
                       illustration={playIllustrations.Course}
                     />
@@ -577,7 +577,7 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/live-class" })
                       }
                       isLoading={isLoadingLiveSessions}
-                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:text-white"
+                      className="stat-card-live [.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:text-white"
                       iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
                       illustration={playIllustrations.LiveClass}
                     />
@@ -599,7 +599,7 @@ export function DashboardComponent() {
                         navigate({ to: "/assessment/examination" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:text-white"
+                      className="stat-card-assessments [.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:text-white"
                       iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
                       illustration={playIllustrations.Certificate}
                     />

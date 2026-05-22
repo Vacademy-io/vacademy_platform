@@ -143,10 +143,10 @@ Legend: ✅ fixed · ⚠ partial · ❌ open · ➕ new since the last review.
 | # | Where | Status | Notes |
 |---|---|---|---|
 | B5 | `AddShotDialog.tsx` — id collisions | ✅ | New entries use `crypto.randomUUID()`. |
-| B6 | `video-editor-store.ts` — dirty tracking baseline | ❌ | A transform set then reset to identity still leaves the entry in `dirtyEntryIds`. Compare against baseline, not "touched". |
-| B7 | `video-editor-store.ts` — save loop partial-failure | ❌ | Sequential POSTs; if the Nth fails, earlier ones are persisted with no rollback or per-entry status. |
+| B6 | `video-editor-store.ts` — dirty tracking baseline | ✅ | A transform set then reset to identity used to leave the entry permanently in `dirtyEntryIds`, lighting up Save for a no-op. Fix: added a separate `htmlEditedEntryIds` set tracking *just* HTML mutations, plus `recomputeDirty(state, entryId)` that derives dirty membership from `htmlEditedEntryIds ∪ newEntryIds ∪ non-identity transform ∪ background ∪ transition`. `updateEntryTransform` deletes the override when the result is identity and calls `recomputeDirty`; same for `updateEntryBackground` and `updateEntryTransition`. Reverting an override now correctly removes the entry from dirty unless something else still differs from baseline. |
+| B7 | `video-editor-store.ts` — save loop partial-failure | ✅ | A single failed POST (delete, reorder, or update) used to throw mid-loop, leaving earlier-succeeded changes persisted on the server but the whole `dirtyEntryIds` set intact locally — next Save click re-sent the already-succeeded ones. Fix: each operation is now wrapped in its own try/catch; succeeded IDs accumulate into `succeededDeletes/Reorders/Saves` sets, failures into `failedDeletes/Reorders/Saves`. After all loops, the state reset partial-clears (succeeded IDs only): succeeded entries get their overrides baked into HTML and removed from dirty/new/htmlEdited; failed entries keep their overrides + dirty bit + newEntryId marker, so the next Save attempt retries exactly those. Throws a single summary error at the end with `Saved N changes; M failed (<first message>). Click Save again to retry.` so the existing `toast.error` path surfaces the partial result without losing visibility. Undo history is preserved on partial-fail (cleared only on full success). |
 | B8 | `track-layout.ts` — `assignChannelGroups` user_driven branch | ❌ | Greedy interval scheduling assumes `inTime/exitTime`; user-driven entries overlap on track 0. |
-| B9 | `TimelineScrubber` scrub math | ❌ | `t/totalDuration*100` with no clamp. |
+| B9 | `TimelineScrubber.tsx` — scrub math | ✅ | Several render paths computed `${(t / totalDuration) * 100}%` inline without clamping or guarding against `totalDuration === 0`, producing `NaN%` or `>100%` widths. Fix: all sites now route through the existing `timeToPercent(t)` helper (already used by ticks/playhead/gaps) which guards `totalDuration <= 0`, clamps to `[0, 100]`, and `.toFixed(4)`s — covering sound-cue markers, shot/sentence regions, caption phrases, gap fills, and entry blocks. |
 | B10 | `html-text-editor.ts` — transform merge regex | ❌ | `/translate\([^)]*\)\s*/g` strips translates inside `matrix(...)`. |
 | B11 | `PropertiesPanel` Code tab — Tab key handling | ❌ | Cursor restoration inside `requestAnimationFrame` loses position during typing debounce. |
 | B12 | `VideoEditorPage` render polling | ⚠ | Sticky via `localStorage`; fixed 10 s × 180 polls with silent retry — needs exponential backoff + visible "last check failed" status. |
@@ -154,7 +154,7 @@ Legend: ✅ fixed · ⚠ partial · ❌ open · ➕ new since the last review.
 | B14 | `AudioTracksPanel` ↔ `audio-track-api.ts` | ❌ | Hand-written camelCase ↔ snake_case mapping. |
 | B16 | `EditorCanvas` iframe key per entry | ❌ | Every prop change re-mounts the iframe (browser can't diff `srcDoc`). |
 | ➕ B17 | `AddShotDialog` insert with overlap | ❌ | "At current time" with `duration: 5` may overlap the existing shot. No ripple, no warning. |
-| ➕ B18 | `AddShotDialog` "At end" stacking | ❌ | Repeated "Add at end" clicks after a save stack new end-shots silently. |
+| ➕ B18 | `AddShotDialog.tsx` — "At end" stacking | ✅ | Repeated "Add at end" clicks used to silently stack new blanks. Fix: the dialog now detects when the last entry is an unsaved blank from this session (in `newEntryIds` AND `entry.html === BLANK_SHOT_HTML`) and, when the user clicks Add Shot at the "end" position, jumps to that existing blank instead of creating another. UI: the preview banner is replaced with an amber "You already added an empty shot at the end. Clicking **Open existing** will jump to it instead of creating another" hint, and the primary button relabels to "Open existing". Editing the blank's HTML disqualifies it (the comparison fails) and reverts to normal Add-Shot behaviour. |
 | ➕ B19 | Extending `total_duration` is silent | ❌ | `addEntry` bumps `total_duration` past existing narration; bg music isn't extended (no `loop` flag on `AudioTrack`); captions don't cover the tail. |
 | ➕ B20 | Overlays-tab Height defaulted to a fixed square | ✅ | Image/video overlays now default to width-only / natural aspect. Explicit Height slider with Auto/Set toggle. |
 | ➕ B21 | Layers tab — image/video had URL field only | ✅ | URL input + Upload button (re-uses `useFileUpload`). |
@@ -601,27 +601,27 @@ Done ✅ — strikethrough left in for context:
 11. ~~Auto-follow selection on playhead.~~ (§6.7 ✅, B40 ✅)
 12. ~~Layers-tree content previews.~~ (§6.8 ✅, B41 ✅)
 13. ~~Collapse Layers (Elements) and Overlays into one tab with chips — inspector routes by overlay-ness, Add-Overlay toolbar on Elements, chip filters.~~ (§6.9 ✅, B23 ✅)
+14. ~~Stop Add-Shot stacking at end — dialog detects existing unsaved end-blank and opens it instead.~~ (B18 ✅)
+15. ~~Correctness sweep round 1 — dirty-tracking baseline, partial-save retry, scrubber clamp.~~ (B6 ✅, B7 ✅, B9 ✅)
 
 Now:
 
-14. **Stop Add-Shot stacking at end** (B18). When an unsaved end-blank
-    already exists, the dialog should select it instead of creating another.
+16. **Correctness sweep round 2** — B8 (user-driven track layout overlap on
+    track 0), B10 (matrix-safe transform merge — `/translate\([^)]*\)\s*/g`
+    strips translates inside `matrix(...)`).
 
 Next, pick from:
 
-15. **Correctness sweep** — B6 (dirty baseline), B7 (per-entry save status
-    + retry), B8 (user-driven track layout), B9 (scrubber clamp), B10
-    (matrix-safe transform merge). Independent and small.
-16. **Audio policy on extend** (B19) — first-class prompt when
+17. **Audio policy on extend** (B19) — first-class prompt when
     `total_duration` would grow: silent / auto-narrate / loop bg music /
     stretch bg music. Adds `loop` flag to `AudioTrack`. Prereq for any
     "add AI shot at end" flow and for audio-on-timeline drag.
-17. **Captions track** — see [CAPTIONS_TRACK_PLAN.md](./CAPTIONS_TRACK_PLAN.md).
-18. **Move-mode Phase 2** — Slide and Swap; multi-select; sentence-boundary
-    snap targets; audio drag on timeline (gated on §16).
-19. **Perf** — B13 (waveform off main thread), B16 (debounce iframe
+18. **Captions track** — see [CAPTIONS_TRACK_PLAN.md](./CAPTIONS_TRACK_PLAN.md).
+19. **Move-mode Phase 2** — Slide and Swap; multi-select; sentence-boundary
+    snap targets; audio drag on timeline (gated on §17).
+20. **Perf** — B13 (waveform off main thread), B16 (debounce iframe
     re-renders or shadow-root renderer; B37 covered the style-only path).
-20. **Polish** — screen-space selection ring, portrait layout branch,
+21. **Polish** — screen-space selection ring, portrait layout branch,
     keyframed transforms, overlay timing UI (§4.3), large-HTML hard cap.
 
 ---

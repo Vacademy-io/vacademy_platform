@@ -107,10 +107,10 @@ export function AttendanceWidget() {
   return (
     <Card
       className={cn(
-        "group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md hover:border-primary/20 h-full",
+        "attendance-widget-card group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md hover:border-primary/20 h-full",
         "[.ui-vibrant_&]:bg-emerald-50/50 [.ui-vibrant_&]:border-emerald-200",
         "dark:[.ui-vibrant_&]:bg-emerald-950/20 dark:[.ui-vibrant_&]:border-emerald-800/50",
-        // Play Styles — bg, shadow, border driven by play-theme.css token rules
+        // Play Styles — bg, shadow, border driven by .attendance-widget-card in play-theme.css
         "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
         "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
       )}
@@ -120,7 +120,10 @@ export function AttendanceWidget() {
       <div className="hidden [.ui-play_&]:!flex order-2 md:order-none w-28 md:w-full items-center justify-center bg-white/10 p-2 md:px-6 md:pt-4 md:pb-2 flex-shrink-0 md:flex-shrink">
         <playIllustrations.AttendanceHappy className="h-24 md:h-28 w-auto text-white" />
       </div>
-      <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
+      <div className={cn(
+        "[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0",
+        isEmpty && "[.ui-play_&]:flex [.ui-play_&]:flex-col [.ui-play_&]:justify-center"
+      )}>
       <CardHeader className="pb-2 px-4 pt-4 [.ui-play_&]:pt-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

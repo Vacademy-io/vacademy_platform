@@ -188,34 +188,21 @@
     color: rgba(255, 255, 255, 0.8) !important;
   }
 
-  /* Per-category stat card SOLID colors (shadow handled by .stat-card-inner) */
-  .ui-play .dashboard-container .stat-card--courses .stat-card-inner {
+  /* Per-category stat cards — semantic classes added to dashboard JSX.
+     Shadow inherited from .ui-play .card; bg-color set per category. */
+  .ui-play .stat-card-courses {
     background-color: hsl(var(--play-blue)) !important;
+    border-color: transparent !important;
   }
 
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner {
-    background-color: hsl(var(--play-gold)) !important;
-    color: hsl(var(--play-dark)) !important;
-  }
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-900,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-800,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-700,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-600,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-foreground,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-muted-foreground {
-    color: hsl(var(--play-dark)) !important;
-  }
-
-  .ui-play .dashboard-container .stat-card--evaluations .stat-card-inner {
-    background-color: hsl(var(--play-purple)) !important;
-  }
-
-  .ui-play .dashboard-container .stat-card--attendance .stat-card-inner {
-    background-color: hsl(var(--play-green)) !important;
-  }
-
-  .ui-play .dashboard-container .stat-card--live .stat-card-inner {
+  .ui-play .stat-card-live {
     background-color: hsl(var(--play-pink)) !important;
+    border-color: transparent !important;
+  }
+
+  .ui-play .stat-card-assessments {
+    background-color: hsl(var(--play-purple)) !important;
+    border-color: transparent !important;
   }
 
   /* Stat card icon: white circle on solid bg */
@@ -242,10 +229,12 @@
   }
 
   /* ── Continue Learning Card ─────────────────────────────────────── */
+  /* No `color: white !important` here — that would cascade into the
+     CTA button and make its text invisible. Per-element [.ui-play_&]:text-white
+     classes in the JSX handle text color where needed. */
   .ui-play .continue-learning-card {
     background-color: hsl(var(--play-blue)) !important;
     border-color: transparent !important;
-    color: white !important;
     border-radius: var(--play-radius-card) !important;
     box-shadow:
       0 1px 2px hsl(var(--play-blue) / 0.18),
@@ -293,12 +282,13 @@
       0 18px 36px -12px hsl(var(--play-blue) / 0.5) !important;
   }
 
-  /* Continue Learning empty state — soft tinted card */
+  /* Continue Learning empty state — green hero. Text color set on
+     individual elements (heading/paragraph) via [.ui-play_&]:text-white
+     so the CTA button can still use its own colors. */
   .ui-play .continue-learning-card-empty {
     background-color: hsl(var(--play-green)) !important;
     border-color: transparent !important;
     border-style: solid !important;
-    color: white !important;
     border-radius: var(--play-radius-card) !important;
     box-shadow:
       0 1px 2px hsl(var(--play-green-deep) / 0.22),
@@ -359,13 +349,13 @@
     background-color: white !important;
   }
 
-  /* Dashboard surface: subtle dot pattern over warm tint so empty
-     space reads as intentional, not missing content. */
+  /* Dashboard surface: subtle dot pattern over a neutral warm tint —
+     stays out of the way so green/blue/pink hero cards can pop. */
   .ui-play .dashboard-container {
-    background-color: hsl(var(--primary-50) / 0.4) !important;
+    background-color: hsl(220 14% 97%) !important; /* warm neutral */
     background-image:
       radial-gradient(circle at 1px 1px,
-        hsl(var(--primary-300) / 0.32) 1px,
+        hsl(220 14% 80% / 0.5) 1px,
         transparent 0);
     background-size: 24px 24px;
     background-position: 0 0;
@@ -384,20 +374,21 @@
   }
 
   /* ── Dashboard Header Typography ────────────────────────────────── */
-  /* Welcome heading: fluid display size, generous tracking — feels like
-     a greeting, not a section title. */
+  /* Welcome heading: fluid display size, dark text — primary brand color
+     reserved for accents (icon, sparkle) so heading reads as friendly,
+     not monotone. */
   .ui-play .dashboard-container h1 {
     font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem) !important;
     font-weight: 900 !important;
     letter-spacing: -0.02em !important;
     line-height: 1.1 !important;
-    color: hsl(var(--primary-500)) !important;
+    color: hsl(220 26% 18%) !important; /* near-black, friendly */
   }
 
   .ui-play .dashboard-container h1 + p {
     font-size: 0.9375rem !important;
-    font-weight: 600 !important;
-    color: hsl(var(--primary-400)) !important;
+    font-weight: 500 !important;
+    color: hsl(220 9% 46%) !important; /* slate-500 — muted */
     margin-top: 0.375rem !important;
   }
 
@@ -762,8 +753,11 @@
      ATTENDANCE PAGE
      ══════════════════════════════════════════════════════════════════ */
 
-  /* Attendance dashboard widget — bright green hero with soft elevation */
-  .ui-play .card:has([class*="ChartBar"]) {
+  /* Attendance dashboard widget — bright green hero with soft elevation.
+     Targets the semantic class added to AttendanceWidget Card (the old
+     :has([class*="ChartBar"]) selector didn't match phosphor's rendered
+     icon classes). */
+  .ui-play .attendance-widget-card {
     background-color: hsl(var(--play-green)) !important;
     border-color: transparent !important;
     border-radius: var(--play-radius-card) !important;
@@ -772,7 +766,7 @@
       0 18px 36px -14px hsl(var(--play-green) / 0.45) !important;
   }
 
-  .ui-play .card:has([class*="ChartBar"]):hover {
+  .ui-play .attendance-widget-card:hover {
     transform: translateY(-2px);
     box-shadow:
       0 2px 4px hsl(var(--play-green-deep) / 0.3),
@@ -780,24 +774,24 @@
   }
 
   /* Attendance dashboard widget: force all text to white on green bg */
-  .ui-play .card:has([class*="ChartBar"]) .text-foreground,
-  .ui-play .card:has([class*="ChartBar"]) .text-2xl,
-  .ui-play .card:has([class*="ChartBar"]) .text-muted-foreground,
-  .ui-play .card:has([class*="ChartBar"]) .text-emerald-600,
-  .ui-play .card:has([class*="ChartBar"]) .text-red-600,
-  .ui-play .card:has([class*="ChartBar"]) .text-orange-500,
-  .ui-play .card:has([class*="ChartBar"]) .text-slate-300,
-  .ui-play .card:has([class*="ChartBar"]) [class*="text-"] {
+  .ui-play .attendance-widget-card .text-foreground,
+  .ui-play .attendance-widget-card .text-2xl,
+  .ui-play .attendance-widget-card .text-muted-foreground,
+  .ui-play .attendance-widget-card .text-emerald-600,
+  .ui-play .attendance-widget-card .text-red-600,
+  .ui-play .attendance-widget-card .text-orange-500,
+  .ui-play .attendance-widget-card .text-slate-300,
+  .ui-play .attendance-widget-card [class*="text-"] {
     color: white !important;
   }
 
   /* Attendance period buttons: white pill on green */
-  .ui-play .card:has([class*="ChartBar"]) button {
+  .ui-play .attendance-widget-card button {
     color: rgba(255, 255, 255, 0.7) !important;
     background: transparent !important;
   }
 
-  .ui-play .card:has([class*="ChartBar"]) button[class*="bg-emerald"] {
+  .ui-play .attendance-widget-card button[class*="bg-emerald"] {
     color: white !important;
     background: rgba(255, 255, 255, 0.2) !important;
     border-radius: var(--play-radius-badge) !important;
@@ -806,40 +800,40 @@
   /* Attendance weekly day dots: uniform translucent white pills so
      red/slate variants don't clash with the green hero bg. Status is
      still readable via the glyph (✓ ✕ ? • –). */
-  .ui-play .card:has([class*="ChartBar"]) .bg-emerald-100,
-  .ui-play .card:has([class*="ChartBar"]) .bg-red-100,
-  .ui-play .card:has([class*="ChartBar"]) .bg-slate-100,
-  .ui-play .card:has([class*="ChartBar"]) .bg-slate-50 {
+  .ui-play .attendance-widget-card .bg-emerald-100,
+  .ui-play .attendance-widget-card .bg-red-100,
+  .ui-play .attendance-widget-card .bg-slate-100,
+  .ui-play .attendance-widget-card .bg-slate-50 {
     background-color: rgba(255, 255, 255, 0.22) !important;
   }
 
-  .ui-play .card:has([class*="ChartBar"]) [class*="ring-emerald"],
-  .ui-play .card:has([class*="ChartBar"]) [class*="ring-red"],
-  .ui-play .card:has([class*="ChartBar"]) [class*="ring-slate"] {
+  .ui-play .attendance-widget-card [class*="ring-emerald"],
+  .ui-play .attendance-widget-card [class*="ring-red"],
+  .ui-play .attendance-widget-card [class*="ring-slate"] {
     --tw-ring-color: rgba(255, 255, 255, 0.35) !important;
   }
 
-  .ui-play .card:has([class*="ChartBar"]) .text-emerald-700,
-  .ui-play .card:has([class*="ChartBar"]) .text-red-700,
-  .ui-play .card:has([class*="ChartBar"]) .text-slate-400,
-  .ui-play .card:has([class*="ChartBar"]) .text-slate-300 {
+  .ui-play .attendance-widget-card .text-emerald-700,
+  .ui-play .attendance-widget-card .text-red-700,
+  .ui-play .attendance-widget-card .text-slate-400,
+  .ui-play .attendance-widget-card .text-slate-300 {
     color: white !important;
   }
 
   /* Inner icon container (ChartBar pill at top): more visible */
-  .ui-play .card:has([class*="ChartBar"]) .bg-emerald-100.p-1\.5 {
+  .ui-play .attendance-widget-card .bg-emerald-100.p-1\.5 {
     background-color: rgba(255, 255, 255, 0.28) !important;
   }
 
   /* Progress bar inside attendance card: thicker, white-tinted track */
-  .ui-play .card:has([class*="ChartBar"]) .bg-slate-100.rounded-full {
+  .ui-play .attendance-widget-card .bg-slate-100.rounded-full {
     background-color: rgba(255, 255, 255, 0.2) !important;
     height: 0.5rem !important;
   }
 
-  .ui-play .card:has([class*="ChartBar"]) [class*="bg-emerald-500"],
-  .ui-play .card:has([class*="ChartBar"]) [class*="bg-amber-500"],
-  .ui-play .card:has([class*="ChartBar"]) [class*="bg-red-500"] {
+  .ui-play .attendance-widget-card [class*="bg-emerald-500"],
+  .ui-play .attendance-widget-card [class*="bg-amber-500"],
+  .ui-play .attendance-widget-card [class*="bg-red-500"] {
     background-color: white !important;
   }
 

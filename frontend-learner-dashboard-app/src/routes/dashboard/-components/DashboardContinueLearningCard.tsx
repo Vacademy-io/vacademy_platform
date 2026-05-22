@@ -38,8 +38,8 @@ export const ContinueLearningCard = ({
                             more content to continue learning.
                         </p>
                     </div>
-                    <Button variant="outline" className="gap-2 [.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:bg-white [.ui-play_&]:text-primary-600 [.ui-play_&]:border-white">
-                        <BookOpen weight="duotone" size={16} />
+                    <Button variant="outline" className="gap-2 [.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:!bg-white [.ui-play_&]:!text-primary-600 [.ui-play_&]:!border-white [.ui-play_&]:hover:!bg-white/90">
+                        <BookOpen weight="fill" size={16} />
                         Explore Content
                     </Button>
                 </CardContent>
@@ -134,7 +134,7 @@ export const ContinueLearningCard = ({
                     className={cn(
                         "w-full gap-2 font-semibold",
                         "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-lg [.ui-vibrant_&]:shadow-primary/20",
-                        "[.ui-play_&]:bg-white [.ui-play_&]:text-primary-600 [.ui-play_&]:hover:bg-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide"
+                        "[.ui-play_&]:!bg-white [.ui-play_&]:!text-primary-600 [.ui-play_&]:hover:!bg-white/90 [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide"
                     )}
                 >
                     <Play weight="fill" size={16} />

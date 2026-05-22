@@ -423,7 +423,6 @@ export function TriggerWorkflowDialog({
                                         onClick={() => {
                                             setChannel('EMAIL');
                                             setSelectedTemplate('');
-                                            setTemplateMode('select');
                                         }}
                                         icon={<EnvelopeSimple size={18} />}
                                         title="Email"
@@ -433,7 +432,6 @@ export function TriggerWorkflowDialog({
                                         onClick={() => {
                                             setChannel('WHATSAPP');
                                             setSelectedTemplate('');
-                                            setTemplateMode('select');
                                         }}
                                         icon={<WhatsappLogo size={18} />}
                                         title="WhatsApp"

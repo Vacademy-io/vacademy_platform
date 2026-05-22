@@ -1237,10 +1237,8 @@ export function TimelineScrubber() {
                             }}
                         >
                             {captionPhrases.map((p, i) => {
-                                const left = `${(p.startTime / totalDuration) * 100}%`;
-                                const width = `${
-                                    ((p.endTime - p.startTime) / totalDuration) * 100
-                                }%`;
+                                const left = timeToPercent(p.startTime);
+                                const width = timeToPercent(p.endTime - p.startTime);
                                 return (
                                     <button
                                         key={`cap-${i}`}
@@ -1327,7 +1325,7 @@ export function TimelineScrubber() {
                         const top = baseY + CHANNEL_SEP_H + 2;
                         const height = TRACK_H - 4;
                         const left = timeToPercent(gap.start);
-                        const width = `${(((gap.end - gap.start) / totalDuration) * 100).toFixed(4)}%`;
+                        const width = timeToPercent(gap.end - gap.start);
                         return (
                             <button
                                 key={gap.key}
@@ -1404,11 +1402,11 @@ export function TimelineScrubber() {
 
                                         const safeEnd = Math.min(end, totalDuration);
                                         left = timeToPercent(start);
-                                        width = `${(((safeEnd - start) / totalDuration) * 100).toFixed(4)}%`;
+                                        width = timeToPercent(safeEnd - start);
                                     } else {
                                         const idx = entries.indexOf(entry);
                                         left = timeToPercent(idx);
-                                        width = `${((1 / totalDuration) * 100).toFixed(4)}%`;
+                                        width = timeToPercent(1);
                                     }
 
                                     const top =

@@ -1,0 +1,172 @@
+/**
+ * Sample invoice template generator (the "sparkle" action).
+ *
+ * Produces a ready-to-edit INVOICE (PDF layout) or INVOICE_EMAIL template that is
+ * saved EXACTLY the way the easy-email editor saves it:
+ *   - `mjml`    = JSON.stringify(easy-email IBlockData)  → re-opens in the editor
+ *   - `content` = MJML compiled to HTML                  → used for PDF/email render
+ *
+ * easy-email-core + mjml-browser are heavy, so this module is dynamically
+ * imported only when the sparkle is clicked (keeps the settings bundle small).
+ */
+import { BlockManager, BasicType, JsonToMjml } from 'easy-email-core';
+import type { IBlockData } from 'easy-email-core';
+import mjml2html from 'mjml-browser';
+
+export type SampleTemplateType = 'INVOICE' | 'INVOICE_EMAIL';
+
+export interface SampleTemplate {
+    name: string;
+    subject: string;
+    previewText: string;
+    /** JSON string of the easy-email IBlockData (stored in settingJson.mjml). */
+    mjml: string;
+    /** MJML compiled to HTML (stored in `content`). */
+    content: string;
+    variables: string[];
+}
+
+// ─── easy-email block helpers ─────────────────────────────────────────────────
+
+const text = (html: string): IBlockData =>
+    BlockManager.getBlockByType(BasicType.TEXT)!.create({
+        data: { value: { content: html } },
+        attributes: { padding: '4px 0px', 'line-height': '1.6' },
+    });
+
+const section = (children: IBlockData[]): IBlockData =>
+    BlockManager.getBlockByType(BasicType.SECTION)!.create({
+        attributes: { padding: '8px 24px' },
+        children: [
+            BlockManager.getBlockByType(BasicType.COLUMN)!.create({ children }),
+        ],
+    });
+
+const page = (children: IBlockData[]): IBlockData =>
+    BlockManager.getBlockByType(BasicType.PAGE)!.create({ children });
+
+/** Compile an easy-email page block to HTML, mirroring EmailBuilder.onSubmit. */
+const compile = (content: IBlockData): string => {
+    const mjml = JsonToMjml({ data: content, mode: 'production', context: content });
+    const { html } = mjml2html(mjml);
+    return html;
+};
+
+// ─── Sample content ────────────────────────────────────────────────────────────
+
+const PDF_VARIABLES = [
+    '{{invoice_number}}', '{{invoice_date}}', '{{due_date}}',
+    '{{institute_name}}', '{{institute_address}}', '{{institute_contact}}', '{{institute_logo}}',
+    '{{user_name}}', '{{user_email}}', '{{user_address}}',
+    '{{line_items}}', '{{subtotal}}', '{{discount_amount}}', '{{tax_amount}}', '{{total_amount}}',
+    '{{currency_symbol}}', '{{tax_components}}', '{{tax_registration_number}}', '{{hsn_code}}',
+    '{{country}}', '{{tax_label}}', '{{tax_rate}}', '{{terms_and_conditions}}',
+];
+
+const EMAIL_VARIABLES = [
+    '{{user_name}}', '{{learner_name}}', '{{invoice_number}}', '{{total_amount}}',
+    '{{invoice_pdf_link}}', '{{institute_name}}',
+];
+
+const buildInvoicePdfSample = (): SampleTemplate => {
+    const content = page([
+        // Header: logo + institute + TAX INVOICE meta
+        section([
+            text('{{institute_logo}}'),
+            text(
+                '<h2 style="margin:0;color:#124a34;">{{institute_name}}</h2>' +
+                '<div style="font-size:12px;color:#555;">{{institute_address}}<br/>{{institute_contact}}</div>'
+            ),
+            text(
+                '<h1 style="margin:8px 0 0;color:#124a34;letter-spacing:1px;">TAX INVOICE</h1>' +
+                '<div style="font-size:13px;color:#333;">Invoice No: <strong>{{invoice_number}}</strong><br/>' +
+                'Date: {{invoice_date}} &nbsp;&nbsp; Due: {{due_date}}</div>'
+            ),
+        ]),
+        // Supplier tax identity
+        section([
+            text(
+                '<div style="font-size:12px;color:#333;">' +
+                'Country: {{country}} &nbsp;|&nbsp; GSTIN/Tax Reg. No: <strong>{{tax_registration_number}}</strong>' +
+                ' &nbsp;|&nbsp; HSN/SAC: <strong>{{hsn_code}}</strong></div>'
+            ),
+        ]),
+        // Bill to
+        section([
+            text(
+                '<div style="font-size:12px;color:#888;text-transform:uppercase;">Bill To</div>' +
+                '<div style="font-size:13px;color:#222;"><strong>{{user_name}}</strong><br/>' +
+                '{{user_email}}<br/>{{user_address}}</div>'
+            ),
+        ]),
+        // Line items (backend injects an HTML table here)
+        section([text('{{line_items}}')]),
+        // Totals
+        section([
+            text(
+                '<div style="font-size:13px;color:#222;text-align:right;">' +
+                'Subtotal: {{subtotal}}<br/>' +
+                'Discount: {{discount_amount}}<br/>' +
+                '{{tax_label}}: {{tax_amount}}<br/>' +
+                '<strong style="font-size:15px;color:#124a34;">Total: {{total_amount}}</strong></div>'
+            ),
+        ]),
+        // Tax components breakdown (backend injects label / rate / amount rows)
+        section([
+            text(
+                '<div style="font-size:12px;color:#888;text-transform:uppercase;">Tax Breakdown</div>' +
+                '{{tax_components}}'
+            ),
+        ]),
+        // Terms + footer
+        section([
+            text('{{terms_and_conditions}}'),
+            text(
+                '<div style="font-size:12px;color:#666;text-align:center;margin-top:8px;">' +
+                'Thank you for choosing {{institute_name}}.</div>'
+            ),
+        ]),
+    ]);
+
+    return {
+        name: 'Sample Invoice (PDF Layout)',
+        subject: 'Invoice {{invoice_number}}',
+        previewText: '',
+        mjml: JSON.stringify(content),
+        content: compile(content),
+        variables: PDF_VARIABLES,
+    };
+};
+
+const buildInvoiceEmailSample = (): SampleTemplate => {
+    // Mirrors InvoiceService.buildDefaultInvoiceEmailBody, with merge variables left
+    // unresolved so the backend fills them at send time.
+    const content = page([
+        section([
+            text('<p style="font-size:14px;color:#222;">Dear {{user_name}},</p>'),
+            text(
+                '<p style="font-size:14px;color:#222;">Please find your invoice ' +
+                '<strong>{{invoice_number}}</strong> for an amount of <strong>{{total_amount}}</strong>.</p>'
+            ),
+            text(
+                '<p style="font-size:14px;color:#222;">Download your invoice: ' +
+                '<a href="{{invoice_pdf_link}}" style="color:#124a34;">{{invoice_pdf_link}}</a></p>'
+            ),
+            text(
+                '<p style="font-size:14px;color:#222;">Thank you,<br/>{{institute_name}}</p>'
+            ),
+        ]),
+    ]);
+
+    return {
+        name: 'Sample Invoice Email',
+        subject: 'Your Invoice {{invoice_number}}',
+        previewText: 'Your invoice {{invoice_number}} is ready',
+        mjml: JSON.stringify(content),
+        content: compile(content),
+        variables: EMAIL_VARIABLES,
+    };
+};
+
+export const buildSampleInvoiceTemplate = (type: SampleTemplateType): SampleTemplate =>
+    type === 'INVOICE' ? buildInvoicePdfSample() : buildInvoiceEmailSample();

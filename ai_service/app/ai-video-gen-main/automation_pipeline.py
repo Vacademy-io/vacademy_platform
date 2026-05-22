@@ -13231,6 +13231,8 @@ class VideoGenerationPipeline:
                 width=self.video_width,
                 height=self.video_height,
                 reference_image_url=face_image_url,
+                # Host shot — needs identity preservation; route to Seedream 4.5.
+                model_override="bytedance-seed/seedream-4.5",
             )
         except Exception as e:
             return _fail_all(f"Seedream raised: {e}", error_stage="seedream")
@@ -14206,6 +14208,10 @@ class VideoGenerationPipeline:
                     width=_img_w,
                     height=_img_h,
                     reference_image_url=face_image_url,
+                    # Host shots need strict identity preservation (ethnicity,
+                    # facial structure). Recraft i2i drifts the face. Seedream
+                    # 4.5 preserves identity reliably in i2i mode.
+                    model_override="bytedance-seed/seedream-4.5",
                 )
                 if not img_bytes:
                     raise RuntimeError("Seedream returned no bytes for host image")
@@ -22360,8 +22366,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         height: Optional[int] = None,
         reference_image_url: Optional[str] = None,
         is_cutout: bool = False,
+        model_override: Optional[str] = None,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
-        """Generate image via OpenRouter (recraft/recraft-v4.1).
+        """Generate image via OpenRouter. Default model is recraft/recraft-v4.1.
+
+        `model_override` lets callers force a different OpenRouter image model.
+        Host-avatar shots use `bytedance-seed/seedream-4.5` because Recraft's
+        i2i path doesn't preserve identity (ethnicity/face drift). Seedream
+        4.5 image-to-image keeps the reference face stable across shots.
 
         `is_cutout=True` overrides aspect to 1:1 (logos / isolated subjects
         are naturally square; forcing 9:16 portrait wastes most of the
@@ -22458,8 +22470,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         else:
             content = full_prompt
 
+        _image_model = model_override or "recraft/recraft-v4.1"
         payload = {
-            "model": "recraft/recraft-v4.1",
+            "model": _image_model,
             "messages": [{"role": "user", "content": content}],
             "modalities": ["image"],
             # Structured aspect-ratio param per OpenRouter image-gen docs:

@@ -1,7 +1,16 @@
 import { type ReactNode } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Envelope, Phone, Clock, Plus, UserPlus, ArrowsClockwise } from '@phosphor-icons/react';
+import {
+    Envelope,
+    Phone,
+    Clock,
+    Plus,
+    UserPlus,
+    ArrowsClockwise,
+    NotePencil,
+} from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 import type { LatestNoteEvent } from '@/hooks/use-latest-notes-batch';
@@ -93,9 +102,37 @@ function ActivityCell({ summary, onAdd }: { summary?: LeadNotesSummary; onAdd: (
     const text = body || latest.title;
     return (
         <div className="min-w-0">
-            <p className="line-clamp-2 text-sm text-neutral-700" title={text}>
-                {text}
-            </p>
+            <Popover>
+                <PopoverTrigger asChild>
+                    <button
+                        type="button"
+                        onClick={(e) => e.stopPropagation()}
+                        className="group/note block w-full rounded text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                        title="Click to view the full note"
+                    >
+                        <p className="line-clamp-2 text-sm text-neutral-700 group-hover/note:text-primary-700">
+                            {text}
+                        </p>
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent
+                    align="start"
+                    className="w-80 max-w-md space-y-2"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        <NotePencil weight="fill" className="size-3" />
+                        {latest.title || 'Note'}
+                    </div>
+                    <p className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-sm text-neutral-800">
+                        {text}
+                    </p>
+                    <p className="border-t border-neutral-100 pt-2 text-xs text-neutral-400">
+                        {relativeTime(latest.created_at)}
+                        {latest.actor_name ? ` · ${latest.actor_name}` : ''}
+                    </p>
+                </PopoverContent>
+            </Popover>
             <div className="mt-0.5 flex items-center justify-between gap-2">
                 <span className="truncate text-xs text-neutral-400">
                     {relativeTime(latest.created_at)}

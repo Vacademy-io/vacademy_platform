@@ -34,6 +34,10 @@ public class CounselorPoolDTO {
     @JsonProperty("assignment_mode")
     private String assignmentMode;
 
+    /** PER_DAY | SAME_HOURS_ALL_DAYS — drives which schedule editor the UI renders. */
+    @JsonProperty("schedule_pattern")
+    private String schedulePattern;
+
     @JsonProperty("created_by")
     private String createdBy;
 

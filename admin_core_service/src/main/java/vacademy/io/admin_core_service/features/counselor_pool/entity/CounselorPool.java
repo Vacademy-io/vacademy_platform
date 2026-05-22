@@ -36,6 +36,15 @@ public class CounselorPool {
     @Column(name = "assignment_mode", nullable = false, length = 50)
     private String assignmentMode; // AssignmentMode enum value
 
+    /**
+     * How the admin authored the weekly schedule (TIME_BASED pools only).
+     * Drives which editor the UI renders when the pool is reopened. NULL
+     * means the admin hasn't picked yet — UI shows the empty-state chooser.
+     * Routing engine ignores this field — it reads flat shift rows.
+     */
+    @Column(name = "schedule_pattern", length = 50)
+    private String schedulePattern; // SchedulePattern enum value, or null
+
     @Column(name = "created_by")
     private String createdBy;
 

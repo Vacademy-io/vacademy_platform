@@ -99,8 +99,23 @@ const buildInvoicePdfSample = (): SampleTemplate => {
                 '{{user_email}}<br/>{{user_address}}</div>'
             ),
         ]),
-        // Line items (backend injects an HTML table here)
-        section([text('{{line_items}}')]),
+        // Line items: {{line_items}} is replaced with <tr> rows, so it MUST sit inside
+        // a <table><tbody> (orphan <tr> rows are dropped by the PDF renderer).
+        section([
+            text(
+                '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+                    '<thead>' +
+                    '<tr style="background:#124a34;color:#ffffff;">' +
+                    '<th style="padding:8px;text-align:left;border:1px solid #e0e0e0;">Item</th>' +
+                    '<th style="padding:8px;text-align:center;border:1px solid #e0e0e0;">Qty</th>' +
+                    '<th style="padding:8px;text-align:right;border:1px solid #e0e0e0;">Unit Price</th>' +
+                    '<th style="padding:8px;text-align:right;border:1px solid #e0e0e0;">Amount</th>' +
+                    '</tr>' +
+                    '</thead>' +
+                    '<tbody>{{line_items}}</tbody>' +
+                    '</table>'
+            ),
+        ]),
         // Totals
         section([
             text(

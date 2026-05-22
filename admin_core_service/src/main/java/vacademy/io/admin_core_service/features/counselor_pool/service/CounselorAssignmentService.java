@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPool;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
@@ -17,6 +19,7 @@ import vacademy.io.admin_core_service.features.counselor_pool.repository.Counsel
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolRepository;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolShiftMemberRepository;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolShiftRepository;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -60,6 +63,8 @@ public class CounselorAssignmentService {
     private final CounselorPoolMemberRepository poolMemberRepository;
     private final CounselorPoolShiftRepository shiftRepository;
     private final CounselorPoolShiftMemberRepository shiftMemberRepository;
+    private final AudienceRepository audienceRepository;        // for resolving campaign name in alert text
+    private final NotificationService notificationService;      // existing helper that wraps notification_service HTTP call
 
     /**
      * Pick a counselor for a lead that just arrived on the given audience.
@@ -100,6 +105,7 @@ public class CounselorAssignmentService {
         List<CounselorPoolMember> orderedMembers = buildCandidateMembers(pool, audienceId, mode);
         if (orderedMembers.isEmpty()) {
             log.info("No candidate counselors for audience={} in pool={}", audienceId, poolId);
+            sendUnassignedAlertToPoolAdmin(pool, audienceId);
             return Optional.empty();
         }
 
@@ -107,7 +113,7 @@ public class CounselorAssignmentService {
         CounselorPoolAudience locked = poolAudienceRepository.findByAudienceIdForUpdate(audienceId)
                 .orElse(null);
         if (locked == null) {
-            // Race: audience was removed between resolution and lock. Bail.
+            // Race: audience was removed between resolution and lock. Bail (transient — no alert).
             return Optional.empty();
         }
 
@@ -119,6 +125,7 @@ public class CounselorAssignmentService {
         ResolvedAssignment resolved = resolveWithBackup(picked, orderedMembers, locked.getLastAssignedCounselorId());
         if (resolved == null) {
             log.info("All candidates inactive (no usable backup) for audience={} pool={}", audienceId, poolId);
+            sendUnassignedAlertToPoolAdmin(pool, audienceId);
             return Optional.empty();
         }
 
@@ -129,7 +136,84 @@ public class CounselorAssignmentService {
                 resolved.pickedOriginalUserId,
                 new Timestamp(System.currentTimeMillis()));
 
+        // Step 8: bell-icon notification to the assigned counselor.
+        sendNewLeadNotificationToCounsellor(pool, audienceId, resolved.resolvedUserId);
+
         return Optional.of(resolved.resolvedUserId);
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // System alert dispatch (best-effort; failures don't break assignment)
+    // ────────────────────────────────────────────────────────────────
+
+    /** Bell-icon notification for a counselor who just got a new lead. */
+    private void sendNewLeadNotificationToCounsellor(CounselorPool pool, String audienceId, String counselorUserId) {
+        if (counselorUserId == null || counselorUserId.isBlank()) {
+            return;
+        }
+        String campaignName = resolveCampaignName(audienceId);
+        try {
+            notificationService.createSystemAlertAnnouncement(
+                    pool.getInstituteId(),
+                    List.of(counselorUserId),
+                    "New lead assigned",
+                    "You have a new lead from campaign \"" + campaignName + "\".",
+                    "system",
+                    "System",
+                    "ADMIN",
+                    Map.of(
+                            "priority", 2,
+                            "isDismissible", true,
+                            "showBadge", true,
+                            "isActive", true
+                    )
+            );
+        } catch (Exception e) {
+            log.warn("Failed to send new-lead notification to counselor={} for audience={}: {}",
+                    counselorUserId, audienceId, e.getMessage());
+        }
+    }
+
+    /**
+     * Alert the pool's creator that a lead which SHOULD have been auto-assigned
+     * (mode != MANUAL) could not be routed. Lead is unassigned; admin needs to
+     * either fix counselor configuration or assign manually.
+     */
+    private void sendUnassignedAlertToPoolAdmin(CounselorPool pool, String audienceId) {
+        String adminUserId = pool.getCreatedBy();
+        if (adminUserId == null || adminUserId.isBlank()) {
+            log.warn("Pool {} has no created_by; cannot route unassigned-lead alert", pool.getId());
+            return;
+        }
+        String campaignName = resolveCampaignName(audienceId);
+        try {
+            notificationService.createSystemAlertAnnouncement(
+                    pool.getInstituteId(),
+                    List.of(adminUserId),
+                    "Lead could not be auto-assigned",
+                    "A lead in pool \"" + pool.getName() + "\" (campaign: " + campaignName + ") could not be auto-assigned. "
+                            + "Either all counselors are inactive, or the audience has no members. Please assign manually.",
+                    "system",
+                    "System",
+                    "ADMIN",
+                    Map.of(
+                            "priority", 3,
+                            "isDismissible", true,
+                            "showBadge", true,
+                            "isActive", true
+                    )
+            );
+        } catch (Exception e) {
+            log.warn("Failed to send unassigned-lead alert to admin={} for pool={}: {}",
+                    adminUserId, pool.getId(), e.getMessage());
+        }
+    }
+
+    private String resolveCampaignName(String audienceId) {
+        return audienceRepository.findById(audienceId)
+                .map(Audience::getCampaignName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse("Untitled campaign");
     }
 
     // ────────────────────────────────────────────────────────────────

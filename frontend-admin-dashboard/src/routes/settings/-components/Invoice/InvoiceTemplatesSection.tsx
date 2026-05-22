@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Loader2, Plus, Trash2, Edit, Eye, FileText, Mail, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, Trash2, Edit, Eye, FileText, Mail, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import {
     getMessageTemplatesByType,
     getMessageTemplate,
     deleteMessageTemplate,
+    createMessageTemplate,
 } from '@/services/message-template-service';
 import { TemplatePreview } from '@/components/templates/shared/TemplatePreview';
 import { toast } from 'sonner';
@@ -58,6 +59,7 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
     const [previewTemplate, setPreviewTemplate] = useState<MessageTemplate | null>(null);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const loadTemplates = async () => {
         setIsLoading(true);
@@ -86,6 +88,33 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
 
     const handleCreate = () => {
         navigate({ to: '/templates/create', search: { type } });
+    };
+
+    // Sparkle: generate a ready-made sample template (MJML + HTML, saved exactly like
+    // the easy-email editor does) with all invoice variables pre-placed, then open it.
+    const handleGenerateSample = async () => {
+        setIsGenerating(true);
+        try {
+            const { buildSampleInvoiceTemplate } = await import('./sample-invoice-templates');
+            const sample = buildSampleInvoiceTemplate(type);
+            const created = await createMessageTemplate({
+                name: sample.name,
+                type,
+                subject: sample.subject,
+                content: sample.content,
+                variables: sample.variables,
+                templateType: type,
+                mjml: sample.mjml,
+                previewText: sample.previewText,
+            });
+            toast.success('Sample template created — opening editor…');
+            navigate({ to: '/templates/edit/$templateId', params: { templateId: created.id } });
+        } catch (error) {
+            console.error(`Error generating sample ${type} template:`, error);
+            toast.error('Failed to generate sample template. Please try again.');
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const handleEdit = (template: MessageTemplate) => {
@@ -142,10 +171,26 @@ export const InvoiceTemplatesSection: React.FC<InvoiceTemplatesSectionProps> = (
                         </CardTitle>
                         <CardDescription>{meta.description}</CardDescription>
                     </div>
-                    <MyButton buttonType="primary" scale="medium" onClick={handleCreate}>
-                        <Plus className="mr-2 size-4" />
-                        Create Template
-                    </MyButton>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleGenerateSample}
+                            disabled={isGenerating}
+                            title="Generate a sample template with all invoice variables pre-filled"
+                        >
+                            {isGenerating ? (
+                                <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : (
+                                <Sparkles className="mr-2 size-4 text-amber-500" />
+                            )}
+                            {isGenerating ? 'Generating…' : 'Generate sample'}
+                        </Button>
+                        <MyButton buttonType="primary" scale="medium" onClick={handleCreate}>
+                            <Plus className="mr-2 size-4" />
+                            Create Template
+                        </MyButton>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>

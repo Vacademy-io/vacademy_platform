@@ -1,10 +1,10 @@
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { usePaginationState } from '@/hooks/pagination';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useMemo, useEffect } from 'react';
 import { CreateCampaignDialog } from '../create-campaign-dialog/CreateCampaignDialog';
-import { getDateFromUTCString } from '@/constants/helper';
+import { format } from 'date-fns';
 import {
     MagnifyingGlass,
     Plus,
@@ -44,15 +44,37 @@ import {
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'DRAFT';
+const VALID_STATUS: readonly string[] = ['ALL', 'ACTIVE', 'INACTIVE', 'DRAFT'];
 
 const SERVER_FETCH_SIZE = 200;
+const SEARCH_DEBOUNCE_MS = 300;
+const PAGE_SIZE = 6;
 
-// Reusable outline action button on each card (Add Response / API / Embed).
-const CARD_ACTION_BTN =
+// Force-filled primary CTA. The platform <Button>'s `bg-primary` CSS-var was
+// rendering very light, so primary actions looked like outlines — bypass via tokens.
+const PRIMARY_BTN = 'bg-primary-500 text-white shadow-sm hover:bg-primary-600';
+const CARD_PRIMARY_BTN =
+    'h-8 gap-1.5 rounded-md bg-primary-500 px-3 text-xs font-medium text-white shadow-sm hover:bg-primary-600';
+const CARD_OUTLINE_BTN =
     'h-8 gap-1.5 rounded-md border-neutral-200 bg-white px-3 text-xs font-medium text-neutral-700 shadow-sm hover:border-primary-200 hover:bg-primary-50/40 hover:text-primary-700';
+
+// Human date — never show raw ISO to users.
+const formatDate = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy');
+};
+
+const statusDropdownOptions: { label: string; value: StatusFilter }[] = [
+    { label: 'All Status', value: 'ALL' },
+    { label: 'Active', value: 'ACTIVE' },
+    { label: 'Inactive', value: 'INACTIVE' },
+    { label: 'Draft', value: 'DRAFT' },
+];
 
 export const AudienceInvite = () => {
     const [searchQuery, setSearchQuery] = useState('');
+    const [appliedSearch, setAppliedSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [campaignBeingEdited, setCampaignBeingEdited] = useState<CampaignItem | null>(null);
@@ -69,33 +91,63 @@ export const AudienceInvite = () => {
 
     const { page, pageSize, handlePageChange } = usePaginationState({
         initialPage: 0,
-        initialPageSize: 6,
+        initialPageSize: PAGE_SIZE,
     });
 
-    // Reset to page 0 when filter or search changes
+    // Seed state from the URL on mount — refresh-safe deep linking.
     useEffect(() => {
-        if (page !== 0) {
-            handlePageChange(0);
+        const params = new URLSearchParams(window.location.search);
+        const q = params.get('q');
+        const s = params.get('status');
+        const p = params.get('page');
+        if (q) {
+            setSearchQuery(q);
+            setAppliedSearch(q);
         }
-        // we intentionally skip `page` in deps so this only runs when filters change
+        if (s && VALID_STATUS.includes(s)) setStatusFilter(s as StatusFilter);
+        if (p) {
+            const n = parseInt(p, 10);
+            if (!Number.isNaN(n) && n > 0) handlePageChange(n);
+        }
+        // intentionally only on mount
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [handlePageChange, searchQuery, statusFilter]);
+    }, []);
 
-    const statusDropdownOptions = [
-        { label: 'All Status', value: 'ALL' },
-        { label: 'Active', value: 'ACTIVE' },
-        { label: 'Inactive', value: 'INACTIVE' },
-        { label: 'Draft', value: 'DRAFT' },
-    ];
+    // Debounce search input (typing → applied → query key).
+    useEffect(() => {
+        const trimmed = searchQuery.trim();
+        if (trimmed === appliedSearch) return;
+        const timer = window.setTimeout(() => {
+            setAppliedSearch(trimmed);
+            handlePageChange(0);
+        }, SEARCH_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [searchQuery, appliedSearch, handlePageChange]);
 
-    const getStatusDisplayText = (status: string) => {
-        const statusMap: Record<string, string> = {
-            ALL: 'All Status',
-            ACTIVE: 'Active',
-            INACTIVE: 'Inactive',
-            DRAFT: 'Draft',
-        };
-        return statusMap[status.toUpperCase()] || status;
+    // Sync state → URL (replaceState so the back button isn't polluted by typing).
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (appliedSearch) params.set('q', appliedSearch);
+        else params.delete('q');
+        if (statusFilter !== 'ALL') params.set('status', statusFilter);
+        else params.delete('status');
+        if (page > 0) params.set('page', String(page));
+        else params.delete('page');
+        const qs = params.toString();
+        const newUrl = `${window.location.pathname}${qs ? '?' + qs : ''}`;
+        window.history.replaceState(null, '', newUrl);
+    }, [appliedSearch, statusFilter, page]);
+
+    const handleStatusChange = (value: StatusFilter) => {
+        handlePageChange(0);
+        setStatusFilter(value);
+    };
+
+    const handleClearFilters = () => {
+        setSearchQuery('');
+        setAppliedSearch('');
+        setStatusFilter('ALL');
+        handlePageChange(0);
     };
 
     const campaignsPayload = useMemo(
@@ -103,22 +155,21 @@ export const AudienceInvite = () => {
             institute_id: instituteDetails?.id || '',
             page: 0,
             size: SERVER_FETCH_SIZE,
-            campaign_name: searchQuery || undefined,
+            campaign_name: appliedSearch || undefined,
             status: statusFilter !== 'ALL' ? statusFilter : undefined,
             sort_by: 'created_at',
             sort_direction: 'DESC',
         }),
-        [instituteDetails?.id, searchQuery, statusFilter]
+        [instituteDetails?.id, appliedSearch, statusFilter]
     );
 
     const { data: campaignsList, isLoading, isError } = useCampaignsList(campaignsPayload);
 
-    // Filter campaigns to only show ACTIVE, INACTIVE, or DRAFT status
     const filteredCampaigns = useMemo(() => {
         if (!campaignsList?.content) return [];
-        return campaignsList.content.filter((campaign: CampaignItem) => {
-            const normalizedStatus = campaign.status?.trim().toUpperCase();
-            return ['ACTIVE', 'INACTIVE', 'DRAFT'].includes(normalizedStatus);
+        return campaignsList.content.filter((c: CampaignItem) => {
+            const s = c.status?.trim().toUpperCase();
+            return ['ACTIVE', 'INACTIVE', 'DRAFT'].includes(s);
         });
     }, [campaignsList?.content]);
 
@@ -127,7 +178,6 @@ export const AudienceInvite = () => {
         return Math.max(1, Math.ceil(filteredCampaigns.length / pageSize));
     }, [filteredCampaigns.length, pageSize]);
 
-    // Clamp page if current page exceeds total pages after filtering
     useEffect(() => {
         if (page > 0 && page >= totalFilteredPages) {
             handlePageChange(Math.max(totalFilteredPages - 1, 0));
@@ -139,7 +189,6 @@ export const AudienceInvite = () => {
         return filteredCampaigns.slice(startIndex, startIndex + pageSize);
     }, [filteredCampaigns, page, pageSize]);
 
-    // Status breakdown — drives the hero KPI tiles.
     const statusCounts = useMemo(() => {
         const acc = { active: 0, draft: 0, inactive: 0 };
         for (const c of filteredCampaigns) {
@@ -152,6 +201,37 @@ export const AudienceInvite = () => {
     }, [filteredCampaigns]);
 
     const hasResults = paginatedCampaigns.length > 0;
+    const hasActiveFilter = !!appliedSearch || statusFilter !== 'ALL';
+
+    const kpis: {
+        label: string;
+        value: number;
+        dot: string;
+        filter: StatusFilter;
+        ring: string;
+    }[] = [
+        {
+            label: 'Active',
+            value: statusCounts.active,
+            dot: 'bg-success-500',
+            filter: 'ACTIVE',
+            ring: 'ring-success-500',
+        },
+        {
+            label: 'Draft',
+            value: statusCounts.draft,
+            dot: 'bg-warning-500',
+            filter: 'DRAFT',
+            ring: 'ring-warning-500',
+        },
+        {
+            label: 'Inactive',
+            value: statusCounts.inactive,
+            dot: 'bg-neutral-400',
+            filter: 'INACTIVE',
+            ring: 'ring-neutral-400',
+        },
+    ];
 
     return (
         <div className="flex w-full flex-col gap-6">
@@ -159,7 +239,9 @@ export const AudienceInvite = () => {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                     <h1 className="text-2xl font-semibold leading-tight text-neutral-900">
-                        {filteredCampaigns.length.toLocaleString()} {audienceTermPlural}
+                        {isLoading
+                            ? audienceTermPlural
+                            : `${filteredCampaigns.length.toLocaleString()} ${audienceTermPlural}`}
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500">
                         Manage and share your {audienceTermPlural.toLowerCase()} across campaigns.
@@ -170,40 +252,51 @@ export const AudienceInvite = () => {
                         setCampaignBeingEdited(null);
                         setIsDialogOpen(true);
                     }}
-                    className="w-full shrink-0 sm:w-auto"
+                    className={cn('w-full shrink-0 sm:w-auto', PRIMARY_BTN)}
                 >
                     <Plus className="mr-2 size-4" /> Add {audienceTerm}
                 </Button>
             </div>
 
-            {/* KPI tiles — status breakdown */}
-            <div className="grid grid-cols-3 gap-3">
-                {(
-                    [
-                        { label: 'Active', value: statusCounts.active, dot: 'bg-success-500' },
-                        { label: 'Draft', value: statusCounts.draft, dot: 'bg-warning-500' },
-                        {
-                            label: 'Inactive',
-                            value: statusCounts.inactive,
-                            dot: 'bg-neutral-400',
-                        },
-                    ] as const
-                ).map((kpi) => (
-                    <div
-                        key={kpi.label}
-                        className="rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm"
-                    >
-                        <div className="flex items-center gap-2">
-                            <span className={cn('size-1.5 rounded-full', kpi.dot)} />
-                            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                {kpi.label}
-                            </span>
-                        </div>
-                        <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
-                            {kpi.value.toLocaleString()}
-                        </p>
-                    </div>
-                ))}
+            {/* Compact clickable KPI strip — click to filter, click again to clear. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {isLoading
+                    ? [0, 1, 2].map((i) => (
+                          <div
+                              key={i}
+                              className="rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm"
+                          >
+                              <Skeleton className="h-3 w-16" />
+                              <Skeleton className="mt-2 h-6 w-12" />
+                          </div>
+                      ))
+                    : kpis.map((kpi) => {
+                          const isActive = statusFilter === kpi.filter;
+                          return (
+                              <button
+                                  key={kpi.filter}
+                                  type="button"
+                                  onClick={() => handleStatusChange(isActive ? 'ALL' : kpi.filter)}
+                                  aria-pressed={isActive}
+                                  className={cn(
+                                      'flex items-center justify-between gap-3 rounded-xl border bg-white px-4 py-3 text-left shadow-sm transition-all hover:border-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2',
+                                      isActive
+                                          ? cn('border-transparent ring-2 ring-inset', kpi.ring)
+                                          : 'border-neutral-200'
+                                  )}
+                              >
+                                  <span className="flex items-center gap-2">
+                                      <span className={cn('size-1.5 rounded-full', kpi.dot)} />
+                                      <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                          {kpi.label}
+                                      </span>
+                                  </span>
+                                  <span className="text-xl font-semibold tabular-nums text-neutral-900">
+                                      {kpi.value.toLocaleString()}
+                                  </span>
+                              </button>
+                          );
+                      })}
             </div>
 
             {/* Toolbar — search + status filter */}
@@ -221,15 +314,15 @@ export const AudienceInvite = () => {
                 </div>
                 <Select
                     value={statusFilter}
-                    onValueChange={(value) => setStatusFilter(value as StatusFilter)}
+                    onValueChange={(v) => handleStatusChange(v as StatusFilter)}
                 >
                     <SelectTrigger className="h-10 w-full sm:w-44">
                         <SelectValue placeholder="Filter by Status" />
                     </SelectTrigger>
                     <SelectContent>
-                        {statusDropdownOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                                {option.label}
+                        {statusDropdownOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
                             </SelectItem>
                         ))}
                     </SelectContent>
@@ -245,15 +338,31 @@ export const AudienceInvite = () => {
                     <p className="text-xs text-neutral-500">Something went wrong. Try again.</p>
                 </div>
             ) : isLoading ? (
-                <DashboardLoader />
+                <SkeletonCards />
             ) : !hasResults ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
+                <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
                     <EmptyInvitePage />
                     <p className="text-sm text-neutral-600">
-                        {statusFilter === 'ALL'
-                            ? `No ${audienceTermPlural.toLowerCase()} found!`
-                            : `No ${getStatusDisplayText(statusFilter).toLowerCase()} ${audienceTermPlural.toLowerCase()} found!`}
+                        {hasActiveFilter
+                            ? `No ${audienceTermPlural.toLowerCase()} match your filters.`
+                            : `You haven't created any ${audienceTermPlural.toLowerCase()} yet.`}
                     </p>
+                    {hasActiveFilter ? (
+                        <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                            Clear filters
+                        </Button>
+                    ) : (
+                        <Button
+                            className={PRIMARY_BTN}
+                            onClick={() => {
+                                setCampaignBeingEdited(null);
+                                setIsDialogOpen(true);
+                            }}
+                        >
+                            <Plus className="mr-2 size-4" /> Create your first{' '}
+                            {audienceTerm.toLowerCase()}
+                        </Button>
+                    )}
                 </div>
             ) : (
                 <div className="flex flex-col gap-6">
@@ -318,8 +427,17 @@ export const AudienceInvite = () => {
                             return (
                                 <Card
                                     key={campaignId || index}
-                                    className="group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-primary-200 hover:shadow-lg"
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={handleCampaignClick}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            handleCampaignClick();
+                                        }
+                                    }}
+                                    aria-label={`Open ${campaign.campaign_name}`}
+                                    className="group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2"
                                 >
                                     {/* Header */}
                                     <div className="flex items-start gap-3 p-4 pb-3">
@@ -379,11 +497,11 @@ export const AudienceInvite = () => {
                                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-600">
                                             <CalendarBlank className="size-4 shrink-0 text-neutral-400" />
                                             <span className="font-medium text-neutral-800">
-                                                {getDateFromUTCString(campaign.start_date_local)}
+                                                {formatDate(campaign.start_date_local)}
                                             </span>
                                             <span className="text-neutral-400">→</span>
                                             <span className="font-medium text-neutral-800">
-                                                {getDateFromUTCString(campaign.end_date_local)}
+                                                {formatDate(campaign.end_date_local)}
                                             </span>
                                         </div>
                                         {campaign.description && (
@@ -396,23 +514,14 @@ export const AudienceInvite = () => {
                                             onClick={(e) => e.stopPropagation()}
                                         >
                                             {normalizedStatus === 'ACTIVE' ? (
-                                                <CampaignLink
-                                                    campaignId={campaignId}
-                                                    label="Shareable link"
-                                                />
+                                                <CampaignLink campaignId={campaignId} />
                                             ) : (
-                                                <div className="flex w-full min-w-0 flex-col gap-1.5">
-                                                    <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                                        Shareable link
+                                                <div className="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2.5 text-sm text-neutral-500">
+                                                    <Info className="size-4 shrink-0 text-neutral-400" />
+                                                    <span>
+                                                        Activate this {audienceTerm.toLowerCase()}{' '}
+                                                        to generate a shareable link.
                                                     </span>
-                                                    <div className="flex items-center gap-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 px-3 py-2.5 text-sm text-neutral-500">
-                                                        <Info className="size-4 shrink-0 text-neutral-400" />
-                                                        <span>
-                                                            Activate this{' '}
-                                                            {audienceTerm.toLowerCase()} to generate
-                                                            a shareable link.
-                                                        </span>
-                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -428,7 +537,7 @@ export const AudienceInvite = () => {
                                                 <TooltipTrigger asChild>
                                                     <Button
                                                         size="sm"
-                                                        className="h-8 gap-1.5 rounded-md px-3 text-xs font-medium shadow-sm"
+                                                        className={CARD_PRIMARY_BTN}
                                                         onClick={() => {
                                                             navigate({
                                                                 to: '/audience-manager/list/campaign-users/add',
@@ -461,7 +570,7 @@ export const AudienceInvite = () => {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        className={CARD_ACTION_BTN}
+                                                        className={CARD_OUTLINE_BTN}
                                                         onClick={() =>
                                                             setApiDialogCampaign(campaign)
                                                         }
@@ -481,7 +590,7 @@ export const AudienceInvite = () => {
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        className={CARD_ACTION_BTN}
+                                                        className={CARD_OUTLINE_BTN}
                                                         onClick={() =>
                                                             setEmbedDialogCampaign(campaign)
                                                         }
@@ -533,3 +642,32 @@ export const AudienceInvite = () => {
         </div>
     );
 };
+
+/** Skeleton placeholder for the card grid while data loads. */
+function SkeletonCards() {
+    return (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {[0, 1, 2, 3].map((i) => (
+                <div
+                    key={i}
+                    className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm"
+                >
+                    <div className="flex items-start gap-3">
+                        <Skeleton className="size-10 shrink-0 rounded-lg" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-4 w-1/2" />
+                        </div>
+                    </div>
+                    <Skeleton className="mt-4 h-4 w-2/3" />
+                    <Skeleton className="mt-3 h-10 w-full" />
+                    <div className="mt-3 flex gap-2">
+                        <Skeleton className="h-8 w-28" />
+                        <Skeleton className="h-8 w-16" />
+                        <Skeleton className="h-8 w-20" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}

@@ -625,11 +625,15 @@ const RecentLeadsContent = () => {
                         size="sm"
                         variant="outline"
                         className="h-10"
-                        onClick={handleExportAll}
+                        onClick={selectedKeys.size > 0 ? handleExportSelected : handleExportAll}
                         disabled={isExporting || !data?.totalElements}
                     >
                         <DownloadSimple className="mr-1.5 size-4" />
-                        {isExporting ? 'Exporting…' : 'Export'}
+                        {isExporting
+                            ? 'Exporting…'
+                            : selectedKeys.size > 0
+                              ? `Export (${selectedKeys.size})`
+                              : 'Export'}
                     </Button>
                 </div>
             </div>
@@ -663,16 +667,15 @@ const RecentLeadsContent = () => {
                 </div>
             )}
 
-            {/* Bulk selection bar */}
+            {/* Bulk selection bar — the toolbar Export button downloads the selection. */}
             {selectedKeys.size > 0 && (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5">
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-2.5">
                     <span className="text-sm font-semibold text-primary-700">
                         {selectedKeys.size} selected
                     </span>
-                    <Button size="sm" variant="outline" onClick={handleExportSelected}>
-                        <DownloadSimple className="mr-1.5 size-4" />
-                        Export selected
-                    </Button>
+                    <span className="text-xs text-primary-600">
+                        Use “Export ({selectedKeys.size})” above to download these leads.
+                    </span>
                     <button
                         type="button"
                         onClick={() => setSelectedKeys(new Set())}

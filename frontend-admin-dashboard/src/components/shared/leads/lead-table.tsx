@@ -8,12 +8,12 @@ import {
     CaretUp,
     CaretDown,
     Plus,
-    NotePencil,
     UserPlus,
+    ArrowsClockwise,
 } from '@phosphor-icons/react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { cn, parseHtmlToString } from '@/lib/utils';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 import type { LatestNoteEvent } from '@/hooks/use-latest-notes-batch';
 import { LeadStatusSelect } from '@/components/shared/lead-status-select';
@@ -86,9 +86,6 @@ interface Col {
 
 const TIER_RANK: Record<string, number> = { HOT: 3, WARM: 2, COLD: 1 };
 
-const ROUND_BTN =
-    'inline-flex size-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-primary-200 hover:bg-primary-50 hover:text-primary-600';
-
 const relativeTime = (iso?: string | null) => {
     if (!iso) return '';
     const d = new Date(iso);
@@ -115,16 +112,18 @@ function ActivityCell({ summary, onAdd }: { summary?: LeadNotesSummary; onAdd: (
             </button>
         );
     }
+    // Notes may be rich text (HTML) — show a clean plain-text preview so the
+    // counsellor reads the actual note, not just the generic "Note" label.
+    const raw = latest.description ?? '';
+    const body = (/<\/?[a-z][^>]*>/i.test(raw) ? parseHtmlToString(raw) : raw).trim();
+    const text = body || latest.title;
     return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1 truncate text-sm text-neutral-700">
-                    <NotePencil weight="fill" className="size-3 shrink-0 text-neutral-400" />
-                    <span className="truncate" title={latest.title}>
-                        {latest.title}
-                    </span>
+                <p className="line-clamp-2 text-sm text-neutral-700" title={text}>
+                    {text}
                 </p>
-                <p className="truncate text-xs text-neutral-400">
+                <p className="mt-0.5 truncate text-xs text-neutral-400">
                     {relativeTime(latest.created_at)}
                     {latest.actor_name ? ` · ${latest.actor_name}` : ''}
                 </p>
@@ -137,7 +136,7 @@ function ActivityCell({ summary, onAdd }: { summary?: LeadNotesSummary; onAdd: (
                 }}
                 title="Add note"
                 aria-label="Add note"
-                className="shrink-0 rounded-full border border-neutral-200 p-1 text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:border-primary-200 hover:text-primary-600 group-hover/row:opacity-100"
+                className="mt-0.5 shrink-0 rounded-full border border-neutral-200 p-1 text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:border-primary-200 hover:text-primary-600 group-hover/row:opacity-100"
             >
                 <Plus className="size-3.5" />
             </button>
@@ -375,9 +374,11 @@ export function LeadTable({
                                 e.stopPropagation();
                                 actions.onAssignCounsellor?.(vm.userId!, vm.name);
                             }}
-                            className="shrink-0 text-xs text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:text-primary-600 group-hover/row:opacity-100"
+                            title="Reassign counsellor"
+                            aria-label="Reassign counsellor"
+                            className="shrink-0 rounded-full border border-neutral-200 p-1 text-neutral-400 opacity-0 transition focus-within:opacity-100 hover:border-primary-200 hover:text-primary-600 group-hover/row:opacity-100"
                         >
-                            Reassign
+                            <ArrowsClockwise className="size-3.5" />
                         </button>
                     </div>
                 );
@@ -465,7 +466,7 @@ export function LeadTable({
                                 )}
                             </th>
                         ))}
-                        <th className="w-32 px-4 py-3" />
+                        <th className="w-16 px-4 py-3" />
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
@@ -522,37 +523,7 @@ export function LeadTable({
                                           className="px-4 py-3.5 align-middle"
                                           onClick={(e) => e.stopPropagation()}
                                       >
-                                          <div className="flex items-center justify-end gap-1.5">
-                                              <span className="flex items-center gap-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100">
-                                                  {vm.email !== '-' ? (
-                                                      <a
-                                                          href={`mailto:${vm.email}`}
-                                                          title="Email"
-                                                          aria-label="Email"
-                                                          className={ROUND_BTN}
-                                                      >
-                                                          <Envelope className="size-4" />
-                                                      </a>
-                                                  ) : (
-                                                      <span className={cn(ROUND_BTN, 'opacity-40')}>
-                                                          <Envelope className="size-4" />
-                                                      </span>
-                                                  )}
-                                                  {vm.phone !== '-' ? (
-                                                      <a
-                                                          href={`tel:${vm.phone}`}
-                                                          title="Call"
-                                                          aria-label="Call"
-                                                          className={ROUND_BTN}
-                                                      >
-                                                          <Phone className="size-4" />
-                                                      </a>
-                                                  ) : (
-                                                      <span className={cn(ROUND_BTN, 'opacity-40')}>
-                                                          <Phone className="size-4" />
-                                                      </span>
-                                                  )}
-                                              </span>
+                                          <div className="flex items-center justify-end">
                                               <LeadActionsMenu
                                                   vm={vm}
                                                   currentTier={profile?.lead_tier}

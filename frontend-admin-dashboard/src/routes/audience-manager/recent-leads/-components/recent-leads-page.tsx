@@ -330,7 +330,10 @@ export const RecentLeadsPage = () => {
     const EXPORT_PAGE_SIZE = 200;
 
     const handleExportCsv = async () => {
-        if (!instituteId) return;
+        if (!instituteId) {
+            toast.error('Institute not loaded yet — try again in a moment');
+            return;
+        }
         setIsExporting(true);
         try {
             const allLeads: RecentLeadDetail[] = [];
@@ -452,7 +455,9 @@ export const RecentLeadsPage = () => {
                 return row.join(',');
             });
 
-            const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
+            // Prepend a UTF-8 BOM so Excel/Numbers detect UTF-8 (otherwise
+            // Indian names / special chars open garbled in some locales).
+            const csvContent = '﻿' + [csvHeaders.join(','), ...csvRows].join('\n');
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -609,7 +614,9 @@ export const RecentLeadsPage = () => {
                         size="sm"
                         variant="outline"
                         onClick={handleExportCsv}
-                        disabled={isExporting || !data?.totalElements}
+                        // Always clickable while not exporting — handler gives a toast
+                        // when there's nothing to export, so the click never feels silent.
+                        disabled={isExporting}
                     >
                         <Download className="mr-1.5 size-4" />
                         {isExporting ? 'Exporting…' : 'Export CSV'}

@@ -116,6 +116,21 @@ export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/cus
 // Field Mapping
 export const FIELD_MAPPING_BASE_URL = `${BASE_URL}/admin-core-service/common/field-mapping`;
 
+// Counselor Pool & Auto-Assignment
+export const COUNSELOR_POOL_BASE = `${BASE_URL}/admin-core-service/v1/counselor-pool`;
+export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
+export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
+export const COUNSELOR_POOL_AUDIENCE_ORDER = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}/order`;
+export const COUNSELOR_POOL_COUNSELOR = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}`;
+export const COUNSELOR_POOL_COUNSELOR_STATUS = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}/status`;
+export const COUNSELOR_POOL_SCHEDULE = (poolId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/schedule`;
+
 // urls
 export const LOGIN_URL = `${BASE_URL}/auth-service/v1/login-root`;
 export const SIGNUP_URL = `${BASE_URL}/auth-service/v1/signup-root`;

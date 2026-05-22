@@ -117,20 +117,35 @@ function ActivityCell({ summary, onAdd }: { summary?: LeadNotesSummary; onAdd: (
                 </PopoverTrigger>
                 <PopoverContent
                     align="start"
-                    className="w-80 max-w-md space-y-2"
+                    className="w-96 max-w-md p-0"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        <NotePencil weight="fill" className="size-3" />
-                        {latest.title || 'Note'}
+                    {/* Header — author + meta */}
+                    <div className="flex items-center gap-3 border-b border-neutral-100 px-4 py-3">
+                        <LeadAvatar name={latest.actor_name ?? 'A'} size="sm" />
+                        <div className="min-w-0 flex-1">
+                            <p
+                                className="truncate text-sm font-semibold text-neutral-900"
+                                title={latest.actor_name ?? 'Unknown'}
+                            >
+                                {latest.actor_name || 'Unknown'}
+                            </p>
+                            <p className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-500">
+                                <span className="inline-flex items-center gap-1">
+                                    <NotePencil weight="fill" className="size-3 text-neutral-400" />
+                                    {latest.title || 'Note'}
+                                </span>
+                                <span className="text-neutral-300">·</span>
+                                <span>{relativeTime(latest.created_at)}</span>
+                            </p>
+                        </div>
                     </div>
-                    <p className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-sm text-neutral-800">
-                        {text}
-                    </p>
-                    <p className="border-t border-neutral-100 pt-2 text-xs text-neutral-400">
-                        {relativeTime(latest.created_at)}
-                        {latest.actor_name ? ` · ${latest.actor_name}` : ''}
-                    </p>
+                    {/* Body */}
+                    <div className="max-h-72 overflow-y-auto px-4 py-3">
+                        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-800">
+                            {text}
+                        </p>
+                    </div>
                 </PopoverContent>
             </Popover>
             <div className="mt-0.5 flex items-center justify-between gap-2">

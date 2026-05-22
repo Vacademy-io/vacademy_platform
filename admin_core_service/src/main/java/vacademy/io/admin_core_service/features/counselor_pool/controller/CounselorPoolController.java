@@ -127,6 +127,31 @@ public class CounselorPoolController {
         return ResponseEntity.ok("Status updated");
     }
 
+    /**
+     * List the pools (within the institute) where this counselor is currently
+     * ACTIVE. Powers the multi-pool selector in the "Mark Inactive" dialog.
+     * Pools where the counselor is already INACTIVE are excluded.
+     */
+    @GetMapping("/counselors/{counselorUserId}/memberships")
+    public ResponseEntity<List<CounselorPoolMembershipDTO>> listCounselorMemberships(
+            @PathVariable String counselorUserId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(poolService.listActiveMembershipsForCounselor(instituteId, counselorUserId));
+    }
+
+    /**
+     * Flip a counselor's status across MULTIPLE pools at once. All-or-nothing
+     * — any per-pool failure rolls back the whole batch. Body carries the
+     * pool_ids plus the same status/backup/reassign flag applied to each.
+     */
+    @PatchMapping("/counselors/{counselorUserId}/status-multi")
+    public ResponseEntity<String> bulkUpdateMemberStatus(
+            @PathVariable String counselorUserId,
+            @RequestBody BulkUpdateMemberStatusRequest request) {
+        poolService.bulkUpdateMemberStatusAcrossPools(counselorUserId, request);
+        return ResponseEntity.ok("Status updated");
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Weekly schedule (TIME_BASED mode)
     // ────────────────────────────────────────────────────────────────

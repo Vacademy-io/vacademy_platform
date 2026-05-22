@@ -19,6 +19,7 @@ import { GET_INSTITUTE_USERS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { MyButton } from '@/components/design-system/button';
 import {
     Select,
@@ -39,6 +40,8 @@ import {
     CounselorPoolDTO,
     PoolMemberDTO,
     useAddCounselorToPool,
+    useBulkUpdateMemberStatus,
+    useCounselorMemberships,
     useRemoveCounselorFromPool,
     useUpdateMemberStatus,
 } from '@/services/counselor-pool';
@@ -106,6 +109,10 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
         action: 'INACTIVE' | 'ACTIVE';
     } | null>(null);
     const [pendingBackupId, setPendingBackupId] = useState<string>('');
+    const [reassignExistingLeads, setReassignExistingLeads] = useState<boolean>(false);
+    // Pool IDs the admin has checked for the INACTIVE batch. Seeded with the
+    // current pool when the dialog opens; admin can add/remove.
+    const [selectedPoolIds, setSelectedPoolIds] = useState<string[]>([]);
 
     const { data: instituteUsers = [], isLoading: usersLoading } = useQuery({
         queryKey: ['institute-counselors'],
@@ -136,6 +143,14 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
     const { mutate: addCounselor, isPending: adding } = useAddCounselorToPool(pool.id);
     const { mutate: removeCounselor, isPending: removing } = useRemoveCounselorFromPool(pool.id);
     const { mutate: updateStatus, isPending: updatingStatus } = useUpdateMemberStatus(pool.id);
+    const { mutate: bulkUpdateStatus, isPending: bulkUpdatingStatus } = useBulkUpdateMemberStatus();
+
+    // Fetch memberships only when the INACTIVE dialog is open. Reactivation
+    // doesn't need this — it stays per-pool.
+    const membershipsCounselorId =
+        statusDialog?.action === 'INACTIVE' ? statusDialog.counselorUserId : undefined;
+    const { data: memberships = [], isLoading: membershipsLoading } =
+        useCounselorMemberships(membershipsCounselorId);
 
     const handleAdd = () => {
         if (!pendingUserId) return;
@@ -164,35 +179,78 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
     const openStatusDialog = (counselorUserId: string, currentStatus: 'ACTIVE' | 'INACTIVE') => {
         const user = userById.get(counselorUserId);
         const name = user?.full_name ?? counselorUserId;
+        const action = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         setStatusDialog({
             counselorUserId,
             counselorName: name,
-            action: currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
+            action,
         });
         setPendingBackupId('');
+        setReassignExistingLeads(false);
+        // For inactivation we seed with the current pool; admin can add the
+        // counsellor's other ACTIVE pools once the memberships fetch returns.
+        setSelectedPoolIds(action === 'INACTIVE' ? [pool.id] : []);
+    };
+
+    const togglePoolSelection = (poolId: string) => {
+        setSelectedPoolIds((prev) =>
+            prev.includes(poolId) ? prev.filter((id) => id !== poolId) : [...prev, poolId]
+        );
     };
 
     const confirmStatusChange = () => {
         if (!statusDialog) return;
         const { counselorUserId, action } = statusDialog;
-        if (action === 'INACTIVE' && !pendingBackupId) {
+
+        if (action === 'ACTIVE') {
+            // Reactivate stays per-pool — the admin clicked it from this pool view.
+            updateStatus(
+                {
+                    counselorUserId,
+                    request: { status: 'ACTIVE', backup_counselor_user_id: null },
+                },
+                {
+                    onSuccess: () => {
+                        toast.success('Counselor reactivated');
+                        setStatusDialog(null);
+                    },
+                    onError: (err) =>
+                        toast.error(extractError(err) ?? 'Failed to update status'),
+                }
+            );
+            return;
+        }
+
+        // INACTIVE path — multi-pool, all-or-nothing.
+        if (selectedPoolIds.length === 0) {
+            toast.error('Pick at least one pool');
+            return;
+        }
+        if (!pendingBackupId) {
             toast.error('Pick a backup counselor');
             return;
         }
-        updateStatus(
+        bulkUpdateStatus(
             {
                 counselorUserId,
                 request: {
-                    status: action,
-                    backup_counselor_user_id: action === 'INACTIVE' ? pendingBackupId : null,
+                    pool_ids: selectedPoolIds,
+                    status: 'INACTIVE',
+                    backup_counselor_user_id: pendingBackupId,
+                    reassign_existing_leads: reassignExistingLeads,
                 },
             },
             {
                 onSuccess: () => {
-                    toast.success(action === 'INACTIVE' ? 'Counselor marked inactive' : 'Counselor reactivated');
+                    toast.success(
+                        selectedPoolIds.length === 1
+                            ? 'Counselor marked inactive'
+                            : `Counselor marked inactive in ${selectedPoolIds.length} pools`
+                    );
                     setStatusDialog(null);
                 },
-                onError: (err) => toast.error(extractError(err) ?? 'Failed to update status'),
+                onError: (err) =>
+                    toast.error(extractError(err) ?? 'Failed to update status'),
             }
         );
     };
@@ -349,31 +407,102 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                         </DialogTitle>
                         <DialogDescription>
                             {statusDialog?.action === 'INACTIVE'
-                                ? 'Pick a backup counselor. All leads that would go to this counselor will be redirected to the backup until they are reactivated.'
+                                ? 'Choose which pools to mark inactive in and pick one backup counselor. Leads that would go to this counselor in those pools will route to the backup until they are reactivated.'
                                 : 'Reactivating clears the backup. New leads will route to this counselor normally.'}
                         </DialogDescription>
                     </DialogHeader>
 
                     {statusDialog?.action === 'INACTIVE' && (
-                        <div className="space-y-2 py-2">
-                            <Select value={pendingBackupId} onValueChange={setPendingBackupId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select backup counselor" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {backupCandidates.length === 0 ? (
-                                        <div className="px-3 py-2 text-xs text-muted-foreground">
-                                            No other active counselors available
-                                        </div>
-                                    ) : (
-                                        backupCandidates.map((c) => (
-                                            <SelectItem key={c.id} value={c.id}>
-                                                {c.name}
-                                            </SelectItem>
-                                        ))
-                                    )}
-                                </SelectContent>
-                            </Select>
+                        <div className="space-y-4 py-2">
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">
+                                    Pools to mark inactive in
+                                </p>
+                                {membershipsLoading ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        Loading pools…
+                                    </p>
+                                ) : memberships.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        No active pool memberships found for this counselor.
+                                    </p>
+                                ) : (
+                                    <ul className="space-y-1 rounded-md border p-2">
+                                        {memberships.map((m) => (
+                                            <li key={m.pool_id}>
+                                                <label className="flex items-center gap-2 text-sm">
+                                                    <Checkbox
+                                                        checked={selectedPoolIds.includes(
+                                                            m.pool_id
+                                                        )}
+                                                        onCheckedChange={() =>
+                                                            togglePoolSelection(m.pool_id)
+                                                        }
+                                                    />
+                                                    <span className="flex-1">
+                                                        {m.pool_name}
+                                                        {m.pool_id === pool.id && (
+                                                            <span className="ml-2 text-xs text-muted-foreground">
+                                                                (this pool)
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium">Backup counselor</p>
+                                <Select
+                                    value={pendingBackupId}
+                                    onValueChange={setPendingBackupId}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select backup counselor" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {backupCandidates.length === 0 ? (
+                                            <div className="px-3 py-2 text-xs text-muted-foreground">
+                                                No other active counselors available
+                                            </div>
+                                        ) : (
+                                            backupCandidates.map((c) => (
+                                                <SelectItem key={c.id} value={c.id}>
+                                                    {c.name}
+                                                </SelectItem>
+                                            ))
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Applies to every selected pool.
+                                </p>
+                            </div>
+
+                            <label className="flex items-start gap-2 text-sm">
+                                <Checkbox
+                                    checked={reassignExistingLeads}
+                                    onCheckedChange={(c) =>
+                                        setReassignExistingLeads(c === true)
+                                    }
+                                    disabled={!pendingBackupId}
+                                    className="mt-0.5"
+                                />
+                                <span className="leading-snug">
+                                    <span className="font-medium">
+                                        Also move existing open leads to the backup
+                                    </span>
+                                    <span className="block text-xs text-muted-foreground">
+                                        For each selected pool, leads from that pool&apos;s
+                                        campaigns that are still open (not converted or
+                                        lost) move to the backup. If the counselor is
+                                        reactivated later, these leads stay with the backup.
+                                    </span>
+                                </span>
+                            </label>
                         </div>
                     )}
 
@@ -382,7 +511,7 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                             buttonType="secondary"
                             scale="medium"
                             onClick={() => setStatusDialog(null)}
-                            disable={updatingStatus}
+                            disable={updatingStatus || bulkUpdatingStatus}
                         >
                             Cancel
                         </MyButton>
@@ -392,10 +521,14 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                             onClick={confirmStatusChange}
                             disable={
                                 updatingStatus ||
-                                (statusDialog?.action === 'INACTIVE' && !pendingBackupId)
+                                bulkUpdatingStatus ||
+                                (statusDialog?.action === 'INACTIVE' &&
+                                    (!pendingBackupId ||
+                                        selectedPoolIds.length === 0 ||
+                                        membershipsLoading))
                             }
                         >
-                            {updatingStatus
+                            {updatingStatus || bulkUpdatingStatus
                                 ? 'Saving…'
                                 : statusDialog?.action === 'INACTIVE'
                                   ? 'Mark Inactive'

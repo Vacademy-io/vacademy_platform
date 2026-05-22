@@ -255,8 +255,26 @@ public class AudienceController {
     public ResponseEntity<UserLeadProfileDTO> updateLeadStatus(
             @RequestParam String userId,
             @RequestParam String instituteId,
-            @RequestParam String status) {
+            @RequestParam String status,
+            @RequestAttribute("user") CustomUserDetails user) {
         userLeadProfileService.updateConversionStatus(userId, instituteId, status);
+        try {
+            LeadJourneyActionType actionType = "CONVERTED".equals(status) ? LeadJourneyActionType.LEAD_CONVERTED
+                    : "LOST".equals(status) ? LeadJourneyActionType.LEAD_LOST
+                    : LeadJourneyActionType.STATUS_CHANGED;
+            String title = "CONVERTED".equals(status) ? "Lead converted"
+                    : "LOST".equals(status) ? "Lead marked as lost"
+                    : "Status changed to " + status;
+            timelineEventService.logJourneyEvent(
+                    "USER_LEAD_PROFILE", userId,
+                    actionType,
+                    "ADMIN", user.getUserId(), user.getUsername(),
+                    title, null,
+                    Map.of("new_status", status, "changed_by", user.getUsername() != null ? user.getUsername() : ""),
+                    userId);
+        } catch (Exception e) {
+            // best-effort
+        }
         return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
     }
 
@@ -268,8 +286,20 @@ public class AudienceController {
     public ResponseEntity<UserLeadProfileDTO> updateLeadTier(
             @RequestParam String userId,
             @RequestParam String instituteId,
-            @RequestParam String tier) {
+            @RequestParam String tier,
+            @RequestAttribute("user") CustomUserDetails user) {
         userLeadProfileService.updateLeadTier(userId, instituteId, tier);
+        try {
+            timelineEventService.logJourneyEvent(
+                    "USER_LEAD_PROFILE", userId,
+                    LeadJourneyActionType.STATUS_CHANGED,
+                    "ADMIN", user.getUserId(), user.getUsername(),
+                    "Lead tier set to " + tier, null,
+                    Map.of("tier", tier, "changed_by", user.getUsername() != null ? user.getUsername() : ""),
+                    userId);
+        } catch (Exception e) {
+            // best-effort
+        }
         return ResponseEntity.ok(userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
     }
 

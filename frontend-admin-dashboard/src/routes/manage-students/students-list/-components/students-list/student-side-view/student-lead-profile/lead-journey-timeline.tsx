@@ -225,7 +225,7 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
                         'h-full rounded-full transition-all duration-300',
                         improved ? 'bg-success-400' : 'bg-danger-400',
                     )}
-                    style={{ width: `${newScore}%` }}
+                    style={{ width: `${newScore}%` }} /* dynamic score % — cannot use Tailwind token */
                 />
             </div>
             {tier && (

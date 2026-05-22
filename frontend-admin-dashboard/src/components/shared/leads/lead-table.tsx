@@ -440,7 +440,7 @@ export function LeadTable({
                             <th
                                 key={c.id}
                                 className={cn(
-                                    'whitespace-nowrap px-4 py-3 text-xs font-medium text-neutral-500',
+                                    'whitespace-nowrap px-4 py-3 text-center text-xs font-medium text-neutral-500',
                                     c.thClass
                                 )}
                             >

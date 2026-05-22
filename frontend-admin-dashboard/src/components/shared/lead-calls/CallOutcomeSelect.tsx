@@ -59,7 +59,7 @@ export const CallOutcomeSelect = ({ value, onChange }: CallOutcomeSelectProps) =
                     <CaretDown className="size-3.5 shrink-0 opacity-60" />
                 </button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-56 p-1">
+            <PopoverContent align="start" portal={false} className="w-56 p-1">
                 {mode === 'list' ? (
                     <div className="flex max-h-64 flex-col overflow-y-auto">
                         {value && (

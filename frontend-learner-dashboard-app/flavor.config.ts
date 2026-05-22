@@ -112,4 +112,18 @@ export const flavorConfig: FlavorConfigs = {
     domain: "vacademy.io",
     subdomain: "student-chanakayaiasacademy",
   },
+
+  // STEMx Education iOS app
+  "io.stemx.app": {
+    appName: "STEMx Education",
+    domain: "stemxindia.com",
+    subdomain: "learn",
+  },
+
+  // STEMx Education Android app
+  "com.stemx.app": {
+    appName: "STEMx Education",
+    domain: "stemxindia.com",
+    subdomain: "learn",
+  },
 };

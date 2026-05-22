@@ -40,6 +40,9 @@ import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { TatStatusBadge } from '@/components/shared/tat-status-badge';
+import { LeadStatusChip } from '@/components/shared/lead-status-chip';
+import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { LeadActivityNotesCell } from '@/components/shared/lead-activity-notes-cell';
@@ -50,8 +53,9 @@ const PAGE_SIZE = 20;
 const ALL_AUDIENCES_VALUE = '__ALL__';
 // Same sentinel pattern for the tier select — empty string is reserved.
 const ALL_TIERS_VALUE = '__ALL__';
+const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status
+const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted (default)
 type LeadTier = 'HOT' | 'WARM' | 'COLD';
-type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
 const SEARCH_DEBOUNCE_MS = 500;
 
 // Convert a date input value (yyyy-mm-dd) to an ISO timestamp at the start
@@ -206,10 +210,13 @@ export const RecentLeadsPage = () => {
     // Lead tier filter — applied immediately (it's a discrete select).
     const [tierFilter, setTierFilter] = useState<string>(ALL_TIERS_VALUE);
 
-    // Conversion-state filter. Default hides leads who've been assigned to a
-    // course (the backend marks them CONVERTED on enrollment) so this view
-    // stays focused on still-actionable leads.
-    const [conversionFilter, setConversionFilter] = useState<ConversionFilter>('EXCLUDE_CONVERTED');
+    // Unified Lead Status filter — combines pipeline status + conversion state:
+    //   ALL_ACTIVE_VALUE  → all leads except Converted (default)
+    //   ALL_STATUSES_VALUE → every lead regardless of status
+    //   <statusKey>       → only leads currently in that status
+    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_ACTIVE_VALUE);
+    // Status catalog for the Lead Status filter dropdown.
+    const { statuses: leadStatusCatalog } = useLeadStatuses();
 
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">Recent Leads</h1>);
@@ -244,7 +251,7 @@ export const RecentLeadsPage = () => {
             audienceId,
             appliedSearch,
             tierFilter,
-            conversionFilter,
+            leadStatusFilter,
             page,
         ],
         queryFn: () =>
@@ -255,7 +262,12 @@ export const RecentLeadsPage = () => {
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
                 lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
-                conversion_status_filter: conversionFilter,
+                lead_status_id:
+                    leadStatusFilter === ALL_ACTIVE_VALUE || leadStatusFilter === ALL_STATUSES_VALUE
+                        ? undefined
+                        : leadStatusFilter,
+                conversion_status_filter:
+                    leadStatusFilter === ALL_ACTIVE_VALUE ? 'EXCLUDE_CONVERTED' : 'ALL',
                 page,
                 size: PAGE_SIZE,
             }),
@@ -277,7 +289,7 @@ export const RecentLeadsPage = () => {
         setSearchInput('');
         setAppliedSearch('');
         setTierFilter(ALL_TIERS_VALUE);
-        setConversionFilter('EXCLUDE_CONVERTED');
+        setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setPage(0);
         setAppliedRange({ from: '', to: '' });
     };
@@ -292,9 +304,9 @@ export const RecentLeadsPage = () => {
         setTierFilter(value);
     };
 
-    const handleConversionChange = (value: string) => {
+    const handleLeadStatusChange = (value: string) => {
         setPage(0);
-        setConversionFilter(value as ConversionFilter);
+        setLeadStatusFilter(value);
     };
 
     const isFilterActive =
@@ -303,7 +315,7 @@ export const RecentLeadsPage = () => {
         audienceId !== ALL_AUDIENCES_VALUE ||
         !!appliedSearch ||
         tierFilter !== ALL_TIERS_VALUE ||
-        conversionFilter !== 'EXCLUDE_CONVERTED';
+        leadStatusFilter !== ALL_ACTIVE_VALUE;
 
     // Match the Lead List CSV template — base columns + Counsellor / Activity
     // & Notes / Notes Count when the lead system is enabled. The hook here is
@@ -330,7 +342,12 @@ export const RecentLeadsPage = () => {
                     submitted_to_local: endOfDayIso(appliedRange.to),
                     search_query: appliedSearch || undefined,
                     lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
-                    conversion_status_filter: conversionFilter,
+                    lead_status_id:
+                        leadStatusFilter === ALL_ACTIVE_VALUE || leadStatusFilter === ALL_STATUSES_VALUE
+                            ? undefined
+                            : leadStatusFilter,
+                    conversion_status_filter:
+                        leadStatusFilter === ALL_ACTIVE_VALUE ? 'EXCLUDE_CONVERTED' : 'ALL',
                     page: pageNo,
                     size: EXPORT_PAGE_SIZE,
                 });
@@ -511,22 +528,23 @@ export const RecentLeadsPage = () => {
                         </div>
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor="recent-leads-conversion"
-                            className="text-xs text-neutral-600"
-                        >
-                            Status
+                        <Label htmlFor="recent-leads-status" className="text-xs text-neutral-600">
+                            Lead status
                         </Label>
                         <div className="relative">
                             <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                            <Select value={conversionFilter} onValueChange={handleConversionChange}>
-                                <SelectTrigger id="recent-leads-conversion" className="w-48 pl-7">
+                            <Select value={leadStatusFilter} onValueChange={handleLeadStatusChange}>
+                                <SelectTrigger id="recent-leads-status" className="w-52 pl-7">
                                     <SelectValue placeholder="Active leads" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="EXCLUDE_CONVERTED">Active leads</SelectItem>
-                                    <SelectItem value="ONLY_CONVERTED">Converted only</SelectItem>
-                                    <SelectItem value="ALL">All</SelectItem>
+                                    <SelectItem value={ALL_ACTIVE_VALUE}>Active leads</SelectItem>
+                                    <SelectItem value={ALL_STATUSES_VALUE}>All statuses</SelectItem>
+                                    {leadStatusCatalog.map((s) => (
+                                        <SelectItem key={s.id} value={s.status_key}>
+                                            {s.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -636,6 +654,18 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
     const { setSelectedStudent } = useStudentSidebar();
 
     const leadSettings = useLeadSettings();
+    // Table-backed lead status catalog (colors for the Status chip).
+    const { statuses: leadStatusCatalog } = useLeadStatuses();
+    const leadStatusOptions = useMemo(
+        () =>
+            leadStatusCatalog.map((s) => ({
+                key: s.status_key,
+                label: s.label,
+                color: s.color,
+                order: s.display_order,
+            })),
+        [leadStatusCatalog]
+    );
     // Show lead-score badges only when the lead system is on AND the institute
     // has the per-table flag enabled. Recent Leads is treated as an enquiry
     // surface for this gate (these are raw form submissions).
@@ -707,13 +737,20 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                     return (
                         <div className="flex flex-col gap-0.5 p-3 font-medium text-neutral-900">
                             <span>{displayName(lead)}</span>
-                            {profile && (
-                                <LeadScoreBadge
-                                    score={profile.best_score}
-                                    tier={profile.lead_tier}
-                                    size="sm"
+                            <div className="flex flex-wrap items-center gap-1">
+                                {profile && (
+                                    <LeadScoreBadge
+                                        score={profile.best_score}
+                                        tier={profile.lead_tier}
+                                        size="sm"
+                                    />
+                                )}
+                                <TatStatusBadge
+                                    tatOverdue={lead.tat_overdue}
+                                    tatDueSoon={lead.tat_due_soon}
+                                    followUpOverdue={lead.follow_up_overdue}
                                 />
-                            )}
+                            </div>
                         </div>
                     );
                 },
@@ -753,6 +790,24 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
         ];
 
         if (showLeadOps) {
+            cols.push({
+                id: 'status',
+                header: 'Status',
+                size: 160,
+                minSize: 120,
+                maxSize: 200,
+                cell: ({ row }) =>
+                    row.original.lead_status ? (
+                        <div className="p-3">
+                            <LeadStatusChip
+                                status={row.original.lead_status}
+                                statuses={leadStatusOptions}
+                            />
+                        </div>
+                    ) : (
+                        <div className="p-3 text-sm text-neutral-400">—</div>
+                    ),
+            });
             cols.push({
                 id: 'counsellor',
                 header: 'Counsellor',
@@ -859,6 +914,7 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
         counsellorProfiles,
         notesByUserId,
         handleSelectLead,
+        leadStatusOptions,
     ]);
 
     const tableData = useMemo(() => {

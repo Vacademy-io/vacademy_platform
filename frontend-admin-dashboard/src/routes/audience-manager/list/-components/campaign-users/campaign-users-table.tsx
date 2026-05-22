@@ -52,6 +52,7 @@ import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentTable } from '@/types/student-table-types';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
@@ -67,8 +68,8 @@ const generateKeyFromName = (name: string): string =>
 // Sentinel for "any value" / "all tiers" — shadcn `<Select>` rejects empty
 // strings as item values, so we use a marker and translate on the way out.
 const ALL_VALUE = '__ALL__';
+const ALL_ACTIVE_VALUE = '__ACTIVE__'; // Lead Status filter: all leads except Converted (default)
 const SEARCH_DEBOUNCE_MS = 500;
-type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
 
 // Sort options. Values map to the backend's LeadFilterDTO sort_by + sort_direction.
 // Backend supports SUBMITTED_AT, LEAD_SCORE, PARENT_NAME — exposed here as the
@@ -203,15 +204,16 @@ export const CampaignUsersTable = ({
     // Lead tier filter — applied immediately (discrete select).
     const [tierFilter, setTierFilter] = useState<string>(ALL_VALUE);
 
+    // Unified Lead Status filter (combines pipeline status + conversion state):
+    //   ALL_ACTIVE_VALUE → all leads except Converted (default)
+    //   ALL_VALUE        → every lead regardless of status
+    //   <statusKey>      → only leads currently in that status
+    const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_ACTIVE_VALUE);
+
     // Per-campaign dropdown filters: maps custom_field_id → selected option
     // value. Each dropdown narrows the result set with AND semantics on the
     // backend.
     const [cfFilters, setCfFilters] = useState<Record<string, string>>({});
-
-    // Conversion-state filter. Default hides leads who've been assigned to a
-    // course (the backend marks them CONVERTED on enrollment), so the active
-    // list stays focused on still-actionable leads.
-    const [conversionFilter, setConversionFilter] = useState<ConversionFilter>('EXCLUDE_CONVERTED');
 
     // Sort selector — defaults to newest submissions first.
     const [sortOption, setSortOption] = useState<SortOption>(DEFAULT_SORT);
@@ -235,7 +237,7 @@ export const CampaignUsersTable = ({
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
-        setConversionFilter('EXCLUDE_CONVERTED');
+        setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setSortOption(DEFAULT_SORT);
         console.log('🔄 [CampaignUsersTable] Campaign changed, resetting page to 0');
     }, [campaignId]);
@@ -320,8 +322,18 @@ export const CampaignUsersTable = ({
             submitted_to_local: endOfDayIso(appliedRange.to),
             search_query: appliedSearch || undefined,
             lead_tier: tierFilter === ALL_VALUE ? undefined : tierFilter,
+            // Unified Lead Status filter → backend params:
+            //   ALL_ACTIVE_VALUE → no specific status; hide Converted
+            //   ALL_VALUE        → no specific status; show every state
+            //   <statusKey>      → that specific status
+            lead_status_id:
+                leadStatusFilter === ALL_ACTIVE_VALUE || leadStatusFilter === ALL_VALUE
+                    ? undefined
+                    : leadStatusFilter,
             custom_field_filters: customFieldFilters.length > 0 ? customFieldFilters : undefined,
-            conversion_status_filter: conversionFilter,
+            conversion_status_filter: (leadStatusFilter === ALL_ACTIVE_VALUE
+                ? 'EXCLUDE_CONVERTED'
+                : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL',
         };
     }, [
         campaignId,
@@ -330,8 +342,8 @@ export const CampaignUsersTable = ({
         appliedRange,
         appliedSearch,
         tierFilter,
+        leadStatusFilter,
         cfFilters,
-        conversionFilter,
         sortOption,
     ]);
 
@@ -349,6 +361,11 @@ export const CampaignUsersTable = ({
     const handleTierChange = (value: string) => {
         setPage(0);
         setTierFilter(value);
+    };
+
+    const handleLeadStatusFilterChange = (value: string) => {
+        setPage(0);
+        setLeadStatusFilter(value);
     };
 
     const handleCfFilterChange = (fieldId: string, value: string) => {
@@ -371,15 +388,10 @@ export const CampaignUsersTable = ({
         setSearchInput('');
         setAppliedSearch('');
         setTierFilter(ALL_VALUE);
+        setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setCfFilters({});
-        setConversionFilter('EXCLUDE_CONVERTED');
         setSortOption(DEFAULT_SORT);
         setPage(0);
-    };
-
-    const handleConversionChange = (value: string) => {
-        setPage(0);
-        setConversionFilter(value as ConversionFilter);
     };
 
     const handleSortChange = (value: string) => {
@@ -391,8 +403,8 @@ export const CampaignUsersTable = ({
         isDateFilterActive ||
         !!appliedSearch ||
         tierFilter !== ALL_VALUE ||
+        leadStatusFilter !== ALL_ACTIVE_VALUE ||
         Object.values(cfFilters).some((v) => !!v) ||
-        conversionFilter !== 'EXCLUDE_CONVERTED' ||
         sortOption !== DEFAULT_SORT;
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
@@ -504,6 +516,18 @@ export const CampaignUsersTable = ({
     // enquiries for the visibility flag; leads without a linked user_id render
     // no badge (the lookup just returns undefined).
     const leadSettings = useLeadSettings();
+    // Table-backed lead status catalog (colors for the Status chip).
+    const { statuses: leadStatusCatalog } = useLeadStatuses();
+    const leadStatusOptions = useMemo(
+        () =>
+            leadStatusCatalog.map((s) => ({
+                key: s.status_key,
+                label: s.label,
+                color: s.color,
+                order: s.display_order,
+            })),
+        [leadStatusCatalog]
+    );
     const showLeadScore =
         !leadSettings.isLoading && leadSettings.enabled && leadSettings.showScoreInEnquiryTable;
     const leadUserIds = useMemo(
@@ -578,7 +602,8 @@ export const CampaignUsersTable = ({
                     profilesForColumns ?? counsellorProfiles.profiles,
                     showLeadOps ? notesByUserId : undefined,
                     showLeadOps ? handleAddNote : undefined,
-                    showLeadOps ? handleAssignCounsellor : undefined
+                    showLeadOps ? handleAssignCounsellor : undefined,
+                    showLeadOps ? leadStatusOptions : undefined
                 );
             }
 
@@ -595,7 +620,8 @@ export const CampaignUsersTable = ({
                 profilesForColumns ?? counsellorProfiles.profiles,
                 showLeadOps ? notesByUserId : undefined,
                 showLeadOps ? handleAddNote : undefined,
-                showLeadOps ? handleAssignCounsellor : undefined
+                showLeadOps ? handleAssignCounsellor : undefined,
+                showLeadOps ? leadStatusOptions : undefined
             );
         },
         [
@@ -611,6 +637,7 @@ export const CampaignUsersTable = ({
             showLeadOps,
             handleAddNote,
             handleAssignCounsellor,
+            leadStatusOptions,
         ]
     );
 
@@ -651,6 +678,12 @@ export const CampaignUsersTable = ({
                     _user: user,
                     _custom_field_values: (lead as any).custom_field_values || {},
                     _audience_campaign_name: (lead as any).campaign_name || null,
+                    // TAT / follow-up SLA badge (visual only)
+                    _tat_overdue: (lead as any).tat_overdue ?? null,
+                    _tat_due_soon: (lead as any).tat_due_soon ?? null,
+                    _follow_up_overdue: (lead as any).follow_up_overdue ?? null,
+                    // Custom pipeline status (enquiry_status)
+                    _lead_status: (lead as any).lead_status ?? null,
                 };
 
                 // Enriched per-field response data (with type metadata) so the
@@ -1174,21 +1207,28 @@ export const CampaignUsersTable = ({
                     </div>
                     <div className="flex flex-col gap-1">
                         <Label
-                            htmlFor="campaign-users-conversion"
+                            htmlFor="campaign-users-lead-status"
                             className="text-xs text-neutral-600"
                         >
-                            Status
+                            Lead status
                         </Label>
                         <div className="relative">
                             <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                            <Select value={conversionFilter} onValueChange={handleConversionChange}>
-                                <SelectTrigger id="campaign-users-conversion" className="w-48 pl-7">
+                            <Select
+                                value={leadStatusFilter}
+                                onValueChange={handleLeadStatusFilterChange}
+                            >
+                                <SelectTrigger id="campaign-users-lead-status" className="w-48 pl-7">
                                     <SelectValue placeholder="Active leads" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="EXCLUDE_CONVERTED">Active leads</SelectItem>
-                                    <SelectItem value="ONLY_CONVERTED">Converted only</SelectItem>
-                                    <SelectItem value="ALL">All</SelectItem>
+                                    <SelectItem value={ALL_ACTIVE_VALUE}>Active leads</SelectItem>
+                                    <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
+                                    {leadStatusCatalog.map((s) => (
+                                        <SelectItem key={s.id} value={s.status_key}>
+                                            {s.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>

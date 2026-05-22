@@ -359,14 +359,14 @@ export function LeadTable({
         <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm">
             <table className="w-full border-collapse text-sm">
                 <thead>
-                    <tr className="border-b border-neutral-200 bg-neutral-50 text-left">
+                    <tr className="border-b border-neutral-200 bg-primary-50 text-left">
                         {cols.map((c) => (
                             <th
                                 key={c.id}
                                 className={cn(
-                                    'whitespace-nowrap px-4 py-3 text-xs font-medium text-neutral-500',
+                                    'whitespace-nowrap px-4 py-3 text-xs font-semibold text-neutral-600',
                                     c.id === 'name' &&
-                                        'sticky left-0 z-20 border-r border-neutral-200 bg-neutral-50',
+                                        'sticky left-0 z-20 border-r border-neutral-200 bg-primary-50',
                                     c.thClass
                                 )}
                             >

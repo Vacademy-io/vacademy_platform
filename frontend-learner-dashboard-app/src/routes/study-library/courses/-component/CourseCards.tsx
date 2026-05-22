@@ -179,10 +179,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-md",
 
-            // Play Styles - Rounded, bouncy, fun
-            "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:shadow-[0_6px_0_hsl(var(--primary-200))]",
-            "[.ui-play_&]:hover:shadow-[0_9px_0_hsl(var(--primary-200))] [.ui-play_&]:hover:-translate-y-1",
-            "[.ui-play_&]:transition-all [.ui-play_&]:duration-150"
+            // Play Styles — radius + shadow handled by .ui-play .card rule in play-theme.css
+            "[.ui-play_&]:rounded-2xl",
+            "[.ui-play_&]:hover:-translate-y-1",
+            "[.ui-play_&]:transition-all [.ui-play_&]:duration-200"
         )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none"></div>

@@ -35,7 +35,12 @@ export function useVimotionApiKey(instituteId: string | undefined) {
         queryKey: ['vimotion-api-key', instituteId],
         enabled: !!instituteId,
         staleTime: Infinity,
-        retry: false,
+        // Retry transient failures (network blip on the very first load,
+        // brief 5xx) before falling into the error state. react-query uses
+        // exponential backoff (~1s → 2s → 4s) so total wait is ~7s before
+        // we give up. Past that, the caller's error state surfaces a
+        // manual "Try again" affordance via `refetch()`.
+        retry: 3,
         queryFn: async (): Promise<string> => {
             if (!instituteId) throw new Error('Missing institute id');
 

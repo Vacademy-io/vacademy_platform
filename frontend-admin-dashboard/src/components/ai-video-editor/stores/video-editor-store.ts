@@ -343,6 +343,7 @@ interface HistorySnapshot {
     entryBackgrounds: Record<string, string>;
     entryTransitions: Record<string, TransitionPair>;
     dirtyEntryIds: string[];
+    htmlEditedEntryIds: string[];
     newEntryIds: string[];
     deletedEntryIds: string[];
     pendingReorders: ReorderOp[];
@@ -400,6 +401,13 @@ export interface VideoEditorState {
 
     // Dirty tracking (HTML edits)
     dirtyEntryIds: string[];
+    /** IDs whose static HTML has been mutated this session (updateEntryHtml).
+     *  Separate from `dirtyEntryIds` so that overrides reset to default
+     *  (transform → identity, background → cleared, transition → cleared) can
+     *  *correctly* remove an entry from the dirty set without erasing the
+     *  fact that the HTML still differs from the last-saved baseline.
+     *  Cleared on save success alongside `dirtyEntryIds`. */
+    htmlEditedEntryIds: string[];
     /** IDs of entries that are brand-new and have never been saved to the backend. */
     newEntryIds: string[];
     /** IDs of previously-persisted entries the user has deleted in this session
@@ -679,10 +687,44 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
         entryBackgrounds: s.entryBackgrounds,
         entryTransitions: s.entryTransitions,
         dirtyEntryIds: s.dirtyEntryIds,
+        htmlEditedEntryIds: s.htmlEditedEntryIds,
         newEntryIds: s.newEntryIds,
         deletedEntryIds: s.deletedEntryIds,
         pendingReorders: s.pendingReorders,
     };
+}
+
+/**
+ * B6 helper — recompute whether an entry should remain in `dirtyEntryIds`
+ * after a mutation. An entry is dirty iff *any* of the save-worthy sources
+ * still has a non-baseline value:
+ *
+ *   - HTML was edited this session (`htmlEditedEntryIds`)
+ *   - Brand-new entry (`newEntryIds`)
+ *   - Non-identity transform stored
+ *   - Background set
+ *   - Any transition set
+ *
+ * Without this, resetting an override (e.g. transform → identity) would
+ * leave the entry in `dirtyEntryIds` forever and keep the Save button
+ * misleadingly lit.
+ */
+function entryIsDirty(s: VideoEditorState, entryId: string): boolean {
+    if (s.htmlEditedEntryIds.includes(entryId)) return true;
+    if (s.newEntryIds.includes(entryId)) return true;
+    const t = s.entryTransforms[entryId];
+    if (t && !isIdentity(t)) return true;
+    if (s.entryBackgrounds[entryId]) return true;
+    if (s.entryTransitions[entryId]) return true;
+    return false;
+}
+
+function recomputeDirty(state: VideoEditorState, entryId: string): string[] {
+    const inSet = state.dirtyEntryIds.includes(entryId);
+    const shouldBeDirty = entryIsDirty(state, entryId);
+    if (shouldBeDirty && !inSet) return [...state.dirtyEntryIds, entryId];
+    if (!shouldBeDirty && inSet) return state.dirtyEntryIds.filter((id) => id !== entryId);
+    return state.dirtyEntryIds;
 }
 
 function pushPast(s: VideoEditorState): Pick<VideoEditorState, 'past' | 'future'> {
@@ -712,6 +754,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     viewMode: loadViewMode(),
     displayNames: {},
     dirtyEntryIds: [],
+    htmlEditedEntryIds: [],
     newEntryIds: [],
     deletedEntryIds: [],
     pendingReorders: [],
@@ -752,6 +795,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // Display names are per-video though, so reload them now.
             displayNames: loadDisplayNames(params.videoId),
             dirtyEntryIds: [],
+            htmlEditedEntryIds: [],
             newEntryIds: [],
             deletedEntryIds: [],
             pendingReorders: [],
@@ -969,6 +1013,13 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
                 ? s.dirtyEntryIds
                 : [...s.dirtyEntryIds, entryId],
+            // Track html-edits separately from dirtyEntryIds so a later
+            // override-reset (transform → identity, bg cleared, transition
+            // cleared) can correctly decide whether the entry still has
+            // anything worth saving. See `entryIsDirty` / `recomputeDirty`.
+            htmlEditedEntryIds: s.htmlEditedEntryIds.includes(entryId)
+                ? s.htmlEditedEntryIds
+                : [...s.htmlEditedEntryIds, entryId],
         }));
     },
 
@@ -1056,13 +1107,27 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set((s) => {
             const current = s.entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
             const updated = { ...current, ...patch };
+            // B6: if the updated transform is the identity, *remove* it from
+            // the map rather than storing an identity override. That way the
+            // entry doesn't get serialised as a transform on save and — more
+            // visibly — the Save button doesn't stay lit if nothing else
+            // actually differs from the saved baseline.
+            const nextTransforms = { ...s.entryTransforms };
+            if (isIdentity(updated)) {
+                delete nextTransforms[entryId];
+            } else {
+                nextTransforms[entryId] = updated;
+            }
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
+                entryTransforms: nextTransforms,
+            };
             return {
-                ...pushPast(s),
-                entryTransforms: { ...s.entryTransforms, [entryId]: updated },
-                // Mark dirty so Save button lights up
-                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
-                    ? s.dirtyEntryIds
-                    : [...s.dirtyEntryIds, entryId],
+                ...past,
+                entryTransforms: nextTransforms,
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1071,16 +1136,16 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set((s) => {
             const next = { ...s.entryTransforms };
             delete next[entryId];
-            // If HTML is also not dirty, remove from dirtyEntryIds
-            const htmlAlsoDirty = s.entries.some(
-                (e) => e.id === entryId && s.dirtyEntryIds.includes(entryId)
-            );
-            return {
-                ...pushPast(s),
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
                 entryTransforms: next,
-                dirtyEntryIds: htmlAlsoDirty
-                    ? s.dirtyEntryIds
-                    : s.dirtyEntryIds.filter((id) => id !== entryId),
+            };
+            return {
+                ...past,
+                entryTransforms: next,
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1316,12 +1381,18 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             else updated[which] = transition;
             if (!updated.in && !updated.out) delete next[entryId];
             else next[entryId] = updated;
-            return {
-                ...pushPast(s),
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
                 entryTransitions: next,
-                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
-                    ? s.dirtyEntryIds
-                    : [...s.dirtyEntryIds, entryId],
+            };
+            return {
+                ...past,
+                entryTransitions: next,
+                // B6: clearing both sides of the transition can take this entry
+                // out of dirty if nothing else differs.
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1335,12 +1406,17 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             } else {
                 delete next[entryId];
             }
-            return {
-                ...pushPast(s),
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
                 entryBackgrounds: next,
-                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
-                    ? s.dirtyEntryIds
-                    : [...s.dirtyEntryIds, entryId],
+            };
+            return {
+                ...past,
+                entryBackgrounds: next,
+                // B6: clearing the background can take this entry out of dirty.
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1379,6 +1455,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryBackgrounds: prev.entryBackgrounds,
                 entryTransitions: prev.entryTransitions,
                 dirtyEntryIds: prev.dirtyEntryIds,
+                htmlEditedEntryIds: prev.htmlEditedEntryIds,
                 newEntryIds: prev.newEntryIds,
                 deletedEntryIds: prev.deletedEntryIds,
                 pendingReorders: prev.pendingReorders,
@@ -1398,6 +1475,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryBackgrounds: next.entryBackgrounds,
                 entryTransitions: next.entryTransitions,
                 dirtyEntryIds: next.dirtyEntryIds,
+                htmlEditedEntryIds: next.htmlEditedEntryIds,
                 newEntryIds: next.newEntryIds,
                 deletedEntryIds: next.deletedEntryIds,
                 pendingReorders: next.pendingReorders,
@@ -1633,6 +1711,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryBackgrounds: {},
                 entryTransitions: {},
                 dirtyEntryIds: [],
+                htmlEditedEntryIds: [], // saved HTML now is the new baseline
                 newEntryIds: [], // all new entries are now persisted
                 deletedEntryIds: [], // server-side deletions completed above
                 pendingReorders: [], // server-side reorders completed above

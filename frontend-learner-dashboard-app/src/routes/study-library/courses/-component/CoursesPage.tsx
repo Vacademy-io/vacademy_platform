@@ -251,8 +251,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
                             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                             // Play Styles — solid, bold, Duolingo-style
-                            "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:border-2 [.ui-play_&]:!border-primary-200 [.ui-play_&]:rounded-2xl",
-                            "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
+                            "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:rounded-2xl"
                         )}>
                             <div className="animate-pulse space-y-3 sm:space-y-4">
                                 <div className="h-4 bg-muted rounded w-1/3"></div>
@@ -277,8 +276,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             "relative overflow-hidden bg-card border rounded-lg shadow-sm px-6 py-12 sm:py-16 text-center",
                             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:border-primary/20",
                             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
-                            "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:border-2 [.ui-play_&]:!border-primary-200 [.ui-play_&]:rounded-2xl",
-                            "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
+                            "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:rounded-2xl"
                         )}>
                             {/* Decorative background blobs */}
                             <div className="pointer-events-none absolute -top-16 -left-10 w-48 h-48 rounded-full bg-primary-100/50 blur-3xl" aria-hidden="true" />

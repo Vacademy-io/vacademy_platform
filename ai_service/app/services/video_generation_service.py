@@ -3587,14 +3587,28 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             prior_intent = existing_thumbs.get("intent")
             prior_orientation = existing_thumbs.get("orientation")
 
+            # The user_selections snapshot carries the original avatar pick.
+            # We pull it once and reuse for both orientation fallback and the
+            # avatar-face thread-through below — saves loading the dict twice.
+            _meta = dict(record.extra_metadata or {})
+            _sel = _meta.get("user_selections") or {}
+
             # Best-effort: derive orientation from prior thumbnails, else fall
             # back to the user_selections snapshot the pipeline writes to meta.
             orientation = prior_orientation
             if not orientation:
-                _meta = dict(record.extra_metadata or {})
-                _sel = _meta.get("user_selections") or {}
                 orientation = _sel.get("orientation") or "landscape"
             orientation = "portrait" if orientation == "portrait" else "landscape"
+
+            # Carry the host face into regenerate. First-time generation pulls
+            # this from self._current_avatar_image_url; regenerate has no
+            # pipeline instance, so we read the snapshot the original run
+            # persisted to user_selections.avatar_image_url. Without this the
+            # regenerated thumbnail loses the host identity, which is exactly
+            # the regression the first-run fix was meant to close.
+            _avatar_face_url = _sel.get("avatar_image_url") if isinstance(_sel, dict) else None
+            if not isinstance(_avatar_face_url, str) or not _avatar_face_url.strip():
+                _avatar_face_url = None
 
             # Title comes from the user's original prompt. We deliberately
             # don't try to recover the script_plan's polished title here —
@@ -3641,6 +3655,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 director_plan=director_plan,
                 orientation=orientation,
                 subjects_list=[],
+                avatar_face_url=_avatar_face_url,
                 original_prompt=(record.prompt or "").strip() or None,
                 llm_chat=None,
             )

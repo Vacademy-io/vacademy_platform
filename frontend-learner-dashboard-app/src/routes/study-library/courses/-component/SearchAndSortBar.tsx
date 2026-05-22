@@ -54,9 +54,9 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
             "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
             "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
             "[.ui-vibrant_&]:shadow-sm",
-            // Play Styles — white bg with bold border and shadow
-            "[.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:!border-primary-200 [.ui-play_&]:rounded-2xl",
-            "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-200))]"
+            // Play Styles — soft shadow + thin border via play-theme.css fallback
+            "[.ui-play_&]:!bg-white [.ui-play_&]:rounded-2xl [.ui-play_&]:border [.ui-play_&]:!border-primary-100",
+            "[.ui-play_&]:shadow-[0_1px_2px_hsl(var(--primary-300)/0.06),0_8px_24px_-10px_hsl(var(--primary-400)/0.14)]"
         )}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* Filter toggle — desktop only, only shown when filter is closed */}

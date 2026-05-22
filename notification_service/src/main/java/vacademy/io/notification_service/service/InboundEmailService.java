@@ -23,7 +23,8 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.EmailAddressMappingRepository;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -130,7 +131,7 @@ public class InboundEmailService {
                     // Fallback: most recent outbound email to the from address within a time window
                     Optional<NotificationLog> recent = notificationLogRepository
                             .findTopByChannelIdAndNotificationTypeAndNotificationDateBeforeOrderByNotificationDateDesc(
-                                    fromAddress, "EMAIL", LocalDateTime.now().plusMinutes(5));
+                                    fromAddress, "EMAIL", Instant.now().plus(Duration.ofMinutes(5)));
                     if (recent.isPresent()) {
                         parentLogId = recent.get().getId();
                         userId = recent.get().getUserId();
@@ -176,7 +177,8 @@ public class InboundEmailService {
                 inboundLog.setSenderBusinessChannelId(normalizedInbox);
             }
             inboundLog.setMessagePayload(messagePayload);
-            inboundLog.setNotificationDate(LocalDateTime.now());
+            inboundLog.setInstituteId(instituteId);
+            inboundLog.setNotificationDate(Instant.now());
 
             notificationLogRepository.save(inboundLog);
             log.info("Saved INBOUND_EMAIL from={} messageId={} parentLogId={} userId={}",

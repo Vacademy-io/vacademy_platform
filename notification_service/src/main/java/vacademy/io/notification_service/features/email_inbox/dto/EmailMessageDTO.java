@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -23,8 +25,8 @@ public class EmailMessageDTO {
     private String counterpartyEmail;
     /** Institute-side address (sender for outbound, receiver for inbound). */
     private String instituteAddress;
-    /** ISO timestamp of when the message was sent/received. */
-    private String timestamp;
+    /** When the message was sent/received. Jackson emits Instant as ISO-8601 with trailing Z. */
+    private Instant timestamp;
     /** Source identifier (announcement-service, OTP_SERVICE, etc.). */
     private String source;
 }

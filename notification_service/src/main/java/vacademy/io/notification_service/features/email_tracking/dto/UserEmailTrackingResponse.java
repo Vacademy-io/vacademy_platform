@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -51,7 +51,7 @@ public class UserEmailTrackingResponse {
     /**
      * When the email was sent
      */
-    private LocalDateTime sentAt;
+    private Instant sentAt;
     
     /**
      * Latest tracking status for this email
@@ -80,7 +80,7 @@ public class UserEmailTrackingResponse {
         /**
          * Event timestamp in server local time
          */
-        private LocalDateTime eventTimestamp;
+        private Instant eventTimestamp;
         
         /**
          * Event timestamp with timezone offset (ISO 8601, e.g., 2025-01-27T10:30:00+05:30)

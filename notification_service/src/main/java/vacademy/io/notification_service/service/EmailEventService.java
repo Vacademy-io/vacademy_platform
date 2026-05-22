@@ -9,7 +9,9 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
@@ -242,7 +244,7 @@ public class EmailEventService {
                 break;
         }
         
-        return timestamp != null ? timestamp : LocalDateTime.now().toString();
+        return timestamp != null ? timestamp : Instant.now().toString();
     }
 
     private NotificationLog createEmailEventLog(String eventType, String messageId, String recipient, 
@@ -259,22 +261,18 @@ public class EmailEventService {
         String eventDetails = createEventDetailsBody(eventType, sesEvent);
         notificationLog.setBody(eventDetails);
         
-        // Parse timestamp - SES timestamps are in UTC, convert to local timezone
+        // Parse SES timestamp as a UTC Instant; storage and downstream display are zone-agnostic.
         try {
-            // Parse as UTC first, then convert to local timezone
             if (timestamp.endsWith("Z")) {
-                // UTC timestamp - parse as Instant then convert to LocalDateTime
-                java.time.Instant instant = java.time.Instant.parse(timestamp);
-                LocalDateTime eventTime = LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
-                notificationLog.setNotificationDate(eventTime);
+                notificationLog.setNotificationDate(Instant.parse(timestamp));
             } else {
-                // Local timestamp - parse directly
-                LocalDateTime eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
-                notificationLog.setNotificationDate(eventTime);
+                // Naive ISO without zone — SES rarely emits this, but treat it as UTC for safety.
+                notificationLog.setNotificationDate(
+                        LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME).toInstant(ZoneOffset.UTC));
             }
         } catch (Exception e) {
             log.warn("Could not parse SES timestamp '{}', using current time", timestamp);
-            notificationLog.setNotificationDate(LocalDateTime.now());
+            notificationLog.setNotificationDate(Instant.now());
         }
         
         return notificationLog;
@@ -370,7 +368,13 @@ public class EmailEventService {
             
             // Create the event log
             NotificationLog eventLog = createEmailEventLog(eventType, messageId, recipient, timestamp, sesEvent, originalLogId);
-            
+
+            // Inherit institute_id from the parent EMAIL log so the Hub can scope this event row too.
+            if (originalLogId != null) {
+                notificationLogRepository.findById(originalLogId)
+                        .ifPresent(parent -> eventLog.setInstituteId(parent.getInstituteId()));
+            }
+
             // Save with transaction
             notificationLogRepository.save(eventLog);
             
@@ -430,31 +434,29 @@ public class EmailEventService {
     
     private String findOriginalNotificationLogId(String recipient, String timestamp) {
         try {
-            // Parse the event timestamp - SES timestamps are in UTC, convert to local timezone
-            LocalDateTime eventTime;
+            // Parse the event timestamp as UTC Instant (SES timestamps are always UTC).
+            Instant eventTime;
             try {
                 if (timestamp.endsWith("Z")) {
-                    // UTC timestamp - parse as Instant then convert to LocalDateTime
-                    java.time.Instant instant = java.time.Instant.parse(timestamp);
-                    eventTime = LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+                    eventTime = Instant.parse(timestamp);
                 } else {
-                    // Local timestamp - parse directly
-                    eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME);
+                    eventTime = LocalDateTime.parse(timestamp, DateTimeFormatter.ISO_DATE_TIME)
+                            .toInstant(ZoneOffset.UTC);
                 }
             } catch (Exception e) {
                 log.warn("Could not parse timestamp '{}', using current time", timestamp);
-                eventTime = LocalDateTime.now();
+                eventTime = Instant.now();
             }
-            
+
             // Step 1: Look for EMAIL log for this recipient within a wider time window
             // Events can arrive within 30 minutes of email sending
-            LocalDateTime searchStart = eventTime.minusMinutes(30);
-            LocalDateTime searchEnd = eventTime.plusMinutes(15);
-            
+            Instant searchStart = eventTime.minus(java.time.Duration.ofMinutes(30));
+            Instant searchEnd = eventTime.plus(java.time.Duration.ofMinutes(15));
+
             Optional<NotificationLog> matchingEmail = notificationLogRepository
                 .findTopByChannelIdAndNotificationTypeAndNotificationDateBeforeOrderByNotificationDateDesc(
                     recipient, "EMAIL", searchEnd);
-            
+
             if (matchingEmail.isPresent()) {
                 NotificationLog emailLog = matchingEmail.get();
                 // Verify the email was sent within reasonable time window

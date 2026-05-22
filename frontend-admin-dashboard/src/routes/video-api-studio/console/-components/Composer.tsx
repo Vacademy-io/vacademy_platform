@@ -240,7 +240,14 @@ export function Composer({
 
     // Auto-select model: prefer an LLM matching the current quality tier;
     // otherwise fall back to whatever the BE marks is_default.
+    //
+    // Skipped entirely in vimMode (P2-12): the legacy top-level `model` field
+    // is admin-only — Vimotion users rely on the V200 stage-routing matrix
+    // (`ai_model_stage_assignments`) which the BE resolves from `quality_tier`
+    // alone. Auto-populating `options.model` here would ship a "ghost knob"
+    // the user can't see (we hide both override panels in vimMode via P0-5).
     useEffect(() => {
+        if (vimMode) return;
         const available = modelsList?.models ?? [];
         if (available.length === 0) return;
         const tier = options.quality_tier || 'ultra';
@@ -259,7 +266,7 @@ export function Composer({
             onOptionsChange({ ...options, model: pick.model_id });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [modelsList, options.quality_tier]);
+    }, [modelsList, options.quality_tier, vimMode]);
 
     // Fetch video style + branding + templates (institute-wide config).
     useEffect(() => {
@@ -484,21 +491,22 @@ export function Composer({
         };
     };
 
+    // Vim contract: when host is enabled, the user must pick a saved avatar.
+    // Vim has no free-form face-upload escape hatch — that's admin-only.
+    // Surfaced as a disabled-state on the Send button (no toast-validate),
+    // and as a backstop early-return inside handleSubmit for any code path
+    // that bypasses the disabled button (e.g. keyboard shortcut races).
+    const vimAvatarMissing =
+        !!vimMode && options.host?.type === 'avatar' && !options.host?.avatar?.saved_avatar_id;
+
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
-        // Vim contract: when host is enabled, the user must pick a saved
-        // avatar. Vim has no free-form face-upload escape hatch — that's
-        // admin-only. Block here so the BE doesn't reject with a less-clear
-        // 400 after the credit pre-check has already locked credits.
-        if (vimMode && options.host?.type === 'avatar') {
-            const savedId = options.host.avatar?.saved_avatar_id;
-            if (!savedId) {
-                toast.error('Pick a host first', {
-                    description:
-                        'Open the ⚙ Settings → Host tab and pick a saved avatar, or save one in the Avatars tab.',
-                });
-                return;
-            }
+        if (vimAvatarMissing) {
+            toast.error('Pick a host first', {
+                description:
+                    'Open the ⚙ Settings → Host tab and pick a saved avatar, or save one in the Avatars tab.',
+            });
+            return;
         }
         setPendingRequest(buildRequest());
         setConfirmModalOpen(true);
@@ -892,12 +900,24 @@ export function Composer({
                         {/* Send */}
                         <Button
                             onClick={handleSubmit}
-                            disabled={!prompt.trim() || isGenerating || disabled || showPreview}
+                            disabled={
+                                !prompt.trim() ||
+                                isGenerating ||
+                                disabled ||
+                                showPreview ||
+                                vimAvatarMissing
+                            }
                             size="icon"
                             data-tour="vim-composer-send"
                             className="size-9 rounded-md shadow-sm"
-                            title="Generate (Enter)"
-                            aria-label="Generate"
+                            title={
+                                vimAvatarMissing
+                                    ? 'Pick a host in ⚙ Settings → Host before generating'
+                                    : 'Generate (Enter)'
+                            }
+                            aria-label={
+                                vimAvatarMissing ? 'Pick a host before generating' : 'Generate'
+                            }
                         >
                             <Send className="size-4" />
                         </Button>

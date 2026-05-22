@@ -177,27 +177,37 @@ export function CostPreviewInline({
     if (!data && !loading) return null;
     const est = data?.estimate;
     const bal = data?.balance;
-    const insufficient = bal && !bal.sufficient_for_high;
+    const insufficient = !!(bal && !bal.sufficient_for_high);
 
     // Selection details (quality_tier / duration / orientation / voice / model)
     // are already shown as chips in the option-bubble row above this preview,
     // so we only render the cost + balance summary here.
     if (!est && !bal && !loading) return null;
 
+    // Visual weight bumped intentionally — the previous neutral `text-[11px]`
+    // strip was being missed by users who only discovered the cost at the
+    // confirmation modal. Amber pill makes "this is the price tag" obvious
+    // at a glance; insufficient balance flips to red.
     return (
-        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-[11px]">
-            {loading && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+        <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+            {loading && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
             {est && (
-                <span className="flex items-center gap-1 font-medium">
-                    <Coins className="size-3 text-amber-500" />~{fmtCredits(est.expected_credits)}{' '}
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200">
+                    <Coins className="size-3.5 text-amber-600" />~{fmtCredits(est.expected_credits)}{' '}
                     credits
-                    <span className="text-muted-foreground">
+                    <span className="font-normal text-amber-700">
                         ({fmtCredits(est.low_credits)}–{fmtCredits(est.high_credits)})
                     </span>
                 </span>
             )}
             {bal && bal.current != null && (
-                <span className={insufficient ? 'text-red-600' : 'text-muted-foreground'}>
+                <span
+                    className={
+                        insufficient
+                            ? 'inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 font-semibold text-red-700 ring-1 ring-red-200'
+                            : 'inline-flex items-center gap-1 px-1 text-muted-foreground'
+                    }
+                >
                     {insufficient ? '⚠ ' : '✓ '}
                     {fmtCredits(bal.current)} available
                 </span>

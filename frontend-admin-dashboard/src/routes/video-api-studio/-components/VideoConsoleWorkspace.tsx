@@ -30,6 +30,8 @@ import {
     getRemoteHistory,
     cancelGeneration,
     DEFAULT_OPTIONS,
+    REUSE_SETTINGS_HANDOFF_KEY,
+    type ReuseSettingsHandoff,
 } from '../-services/video-generation';
 import { HistorySidebar } from './HistorySidebar';
 import { ScriptReview } from './ScriptReview';
@@ -318,19 +320,71 @@ export function VideoConsoleWorkspace({
     const [reviewModeEnabled, setReviewModeEnabled] = useState(false);
     const [reviewScript, setReviewScript] = useState('');
 
-    // Lifted state for prompt and options
-    const [prompt, setPrompt] = useState(() => localStorage.getItem('video-studio-prompt') || '');
+    // One-shot consume of the "Reuse settings" handoff written by a Recent
+    // card. Read in a `useState` initializer so it's available before the
+    // prompt/options initializers run; cleared in a `useEffect` after mount
+    // so we don't side-effect during render (safe under StrictMode's double-
+    // invoke). The handoff carries the previous run's prompt + tonal options
+    // (tier / voice / host / brand kit / visual mix), with per-run fields
+    // like reference_files stripped at write time.
+    const [reuseHandoff] = useState<ReuseSettingsHandoff | null>(() => {
+        try {
+            const raw = sessionStorage.getItem(REUSE_SETTINGS_HANDOFF_KEY);
+            return raw ? (JSON.parse(raw) as ReuseSettingsHandoff) : null;
+        } catch {
+            return null;
+        }
+    });
+    useEffect(() => {
+        if (reuseHandoff) {
+            sessionStorage.removeItem(REUSE_SETTINGS_HANDOFF_KEY);
+            toast.success('Settings copied from previous video', {
+                description: 'Tweak the prompt or options below, then Generate.',
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on mount
+    }, []);
+
+    // Lifted state for prompt and options. Reuse-handoff wins over the
+    // localStorage stickiness — when the user explicitly chose "Reuse settings"
+    // on a Recent card, that intent is fresher than last session's state.
+    const [prompt, setPrompt] = useState(
+        () => reuseHandoff?.prompt ?? localStorage.getItem('video-studio-prompt') ?? ''
+    );
     const [options, setOptions] = useState<Omit<GenerateVideoRequest, 'prompt'>>(() => {
-        const saved = localStorage.getItem('video-studio-options');
-        if (saved) {
-            try {
-                return { ...DEFAULT_OPTIONS, ...JSON.parse(saved) };
-            } catch (e) {
-                console.error('Failed to parse saved options:', e);
-                return DEFAULT_OPTIONS;
+        let initial: Omit<GenerateVideoRequest, 'prompt'>;
+        if (reuseHandoff?.options) {
+            initial = { ...DEFAULT_OPTIONS, ...reuseHandoff.options };
+        } else {
+            const saved = localStorage.getItem('video-studio-options');
+            if (saved) {
+                try {
+                    initial = { ...DEFAULT_OPTIONS, ...JSON.parse(saved) };
+                } catch (e) {
+                    console.error('Failed to parse saved options:', e);
+                    initial = DEFAULT_OPTIONS;
+                }
+            } else {
+                initial = DEFAULT_OPTIONS;
             }
         }
-        return DEFAULT_OPTIONS;
+        // Vimotion-specific normalizations. Same browser may carry stale
+        // localStorage from an admin-mode session — clean it up at init so
+        // hidden-in-vimMode fields don't ship in the wire payload.
+        //   • content_type → VIDEO  (P2-13: selector hidden in vimMode)
+        //   • model → undefined     (P2-12: V200 stage-routing matrix is
+        //     authoritative for vimMode; legacy top-level `model` is admin-
+        //     only). Setting to undefined ensures JSON.stringify drops the
+        //     key entirely from the request body.
+        if (vimMode) {
+            const patch: Partial<Omit<GenerateVideoRequest, 'prompt'>> = {};
+            if (initial.content_type !== 'VIDEO') patch.content_type = 'VIDEO';
+            if (initial.model) patch.model = undefined;
+            if (Object.keys(patch).length > 0) {
+                initial = { ...initial, ...patch };
+            }
+        }
+        return initial;
     });
 
     // Persist prompt and options

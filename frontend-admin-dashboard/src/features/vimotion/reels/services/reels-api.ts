@@ -33,6 +33,8 @@ export interface ScoreAxes {
     pacing: number;
     info: number;
     loop: number;
+    /** A3 (2026-05-22): TF-IDF top-5 concentration. 0 for legacy rows. */
+    topic?: number;
     composite: number;
 }
 
@@ -50,6 +52,23 @@ export interface ScoreBreakdown {
     word_cut_savings_needed_s?: number | null;
     word_cut_savings_pct?: number | null;
     speaker_moves_in_window?: number | null;
+    /** Issue 4A — end-quality diagnostics (Phase 2e, 2026-05-21). */
+    end_quality_score?: number | null;
+    end_last_word?: string | null;
+    end_terminator?: 'punctuation' | 'continuator' | 'no_punct' | null;
+    start_first_word?: string | null;
+    start_bad_opener?: boolean | null;
+    /** A5 — fraction of window covered by face_segments (None when indexer
+     *  produced no face data, e.g., screen recordings). */
+    face_coverage_fraction?: number | null;
+    /** A4 — window info-density rate / source baseline. */
+    info_density_ratio?: number | null;
+    /** A2 — LLM rerank factor (1.0 = no change) + per-candidate reason. */
+    llm_rerank_factor?: number | null;
+    llm_rerank_reason?: string | null;
+    /** A3 — topic-coherence diagnostic. */
+    topic_top5_share?: number | null;
+    topic_top_token?: string | null;
 }
 
 export interface ReelCandidate {
@@ -92,7 +111,7 @@ export interface ScanResponse {
 export interface CutSpan {
     t_start: number;
     t_end: number;
-    kind: 'silence' | 'word' | 'filler';
+    kind: 'silence' | 'word' | 'filler' | 'user';
 }
 
 export interface WordImportance {
@@ -169,6 +188,11 @@ export interface RenderRequest {
     captions?: CaptionConfig;
     branding?: BrandingConfig;
     visual_preferences?: VisualPreferences;
+    /** B3 (2026-05-22) — user-toggled cuts from the trim UI. Each span must
+     *  be `kind: 'user'`, 0.08–15.0s, within the source window, non-
+     *  overlapping with siblings or any importance>=2 word. Total across all
+     *  overrides capped at 40% of window duration server-side. */
+    cut_plan_overrides?: CutSpan[];
 }
 
 export interface StageProgress {

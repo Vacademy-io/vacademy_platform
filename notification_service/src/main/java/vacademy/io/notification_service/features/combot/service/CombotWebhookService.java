@@ -30,7 +30,7 @@ import vacademy.io.notification_service.features.combot.repository.ChannelToInst
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -85,8 +85,11 @@ public class CombotWebhookService {
         out.setSource(CombotConstants.SOURCE_COMBOT);
         out.setSourceId(messageId);
         out.setUserId(userId);
-        out.setNotificationDate(LocalDateTime.now());
+        out.setNotificationDate(Instant.now());
         out.setSenderBusinessChannelId(channelId);
+        if (channelId != null) {
+            mappingRepository.findById(channelId).ifPresent(m -> out.setInstituteId(m.getInstituteId()));
+        }
 
         try {
             if (rawPayloadSent != null) {
@@ -124,13 +127,14 @@ public class CombotWebhookService {
         statusLog.setChannelId(phone);
         statusLog.setBody("Status: " + status);
         statusLog.setSourceId(messageId);
-        statusLog.setNotificationDate(LocalDateTime.now());
+        statusLog.setNotificationDate(Instant.now());
 
         originalOpt.ifPresent(original -> {
             statusLog.setSource(original.getId());
             statusLog.setUserId(original.getUserId());
-            // Preserve sender channel ID for context
+            // Preserve sender channel ID + institute for context
             statusLog.setSenderBusinessChannelId(original.getSenderBusinessChannelId());
+            statusLog.setInstituteId(original.getInstituteId());
         });
 
         notificationLogRepository.save(statusLog);
@@ -163,12 +167,13 @@ public class CombotWebhookService {
             st.setChannelId(recipientId);
             st.setBody("Status: " + statusValue);
             st.setSourceId(messageId);
-            st.setNotificationDate(LocalDateTime.now());
+            st.setNotificationDate(Instant.now());
 
             originalOpt.ifPresent(original -> {
                 st.setSource(original.getId());
                 st.setUserId(original.getUserId());
                 st.setSenderBusinessChannelId(original.getSenderBusinessChannelId());
+                st.setInstituteId(original.getInstituteId());
             });
 
             notificationLogRepository.save(st);
@@ -208,12 +213,13 @@ public class CombotWebhookService {
         fail.setChannelId(recipientId);
         fail.setBody("Error: " + errorMessage + " (code=" + errorCode + ")");
         fail.setSourceId(messageId);
-        fail.setNotificationDate(LocalDateTime.now());
+        fail.setNotificationDate(Instant.now());
 
         originalOpt.ifPresent(original -> {
             fail.setSource(original.getId());
             fail.setUserId(original.getUserId());
             fail.setSenderBusinessChannelId(original.getSenderBusinessChannelId());
+            fail.setInstituteId(original.getInstituteId());
         });
 
         notificationLogRepository.save(fail);
@@ -835,7 +841,11 @@ public class CombotWebhookService {
             logEntry.setSourceId(messageId);
             logEntry.setBody(text);
             logEntry.setSenderBusinessChannelId(receivingChannelId);
-            logEntry.setNotificationDate(LocalDateTime.now());
+            if (receivingChannelId != null) {
+                mappingRepository.findById(receivingChannelId)
+                        .ifPresent(m -> logEntry.setInstituteId(m.getInstituteId()));
+            }
+            logEntry.setNotificationDate(Instant.now());
             if (senderName != null && !senderName.isBlank()) {
                 logEntry.setSenderName(senderName);
             }

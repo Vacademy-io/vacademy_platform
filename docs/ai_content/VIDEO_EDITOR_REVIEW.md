@@ -30,17 +30,28 @@ VideoEditorPage (shell, render polling, toolbar)
 ├─ PropertiesPanel          (right column, seven tabs — friendly labels)
 │   ├─ Elements      (was Layers) — DOM tree of the selected entry with
 │   │                friendly kind labels (Container / Horizontal Layout /
-│   │                Image / Text / Heading / Graphic). Tag-name badges hidden
-│   │                in simple mode; SVG filter primitives hidden in simple
-│   │                mode. Inspector uses LengthControl/RotationControl with
-│   │                raw CSS in `Advanced ▾`.
+│   │                Image / Text / Heading / Graphic). Each row carries a
+│   │                muted content preview alongside the type label
+│   │                ("Text 'Forest law…'", "Image filename.png") so a tree
+│   │                of half a dozen "Text" rows can be told apart at a
+│   │                glance. Tag-name badges hidden in simple mode; SVG
+│   │                filter primitives hidden in simple mode. Inspector uses
+│   │                LengthControl/RotationControl with raw CSS in
+│   │                `Advanced ▾`.
 │   ├─ Position & Size (was Transform) — X/Y/scale/rotation, background
 │   │                color picker. Raw background CSS (gradient/URL) lives
 │   │                in `Advanced ▾`.
 │   ├─ Transitions  (was Motion) — per-entry `transitionIn`/`transitionOut`
 │   │                + easing presets (Smooth/Fast/Slow/Linear/Bouncy).
 │   │                Custom `cubic-bezier(...)` per side in `Advanced ▾`.
-│   ├─ Text         — list of editable text nodes in the entry HTML.
+│   ├─ Text         — list of editable text nodes in the entry HTML, plus
+│   │                text injected at runtime by inline scripts
+│   │                (`varEl.innerHTML = "…"` / `varEl.textContent = "…"`,
+│   │                where `varEl` was bound via `document.querySelector` /
+│   │                `getElementById` in the same script). Patches for the
+│   │                latter rewrite the JS string literal in place,
+│   │                preserving wrapper HTML like `<span style="display:
+│   │                inline-block">…</span>`.
 │   ├─ Images & Video (was Media) — replace/delete src.
 │   ├─ Overlays     — combined-HTML overlays inside the shot's own document
 │   │                (`.vx-overlay > [data-vx-overlay-id]`). Fit labels are
@@ -64,7 +75,17 @@ VideoEditorPage (shell, render polling, toolbar)
 
 **Rendering model:** every active Entry at the current `currentTime` becomes
 its *own* sandboxed `<iframe srcDoc={html}>` stacked by `entry.z`. The canvas
-just CSS-scales a fixed-size (`meta.dimensions`) container to fit.
+just CSS-scales a fixed-size (`meta.dimensions`) container to fit. The
+iframe's `srcDoc` is memoised on a **structural fingerprint** of
+`entry.html` (the HTML with inline `style="…"` attributes stripped), so
+style-only edits keep `srcDoc` referentially stable and don't trigger a
+reload — instead, the parent broadcasts a `vx-sync-styles` message and the
+iframe agent walks DOM + parsed-new-HTML in lockstep, applying inline-style
+diffs additively via `setProperty(prop, val, priority)`. The agent itself
+is injected at the *start* of `<body>` (not appended at the end) and pauses
+`gsap.globalTimeline` synchronously in its IIFE, so any inline
+`<script>gsap.fromTo(...)</script>` later in the shot adds tweens to an
+already-paused timeline and can't auto-play during the load window.
 
 **Edit model:** edits rewrite the Entry HTML *string* — `DOMParser` →
 mutate → `body.innerHTML`. Geometry-aware utilities live next to the panels:
@@ -83,6 +104,10 @@ maps and are baked into a wrapper `<div data-vx-shot="1">` only on save.
 - Edge drag → `resizeEntryEdge` (slip/roll/ripple).
 - Body drag → `moveEntries` (move / ripple).
 - Row drag in EntryListPanel → `reorderEntries` via atomic `/frame/reorder`.
+- **Playhead auto-follow** (§6.7): every `seek()` selects whichever
+  non-branding entry contains the new playhead position (lowest-z in
+  time_driven, `floor(currentTime)` index otherwise). Properties panel
+  follows manual scrubbing and the playback engine's RAF loop alike.
 
 **Backend surface** (ai_service `/external/video/v1`):
 - `frame/regenerate` — AI-rewrite an existing frame (preview-then-confirm).
@@ -134,7 +159,7 @@ Legend: ✅ fixed · ⚠ partial · ❌ open · ➕ new since the last review.
 | ➕ B20 | Overlays-tab Height defaulted to a fixed square | ✅ | Image/video overlays now default to width-only / natural aspect. Explicit Height slider with Auto/Set toggle. |
 | ➕ B21 | Layers tab — image/video had URL field only | ✅ | URL input + Upload button (re-uses `useFileUpload`). |
 | ➕ B22 | Deleting a saved shot didn't persist | ✅ | New backend `POST /frame/delete`; frontend tracks `deletedEntryIds`. |
-| ➕ B23 | Layers tab and Overlays tab can both edit the same overlay | ❌ | Edits in one tab can be partially overwritten by the other. Phase 3-of-editing-bugs is to collapse Layers + Overlays into one tab with chips. |
+| ➕ B23 | `PropertiesPanel.tsx`, `LayersTab.tsx`, `OverlayEditor.tsx` (new) | ✅ | Layers and Overlays were two parallel tabs editing the same entry HTML — edits in one could be partially overwritten by the other. Collapsed into a single Elements tab. Inspector routes by overlay-ness (presence of `data-vx-overlay-id`) to either `OverlayEditor` (sliders + objectFit + auto-aspect) or `NodeInspector` (rotation + raw CSS). Add-Text/Image/Video Overlay toolbar moved to the top of Elements; new overlay is auto-selected so the inspector opens on it. Chip filters (All / Text / Image / Video / Overlays) prune the tree while preserving container hierarchy. See §6.9. |
 | ➕ B24 | Reorder via sequential `/frame/update` was destructive | ✅ | New atomic `POST /frame/reorder` endpoint by `entry_id`; frontend queues ops in `pendingReorders`. |
 | ➕ B25 | Ripple drag didn't preview the growing timeline | ✅ | `totalDuration` derived from `previewedEntries`; `totalDurationRef` keeps the in-flight drag closure live. |
 | ➕ B26 | Snap to non-grid targets lost precision | ✅ | `applySnap` returns `{ delta, snapped }`; post-snap quantize skipped when snap fired. |
@@ -143,12 +168,25 @@ Legend: ✅ fixed · ⚠ partial · ❌ open · ➕ new since the last review.
 | ➕ B29 | Renames on never-saved entries were lost | ✅ | `frame/add` didn't accept `entry_meta`. A shot the user renamed before its first save persisted on the server *without* `display_name`; localStorage was cleared on save success → rename vanished on reload. Fix: `AddFrameRequest`/`add_video_frame` accept `entry_meta` and the frontend sends the pending display_name on the add path. |
 | ➕ B30 | MotionTab easing picker lied when In/Out easings differed | ✅ | Divergent easings produced `sharedEasing === undefined`, then `easingPresetFor(undefined)` returned "Smooth" — visually claiming all was Smooth even though the two transitions differed. Fix: compute `effectiveEasing` with explicit fallback to `'ease'` per side, treat true divergence as `null`, and only call `easingPresetFor` for non-null values. "Custom easing — see Advanced below" warning now appears correctly. |
 | ➕ B31 | localStorage persisted empty-string display-name sentinels | ✅ | A pending clear written to localStorage would survive reload visually (showing auto-name) but the dirty bit didn't, so saveChanges would never push the clear to the server → silent permanent desync. Fix: `persistDisplayNames` strips empty strings before writing; pending clears are in-memory only (lost on reload, same as any other unsaved edit). |
+| ➕ B32 | `TimelineScrubber.tsx:1118` | ✅ | Sound-cue React key was `${entryId}:${cue.id}` — the Sound Planner can emit duplicate `cue.id`s within one entry, so React warned "two children with the same key". Key now also includes the array index. |
+| ➕ B33 | `LayerHandlesOverlay.tsx:50-96, 150-164, 296-307` | ✅ | After every HTML commit the iframe re-mounted (new `srcDoc`) and `iframeRef.current` pointed at the detached old element. The `vx-iframe-ready` guard `e.source === iframeRef.current?.contentWindow` then failed for the new window, the rect re-query never fired, and the next drag's `vx-set-style` posted to a dead window → silent no-op. Fix: subscribe to `selectedEntryHtml` in the useShallow selector (so the resolve effect re-runs after commit), re-resolve from the DOM in the ready listener by `data-vx-entry-id`, and re-resolve at gesture-start as defense-in-depth. |
+| ➕ B34 | `LayerHandlesOverlay.tsx:345-349, 444-462` | ✅ | Commits used `previewRectRef.current ?? startRect`, but the state→ref `useEffect` mirror lagged one event tick. A tiny single-pointermove drag committed `dx=dy=0` because the ref hadn't been updated yet. Replaced with closure-local `lastDx/lastDy/lastRotateDeg/lastResize` written synchronously inside `onMove`. Added a `didMove` guard so a pure click on the move handle no longer writes a no-op commit (which would have forced `position: absolute` on a previously-static element). |
+| ➕ B35 | `LayerHandlesOverlay.tsx:376-378, 469-471` + `editor-iframe-agent.ts:179-195` | ✅ | Move/resize commits were silently clobbered for shots that animated `left` directly via gsap or had `.foo { left: 0 !important }` in their `<style>`. Fix: commits now write `position/left/top/width/height` with `!important`; the iframe agent parses the `!important` suffix from values and calls `setProperty(prop, val, 'important')`. Tradeoff: shots whose intro animates `left/top` lose that animation for the moved element — the explicit drag wins. |
+| ➕ B36 | `EditorCanvas.tsx:63-65` + `editor-iframe-agent.ts:41-66` | ✅ | The agent script was appended *after* the shot HTML, so the shot's `<script>gsap.fromTo(...)</script>` ran first and the tween auto-played for ~50-200 ms before our agent paused the timeline at DOMContentLoaded — every re-mount flickered. Fix: agent injected immediately after `<body>` via `baseHtml.replace('<body>', '<body>' + agent)` and pauses `gsap.globalTimeline` synchronously in its IIFE (with a 4 ms retry loop fallback). Tweens registered later are added to an already-paused timeline. |
+| ➕ B37 | `EditorCanvas.tsx:505-558` + `editor-iframe-agent.ts:225-264, 294-297` + `LayerHandlesOverlay.tsx:197-211` | ✅ | Every commit reloaded the iframe (`srcDoc` changed → full reload), so consecutive drags raced the load window. Fix: `EntryLayer` memoises `srcDoc` on a structural fingerprint (entry.html minus inline `style="…"`). Style-only edits keep `srcDoc` referentially stable; a new `vx-sync-styles` message carries the full new HTML to the agent, which walks DOM + parsed-new-HTML in lockstep and applies inline-style diffs *additively* via `setProperty` (preserves gsap-set transforms not in the new HTML). `LayerHandlesOverlay` re-queries the rect on `selectedEntryHtml` change since `vx-iframe-ready` no longer fires for style edits. |
+| ➕ B38 | `editor-iframe-agent.ts` | ✅ | Self-inflicted breakage: a JS comment in the agent contained the literal text `</script>`, which the HTML parser interpreted as the end of the agent script. The rest of the agent dumped as visible body content and the iframe logged two SyntaxErrors. Rewrote the comment to avoid the literal closing tag. Lesson noted in the comment for future contributors. |
+| ➕ B39 | `html-text-editor.ts:36-48, 134-353` | ✅ | The Text tab didn't surface text injected at runtime by inline scripts (the LLM's common `varEl.innerHTML = "TELANGANA"` pattern leaves the static `<h1>` empty). `extractTextElements` now scans inline `<script>` blocks for `const/let/var X = document.querySelector('SEL') | getElementById('ID')` bindings, then `X.innerHTML = "…"` / `.textContent = "…"` / `document.querySelector(...).innerHTML = "…"` assignments. Each becomes a synthetic `TextElement` carrying a `scriptInjection` ref. `applyTextPatch` routes text-content edits through a literal-rewriter that preserves wrapper HTML (`<span style='…'>…</span>`) and re-injects via a function-form `replace` so `$` chars in the new text aren't mis-read as backreferences. `deleteTextElement` empties the literal in place. Template literals with `${…}` interpolation are skipped on purpose. |
+| ➕ B40 | `stores/video-editor-store.ts:853-888` | ✅ | The Properties panel didn't follow the playhead — users scrubbed to shot 6 but the panel still showed shot 3. `seek()` now auto-selects whichever non-branding shot contains the playhead (lowest-z in time_driven; `floor(currentTime)` index otherwise) in the same `set()` call as `currentTime`. Clears `selectedLayerPath` when the entry changes. Works for both manual scrubbing and the playback engine's RAF loop (which calls `seek()` every frame). |
+| ➕ B41 | `LayersTab.tsx:271-281, 855-876` | ✅ | Layers-tree rows showed only the type label ("Container", "Text", "Image"), making a tree of half a dozen "Text" rows indistinguishable. Each row now carries a muted content preview alongside the type label — Text/Heading rows show the truncated visible text in quotes; Image/Video rows show the `alt` attribute or basename of `src` (query string stripped). Hovering exposes the full value via `title=`. |
 
 ### 2.3 UX / polish
 
 - **Transitions exist** (Transitions tab) for fade / slide / zoom / wipe + easing presets.
 - **Move-mode drag exists** (Move + Ripple via mode toolbar). Slide / Swap deferred.
 - **viewMode toggle exists** — friendly defaults for all users; raw inputs reachable via `Advanced ▾`.
+- **Auto-follow exists** — Properties panel switches to whichever shot the playhead enters (manual scrubbing + playback). See §6.7.
+- **Layers-tree previews exist** — every row shows a muted content snippet (truncated text / image basename) next to the type label so duplicate-type rows are distinguishable. See §6.8.
+- **Iframe re-mount minimisation exists** — style-only edits no longer reload the iframe; structural edits (text/add/delete) still do. Eliminates per-edit flicker. See §6.5.
 - Selection outline still transformed with the entry — goes off-screen when scaled / rotated. Draw the ring in screen space.
 - No multi-select, no copy/paste of entries, no align/distribute across entries. `moveEntries(ids: string[], ...)` is plural-ready.
 - Portrait layout branch exists (`isPortrait`) but falls through to the 3-panel desktop layout.
@@ -342,6 +380,188 @@ Server is the source of truth via `entries[].entry_meta.display_name`:
   Empty-string sentinels are *not* persisted to disk — they exist only
   in-memory until save (mirrors how every other unsaved edit behaves).
 
+### 6.5 Iframe rendering robustness
+
+Three architectural changes shipped together to kill the "drag works the
+first time, then flickers / doesn't work" pattern:
+
+1. **Agent at the top of `<body>`** ([EditorCanvas.tsx:63-65](../../frontend-admin-dashboard/src/components/ai-video-editor/EditorCanvas.tsx#L63-L65)).
+   The iframe agent script is no longer appended at the end of the shot
+   HTML — it's injected immediately after the opening `<body>` tag via
+   `baseHtml.replace('<body>', '<body>' + agent)`. Because gsap is loaded
+   in `<head>` by the shared `getCommonLibraries()` block, the agent runs
+   *after* gsap exists but *before* the shot's inline animation scripts
+   parse.
+2. **Synchronous gsap pause** ([editor-iframe-agent.ts:41-66](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/editor-iframe-agent.ts#L41-L66)).
+   The agent calls `gsap.globalTimeline.pause()` synchronously in its
+   IIFE (with a 4 ms `setInterval` retry as a fallback). Any subsequent
+   `gsap.fromTo(...)` adds tweens to an already-paused timeline. No
+   autoplay flicker during the iframe load window.
+3. **Structural-fingerprint `srcDoc` memoisation** ([EditorCanvas.tsx:505-558](../../frontend-admin-dashboard/src/components/ai-video-editor/EditorCanvas.tsx#L505-L558)).
+   `EntryLayer` keeps a `srcDoc` state seeded from the initial
+   `entry.html`. A `useEffect` watches `entry.html` and compares the
+   *structural fingerprint* (HTML with `style="…"` attributes stripped)
+   to the last one. If the fingerprint changed → rebuild `srcDoc` (full
+   iframe reload). If only inline styles changed → broadcast a
+   `vx-sync-styles` message with the new full HTML and *do not* touch
+   `srcDoc`. The agent (`syncStylesFromHtml` / `syncStylesRecursive`)
+   walks the live DOM and the parsed new HTML in lockstep, applying
+   inline-style diffs additively via `setProperty(prop, val, priority)`
+   — preserves any gsap-set transform/opacity not in the new HTML.
+
+The move/resize commit path also writes `!important` on
+`position/left/top/width/height` ([LayerHandlesOverlay.tsx:454-481](../../frontend-admin-dashboard/src/components/ai-video-editor/LayerHandlesOverlay.tsx#L454-L481))
+and the agent's `applyStylePatch` honours the `!important` suffix on
+values ([editor-iframe-agent.ts:179-195](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/editor-iframe-agent.ts#L179-L195)).
+Shots whose runtime animation writes `left`/`top` directly (or whose
+stylesheet uses `!important`) no longer silently clobber user drags.
+
+Cites B35 / B36 / B37 / B38.
+
+### 6.6 JS-injected text in the Text tab
+
+The LLM commonly emits empty containers and fills them at runtime:
+
+```js
+const titleEl = document.querySelector('#s2_title');
+titleEl.innerHTML = "<span style='display:inline-block;white-space:nowrap'>TELANGANA</span>";
+```
+
+The static `<h1>` is empty, so the DOM-walking text extractor used to
+skip it. Now [`extractTextElements`](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-text-editor.ts#L134-L155)
+also scans inline `<script>` blocks via three regexes
+([html-text-editor.ts:158-168](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-text-editor.ts#L158-L168)):
+
+- `QS_BINDING_RE` — `const|let|var X = document.querySelector('SEL')`
+- `GBI_BINDING_RE` — `const|let|var X = document.getElementById('ID')`
+- `ASSIGN_RE` — `X.innerHTML = "…"` / `.textContent = "…"`, also
+  accepting a direct `document.querySelector(...)` chain as the target.
+
+Each detected injection becomes a synthetic `TextElement` carrying a
+`scriptInjection: { selector, method, quote, originalLiteral }` ref
+([html-text-editor.ts:36-48](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/html-text-editor.ts#L36-L48)).
+The synthetic row inherits `tagName` and inline style from the resolved
+target element (via `querySelector(selector)` against the parsed body)
+so the Text tab shows it as "Heading 'TELANGANA'" rather than "Script
+'TELANGANA'".
+
+`applyTextPatch` short-circuits when `targetMeta.scriptInjection` is set
+and routes to `applyScriptInjectionPatch`:
+
+1. **`patch.text`** → `rebuildLiteralForText` parses the original
+   literal as HTML, walks text nodes via `TreeWalker`, replaces the
+   first non-empty text node with the new text and clears any trailing
+   text nodes. Wrapper spans (`<span style='display:inline-block'>…
+   </span>`) survive — critical for `splitReveal` to still find chars
+   to animate. The serialised HTML is then re-escaped for the original
+   quote type and substituted into the script via a function-form
+   `replace` (so `$` chars in the new text aren't misread as
+   backreferences) and any `</script>` substring becomes `<\/script>`.
+2. **Style patches** (`fontSize`, `color`, `translateX`, …) → applied
+   to the target element's inline `style` attribute by selector, same
+   as the static-DOM code path.
+
+`deleteTextElement` for script-injected entries empties the literal in
+place rather than removing the (empty) DOM node — the assignment stays
+so the variable reference doesn't crash the script.
+
+**Limitations** (intentional):
+
+- Template literals with `${…}` interpolation are skipped silently.
+- Only `innerHTML` / `textContent` assignments are detected;
+  `setAttribute('innerHTML', …)`, `el.append(textNode)`, and
+  multi-statement composition (`el.innerHTML += "…"`) are not.
+- One pass per assignment — `el.innerHTML = a + b` (concatenation) is
+  not handled.
+
+Cites B39.
+
+### 6.7 Auto-follow selection on playhead
+
+[`seek()` in video-editor-store.ts:853-888](../../frontend-admin-dashboard/src/components/ai-video-editor/stores/video-editor-store.ts#L853-L888)
+auto-selects the non-branding shot containing the playhead in the same
+`set()` call as `currentTime`:
+
+- `time_driven` — filter entries by `[inTime, exitTime)` containing
+  `time`, sort by `z` ascending, pick the first (base layer).
+- `user_driven` / `self_contained` — `floor(currentTime)` as index.
+- Branding entries (`branding-intro` / `-outro` / `-watermark`) are
+  excluded — auto-following into the branded outro and switching the
+  panel away mid-scrub would be jarring.
+
+When the auto-selection changes, `selectedLayerPath` is cleared (paths
+are entry-scoped). Works for both manual scrubbing (TimelineScrubber
+drag) and the playback engine (the RAF loop in
+[playback-engine.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/playback/playback-engine.ts)
+calls `useVideoEditorStore.getState().seek(t)` every frame).
+
+Cites B40.
+
+### 6.8 Layers-tree content previews
+
+Every row in the Layers tree now renders a muted content snippet next
+to its type label so half-a-dozen "Text" or "Image" rows can be told
+apart at a glance ([LayersTab.tsx:271-281, 855-876](../../frontend-admin-dashboard/src/components/ai-video-editor/LayersTab.tsx#L271-L281)):
+
+- **Text / Heading** — first 32 chars of `node.textContent`,
+  whitespace-collapsed, in quotes: `Text "Forest law enforcement…"`.
+- **Image / Video** — `alt` attribute if non-empty, else basename of
+  `src` with query strings stripped: `Image telangana-cover.png`.
+- **Container / Graphic / Element** — no preview; the layout label
+  (`Container` / `Horizontal Layout` / `Vertical Layout` / `Grid
+  Layout`) carries enough information on its own.
+
+Hovering the row exposes the full value via `title=`. Preview text
+colour follows selection (indigo when selected, gray-400 otherwise).
+
+Cites B41.
+
+### 6.9 Merged Elements tab — overlays editable in-tree
+
+The Overlays tab is gone. Overlay editing now lives in the Elements
+tab, which means there's one place to manage every element of a shot
+— static DOM nodes and overlay rows alike — eliminating the
+"edits-in-one-tab-overwrite-the-other" hazard.
+
+Three pieces moved:
+
+1. **Inspector routes by overlay-ness**
+   ([LayersTab.tsx:89-235](../../frontend-admin-dashboard/src/components/ai-video-editor/LayersTab.tsx#L89-L235),
+   [OverlayEditor.tsx](../../frontend-admin-dashboard/src/components/ai-video-editor/OverlayEditor.tsx)).
+   When the selected layer-tree row's node has `data-vx-overlay-id`,
+   the inspector renders `OverlayEditor` (slider-based geometry,
+   objectFit buttons, auto-aspect for media). Otherwise it renders
+   the existing `NodeInspector` (LengthControl, RotationControl, raw
+   CSS in `Advanced ▾`). Both editors are preserved as-is — no
+   controls were merged or lost. `OverlayEditor` and `SliderField`
+   were extracted from `PropertiesPanel.tsx` into their own file so
+   both panels can import them. A new `hideHeader` prop suppresses
+   the inspector-internal row label since the tree row above already
+   shows it.
+
+2. **Add-Overlay toolbar at the top of Elements**
+   ([LayersTab.tsx:277-313](../../frontend-admin-dashboard/src/components/ai-video-editor/LayersTab.tsx#L277-L313)).
+   Three buttons — `Text` / `Image` / `Video` — replace the old
+   Overlays-tab add row. Image and Video reuse the same file-input
+   infrastructure as the existing "Replace src" button via an
+   `id === 'NEW'` sentinel that forks the upload handler between
+   "create new overlay" and "replace existing overlay's src". The new
+   overlay is auto-selected after creation so the inspector opens on
+   it immediately.
+
+3. **Chip filters**
+   ([LayersTab.tsx:60-71, 282-307](../../frontend-admin-dashboard/src/components/ai-video-editor/LayersTab.tsx#L60-L71),
+   [LayersTab.tsx:909-940](../../frontend-admin-dashboard/src/components/ai-video-editor/LayersTab.tsx#L909-L940)).
+   A row of pill buttons above the tree: `All / Text / Image / Video
+   / Overlays`. `filterTreeByChip` recursively prunes nodes that don't
+   match AND have no matching descendants — preserves hierarchy so a
+   Text inside two Containers still shows both containers expandable
+   (the chip narrows the view, it doesn't flatten it). Empty result
+   shows a friendly "No <chip> in this entry." placeholder.
+
+`selectedLayerPath` is the single source of truth for which row is
+selected — no new store state was needed. Cites B23.
+
 ---
 
 ## 7. Shot transitions
@@ -376,32 +596,32 @@ Done ✅ — strikethrough left in for context:
 6. ~~Layers-tab upload for image/video; Overlays-tab Height slider; overlay selection → canvas handles.~~ (B20 ✅, B21 ✅)
 7. ~~Move-mode body drag + Ripple + EntryListPanel reorder + atomic `/frame/reorder`.~~ (§5 ✅, B24 ✅, B25 ✅, B26 ✅, B27 ✅)
 8. ~~Layman-friendly editor — viewMode toggle, friendly labels, controls, server-synced renames.~~ (§6 ✅, B28 ✅, B29 ✅, B30 ✅, B31 ✅)
+9. ~~Iframe rendering robustness — agent at body-top, sync gsap pause, structural-fingerprint srcDoc, vx-sync-styles, `!important` on move/resize commits.~~ (§6.5 ✅, B32–B38 ✅)
+10. ~~JS-injected text surfaced in Text tab.~~ (§6.6 ✅, B39 ✅)
+11. ~~Auto-follow selection on playhead.~~ (§6.7 ✅, B40 ✅)
+12. ~~Layers-tree content previews.~~ (§6.8 ✅, B41 ✅)
+13. ~~Collapse Layers (Elements) and Overlays into one tab with chips — inspector routes by overlay-ness, Add-Overlay toolbar on Elements, chip filters.~~ (§6.9 ✅, B23 ✅)
 
 Now:
 
-9. **Collapse Layers (Elements) and Overlays into one tab with chips** (B23).
-   Add buttons (Text / Image / Video) become a `+` menu on the unified tab;
-   chips filter All / Text / Image / Video / Overlays; the inspector picks
-   its control set based on the selected node's kind and whether it sits
-   inside `.vx-overlay`.
-10. **Stop Add-Shot stacking at end** (B18). When an unsaved end-blank
+14. **Stop Add-Shot stacking at end** (B18). When an unsaved end-blank
     already exists, the dialog should select it instead of creating another.
 
 Next, pick from:
 
-11. **Correctness sweep** — B6 (dirty baseline), B7 (per-entry save status
+15. **Correctness sweep** — B6 (dirty baseline), B7 (per-entry save status
     + retry), B8 (user-driven track layout), B9 (scrubber clamp), B10
     (matrix-safe transform merge). Independent and small.
-12. **Audio policy on extend** (B19) — first-class prompt when
+16. **Audio policy on extend** (B19) — first-class prompt when
     `total_duration` would grow: silent / auto-narrate / loop bg music /
     stretch bg music. Adds `loop` flag to `AudioTrack`. Prereq for any
     "add AI shot at end" flow and for audio-on-timeline drag.
-13. **Captions track** — see [CAPTIONS_TRACK_PLAN.md](./CAPTIONS_TRACK_PLAN.md).
-14. **Move-mode Phase 2** — Slide and Swap; multi-select; sentence-boundary
-    snap targets; audio drag on timeline (gated on §12).
-15. **Perf** — B13 (waveform off main thread), B16 (debounce iframe
-    re-renders or shadow-root renderer).
-16. **Polish** — screen-space selection ring, portrait layout branch,
+17. **Captions track** — see [CAPTIONS_TRACK_PLAN.md](./CAPTIONS_TRACK_PLAN.md).
+18. **Move-mode Phase 2** — Slide and Swap; multi-select; sentence-boundary
+    snap targets; audio drag on timeline (gated on §16).
+19. **Perf** — B13 (waveform off main thread), B16 (debounce iframe
+    re-renders or shadow-root renderer; B37 covered the style-only path).
+20. **Polish** — screen-space selection ring, portrait layout branch,
     keyframed transforms, overlay timing UI (§4.3), large-HTML hard cap.
 
 ---
@@ -411,8 +631,8 @@ Next, pick from:
 These came up during recent work and haven't been resolved — flagging so
 the next pass can pick one:
 
-1. **One tab or two** for layer-vs-overlay editing. Current direction:
-   collapse to one (B23 / step 9 above).
+1. ~~**One tab or two** for layer-vs-overlay editing.~~ Resolved: collapsed
+   to one Elements tab with chip filters (B23 ✅, §6.9).
 2. **Where the renderer authority lives** for time-driven overlay
    visibility (CSS keyframes vs scripted clock).
 3. **Should `total_duration` auto-shrink on entry delete?** Today: no —
@@ -430,3 +650,98 @@ the next pass can pick one:
 7. **`branding-watermark-1`, `-2`** — `friendlyEntryName` returns plain
    "Watermark" for all variants. If a video has multiple watermarks the
    user can't distinguish them by name without renaming each. Low priority.
+8. **JS-text detection scope** — only the LLM's specific
+   `varEl.innerHTML = "..."` pattern is handled (with `document.querySelector` /
+   `getElementById` binding upstream). `setAttribute('innerHTML', …)`,
+   `el.append(textNode)`, `el.textContent += "..."`, concatenation
+   (`el.innerHTML = a + b`), and template literals with `${…}`
+   interpolation aren't. Decide between broadening the detector (more
+   patterns → more fragile) or constraining the LLM prompt to emit a
+   stable pattern.
+9. **`vx-sync-styles` is additive only** — a property cleared in the
+   inspector (e.g. removing `color` from a Text element) is *not*
+   propagated to the iframe DOM, because the sync only applies properties
+   present in the new HTML. This is intentional (so a gsap-set transform
+   not mentioned in the static HTML doesn't get blown away mid-render),
+   but means inspector-driven *removals* require a structural change to
+   take visual effect. Revisit if users complain.
+10. **Auto-follow has no "pin"** — every `seek` selects the active
+    shot. Users can't keep a non-active shot selected (e.g. to copy values
+    from one shot to another while the playhead is elsewhere). Should an
+    explicit click in EntryListPanel pin until next click, or should
+    shift-click pin? Or a toolbar toggle for "follow playhead: on/off"?
+11. **`!important` on resize dimensions** — width/height committed with
+    `!important` will defeat any responsive `width: 100%` rule in the
+    shot's stylesheet. Probably desired (the user explicitly resized to a
+    pixel value) but worth a watchpoint if shots stop being responsive
+    after the user touches them.
+
+---
+
+## 10. What's needed next — beyond §8
+
+Forward-looking items that surfaced during the last few iterations but
+aren't on the existing roadmap. Roughly ordered by leverage; pick from
+this list once §8 items 13-20 are unblocked.
+
+### 10.1 Editor reliability follow-ups
+
+- **Tests for the script-injection rewriter** — round-trip "extract →
+  patch → re-extract" with assertions on preserved span wrappers and the
+  replaced text. No coverage today; all the LLM-pattern variants live in
+  one file (`html-text-editor.ts`) so a focused vitest suite is cheap.
+- **Telemetry for iframe load + sync** — log time-to-`vx-iframe-ready`
+  per re-mount and `vx-sync-styles` round-trip latency. Currently
+  invisible — regressions in either would silently re-introduce
+  flicker. Bucket by structural-fingerprint hit/miss to confirm the
+  memoisation is actually winning in practice.
+- **Full-replace mode for `vx-sync-styles`** — additive sync is safe
+  but means inspector "delete style" doesn't propagate. A property-mask
+  approach ("clear these props, then apply these") plus a "do not
+  touch" allowlist for gsap-managed props would let removals work
+  without breaking animations.
+- **Template-literal interpolation handling** — `` `Hello ${name}` `` is
+  skipped silently. Detect and either expose as read-only or surface
+  only the static prefix; warn in the inspector so users know the
+  detected text is a fragment.
+- **Multi-statement composition** — `el.innerHTML += "X"` and
+  `el.innerHTML = a + b` patterns aren't detected. Decide on coverage.
+
+### 10.2 Editor capability follow-ups
+
+- **Multi-select for entries** — `moveEntries(ids: string[])` is plural-
+  ready; UI is single-select. Wire shift-click in EntryListPanel and on
+  timeline clips, with a multi-row inspector that edits the intersection
+  of properties.
+- **Pin / unpin selection** (auto-follow opt-out). See §9.10.
+- **Live DOM introspection mode for Text tab** — supplement the
+  static-HTML parser with a query into the iframe's actual rendered DOM
+  via a new `vx-dump-text` message. Catches any visible text regardless
+  of injection pattern; edits would still need to route back through
+  whatever surface created the text (static / script / runtime DOM).
+- **Copy / paste entries** — "make this shot like that one". Store the
+  entry HTML on the clipboard (custom MIME) plus a paste affordance in
+  EntryListPanel.
+- **Align / distribute** across multi-select.
+
+### 10.3 Accessibility pass
+
+- LayersTab tree rows use `role="button"` with `tabIndex={0}` but no
+  `aria-expanded` (on collapsible parents), `aria-level`, or
+  `aria-selected`. Audit and add.
+- Canvas drag handles are pointer-only. Keyboard arrow-nudge works once
+  a layer is selected, but there's no Tab path to focus a layer from
+  the canvas in the first place. Tab into the Layers tree, select, then
+  arrow-nudge — works but not discoverable.
+- `text-gray-400` muted preview snippet (§6.8) contrast ratio against
+  the row hover/selected background — verify against WCAG AA.
+
+### 10.4 Documentation
+
+The iframe agent message protocol now has ten message types:
+`vx-seek`, `vx-play`, `vx-pause`, `vx-get-rect`, `vx-rect`,
+`vx-set-style`, `vx-sync-styles`, `vx-resize-to-rect`,
+`vx-resize-applied`, `vx-iframe-ready`. No single doc lists them;
+the next contributor has to read the agent source to learn it. Add a
+reference table to [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md)
+or a new dedicated doc — direction, payload shape, when it's sent.

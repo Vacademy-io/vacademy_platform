@@ -87,6 +87,26 @@ class RenderJobRequest(BaseModel):
     caption_bg_color: Optional[str] = Field(default=None, description="CSS hex color for caption background")
     caption_bg_opacity: Optional[int] = Field(default=None, description="Caption background opacity 0-100")
     caption_font_size: Optional[int] = Field(default=None, description="Caption font size in px")
+    # Style-polish fields (additive, all optional). Render server falls back
+    # to pre-feature defaults when any field is omitted (phrase / system font /
+    # 400 weight / no stroke / yellow highlight).
+    caption_style: Optional[str] = Field(default=None, description="phrase or karaoke")
+    caption_font_family: Optional[str] = Field(
+        default=None,
+        description="system | inter | montserrat | noto-sans | fira-code",
+    )
+    caption_font_weight: Optional[int] = Field(
+        default=None, description="400, 500, 600, 700, 800, or 900"
+    )
+    caption_text_stroke_width: Optional[int] = Field(
+        default=None, description="Outline width in px at 1920w canvas; 0 = no stroke"
+    )
+    caption_text_stroke_color: Optional[str] = Field(
+        default=None, description="Hex color for the text stroke"
+    )
+    caption_highlight_color: Optional[str] = Field(
+        default=None, description="Hex color for the active word in karaoke style"
+    )
     source_video_url: Optional[str] = Field(default=None, description="(deprecated) Single source video URL — use source_video_urls")
     source_video_urls: Optional[List[str]] = Field(default=None, description="S3 URLs of indexed source videos for SOURCE_CLIP compositing")
 
@@ -150,6 +170,12 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             caption_bg_color=request.caption_bg_color,
             caption_bg_opacity=request.caption_bg_opacity,
             caption_font_size=request.caption_font_size,
+            caption_style=request.caption_style,
+            caption_font_family=request.caption_font_family,
+            caption_font_weight=request.caption_font_weight,
+            caption_text_stroke_width=request.caption_text_stroke_width,
+            caption_text_stroke_color=request.caption_text_stroke_color,
+            caption_highlight_color=request.caption_highlight_color,
             source_video_urls=request.source_video_urls or ([request.source_video_url] if request.source_video_url else None),
         )
 

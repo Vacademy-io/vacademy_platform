@@ -53,11 +53,17 @@ from ..schemas.reels import (
     UpdateReelFrameRequest,
     WordImportance,
 )
+from ..config import get_settings
 from ..services.reels_engagement_service import (
     ScoringRequest,
     score_windows,
 )
-from ..services.reels_preview_service import ReelsPreviewService
+from ..services.reels_preview_service import (
+    MAX_USER_CUT_SPAN_S,
+    MIN_CUT_SPAN_S,
+    ReelsPreviewService,
+)
+from ..services.reels_rerank_service import rerank_candidates
 from ..services.reels_render_orchestrator import (
     RenderContext,
     dispatch_render,
@@ -125,6 +131,148 @@ def _config_hash(input_asset_id: str, req: ScanRequest) -> str:
     }
     serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+# Cut-plan override validation knobs (Phase 2 B3). Hoisted module-level so
+# tests can introspect and the validator stays callable in isolation.
+_CUT_OVERRIDE_MAX_TOTAL_FRACTION = 0.40
+# PB3 (2026-05-22): tolerate small float-precision drift on window bounds —
+# a FE-built span from word.t_end may land at 23.999999998 while the
+# candidate stored 24.0 (or vice-versa). 1ms is well below MIN_CUT_SPAN_S
+# (0.08s) so it can't mask a real issue.
+_CUT_OVERRIDE_BOUNDARY_EPS = 1e-3
+
+
+def _validate_cut_plan_overrides(
+    overrides: list[CutSpan],
+    source_window: dict,
+    enriched_snapshot: Optional[dict],
+) -> list[dict]:
+    """Validate FE-supplied user-toggled cuts against window bounds and the
+    enriched payload's protected (importance>=2) words. On success, returns
+    a sorted list of cut dicts ready to merge into `enriched_snapshot.cut_plan`.
+
+    Validation contract (raises HTTPException 400 with a specific message on
+    the first violation found):
+      * Each span: kind=='user', MIN_CUT_SPAN_S <= duration <= MAX_USER_CUT_SPAN_S
+      * Span lies entirely within source_window (±BOUNDARY_EPS for float slop)
+      * Overrides don't overlap each other
+      * No override overlaps any word with importance >= 2
+      * Total override duration <= 40% of window duration
+    """
+    if not overrides:
+        return []
+
+    win_start = float(source_window.get("t_start", 0.0))
+    win_end = float(source_window.get("t_end", 0.0))
+    win_duration = win_end - win_start
+    if win_duration <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="cut_plan_overrides: source_window is invalid",
+        )
+
+    sorted_overrides = sorted(overrides, key=lambda c: c.t_start)
+    total_duration = 0.0
+    prev_end = float("-inf")
+    for i, span in enumerate(sorted_overrides):
+        if span.kind != "user":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cut_plan_overrides[{i}]: kind must be 'user', "
+                    f"got '{span.kind}'"
+                ),
+            )
+        dur = span.t_end - span.t_start
+        if dur < MIN_CUT_SPAN_S:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cut_plan_overrides[{i}]: duration {dur:.3f}s is below "
+                    f"MIN_CUT_SPAN_S ({MIN_CUT_SPAN_S}s)"
+                ),
+            )
+        if dur > MAX_USER_CUT_SPAN_S:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cut_plan_overrides[{i}]: duration {dur:.3f}s exceeds "
+                    f"MAX_USER_CUT_SPAN_S ({MAX_USER_CUT_SPAN_S}s)"
+                ),
+            )
+        # PB3: epsilon tolerance on window bounds to absorb float drift.
+        if (
+            span.t_start < win_start - _CUT_OVERRIDE_BOUNDARY_EPS
+            or span.t_end > win_end + _CUT_OVERRIDE_BOUNDARY_EPS
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cut_plan_overrides[{i}]: span "
+                    f"[{span.t_start:.3f}, {span.t_end:.3f}] is outside "
+                    f"source_window [{win_start:.3f}, {win_end:.3f}]"
+                ),
+            )
+        if span.t_start < prev_end:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cut_plan_overrides[{i}]: span "
+                    f"[{span.t_start:.3f}, {span.t_end:.3f}] overlaps a "
+                    f"prior override"
+                ),
+            )
+        prev_end = span.t_end
+        total_duration += dur
+
+    max_total = win_duration * _CUT_OVERRIDE_MAX_TOTAL_FRACTION
+    if total_duration > max_total:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"cut_plan_overrides: total duration {total_duration:.3f}s "
+                f"exceeds {int(_CUT_OVERRIDE_MAX_TOTAL_FRACTION * 100)}% of "
+                f"window ({max_total:.3f}s) — re-scan with different params instead"
+            ),
+        )
+
+    # Protected-word check: word_importance comes from /preview enrichment.
+    # If the candidate was never enriched (legacy / pre-Preview path), we
+    # skip this check rather than reject — those reels lack importance data
+    # so we can't validate. The FE shouldn't allow Edit-cuts mode without
+    # enrichment, but we don't enforce it server-side.
+    word_importance = (enriched_snapshot or {}).get("word_importance") or []
+    for i, span in enumerate(sorted_overrides):
+        for w in word_importance:
+            try:
+                w_start = float(w.get("t_start", 0.0))
+                w_end = float(w.get("t_end", 0.0))
+                w_imp = int(w.get("importance", 2))
+            except (TypeError, ValueError):
+                continue
+            if w_imp < 2:
+                continue
+            if w_end <= span.t_start or w_start >= span.t_end:
+                continue
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"cut_plan_overrides[{i}]: span "
+                    f"[{span.t_start:.3f}, {span.t_end:.3f}] overlaps "
+                    f"protected word '{w.get('word', '?')}' "
+                    f"(importance={w_imp})"
+                ),
+            )
+
+    return [
+        {
+            "t_start": span.t_start,
+            "t_end": span.t_end,
+            "kind": "user",
+        }
+        for span in sorted_overrides
+    ]
 
 
 def _render_config_hash(req: RenderRequest) -> str:
@@ -327,6 +475,49 @@ async def scan_reel_candidates(
             cache_ttl_seconds=3600,
         )
 
+    # A2 (2026-05-22): LLM rerank pass. One Haiku call nudges the heuristic
+    # composite by up to ±10%, never blocks /scan on failure.
+    try:
+        settings = get_settings()
+        if settings.openrouter_api_key:
+            rerank_input = [
+                {
+                    "id": f"c{i}",
+                    "snippet": cs.transcript_snippet,
+                    "duration_s": cs.predicted_output_duration_s,
+                }
+                for i, cs in enumerate(scored)
+            ]
+            factor_map = await rerank_candidates(
+                candidates=rerank_input,
+                api_key=settings.openrouter_api_key,
+                base_url=settings.llm_base_url,
+                model=settings.llm_default_model,
+            )
+            if factor_map:
+                # Apply factor + stash reason. Re-sort + re-rank afterward.
+                for i, cs in enumerate(scored):
+                    entry = factor_map.get(f"c{i}")
+                    if entry is None:
+                        continue
+                    factor, reason = entry
+                    new_composite = max(0.0, min(100.0, cs.score.composite * factor))
+                    cs.score.composite = new_composite
+                    cs.score.breakdown["llm_rerank_factor"] = round(factor, 3)
+                    if reason:
+                        cs.score.breakdown["llm_rerank_reason"] = reason
+                scored.sort(key=lambda c: -c.score.composite)
+                for new_rank, cs in enumerate(scored, start=1):
+                    cs.rank = new_rank
+                logger.info(
+                    f"[reels.scan] rerank applied: {len(factor_map)}/{len(scored)} "
+                    f"candidates nudged"
+                )
+    except Exception as exc:
+        # Rerank is best-effort. Never block /scan on failure — heuristic
+        # composite stands. Log but don't raise.
+        logger.warning(f"[reels.scan] rerank failed: {exc}")
+
     # Persist rows so /preview and /render can reference them by id.
     rows = [
         {
@@ -340,6 +531,7 @@ async def scan_reel_candidates(
                 "pacing": cs.score.pacing,
                 "info": cs.score.info,
                 "loop": cs.score.loop,
+                "topic": cs.score.topic,
                 "composite": cs.score.composite,
             },
             "breakdown": cs.score.breakdown or {},
@@ -393,6 +585,9 @@ def _candidate_row_to_response(row) -> ReelCandidate:
         pacing=score_dict.get("pacing", 0.0),
         info=score_dict.get("info", 0.0),
         loop=score_dict.get("loop", 0.0),
+        # A3: legacy rows from before topic axis won't have it — default 0
+        # so they parse, but their composite was already computed without it.
+        topic=score_dict.get("topic", 0.0),
         composite=score_dict.get("composite", 0.0),
     )
     breakdown = ScoreBreakdown(**{
@@ -406,6 +601,14 @@ def _candidate_row_to_response(row) -> ReelCandidate:
             # End-quality (Issue 4A — added 2026-05-21)
             "end_quality_score", "end_last_word", "end_terminator",
             "start_first_word", "start_bad_opener",
+            # A5 — dead-zone diagnostic (added 2026-05-22)
+            "face_coverage_fraction",
+            # A4 — info-density ratio (added 2026-05-22)
+            "info_density_ratio",
+            # A2 — LLM rerank reason + factor (added 2026-05-22)
+            "llm_rerank_factor", "llm_rerank_reason",
+            # A3 — topic-coherence diagnostics (added 2026-05-22)
+            "topic_top5_share", "topic_top_token",
         )
     })
     return ReelCandidate(
@@ -747,6 +950,51 @@ async def render_reel(
         "t_end": candidate.source_t_end,
         "original_duration_s": candidate.source_duration_s,
     }
+
+    # B3: validate + merge user-toggled cut_plan_overrides into the snapshot.
+    # Downstream `_resolve_cut_plan` in reels_audio_edit_service sorts +
+    # unions overlapping cuts, so we just append + sort here.
+    render_extra_metadata: dict = {}
+    if request.cut_plan_overrides:
+        validated_overrides = _validate_cut_plan_overrides(
+            request.cut_plan_overrides,
+            source_window,
+            config_dict.get("enriched_snapshot"),
+        )
+        if validated_overrides:
+            snapshot = config_dict.setdefault("enriched_snapshot", {})
+            existing_cuts = list(snapshot.get("cut_plan") or [])
+            merged_cuts = sorted(
+                existing_cuts + validated_overrides,
+                key=lambda c: c.get("t_start", 0.0),
+            )
+            snapshot["cut_plan"] = merged_cuts
+            # B5: compute effective duration + echo for the FE confirmation card.
+            # PB1 fix (2026-05-22): align with FE math — `predicted_output_
+            # duration_s` is PRE-speedup (reels_preview_service.py L505), so
+            # subtract raw seconds directly. Dividing by `speed` mixed scales
+            # with the existing baseline display.
+            override_total_s = sum(
+                v["t_end"] - v["t_start"] for v in validated_overrides
+            )
+            # PB2 fix: explicit None check so a valid 0.0 doesn't fall through
+            # to source_duration_s.
+            snapshot_predicted = (config_dict.get("enriched_snapshot") or {}).get(
+                "predicted_output_duration_s"
+            )
+            base_predicted = float(
+                snapshot_predicted
+                if snapshot_predicted is not None
+                else candidate.source_duration_s
+            )
+            final_predicted = max(0.0, base_predicted - override_total_s)
+            render_extra_metadata["effective_cut_plan"] = merged_cuts
+            render_extra_metadata["cut_plan_override_count"] = len(validated_overrides)
+            render_extra_metadata["cut_plan_override_total_s"] = round(override_total_s, 3)
+            render_extra_metadata["final_predicted_duration_s"] = round(final_predicted, 3)
+            # Persist a copy of the user's raw overrides for audit.
+            config_dict["cut_plan_overrides"] = validated_overrides
+
     reel = reel_repo.create(
         reel_id=reel_id,
         institute_id=institute_id,
@@ -754,6 +1002,7 @@ async def render_reel(
         parent_candidate_id=str(candidate.id),
         config=config_dict,
         source_window=source_window,
+        extra_metadata=render_extra_metadata or None,
     )
 
     # 4. Build the render context and dispatch the background task.

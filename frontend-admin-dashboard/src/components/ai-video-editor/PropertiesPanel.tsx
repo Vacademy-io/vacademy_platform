@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
     Layers,
@@ -12,9 +12,6 @@ import {
     X,
     Code2,
     AlertTriangle,
-    Shapes,
-    Film,
-    Upload,
     Download,
     Zap,
 } from 'lucide-react';
@@ -42,17 +39,8 @@ import {
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
 import { MonacoHtmlEditor, countInlineBase64 } from './MonacoHtmlEditor';
-import {
-    Overlay,
-    listOverlays,
-    upsertOverlay,
-    deleteOverlay,
-    newTextOverlay,
-    newImageOverlay,
-    newVideoOverlay,
-    findOverlayPath,
-} from './utils/html-overlay-editor';
-import { pathsEqual } from './utils/html-tree';
+// Overlay helpers moved to LayersTab (Elements tab now houses overlay
+// editing — see B23). PropertiesPanel no longer talks to overlays directly.
 import {
     TRANSITION_OPTIONS,
     Transition,
@@ -61,8 +49,8 @@ import {
     easingPresetFor,
 } from './utils/transitions';
 import { LayersTab } from './LayersTab';
+import { SliderField } from './OverlayEditor';
 import { ShotCaptionOverride } from './ShotCaptionOverride';
-import { FIT_LABELS } from './controls';
 import { AdvancedSection } from './AdvancedSection';
 import { friendlyEntryName } from './registry/friendly-labels';
 import { downloadShotHtml } from './utils/download-shot';
@@ -113,39 +101,6 @@ function OutsidePlayheadBadge({
 }
 
 // ── Slider field ───────────────────────────────────────────────────────────
-
-interface SliderFieldProps {
-    label: string;
-    value: number;
-    min: number;
-    max: number;
-    step: number;
-    unit: string;
-    onChange: (v: number) => void;
-}
-
-function SliderField({ label, value, min, max, step, unit, onChange }: SliderFieldProps) {
-    return (
-        <div className="space-y-1">
-            <div className="flex items-center justify-between">
-                <span className="text-[11px] text-gray-500">{label}</span>
-                <span className="font-mono text-[11px] text-gray-700">
-                    {Number.isInteger(value) ? value : value.toFixed(2)}
-                    {unit}
-                </span>
-            </div>
-            <input
-                type="range"
-                min={min}
-                max={max}
-                step={step}
-                value={value}
-                onChange={(e) => onChange(parseFloat(e.target.value))}
-                className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-indigo-600"
-            />
-        </div>
-    );
-}
 
 // ── Transform tab ──────────────────────────────────────────────────────────
 
@@ -1078,385 +1033,9 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
     );
 }
 
-// ── Overlays tab ───────────────────────────────────────────────────────────
-
-interface OverlaysTabProps {
-    entryId: string;
-    entryHtml: string;
-    canvasW: number;
-    canvasH: number;
-}
-
-function OverlayEditor({
-    overlay,
-    selected,
-    onSelect,
-    onPatch,
-    onDelete,
-    onReplaceSrc,
-}: {
-    overlay: Overlay;
-    selected: boolean;
-    onSelect: () => void;
-    onPatch: (patch: Partial<Overlay>) => void;
-    onDelete: () => void;
-    onReplaceSrc: () => void;
-}) {
-    return (
-        <div
-            className={[
-                'space-y-2 rounded-md border p-2 transition-colors',
-                selected
-                    ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200'
-                    : 'border-gray-200 bg-gray-50',
-            ].join(' ')}
-        >
-            <div
-                role="button"
-                tabIndex={0}
-                onClick={onSelect}
-                onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        onSelect();
-                    }
-                }}
-                title="Select on canvas"
-                className="-m-1 flex cursor-pointer items-center gap-1.5 rounded p-1 hover:bg-white/60"
-            >
-                {overlay.kind === 'text' && <Type className="size-3 text-indigo-500" />}
-                {overlay.kind === 'image' && <Image className="size-3 text-indigo-500" />}
-                {overlay.kind === 'video' && <Film className="size-3 text-indigo-500" />}
-                <span className="flex-1 truncate text-[10px] font-medium text-gray-600">
-                    {overlay.kind}
-                </span>
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete();
-                    }}
-                    className="text-gray-300 hover:text-red-500"
-                    title="Delete overlay"
-                >
-                    <Trash2 className="size-3" />
-                </button>
-            </div>
-
-            {overlay.kind === 'text' && (
-                <>
-                    <textarea
-                        value={overlay.text}
-                        onChange={(e) => onPatch({ text: e.target.value } as Partial<Overlay>)}
-                        rows={2}
-                        className="w-full resize-none rounded border border-gray-200 bg-white px-2 py-1 text-[11px] focus:border-indigo-400 focus:outline-none"
-                        placeholder="Overlay text"
-                    />
-                    <div className="flex items-center gap-1.5">
-                        <label className="text-[10px] text-gray-500">Size</label>
-                        <input
-                            type="number"
-                            min={8}
-                            max={256}
-                            value={overlay.fontPx}
-                            onChange={(e) =>
-                                onPatch({
-                                    fontPx: parseInt(e.target.value, 10) || 32,
-                                } as Partial<Overlay>)
-                            }
-                            className="h-6 w-14 rounded border border-gray-200 bg-white px-1 font-mono text-[11px]"
-                        />
-                        <input
-                            type="color"
-                            value={
-                                /^#[0-9a-fA-F]{6}$/.test(overlay.color) ? overlay.color : '#ffffff'
-                            }
-                            onChange={(e) => onPatch({ color: e.target.value } as Partial<Overlay>)}
-                            className="h-6 w-8 cursor-pointer rounded border border-gray-200 bg-white p-0"
-                        />
-                        <div className="flex gap-0.5">
-                            {(['left', 'center', 'right'] as const).map((a) => (
-                                <button
-                                    key={a}
-                                    onClick={() => onPatch({ align: a } as Partial<Overlay>)}
-                                    className={[
-                                        'h-6 rounded px-1.5 text-[10px]',
-                                        overlay.align === a
-                                            ? 'bg-indigo-100 text-indigo-700'
-                                            : 'bg-white text-gray-500 hover:text-gray-800',
-                                    ].join(' ')}
-                                >
-                                    {a[0]!.toUpperCase()}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </>
-            )}
-
-            {overlay.kind !== 'text' && (
-                <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                        <button
-                            onClick={onReplaceSrc}
-                            className="flex h-6 flex-1 items-center justify-center gap-1 rounded border border-gray-200 bg-white text-[11px] text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
-                        >
-                            <Upload className="size-3" />
-                            Replace
-                        </button>
-                        <div className="flex gap-0.5">
-                            {(['contain', 'cover', 'fill'] as const).map((f) => (
-                                <button
-                                    key={f}
-                                    onClick={() => onPatch({ objectFit: f } as Partial<Overlay>)}
-                                    title={FIT_LABELS[f].description}
-                                    className={[
-                                        'h-6 rounded px-2 text-[10px]',
-                                        overlay.objectFit === f
-                                            ? 'bg-indigo-100 text-indigo-700'
-                                            : 'bg-white text-gray-500 hover:text-gray-800',
-                                    ].join(' ')}
-                                >
-                                    {FIT_LABELS[f].label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    <p className="text-[10px] text-gray-400">
-                        {FIT_LABELS[overlay.objectFit as 'contain' | 'cover' | 'fill'].description}
-                    </p>
-                </div>
-            )}
-
-            <SliderField
-                label="X"
-                value={overlay.left}
-                min={0}
-                max={100}
-                step={1}
-                unit="%"
-                onChange={(v) => onPatch({ left: v } as Partial<Overlay>)}
-            />
-            <SliderField
-                label="Y"
-                value={overlay.top}
-                min={0}
-                max={100}
-                step={1}
-                unit="%"
-                onChange={(v) => onPatch({ top: v } as Partial<Overlay>)}
-            />
-            {overlay.width != null && (
-                <SliderField
-                    label="Width"
-                    value={overlay.width}
-                    min={5}
-                    max={100}
-                    step={1}
-                    unit="%"
-                    onChange={(v) => onPatch({ width: v } as Partial<Overlay>)}
-                />
-            )}
-            {(overlay.kind === 'image' || overlay.kind === 'video') && (
-                <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[11px] text-gray-500">Height</span>
-                        <button
-                            type="button"
-                            onClick={() =>
-                                onPatch({
-                                    height:
-                                        overlay.height == null ? overlay.width ?? 30 : undefined,
-                                } as Partial<Overlay>)
-                            }
-                            className="text-[10px] text-indigo-600 hover:underline"
-                        >
-                            {overlay.height == null ? 'Set' : 'Auto'}
-                        </button>
-                    </div>
-                    {overlay.height != null ? (
-                        <input
-                            type="range"
-                            min={5}
-                            max={100}
-                            step={1}
-                            value={overlay.height}
-                            onChange={(e) =>
-                                onPatch({
-                                    height: parseFloat(e.target.value),
-                                } as Partial<Overlay>)
-                            }
-                            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-indigo-600"
-                        />
-                    ) : (
-                        <p className="text-[10px] text-gray-400">
-                            Auto · preserves natural aspect ratio
-                        </p>
-                    )}
-                </div>
-            )}
-            <SliderField
-                label="Opacity"
-                value={Math.round(overlay.opacity * 100)}
-                min={0}
-                max={100}
-                step={5}
-                unit="%"
-                onChange={(v) => onPatch({ opacity: v / 100 } as Partial<Overlay>)}
-            />
-        </div>
-    );
-}
-
-function OverlaysTab({ entryId, entryHtml, canvasW, canvasH }: OverlaysTabProps) {
-    const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
-    const selectLayer = useVideoEditorStore((s) => s.selectLayer);
-    const selectedLayerPath = useVideoEditorStore((s) => s.selectedLayerPath);
-    const { uploadFile, getPublicUrl } = useFileUpload();
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const replaceTargetRef = useRef<{ id: string; kind: 'image' | 'video' } | null>(null);
-
-    // Pass canvas dims so px-valued geometry (committed by the canvas drag/
-    // resize handles via patchNodeStyle) is converted back to % at parse
-    // time. Without this, a drag would silently snap left/top to 0.
-    const overlays = useMemo(
-        () => listOverlays(entryHtml, { w: canvasW, h: canvasH }),
-        [entryHtml, canvasW, canvasH]
-    );
-
-    const patchHtml = useCallback(
-        (nextHtml: string) => {
-            updateEntryHtml(entryId, nextHtml);
-        },
-        [entryId, updateEntryHtml]
-    );
-
-    const selectOverlay = useCallback(
-        (overlayId: string) => {
-            const path = findOverlayPath(entryHtml, overlayId);
-            if (path) selectLayer(path);
-        },
-        [entryHtml, selectLayer]
-    );
-
-    const handleAddText = () => {
-        patchHtml(upsertOverlay(entryHtml, newTextOverlay('New text')));
-    };
-
-    const openFilePicker = (kind: 'image' | 'video', overlayId: string) => {
-        replaceTargetRef.current = { id: overlayId, kind };
-        const input = fileInputRef.current;
-        if (!input) return;
-        input.accept = kind === 'image' ? 'image/*' : 'video/*';
-        input.value = '';
-        input.click();
-    };
-
-    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        const target = replaceTargetRef.current;
-        if (!file || !target) return;
-        try {
-            const fileId = await uploadFile({
-                file,
-                setIsUploading: () => {},
-                userId: getUserId(),
-                source: 'VIDEO_EDITOR_MEDIA',
-                sourceId: 'ADMIN',
-                publicUrl: true,
-            });
-            if (!fileId) throw new Error('Upload failed');
-            const url = await getPublicUrl(fileId as string);
-            if (!url) throw new Error('Failed to get public URL');
-
-            // If it's a "create new" stub (id == 'NEW'), add; otherwise replace src
-            if (target.id === 'NEW') {
-                const fresh = target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
-                patchHtml(upsertOverlay(entryHtml, fresh));
-            } else {
-                const existing = overlays.find((o) => o.id === target.id);
-                if (existing && existing.kind !== 'text') {
-                    patchHtml(upsertOverlay(entryHtml, { ...existing, src: url }));
-                }
-            }
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : 'Upload failed');
-        } finally {
-            replaceTargetRef.current = null;
-        }
-    };
-
-    const handlePatch = (overlayId: string) => (patch: Partial<Overlay>) => {
-        const current = listOverlays(entryHtml).find((o) => o.id === overlayId);
-        if (!current) return;
-        patchHtml(upsertOverlay(entryHtml, { ...current, ...patch } as Overlay));
-    };
-
-    const handleDelete = (overlayId: string) => () => {
-        patchHtml(deleteOverlay(entryHtml, overlayId));
-    };
-
-    return (
-        <div className="space-y-2 p-3">
-            <input ref={fileInputRef} type="file" className="hidden" onChange={handleFile} />
-            <div className="grid grid-cols-3 gap-1.5">
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1 text-[11px]"
-                    onClick={handleAddText}
-                >
-                    <Type className="size-3" />
-                    Text
-                </Button>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1 text-[11px]"
-                    onClick={() => openFilePicker('image', 'NEW')}
-                >
-                    <Image className="size-3" />
-                    Image
-                </Button>
-                <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1 text-[11px]"
-                    onClick={() => openFilePicker('video', 'NEW')}
-                >
-                    <Film className="size-3" />
-                    Video
-                </Button>
-            </div>
-
-            {overlays.length === 0 ? (
-                <p className="py-4 text-center text-[11px] text-gray-400">
-                    No overlays yet — add text, image, or video above.
-                </p>
-            ) : (
-                overlays.map((o) => {
-                    const path = findOverlayPath(entryHtml, o.id);
-                    const isSelected = !!path && pathsEqual(path, selectedLayerPath);
-                    return (
-                        <OverlayEditor
-                            key={o.id}
-                            overlay={o}
-                            selected={isSelected}
-                            onSelect={() => selectOverlay(o.id)}
-                            onPatch={handlePatch(o.id)}
-                            onDelete={handleDelete(o.id)}
-                            onReplaceSrc={() => o.kind !== 'text' && openFilePicker(o.kind, o.id)}
-                        />
-                    );
-                })
-            )}
-        </div>
-    );
-}
-
 // ── Main component ─────────────────────────────────────────────────────────
 
-type Tab = 'layers' | 'transform' | 'motion' | 'text' | 'media' | 'overlays' | 'code';
+type Tab = 'layers' | 'transform' | 'motion' | 'text' | 'media' | 'code';
 
 interface PropertiesPanelProps {
     /**
@@ -1517,8 +1096,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     // `staleTime: 5min` because the registry rarely changes during an editor session.
     const { data: regenModels } = useQuery({
         queryKey: ['ai-models', 'video_regenerate'],
-        queryFn: () =>
-            fetchAllAIModels({ use_case: 'video_regenerate', category: 'general' }),
+        queryFn: () => fetchAllAIModels({ use_case: 'video_regenerate', category: 'general' }),
         enabled: remakeAdvancedOpen,
         staleTime: 5 * 60 * 1000,
     });
@@ -1591,7 +1169,9 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
         | Record<string, unknown>
         | undefined;
     const sentenceContext = (
-        (entryMeta?.audio_text as string) ?? (entryMeta?.text as string) ?? ''
+        (entryMeta?.audio_text as string) ??
+        (entryMeta?.text as string) ??
+        ''
     ).trim();
 
     const handleRemakeOpen = () => {
@@ -1640,7 +1220,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                 });
             } else if (result.regen_path === 'full_remake_fallback') {
                 toast.message('Rewrote whole shot', {
-                    description: 'Targeted patch wasn\'t applicable; used full remake.',
+                    description: "Targeted patch wasn't applicable; used full remake.",
                 });
             } else if (result.resolved_model) {
                 toast.message('Rewrote whole shot', {
@@ -1659,11 +1239,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             // the same model. `undefined` (leave as-is) on the dom_patch
             // path — that path didn't use an LLM, so html_model shouldn't
             // change. `resolved_model` on full_remake / full_remake_fallback.
-            updateEntryHtml(
-                entryId,
-                remakeNewHtml,
-                remakeResolvedModel ?? undefined
-            );
+            updateEntryHtml(entryId, remakeNewHtml, remakeResolvedModel ?? undefined);
         }
         setRemakeOpen(false);
         setRemakeState('idle');
@@ -1788,9 +1364,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         <details
                             open={remakeAdvancedOpen}
                             onToggle={(e) =>
-                                setRemakeAdvancedOpen(
-                                    (e.target as HTMLDetailsElement).open
-                                )
+                                setRemakeAdvancedOpen((e.target as HTMLDetailsElement).open)
                             }
                             className="group rounded border border-gray-200 bg-gray-50/70"
                         >
@@ -1803,21 +1377,15 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                                 </label>
                                 <select
                                     value={remakeModelOverride ?? ''}
-                                    onChange={(e) =>
-                                        setRemakeModelOverride(e.target.value || null)
-                                    }
+                                    onChange={(e) => setRemakeModelOverride(e.target.value || null)}
                                     disabled={remakeState === 'loading'}
                                     className="w-full rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:border-indigo-400 focus:outline-none"
                                 >
-                                    <option value="">
-                                        Same as original (recommended)
-                                    </option>
+                                    <option value="">Same as original (recommended)</option>
                                     {regenModels?.models.map((m) => (
                                         <option key={m.model_id} value={m.model_id}>
                                             {m.name}
-                                            {m.tier && m.tier !== 'standard'
-                                                ? ` · ${m.tier}`
-                                                : ''}
+                                            {m.tier && m.tier !== 'standard' ? ` · ${m.tier}` : ''}
                                         </option>
                                     ))}
                                 </select>
@@ -1898,11 +1466,10 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                             icon: <Image className="size-3" />,
                             label: 'Images & Video',
                         },
-                        {
-                            id: 'overlays',
-                            icon: <Shapes className="size-3" />,
-                            label: 'Overlays',
-                        },
+                        // Overlays tab merged into Elements — overlay rows are
+                        // selectable in the Layers tree, the inspector routes
+                        // to OverlayEditor when the node has data-vx-overlay-id,
+                        // and add-overlay buttons live in the Elements toolbar.
                         { id: 'code', icon: <Code2 className="size-3" />, label: 'Code' },
                     ] as const
                 ).map(({ id, icon, label }) => (
@@ -1943,14 +1510,6 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                     />
                 )}
                 {tab === 'media' && <MediaTab entryId={entryId} entryHtml={entry.html} />}
-                {tab === 'overlays' && (
-                    <OverlaysTab
-                        entryId={entryId}
-                        entryHtml={entry.html}
-                        canvasW={canvasW}
-                        canvasH={canvasH}
-                    />
-                )}
                 {tab === 'layers' && (
                     <>
                         <ShotCaptionOverride entryId={entryId} />

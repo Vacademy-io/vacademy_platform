@@ -477,6 +477,12 @@ def _load_caption_settings(settings_path: Path) -> Dict[str, Any]:
     # Defaults now match client-side CaptionDisplay.tsx styling
     return {
         "font_family": data.get("font_family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"),
+        # `font_family_key` is set by render_worker/worker.py when the request
+        # specifies one of the harness-loaded fonts ('inter', 'montserrat',
+        # 'noto-sans', 'fira-code', 'system'). When present it overrides
+        # `font_family` below in the per-frame caption emission so the
+        # corresponding Google Font is picked up.
+        "font_family_key": data.get("font_family_key"),
         "font_size": data.get("font_size", 48),  # Render default: 48px at 1920w (matches YouTube caption size)
         "font_color": data.get("font_color", "#FFFFFF"),
         "font_weight": data.get("font_weight", 400),  # Client uses normal weight
@@ -494,7 +500,30 @@ def _load_caption_settings(settings_path: Path) -> Dict[str, Any]:
         "active_word_css": data.get("active_word_css", "font-weight:700; text-decoration:underline;"),
         "inactive_word_css": data.get("inactive_word_css", "opacity:0.9;"),
         "max_words_per_line": int(data.get("max_words_per_line", 10)),
+        # Style-polish fields. All optional; defaults preserve the existing
+        # phrase-style / system-font / no-stroke rendering when omitted.
+        "style": data.get("style", "phrase"),  # 'phrase' or 'karaoke'
+        "text_stroke_width": int(data.get("text_stroke_width", 0)),
+        "text_stroke_color": data.get("text_stroke_color", "#000000"),
+        "highlight_color": data.get("highlight_color", "#fbbf24"),
     }
+
+
+# Map worker's `font_family_key` enum to the CSS font-family string with a
+# system fallback chain (so a missed Google Font load doesn't blank the
+# caption). Keep this set in lockstep with the FE
+# `caption-rendering.ts:resolveCaptionFontFamily` and the harness's Google
+# Fonts link in `render_harness.py:19`.
+_SYSTEM_FONT_STACK = (
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
+)
+_FONT_FAMILY_BY_KEY: Dict[str, str] = {
+    "system": _SYSTEM_FONT_STACK,
+    "inter": f"'Inter', {_SYSTEM_FONT_STACK}",
+    "montserrat": f"'Montserrat', {_SYSTEM_FONT_STACK}",
+    "noto-sans": f"'Noto Sans', {_SYSTEM_FONT_STACK}",
+    "fira-code": "'Fira Code', ui-monospace, monospace",
+}
 
 
 def _active_entries_at(
@@ -1663,7 +1692,6 @@ def render_video_from_json(
                     style = caption_styles
                     allow_html = bool(style.get("allow_html", False))
                     raw_text = seg.get("text", "")
-                    content_html = raw_text if allow_html else _html_escape(raw_text)
                     _override_pos = (
                         _shot_override.get("position")
                         if isinstance(_shot_override, dict)
@@ -1675,17 +1703,84 @@ def render_video_from_json(
                     else:
                         position_css = f"bottom:{int(height * 0.074)}px; top:auto;"
                     font_size = int(style.get("font_size", 20))
+                    font_color = str(style.get("font_color", "#FFFFFF"))
+                    font_weight = int(style.get("font_weight", 400))
+                    # Font family — prefer the worker's `font_family_key` (one
+                    # of the harness-loaded Google Fonts) if set; otherwise
+                    # fall back to the legacy `font_family` CSS string.
+                    _ff_key = style.get("font_family_key")
+                    if _ff_key and _ff_key in _FONT_FAMILY_BY_KEY:
+                        font_family_css = _FONT_FAMILY_BY_KEY[_ff_key]
+                    else:
+                        font_family_css = str(
+                            style.get(
+                                "font_family",
+                                "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",
+                            )
+                        )
+                    # Caption font_size is already pre-scaled by canvas width
+                    # earlier in this function (see ~line 850-858). The same
+                    # scale applies to text stroke so the outline stays
+                    # visually proportional on portrait.
+                    _font_scale = width / 1920.0
+                    text_stroke_width = max(
+                        0, int(int(style.get("text_stroke_width", 0)) * _font_scale)
+                    )
+                    text_stroke_color = str(style.get("text_stroke_color", "#000000"))
+                    # Stroke CSS — `paint-order: stroke fill` ensures the
+                    # stroke is laid UNDER the glyph fill so edges stay
+                    # readable at thick widths. Empty string when off.
+                    if text_stroke_width > 0:
+                        stroke_css = (
+                            f"-webkit-text-stroke:{text_stroke_width}px {text_stroke_color}; "
+                            f"paint-order:stroke fill; "
+                        )
+                    else:
+                        stroke_css = ""
+
+                    # Build inner content. For karaoke style emit per-word
+                    # spans with active/past/upcoming coloring; for phrase
+                    # style emit a single escaped text node. Mirrors the
+                    # browser branch in CaptionDisplay.tsx:62-99 EXACTLY so
+                    # the editor preview, the post-gen player, and the MP4
+                    # all agree on which word is current at every frame.
+                    cap_style_mode = str(style.get("style", "phrase"))
+                    if cap_style_mode == "karaoke" and seg.get("words"):
+                        highlight_color = str(style.get("highlight_color", "#fbbf24"))
+                        _heavy = min(900, font_weight + 200)
+                        _spans: List[str] = []
+                        for _w in seg["words"]:
+                            try:
+                                _ws = float(_w.get("start", 0))
+                                _we = float(_w.get("end", 0))
+                            except Exception:
+                                continue
+                            _is_current = _ws <= t < _we
+                            _is_past = t >= _we
+                            _color = highlight_color if _is_current else font_color
+                            _weight = _heavy if _is_current else font_weight
+                            _opacity = 0.5 if _is_past else 1.0
+                            _word_text = _html_escape(str(_w.get("word", "")))
+                            _spans.append(
+                                f'<span style="color:{_color}; font-weight:{_weight}; '
+                                f'opacity:{_opacity}; transition:color .12s,opacity .12s;">'
+                                f'{_word_text}</span>'
+                            )
+                        content_html = " ".join(_spans)
+                    else:
+                        content_html = raw_text if allow_html else _html_escape(raw_text)
                     html = (
                         f'<div style="width:100%; height:100%; position:relative;">'
                         f'<div style="position:absolute; left:50%; transform:translateX(-50%); '
                         f'max-width:85%; padding:10px 20px; border-radius:8px; '
                         f'background:{style["background_color"]}; text-align:center; '
-                        f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif; "
-                        f'font-size:{font_size}px; font-weight:400; color:{style["font_color"]}; '
+                        f'font-family:{font_family_css}; '
+                        f'font-size:{font_size}px; font-weight:{font_weight}; color:{font_color}; '
                         f'text-shadow:0 1px 3px rgba(0,0,0,0.4); line-height:1.5; letter-spacing:0.02em; '
                         f'min-height:44px; display:flex; align-items:center; justify-content:center; '
                         f'{position_css}">'
-                        f'<div style="display:inline-block; text-shadow:0 1px 3px rgba(0,0,0,0.4);">'
+                        f'<div style="display:inline-block; text-shadow:0 1px 3px rgba(0,0,0,0.4); '
+                        f'{stroke_css}">'
                         f'{content_html}</div></div></div>'
                     )
                     _caption_entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}

@@ -1107,7 +1107,7 @@ export function TimelineScrubber() {
                                 amber pill sits above the waveform line so it's distinguishable
                                 from sentence-region borders without obscuring the waveform. */}
                             {soundCues.map(({ cue, entryId, absoluteTime }, i) => {
-                                const left = `${(absoluteTime / totalDuration) * 100}%`;
+                                const left = timeToPercent(absoluteTime);
                                 const isActive = editingCue?.cue.id === cue.id;
                                 // Index suffix because the planner can emit
                                 // duplicate cue.id within one entry; the
@@ -1146,8 +1146,8 @@ export function TimelineScrubber() {
                                 (see `useShots`); pre-v3 timelines fall back to sentences. */}
                             {useShots
                                 ? shots.map((sh, i) => {
-                                      const left = `${(sh.start_time / totalDuration) * 100}%`;
-                                      const width = `${(sh.duration / totalDuration) * 100}%`;
+                                      const left = timeToPercent(sh.start_time);
+                                      const width = timeToPercent(sh.duration);
                                       const isEditing = editingShot?.shot.shot_idx === sh.shot_idx;
                                       // Intrinsic-only shots (source-clip / Veo audio) carry
                                       // their own audio — render with an amber treatment so
@@ -1182,8 +1182,8 @@ export function TimelineScrubber() {
                                       );
                                   })
                                 : sentences.map((s, i) => {
-                                      const left = `${(s.start_time / totalDuration) * 100}%`;
-                                      const width = `${(s.duration / totalDuration) * 100}%`;
+                                      const left = timeToPercent(s.start_time);
+                                      const width = timeToPercent(s.duration);
                                       const isEditing = editingSentence?.sentence.id === s.id;
                                       // Silenced sentences (audio replaced with silence,
                                       // text cleared) get a muted gray treatment so the

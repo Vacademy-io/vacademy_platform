@@ -55,6 +55,8 @@ public class UserInstituteService {
     private InstituteDefaultUserSubscriptionService instituteDefaultUserSubscriptionService;
     @Autowired
     private CreditClient creditClient;
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.service.LeadStatusService leadStatusService;
 
     public static InstituteInfoDTO getInstituteDetails(Institute institute) {
         InstituteInfoDTO instituteInfoDTO = new InstituteInfoDTO();
@@ -127,6 +129,15 @@ public class UserInstituteService {
                 instituteSettingService.createDefaultSettingsForInstitute(savedInstitute);
                 createInstituteSubModulesMapping(allSubModules, savedInstitute);
                 instituteDefaultUserSubscriptionService.createDefaultPaymentOption(institute.getId());
+
+                // Seed the default lead statuses (New / Converted / Lost) for the new institute.
+                // Best-effort + isolated (REQUIRES_NEW) so it can never break signup.
+                try {
+                    leadStatusService.ensureDefaultsSeeded(savedInstitute.getId());
+                } catch (Exception e) {
+                    log.warn("[ADMIN-CORE-SERVICE] Failed to seed default lead statuses for institute {}: {}",
+                            savedInstitute.getId(), e.getMessage());
+                }
 
                 // Initialize credits for the new institute (200 initial credits)
                 creditClient.initializeCreditsAsync(savedInstitute.getId());

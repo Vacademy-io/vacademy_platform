@@ -818,14 +818,16 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
             cols.push({
                 id: 'reach_out_by',
                 header: 'Reach out by',
-                size: 150,
-                minSize: 120,
-                maxSize: 180,
+                size: 160,
+                minSize: 130,
+                maxSize: 200,
                 cell: ({ row }) => (
                     <div className="p-3">
                         <SlaDeadlineCell
                             dueAt={row.original.tat_due_at}
                             overdue={row.original.tat_overdue}
+                            respondedAt={row.original.first_response_at}
+                            baselineAt={row.original.submitted_at_local}
                         />
                     </div>
                 ),

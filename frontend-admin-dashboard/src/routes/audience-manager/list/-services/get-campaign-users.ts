@@ -34,6 +34,8 @@ export interface CampaignLeadUser {
     custom_field_metadata?: Record<string, unknown>;
     // ── TAT / Follow-up SLA (deadlines + badge; visual only) ──
     tat_due_at?: string | null;
+    /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */
+    first_response_at?: string | null;
     /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */
     follow_up_due_at?: string | null;
     tat_reminder_stage?: string | null;

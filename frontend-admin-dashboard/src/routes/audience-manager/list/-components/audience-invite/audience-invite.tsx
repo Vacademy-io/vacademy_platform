@@ -155,60 +155,55 @@ export const AudienceInvite = () => {
 
     return (
         <div className="flex w-full flex-col gap-6">
-            {/* Premium hero header */}
-            <div className="flex flex-col gap-5 rounded-2xl border border-neutral-200 bg-gradient-to-br from-primary-50 to-white p-6 shadow-sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-primary-700">
-                            {audienceTermPlural}
-                        </p>
-                        <h1 className="mt-1 text-3xl font-semibold leading-tight text-neutral-900">
-                            {filteredCampaigns.length.toLocaleString()} {audienceTermPlural}
-                        </h1>
-                        <p className="mt-1 text-sm text-neutral-500">
-                            Manage and share your {audienceTermPlural.toLowerCase()} across
-                            campaigns.
+            {/* Heading */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                    <h1 className="text-2xl font-semibold leading-tight text-neutral-900">
+                        {filteredCampaigns.length.toLocaleString()} {audienceTermPlural}
+                    </h1>
+                    <p className="mt-1 text-sm text-neutral-500">
+                        Manage and share your {audienceTermPlural.toLowerCase()} across campaigns.
+                    </p>
+                </div>
+                <Button
+                    onClick={() => {
+                        setCampaignBeingEdited(null);
+                        setIsDialogOpen(true);
+                    }}
+                    className="w-full shrink-0 sm:w-auto"
+                >
+                    <Plus className="mr-2 size-4" /> Add {audienceTerm}
+                </Button>
+            </div>
+
+            {/* KPI tiles — status breakdown */}
+            <div className="grid grid-cols-3 gap-3">
+                {(
+                    [
+                        { label: 'Active', value: statusCounts.active, dot: 'bg-success-500' },
+                        { label: 'Draft', value: statusCounts.draft, dot: 'bg-warning-500' },
+                        {
+                            label: 'Inactive',
+                            value: statusCounts.inactive,
+                            dot: 'bg-neutral-400',
+                        },
+                    ] as const
+                ).map((kpi) => (
+                    <div
+                        key={kpi.label}
+                        className="rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm"
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className={cn('size-1.5 rounded-full', kpi.dot)} />
+                            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                {kpi.label}
+                            </span>
+                        </div>
+                        <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
+                            {kpi.value.toLocaleString()}
                         </p>
                     </div>
-                    <Button
-                        onClick={() => {
-                            setCampaignBeingEdited(null);
-                            setIsDialogOpen(true);
-                        }}
-                        className="w-full shrink-0 sm:w-auto"
-                    >
-                        <Plus className="mr-2 size-4" /> Add {audienceTerm}
-                    </Button>
-                </div>
-                {/* KPI tiles — status breakdown */}
-                <div className="grid grid-cols-3 gap-3">
-                    {(
-                        [
-                            { label: 'Active', value: statusCounts.active, dot: 'bg-success-500' },
-                            { label: 'Draft', value: statusCounts.draft, dot: 'bg-warning-500' },
-                            {
-                                label: 'Inactive',
-                                value: statusCounts.inactive,
-                                dot: 'bg-neutral-400',
-                            },
-                        ] as const
-                    ).map((kpi) => (
-                        <div
-                            key={kpi.label}
-                            className="rounded-xl border border-neutral-200 bg-white px-4 py-3 shadow-sm"
-                        >
-                            <div className="flex items-center gap-2">
-                                <span className={cn('size-1.5 rounded-full', kpi.dot)} />
-                                <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                    {kpi.label}
-                                </span>
-                            </div>
-                            <p className="mt-1 text-2xl font-semibold tabular-nums text-neutral-900">
-                                {kpi.value.toLocaleString()}
-                            </p>
-                        </div>
-                    ))}
-                </div>
+                ))}
             </div>
 
             {/* Toolbar — search + status filter */}
@@ -295,23 +290,20 @@ export const AudienceInvite = () => {
                                 if (s === 'ACTIVE') {
                                     return {
                                         dot: 'bg-success-500',
-                                        chip: 'bg-white text-success-700',
-                                        grad: 'from-success-50',
-                                        tile: 'bg-success-100 text-success-700',
+                                        chip: 'bg-success-50 text-success-700',
+                                        tile: 'bg-success-50 text-success-700',
                                     };
                                 }
                                 if (s === 'DRAFT') {
                                     return {
                                         dot: 'bg-warning-500',
-                                        chip: 'bg-white text-warning-700',
-                                        grad: 'from-warning-50',
-                                        tile: 'bg-warning-100 text-warning-700',
+                                        chip: 'bg-warning-50 text-warning-700',
+                                        tile: 'bg-warning-50 text-warning-700',
                                     };
                                 }
                                 return {
                                     dot: 'bg-neutral-400',
-                                    chip: 'bg-white text-neutral-600',
-                                    grad: 'from-neutral-100',
+                                    chip: 'bg-neutral-100 text-neutral-600',
                                     tile: 'bg-neutral-100 text-neutral-500',
                                 };
                             })();
@@ -329,16 +321,11 @@ export const AudienceInvite = () => {
                                     className="group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-primary-200 hover:shadow-lg"
                                     onClick={handleCampaignClick}
                                 >
-                                    {/* Gradient hero header */}
-                                    <div
-                                        className={cn(
-                                            'flex items-start gap-3 border-b border-neutral-100 bg-gradient-to-br to-white p-4',
-                                            statusStyles.grad
-                                        )}
-                                    >
+                                    {/* Header */}
+                                    <div className="flex items-start gap-3 p-4 pb-3">
                                         <span
                                             className={cn(
-                                                'flex size-11 shrink-0 items-center justify-center rounded-xl shadow-sm transition-transform duration-200 group-hover:scale-105',
+                                                'flex size-10 shrink-0 items-center justify-center rounded-lg transition-transform duration-200 group-hover:scale-105',
                                                 statusStyles.tile
                                             )}
                                         >
@@ -354,7 +341,7 @@ export const AudienceInvite = () => {
                                             <div className="flex flex-wrap items-center gap-1.5">
                                                 <span
                                                     className={cn(
-                                                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium shadow-sm',
+                                                        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
                                                         statusStyles.chip
                                                     )}
                                                 >
@@ -367,7 +354,7 @@ export const AudienceInvite = () => {
                                                     {statusLabel}
                                                 </span>
                                                 {campaign.campaign_type && (
-                                                    <span className="inline-flex items-center rounded-full bg-white/70 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-neutral-600 shadow-sm">
+                                                    <span className="inline-flex items-center rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-neutral-600">
                                                         {campaign.campaign_type}
                                                     </span>
                                                 )}

@@ -9,7 +9,7 @@ const normalize = (v: string) => v.trim().toUpperCase().replace(/\s+/g, '_');
 
 interface LeadStatusSelectProps {
     /** Audience response id of the lead whose status is being changed. */
-    responseId: string;
+    responseId?: string;
     /** Current status (key or label) shown on the chip. */
     currentStatus?: string | null;
     /** Institute's configured statuses (with ids, for the update call). */
@@ -38,6 +38,7 @@ export function LeadStatusSelect({
         key: s.status_key,
         label: s.label,
         color: s.color,
+        order: s.display_order,
     }));
 
     const norm = currentStatus ? normalize(currentStatus) : null;

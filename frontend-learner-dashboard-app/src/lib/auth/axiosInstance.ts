@@ -208,12 +208,31 @@ authenticatedAxiosInstance.interceptors.response.use(
     );
 
     const status = error?.response?.status;
+    const responseData = error?.response?.data;
 
     // ── Sentry: capture server errors (5xx) and notable client errors ──
+    //
+    // Skip the capture when the backend returned 511 carrying a structured
+    // VacademyException body (`ex` / `responseCode`). The shared
+    // GlobalExceptionHandler in common_service maps *every* unmapped
+    // RuntimeException to HTTP 511 with that body shape — so a structured
+    // 511 is a business-logic error the caller already handles, not the
+    // captive-portal auth failure 511 actually means. The matching admin
+    // dashboard interceptor swallows these too; without this guard the
+    // SCORM `/initialize` first-launch failure (and similar) fans out as
+    // Sentry noise even though the UI is unaffected.
+    const isStructured511 =
+      status === 511 &&
+      responseData &&
+      typeof responseData === "object" &&
+      ((responseData as { ex?: unknown }).ex ||
+        (responseData as { responseCode?: unknown }).responseCode);
+
     if (
       import.meta.env.VITE_ENABLE_SENTRY === "true" &&
       status &&
-      status >= 500
+      status >= 500 &&
+      !isStructured511
     ) {
       Sentry.withScope((scope) => {
         scope.setTag("http.status_code", String(status));

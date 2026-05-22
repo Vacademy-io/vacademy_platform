@@ -179,6 +179,7 @@ export const AddLeadNoteDialog = ({
                         <Button
                             onClick={() => createMutation.mutate()}
                             disabled={createMutation.isPending || !canSubmit}
+                            className="disabled:bg-neutral-200 disabled:text-neutral-500 disabled:opacity-100"
                         >
                             {createMutation.isPending ? 'Saving…' : 'Add note'}
                         </Button>

@@ -54,7 +54,7 @@ import { createMessageTemplate } from '@/services/message-template-service';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { getUserId } from '@/utils/userDetails';
 import type { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
-import { SAMPLE_LEAD_TEMPLATES } from './sample-lead-templates';
+import { SAMPLE_TEMPLATES } from '@/routes/workflow/create/-components/sample-email-templates';
 
 const LEAD_STATUS_CHANGED = 'LEAD_STATUS_CHANGED';
 /** Sentinel for the "any status change" option in the status picker. */
@@ -149,7 +149,7 @@ export function TriggerWorkflowDialog({
     // picker; just create a pre-built template for the chosen event and select it.
     const createSampleTemplateMutation = useMutation({
         mutationFn: async () => {
-            const sample = SAMPLE_LEAD_TEMPLATES[event];
+            const sample = SAMPLE_TEMPLATES[event];
             if (!sample) {
                 throw new Error('No sample template available for this event.');
             }
@@ -223,7 +223,9 @@ export function TriggerWorkflowDialog({
                 // Wrap the whole context into a one-element list so the per-item sender runs
                 // once for this lead; recipientField pulls the chosen address from the ctx
                 // map. When a status gate is set, return an empty list (no send) unless the
-                // new status matches.
+                // new status matches. forEach is REQUIRED by SendEmailNodeHandler — without it
+                // the handler logs "No forEach configuration found in SendEmail node" and
+                // silently skips the send. Same shape the audience confirmation dialog uses.
                 const onExpr = statusGate ? `${statusGate} ? {#ctx} : {}` : '{#ctx}';
                 actionNode = {
                     id: actionId,
@@ -232,6 +234,7 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
+                        forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
                         recipientField: emailField,
                         templateVars,
                         routing: [{ type: 'end' }],
@@ -245,7 +248,8 @@ export function TriggerWorkflowDialog({
                 // WhatsApp resolves the mobile from fixed keys (mobileNumber/mobile/phone/to),
                 // not counselorMobile / parentMobile — so expose the chosen mobile via a
                 // one-element list of a map literal that also carries the template variables.
-                // Status gate empties the list when unmatched.
+                // Status gate empties the list when unmatched. forEach mirrors SEND_EMAIL — the
+                // per-item dispatch needs it to bind {#ctx['item']} for each iteration.
                 const mapEntries = [
                     `mobileNumber: #ctx['${mobileField}']`,
                     ...varKeys.map((k) => `${k}: #ctx['${k}']`),
@@ -260,6 +264,7 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
+                        forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
                         templateVars,
                         routing: [{ type: 'end' }],
                     },
@@ -467,7 +472,7 @@ export function TriggerWorkflowDialog({
                                     <Label className="text-sm font-medium">
                                         Template <span className="text-danger-500">*</span>
                                     </Label>
-                                    {channel === 'EMAIL' && !!SAMPLE_LEAD_TEMPLATES[event] && (
+                                    {channel === 'EMAIL' && !!SAMPLE_TEMPLATES[event] && (
                                         <button
                                             type="button"
                                             className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-400 disabled:cursor-not-allowed disabled:opacity-50"

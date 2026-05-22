@@ -121,7 +121,8 @@ const AVATAR_PALETTES = [
 function avatarPalette(name: string): string {
     let h = 0;
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-    return AVATAR_PALETTES[h % AVATAR_PALETTES.length];
+    // Non-null assertion is safe: (h % length) is always a valid index into a non-empty tuple.
+    return AVATAR_PALETTES[h % AVATAR_PALETTES.length]!;
 }
 
 // ── Main page ──────────────────────────────────────────────────────────

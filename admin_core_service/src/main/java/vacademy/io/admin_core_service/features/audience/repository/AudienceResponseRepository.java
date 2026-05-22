@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection;
+import vacademy.io.admin_core_service.features.audience.dto.LeadReportProjections;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 
@@ -87,7 +89,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -163,7 +165,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -273,7 +275,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -319,7 +321,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR ulp.conversion_status = :leadStatusId)
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -616,6 +618,252 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                         """, nativeQuery = true)
         List<LeadSlaCandidate> findSlaCandidatesForInstitute(@Param("instituteId") String instituteId);
+
+        /**
+         * For a set of leads, the timestamps of each lead's assigned counselor's FIRST and LAST
+         * actions on it (from timeline_event). Drives:
+         *   firstActionAt → "Responded in N" (time-to-first-response shown in the leads tables).
+         *   lastActionAt  → follow-up deadline (= lastActionAt + followUpSlaHours).
+         * Counselor resolution mirrors {@link #findSlaCandidatesForInstitute} (linked_users, then profile).
+         * Leads with no counselor or no counselor action return both timestamps as null.
+         */
+        @Query(value = """
+                            SELECT ar.id        AS leadId,
+                                   acts.first_at AS firstActionAt,
+                                   acts.last_at  AS lastActionAt
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN LATERAL (
+                                SELECT MIN(te.created_at) AS first_at,
+                                       MAX(te.created_at) AS last_at
+                                FROM timeline_event te
+                                WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                            ) acts ON true
+                            WHERE ar.id IN (:responseIds)
+                        """, nativeQuery = true)
+        List<LeadLastActionProjection> findCounselorActionsByResponseIds(
+                        @Param("responseIds") List<String> responseIds);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Lead Reports — institute-scoped aggregates, date-bounded on submitted_at.
+        // OPTED_OUT leads are excluded everywhere so totals match the counsellor view.
+        // ─────────────────────────────────────────────────────────────────────
+
+        /** Single-row totals: total / converted / lost / active / currently-overdue counts. */
+        @Query(value = """
+                            SELECT COUNT(*)                                                                              AS totalLeads,
+                                   SUM(CASE WHEN ulp.conversion_status = 'CONVERTED' THEN 1 ELSE 0 END)                  AS convertedLeads,
+                                   SUM(CASE WHEN ulp.conversion_status = 'LOST'      THEN 1 ELSE 0 END)                  AS lostLeads,
+                                   SUM(CASE WHEN ulp.conversion_status IS NULL
+                                              OR ulp.conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)    AS activeLeads,
+                                   SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        LeadReportProjections.TotalsProjection findReportTotals(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /**
+         * Response stats aggregate. "first response" = MIN(timeline_event by the assigned counsellor)
+         * for the lead — i.e. the moment the counsellor logged their first activity (note / call /
+         * status update). Status changes by admins are intentionally NOT counted; the metric is
+         * strictly counsellor-driven. tatHours = 0 (or null) makes tat_met never match; the service
+         * surfaces tatMetCount as null when TAT is disabled.
+         */
+        @Query(value = """
+                            WITH first_acts AS (
+                                SELECT ar.id            AS lead_id,
+                                       ar.submitted_at  AS submitted_at,
+                                       (SELECT MIN(te.created_at) FROM timeline_event te
+                                          WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                            AND ( (te.type='AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                  OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                  OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                       )                AS first_action_at
+                                FROM audience_response ar
+                                JOIN audience a ON a.id = ar.audience_id
+                                LEFT JOIN LATERAL (
+                                    SELECT lu.user_id FROM linked_users lu
+                                    WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                    ORDER BY lu.created_at DESC LIMIT 1
+                                ) lu ON true
+                                LEFT JOIN user_lead_profile ulp
+                                    ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                                WHERE a.institute_id = :instituteId
+                                  AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                                  AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            )
+                            SELECT COUNT(first_action_at)                                                  AS respondedLeads,
+                                   AVG(EXTRACT(EPOCH FROM (first_action_at - submitted_at)) / 60.0)        AS avgResponseMinutes,
+                                   SUM(CASE WHEN first_action_at IS NOT NULL
+                                                 AND first_action_at - submitted_at <= make_interval(hours => :tatHours)
+                                                THEN 1 ELSE 0 END)                                         AS tatMetCount
+                            FROM first_acts
+                        """, nativeQuery = true)
+        LeadReportProjections.ResponseStatsProjection findReportResponseStats(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs,
+                        @Param("tatHours") Integer tatHours);
+
+        /** Status breakdown: rows of (status_key, count). */
+        @Query(value = """
+                            SELECT COALESCE(ulp.conversion_status, 'LEAD') AS statusKey,
+                                   COUNT(*)                                AS leadCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY COALESCE(ulp.conversion_status, 'LEAD')
+                        """, nativeQuery = true)
+        List<LeadReportProjections.StatusCountProjection> findReportStatusBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /** Source breakdown: rows of (source_type, total, converted). */
+        @Query(value = """
+                            SELECT ar.source_type                                                       AS sourceType,
+                                   COUNT(*)                                                             AS totalCount,
+                                   SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END)   AS convertedCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY ar.source_type
+                            ORDER BY totalCount DESC
+                        """, nativeQuery = true)
+        List<LeadReportProjections.SourceCountProjection> findReportSourceBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /** Tier breakdown: explicit lead_tier wins, else score-derived bucket, else UNCLASSIFIED. */
+        @Query(value = """
+                            SELECT COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE 'UNCLASSIFIED' END)                AS tier,
+                                   COUNT(*)                                              AS leadCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY 1
+                        """, nativeQuery = true)
+        List<LeadReportProjections.TierCountProjection> findReportTierBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /** Daily trend: GROUP BY DATE(submitted_at). */
+        @Query(value = """
+                            SELECT DATE(ar.submitted_at)                                              AS day,
+                                   COUNT(*)                                                           AS submittedCount,
+                                   SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END) AS convertedCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY DATE(ar.submitted_at)
+                            ORDER BY DATE(ar.submitted_at)
+                        """, nativeQuery = true)
+        List<LeadReportProjections.DailyTrendProjection> findReportDailyTrend(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /**
+         * Per-counsellor aggregate row. Counsellor resolution mirrors the leads list filter.
+         * "first_response_at" = MIN(timeline_event by this counsellor on this lead) — strict
+         * counsellor-activity definition; admin status flips are NOT counted.
+         */
+        @Query(value = """
+                            WITH lead_meta AS (
+                                SELECT ar.id            AS lead_id,
+                                       ar.submitted_at  AS submitted_at,
+                                       ar.tat_reminder_stage AS tat_reminder_stage,
+                                       ulp.conversion_status AS conversion_status,
+                                       (SELECT MIN(te.created_at) FROM timeline_event te
+                                          WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                            AND ( (te.type='AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                  OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                  OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                       )                AS first_response_at,
+                                       COALESCE(lu.user_id, ulp.assigned_counselor_id) AS counselor_id
+                                FROM audience_response ar
+                                JOIN audience a ON a.id = ar.audience_id
+                                LEFT JOIN LATERAL (
+                                    SELECT lu.user_id FROM linked_users lu
+                                    WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                    ORDER BY lu.created_at DESC LIMIT 1
+                                ) lu ON true
+                                LEFT JOIN user_lead_profile ulp
+                                    ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                                WHERE a.institute_id = :instituteId
+                                  AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                                  AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            )
+                            SELECT counselor_id                                                                          AS counselorId,
+                                   COUNT(*)                                                                              AS leadsAssigned,
+                                   COUNT(first_response_at)                                                              AS leadsResponded,
+                                   SUM(CASE WHEN conversion_status='CONVERTED' THEN 1 ELSE 0 END)                        AS conversions,
+                                   AVG(EXTRACT(EPOCH FROM (first_response_at - submitted_at)) / 60.0)                    AS avgResponseMinutes,
+                                   SUM(CASE WHEN first_response_at IS NOT NULL
+                                                 AND first_response_at - submitted_at <= make_interval(hours => :tatHours)
+                                                THEN 1 ELSE 0 END)                                                       AS tatMetCount,
+                                   SUM(CASE WHEN conversion_status IS NULL
+                                              OR conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)        AS openLeads,
+                                   SUM(CASE WHEN tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                            FROM lead_meta
+                            WHERE counselor_id IS NOT NULL
+                            GROUP BY counselor_id
+                            ORDER BY leadsAssigned DESC
+                        """, nativeQuery = true)
+        List<LeadReportProjections.CounselorRowProjection> findReportCounselorPerformance(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs,
+                        @Param("tatHours") Integer tatHours);
 
         /**
          * Atomically claim a reminder stage for a lead. Returns 1 if this call won the claim (and the row

@@ -13,7 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { X } from '@phosphor-icons/react';
+import { X, Lightning } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { getAllRoles } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import {
@@ -22,6 +22,8 @@ import {
     LEAD_SLA_CONFIG_QUERY_KEY,
     type LeadSlaSettings as SlaConfig,
 } from '@/hooks/use-lead-sla-config';
+import { getInstituteId } from '@/constants/helper';
+import { TriggerWorkflowDialog } from './pools/TriggerWorkflowDialog';
 
 // Multi-select of the institute's roles → saved with the SLA config and passed into the workflow
 // trigger (ctx.notifyRoles). The backend never notifies directly.
@@ -106,6 +108,8 @@ export default function LeadSlaSettings() {
     const [draft, setDraft] = useState<SlaConfig>(config);
     const [hasChanges, setHasChanges] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [triggerOpen, setTriggerOpen] = useState(false);
+    const instituteId = getInstituteId() ?? '';
 
     useEffect(() => {
         setDraft(config);
@@ -367,7 +371,14 @@ export default function LeadSlaSettings() {
                         </>
                     )}
 
-                    <div className="flex items-center justify-end border-t border-neutral-200 pt-3">
+                    <div className="flex items-center justify-end gap-2 border-t border-neutral-200 pt-3">
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            onClick={() => setTriggerOpen(true)}
+                        >
+                            <Lightning size={16} /> Trigger workflow
+                        </MyButton>
                         <MyButton
                             buttonType="primary"
                             scale="medium"
@@ -379,6 +390,13 @@ export default function LeadSlaSettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            <TriggerWorkflowDialog
+                open={triggerOpen}
+                onOpenChange={setTriggerOpen}
+                instituteId={instituteId}
+                scopeLabel="Lead settings"
+            />
         </>
     );
 }

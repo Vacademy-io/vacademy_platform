@@ -10,6 +10,9 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 
+// authenticatedAxiosInstance has no baseURL and there's no Vite dev proxy for
+// /admin-core-service, so the endpoint must include the backend host or it hits
+// the frontend origin and returns no statuses.
 // authenticatedAxiosInstance has no baseURL, so endpoints must include the backend host.
 const BASE = `${BASE_URL}/admin-core-service/v1/lead-status`;
 
@@ -73,10 +76,6 @@ async function updateLeadStatus(id: string, payload: LeadStatusDraft): Promise<v
     await authenticatedAxiosInstance.put(`${BASE}/${id}`, payload);
 }
 
-async function deleteLeadStatus(id: string): Promise<void> {
-    await authenticatedAxiosInstance.delete(`${BASE}/${id}`);
-}
-
 /** Set a single lead's current status (manual change from the leads UI). */
 export async function setLeadStatusForLead(
     audienceResponseId: string,
@@ -89,20 +88,15 @@ export async function setLeadStatusForLead(
 }
 
 /**
- * Reconcile an edited list against the server: create new rows, update changed ones,
- * deactivate removed ones. Lets the settings card keep a single "Save" action.
+ * Reconcile an edited list against the server: create new rows and update changed
+ * ones. Statuses are never deleted from the settings UI so historical
+ * `audience_response.lead_status_id` values stay meaningful — the `original`
+ * param is kept for API compatibility but no longer drives deletions.
  */
 export async function saveLeadStatuses(
-    original: LeadStatus[],
+    _original: LeadStatus[],
     edited: LeadStatusDraft[]
 ): Promise<void> {
-    const editedIds = new Set(edited.filter((s) => s.id).map((s) => s.id));
-
-    // Deactivate removed — never the system defaults (New/Converted/Lost).
-    const removed = original.filter((o) => !editedIds.has(o.id) && !o.is_system);
-    await Promise.all(removed.map((r) => deleteLeadStatus(r.id)));
-
-    // Create / update
     await Promise.all(
         edited
             .filter((s) => s.label.trim())

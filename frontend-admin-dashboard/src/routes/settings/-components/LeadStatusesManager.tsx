@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
-import { Plus, Trash, DotsSixVertical, Star } from '@phosphor-icons/react';
+import { Plus, DotsSixVertical, Star } from '@phosphor-icons/react';
 import {
     useLeadStatuses,
     saveLeadStatuses,
@@ -45,10 +45,8 @@ export default function LeadStatusesManager() {
         setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
         setHasChanges(true);
     };
-    const remove = (i: number) => {
-        setRows((prev) => prev.filter((_, idx) => idx !== i));
-        setHasChanges(true);
-    };
+    // Statuses are never deleted from the UI — only renamed/recoloured/reordered —
+    // so the historical lead_status_id values on audience_response stay meaningful.
     const add = () => {
         setRows((prev) => [
             ...prev,
@@ -81,8 +79,9 @@ export default function LeadStatusesManager() {
                 <CardTitle>Lead Statuses</CardTitle>
                 <CardDescription>
                     The stages a lead moves through in your pipeline (e.g. New, Interested, Converted).
-                    Rename, recolour, reorder, set a default for new leads, or remove them. Stored in the
-                    database so you can filter and report on them.
+                    Rename, recolour, reorder, or set a default for new leads. Statuses can't be
+                    deleted — leads keep their history. Stored in the database so you can filter
+                    and report on them.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -169,24 +168,13 @@ export default function LeadStatusesManager() {
                                         <Star className="size-4" weight={s.is_default ? 'fill' : 'regular'} />
                                     </MyButton>
 
-                                    {s.is_system ? (
+                                    {s.is_system && (
                                         <span
                                             className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500"
-                                            title="Default status — can be renamed/recoloured but not deleted"
+                                            title="System default — can be renamed/recoloured"
                                         >
                                             Default
                                         </span>
-                                    ) : (
-                                        <MyButton
-                                            buttonType="text"
-                                            layoutVariant="icon"
-                                            scale="small"
-                                            aria-label={`Remove ${s.label || 'status'}`}
-                                            onClick={() => remove(i)}
-                                            className="shrink-0 !text-neutral-400 hover:!bg-danger-50 hover:!text-danger-600"
-                                        >
-                                            <Trash className="size-4" />
-                                        </MyButton>
                                     )}
                                 </div>
                             ))}

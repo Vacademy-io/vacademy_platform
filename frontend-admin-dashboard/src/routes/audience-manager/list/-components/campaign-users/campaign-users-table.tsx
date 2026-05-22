@@ -37,6 +37,7 @@ import {
 } from './campaign-users-columns';
 import { deleteAudienceLead } from '../../-services/delete-audience-lead';
 import { convertToLocalDateTime } from '@/constants/helper';
+import { parseHtmlToString } from '@/lib/utils';
 import { useCustomFieldSetup } from '../../-hooks/useCustomFieldSetup';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -603,7 +604,12 @@ export const CampaignUsersTable = ({
                     showLeadOps ? notesByUserId : undefined,
                     showLeadOps ? handleAddNote : undefined,
                     showLeadOps ? handleAssignCounsellor : undefined,
-                    showLeadOps ? leadStatusOptions : undefined
+                    showLeadOps ? leadStatusOptions : undefined,
+                    showLeadOps ? leadStatusCatalog : undefined,
+                    () =>
+                        queryClient.invalidateQueries({
+                            queryKey: ['campaignUsers', campaignId],
+                        })
                 );
             }
 
@@ -621,7 +627,12 @@ export const CampaignUsersTable = ({
                 showLeadOps ? notesByUserId : undefined,
                 showLeadOps ? handleAddNote : undefined,
                 showLeadOps ? handleAssignCounsellor : undefined,
-                showLeadOps ? leadStatusOptions : undefined
+                showLeadOps ? leadStatusOptions : undefined,
+                showLeadOps ? leadStatusCatalog : undefined,
+                () =>
+                    queryClient.invalidateQueries({
+                        queryKey: ['campaignUsers', campaignId],
+                    })
             );
         },
         [
@@ -638,6 +649,9 @@ export const CampaignUsersTable = ({
             handleAddNote,
             handleAssignCounsellor,
             leadStatusOptions,
+            leadStatusCatalog,
+            queryClient,
+            campaignId,
         ]
     );
 
@@ -678,12 +692,17 @@ export const CampaignUsersTable = ({
                     _user: user,
                     _custom_field_values: (lead as any).custom_field_values || {},
                     _audience_campaign_name: (lead as any).campaign_name || null,
-                    // TAT / follow-up SLA badge (visual only)
+                    // TAT / follow-up SLA deadlines + badge (visual only)
+                    _tat_due_at: (lead as any).tat_due_at ?? null,
+                    _first_response_at: (lead as any).first_response_at ?? null,
+                    _follow_up_due_at: (lead as any).follow_up_due_at ?? null,
                     _tat_overdue: (lead as any).tat_overdue ?? null,
                     _tat_due_soon: (lead as any).tat_due_soon ?? null,
                     _follow_up_overdue: (lead as any).follow_up_overdue ?? null,
                     // Custom pipeline status (enquiry_status)
                     _lead_status: (lead as any).lead_status ?? null,
+                    // Audience response id — for inline status updates.
+                    _response_id: lead.response_id ?? null,
                 };
 
                 // Enriched per-field response data (with type metadata) so the
@@ -1032,7 +1051,13 @@ export const CampaignUsersTable = ({
                         // Follow Up / Meeting) so the CSV faithfully mirrors
                         // what the side view shows for each entry.
                         const label = n.title?.trim() || 'Note';
-                        const body = n.description?.trim() || '';
+                        // Notes may be rich text (HTML) — export as plain text.
+                        const rawBody = n.description ?? '';
+                        const body = (
+                            /<\/?[a-z][^>]*>/i.test(rawBody)
+                                ? parseHtmlToString(rawBody)
+                                : rawBody
+                        ).trim();
                         const date = n.created_at
                             ? convertToLocalDateTime(n.created_at)
                             : '';
@@ -1567,7 +1592,12 @@ const CampaignUsersTableBody = ({
                     tableState={{ columnVisibility: {} }}
                 />
                 <div>
-                    <StudentSidebar selectedTab="overview" examType="EXAM" isStudentList={false} />
+                    <StudentSidebar
+                        selectedTab="overview"
+                        examType="EXAM"
+                        isStudentList={false}
+                        defaultLeadProfile
+                    />
                 </div>
             </SidebarProvider>
         </div>

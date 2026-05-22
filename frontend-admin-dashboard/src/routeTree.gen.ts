@@ -96,6 +96,7 @@ import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
+import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
@@ -152,6 +153,7 @@ import { Route as AiCenterAiToolsVsmartAudioIndexRouteImport } from "./routes/ai
 import { Route as AdmissionsNewEnquiryAudienceIdIndexRouteImport } from "./routes/admissions/new-enquiry/$audienceId/index"
 import { Route as AdmissionsApplicationNewIndexRouteImport } from "./routes/admissions/application/new/index"
 import { Route as StudyLibraryLiveSessionViewSessionIdRouteImport } from "./routes/study-library/live-session/view/$sessionId"
+import { Route as SettingsLeadsPoolsPoolIdRouteImport } from "./routes/settings/leads/pools/$poolId"
 import { Route as ManagePagesProductPagesEditorProductPageIdRouteImport } from "./routes/manage-pages/product-pages/editor/$productPageId"
 import { Route as StudyLibraryLiveSessionScheduleStep2IndexRouteImport } from "./routes/study-library/live-session/schedule/step2/index"
 import { Route as StudyLibraryLiveSessionScheduleStep1IndexRouteImport } from "./routes/study-library/live-session/schedule/step1/index"
@@ -843,6 +845,14 @@ const AutomationChatbotFlowsIndexRoute =
   } as any).lazy(() =>
     import("./routes/automation/chatbot-flows/index.lazy").then((d) => d.Route),
   )
+const AudienceManagerReportsIndexRoute =
+  AudienceManagerReportsIndexRouteImport.update({
+    id: "/audience-manager/reports/",
+    path: "/audience-manager/reports/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/reports/index.lazy").then((d) => d.Route),
+  )
 const AudienceManagerRecentLeadsIndexRoute =
   AudienceManagerRecentLeadsIndexRouteImport.update({
     id: "/audience-manager/recent-leads/",
@@ -1292,6 +1302,14 @@ const StudyLibraryLiveSessionViewSessionIdRoute =
     path: "/study-library/live-session/view/$sessionId",
     getParentRoute: () => rootRouteImport,
   } as any)
+const SettingsLeadsPoolsPoolIdRoute =
+  SettingsLeadsPoolsPoolIdRouteImport.update({
+    id: "/settings/leads/pools/$poolId",
+    path: "/settings/leads/pools/$poolId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/settings/leads/pools/$poolId.lazy").then((d) => d.Route),
+  )
 const ManagePagesProductPagesEditorProductPageIdRoute =
   ManagePagesProductPagesEditorProductPageIdRouteImport.update({
     id: "/manage-pages/product-pages/editor/$productPageId",
@@ -1554,6 +1572,7 @@ export interface FileRoutesByFullPath {
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
+  "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
@@ -1603,6 +1622,7 @@ export interface FileRoutesByFullPath {
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
+  "/settings/leads/pools/$poolId": typeof SettingsLeadsPoolsPoolIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId/": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -1721,6 +1741,7 @@ export interface FileRoutesByTo {
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
+  "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
@@ -1770,6 +1791,7 @@ export interface FileRoutesByTo {
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
+  "/settings/leads/pools/$poolId": typeof SettingsLeadsPoolsPoolIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -1890,6 +1912,7 @@ export interface FileRoutesById {
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
+  "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
@@ -1939,6 +1962,7 @@ export interface FileRoutesById {
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
+  "/settings/leads/pools/$poolId": typeof SettingsLeadsPoolsPoolIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId/": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -2060,6 +2084,7 @@ export interface FileRouteTypes {
     | "/assessment/question-papers/"
     | "/audience-manager/list/"
     | "/audience-manager/recent-leads/"
+    | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
@@ -2109,6 +2134,7 @@ export interface FileRouteTypes {
     | "/workflow/create/"
     | "/workflow/list/"
     | "/manage-pages/product-pages/editor/$productPageId"
+    | "/settings/leads/pools/$poolId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
     | "/admissions/new-enquiry/$audienceId/"
@@ -2227,6 +2253,7 @@ export interface FileRouteTypes {
     | "/assessment/question-papers"
     | "/audience-manager/list"
     | "/audience-manager/recent-leads"
+    | "/audience-manager/reports"
     | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
@@ -2276,6 +2303,7 @@ export interface FileRouteTypes {
     | "/workflow/create"
     | "/workflow/list"
     | "/manage-pages/product-pages/editor/$productPageId"
+    | "/settings/leads/pools/$poolId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new"
     | "/admissions/new-enquiry/$audienceId"
@@ -2395,6 +2423,7 @@ export interface FileRouteTypes {
     | "/assessment/question-papers/"
     | "/audience-manager/list/"
     | "/audience-manager/recent-leads/"
+    | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
@@ -2444,6 +2473,7 @@ export interface FileRouteTypes {
     | "/workflow/create/"
     | "/workflow/list/"
     | "/manage-pages/product-pages/editor/$productPageId"
+    | "/settings/leads/pools/$poolId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
     | "/admissions/new-enquiry/$audienceId/"
@@ -2563,6 +2593,7 @@ export interface RootRouteChildren {
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
+  AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
@@ -2612,6 +2643,7 @@ export interface RootRouteChildren {
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
   ManagePagesProductPagesEditorProductPageIdRoute: typeof ManagePagesProductPagesEditorProductPageIdRoute
+  SettingsLeadsPoolsPoolIdRoute: typeof SettingsLeadsPoolsPoolIdRoute
   StudyLibraryLiveSessionViewSessionIdRoute: typeof StudyLibraryLiveSessionViewSessionIdRoute
   AdmissionsApplicationNewIndexRoute: typeof AdmissionsApplicationNewIndexRoute
   AdmissionsNewEnquiryAudienceIdIndexRoute: typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -3286,6 +3318,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AutomationChatbotFlowsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/audience-manager/reports/": {
+      id: "/audience-manager/reports/"
+      path: "/audience-manager/reports"
+      fullPath: "/audience-manager/reports/"
+      preLoaderRoute: typeof AudienceManagerReportsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/recent-leads/": {
       id: "/audience-manager/recent-leads/"
       path: "/audience-manager/recent-leads"
@@ -3678,6 +3717,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryLiveSessionViewSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/settings/leads/pools/$poolId": {
+      id: "/settings/leads/pools/$poolId"
+      path: "/settings/leads/pools/$poolId"
+      fullPath: "/settings/leads/pools/$poolId"
+      preLoaderRoute: typeof SettingsLeadsPoolsPoolIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/manage-pages/product-pages/editor/$productPageId": {
       id: "/manage-pages/product-pages/editor/$productPageId"
       path: "/manage-pages/product-pages/editor/$productPageId"
@@ -3913,6 +3959,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
+  AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
@@ -3973,6 +4020,7 @@ const rootRouteChildren: RootRouteChildren = {
   WorkflowListIndexRoute: WorkflowListIndexRoute,
   ManagePagesProductPagesEditorProductPageIdRoute:
     ManagePagesProductPagesEditorProductPageIdRoute,
+  SettingsLeadsPoolsPoolIdRoute: SettingsLeadsPoolsPoolIdRoute,
   StudyLibraryLiveSessionViewSessionIdRoute:
     StudyLibraryLiveSessionViewSessionIdRoute,
   AdmissionsApplicationNewIndexRoute: AdmissionsApplicationNewIndexRoute,

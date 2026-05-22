@@ -8,6 +8,18 @@ import {
     type CreateTimelineEventPayload,
 } from '../../../-services/timeline-services';
 import { Button } from '@/components/ui/button';
+import { RichTextEditor } from '@/components/editor/RichTextEditor';
+import { parseHtmlToString } from '@/lib/utils';
+import DOMPurify from 'dompurify';
+import { CallRecordingInput } from '@/components/shared/lead-calls/CallRecordingInput';
+import { CallRecordingPlayer } from '@/components/shared/lead-calls/CallRecordingPlayer';
+import {
+    type CallActivity,
+    callActivityToMetadata,
+    callActivityFromMetadata,
+    isCallActivityEmpty,
+    stripCallMetadata,
+} from '@/components/shared/lead-calls/call-activity';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
@@ -170,23 +182,42 @@ export const TimelineEventItem = ({ event }: { event: TimelineEvent }) => {
                     </span>
                 </div>
 
-                {event.description && (
-                    <div className="mt-1">
-                        <p className="whitespace-pre-wrap break-all text-sm leading-relaxed text-neutral-600 sm:break-normal">
-                            {isTextExpanded || event.description.length <= 100
-                                ? event.description
-                                : `${event.description.slice(0, 100).trim()}...`}
-                        </p>
-                        {event.description.length > 100 && (
-                            <button
-                                onClick={() => setIsTextExpanded(!isTextExpanded)}
-                                className="mt-1 text-xs font-medium text-primary-600 transition-colors hover:text-primary-700 hover:underline"
-                            >
-                                {isTextExpanded ? 'View less' : 'View more'}
-                            </button>
-                        )}
-                    </div>
-                )}
+                {event.description &&
+                    (() => {
+                        // Notes created with the rich text editor are HTML; legacy notes
+                        // are plain text. Render HTML safely, but keep plain-text line
+                        // breaks for older notes. Length checks use the rendered text.
+                        const isHtml = /<\/?[a-z][^>]*>/i.test(event.description);
+                        const plain = isHtml
+                            ? parseHtmlToString(event.description).trim()
+                            : event.description.trim();
+                        const isLong = plain.length > 100;
+                        const showFull = isTextExpanded || !isLong;
+                        return (
+                            <div className="mt-1">
+                                {showFull && isHtml ? (
+                                    <div
+                                        className="break-words text-sm leading-relaxed text-neutral-600 [&_a]:text-primary-600 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-neutral-200 [&_blockquote]:pl-2 [&_code]:rounded [&_code]:bg-neutral-100 [&_code]:px-1 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:font-medium [&_li]:my-0.5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0.5 [&_strong]:font-semibold [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5"
+                                        dangerouslySetInnerHTML={{
+                                            __html: DOMPurify.sanitize(event.description),
+                                        }}
+                                    />
+                                ) : (
+                                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-neutral-600">
+                                        {showFull ? plain : `${plain.slice(0, 100).trim()}...`}
+                                    </p>
+                                )}
+                                {isLong && (
+                                    <button
+                                        onClick={() => setIsTextExpanded(!isTextExpanded)}
+                                        className="mt-1 text-xs font-medium text-primary-600 transition-colors hover:text-primary-700 hover:underline"
+                                    >
+                                        {isTextExpanded ? 'View less' : 'View more'}
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                 {/* Actor info */}
                 {event.actor_name && (
@@ -195,22 +226,33 @@ export const TimelineEventItem = ({ event }: { event: TimelineEvent }) => {
                     </p>
                 )}
 
-                {/* Metadata badges */}
-                {event.metadata && Object.keys(event.metadata).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                        {Object.entries(event.metadata).map(([key, value]) => (
-                            <span
-                                key={key}
-                                className="inline-flex items-center gap-1 rounded-md border border-neutral-100 bg-neutral-50 px-2 py-0.5 text-[10px] text-neutral-500"
-                            >
-                                <span className="font-medium text-neutral-600">
-                                    {key.replace(/_/g, ' ')}:
+                {/* Call recording + details (Call Log) */}
+                {(() => {
+                    const call = callActivityFromMetadata(event.metadata);
+                    return call ? <CallRecordingPlayer call={call} /> : null;
+                })()}
+
+                {/* Metadata badges (call-activity keys rendered above instead) */}
+                {(() => {
+                    const otherMeta = stripCallMetadata(event.metadata);
+                    const entries = Object.entries(otherMeta);
+                    if (entries.length === 0) return null;
+                    return (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            {entries.map(([key, value]) => (
+                                <span
+                                    key={key}
+                                    className="inline-flex items-center gap-1 rounded-md border border-neutral-100 bg-neutral-50 px-2 py-0.5 text-[10px] text-neutral-500"
+                                >
+                                    <span className="font-medium text-neutral-600">
+                                        {key.replace(/_/g, ' ')}:
+                                    </span>
+                                    {String(value)}
                                 </span>
-                                {String(value)}
-                            </span>
-                        ))}
-                    </div>
-                )}
+                            ))}
+                        </div>
+                    );
+                })()}
             </div>
         </div>
     );
@@ -227,6 +269,7 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
     const [noteText, setNoteText] = useState('');
     const [actionType, setActionType] = useState('NOTE');
     const [isExpanded, setIsExpanded] = useState(false);
+    const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const queryClient = useQueryClient();
 
     const createMutation = useMutation({
@@ -234,6 +277,7 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
         onSuccess: () => {
             toast.success('Note added successfully');
             setNoteText('');
+            setCallActivity(null);
             setIsExpanded(false);
             queryClient.invalidateQueries({
                 queryKey: timelineQueryKeys.events(entityType, entityId),
@@ -244,9 +288,20 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
         },
     });
 
+    // The rich text editor emits HTML, so check the rendered text (not the markup)
+    // to know whether the note is actually empty.
+    const isNoteEmpty = !parseHtmlToString(noteText).trim();
+
+    // For Call Log, a recording / call details alone are enough to submit.
+    const callMeta =
+        actionType === 'CALL_LOG' && !isCallActivityEmpty(callActivity)
+            ? callActivityToMetadata(callActivity as CallActivity)
+            : undefined;
+    const canSubmit = !isNoteEmpty || callMeta !== undefined;
+
     const handleSubmit = () => {
-        if (!noteText.trim()) {
-            toast.warning('Please enter a note');
+        if (!canSubmit) {
+            toast.warning('Please enter a note or add a recording');
             return;
         }
 
@@ -258,6 +313,7 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
             action_type: actionType,
             title: `${actionLabel}`,
             description: noteText.trim(),
+            metadata: callMeta,
         };
 
         createMutation.mutate(payload);
@@ -304,20 +360,29 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
                 ))}
             </div>
 
-            {/* Note input */}
-            <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Type your note here…"
-                rows={3}
-                autoFocus
-                className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
+            {/* Note input — rich text editor with formatting toolbar */}
+            <div
+                className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
                 onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
                         handleSubmit();
                     }
                 }}
-            />
+            >
+                <RichTextEditor
+                    value={noteText}
+                    onChange={setNoteText}
+                    placeholder="Type your note here…"
+                    minHeight={64}
+                    minimalToolbar
+                />
+            </div>
+
+            {/* Call recording (Call Log only) */}
+            {actionType === 'CALL_LOG' && (
+                <CallRecordingInput value={callActivity} onChange={setCallActivity} />
+            )}
 
             {/* Actions */}
             <div className="mt-2 flex items-center justify-between">
@@ -330,6 +395,7 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
                         onClick={() => {
                             setIsExpanded(false);
                             setNoteText('');
+                            setCallActivity(null);
                         }}
                     >
                         Cancel
@@ -338,7 +404,7 @@ const AddNoteForm = ({ entityType, entityId }: AddNoteFormProps) => {
                         size="sm"
                         className="h-7 bg-primary-500 px-3 text-xs text-white hover:bg-primary-600"
                         onClick={handleSubmit}
-                        disabled={createMutation.isPending || !noteText.trim()}
+                        disabled={createMutation.isPending || !canSubmit}
                     >
                         {createMutation.isPending ? 'Saving…' : 'Add Note'}
                     </Button>

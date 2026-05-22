@@ -69,7 +69,7 @@ const fetchCounselors = async (): Promise<InstituteUser[]> => {
         method: 'POST',
         url: GET_INSTITUTE_USERS,
         params: { instituteId, pageNumber: 0, pageSize: 500 },
-        data: { roles: ['TEACHER', 'ADMIN'], status: ['ACTIVE'] },
+        data: { roles: ['COUNSELLOR', 'ADMIN'], status: ['ACTIVE'] },
     });
     const raw = Array.isArray(response.data) ? response.data : response.data?.content || [];
     return raw.map((u: Record<string, unknown>) => ({

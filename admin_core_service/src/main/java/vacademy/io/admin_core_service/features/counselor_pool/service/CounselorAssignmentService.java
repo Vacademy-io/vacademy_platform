@@ -212,18 +212,24 @@ public class CounselorAssignmentService {
                 return new ResolvedAssignment(firstPick.getCounselorUserId(), cursor.getCounselorUserId());
             }
 
-            // INACTIVE — check backup (one level only, per design v1)
+            // INACTIVE — check backup (one level only, per design v1).
+            // Backups can be ANY institute counsellor, not necessarily a member of
+            // this pool. If the backup is also a pool member, only redirect when
+            // they're active; otherwise (non-pool-member backup) we trust the id
+            // and route to them directly — the frontend dropdown only offered
+            // valid candidates at the moment the admin saved.
             String backupId = cursor.getBackupCounselorUserId();
             if (backupId != null && !backupId.isBlank()) {
                 CounselorPoolMember backupMember = orderedMembers.stream()
                         .filter(m -> backupId.equals(m.getCounselorUserId()))
                         .findFirst()
                         .orElse(null);
-                if (backupMember != null && PoolStatus.ACTIVE.name().equals(backupMember.getStatus())) {
-                    // Backup is active and in the candidate set — use it.
+                boolean backupUsable = backupMember == null
+                        || PoolStatus.ACTIVE.name().equals(backupMember.getStatus());
+                if (backupUsable) {
                     return new ResolvedAssignment(firstPick.getCounselorUserId(), backupId);
                 }
-                // Backup is missing from candidate set or also inactive → fall through to next eligible.
+                // Backup is in pool but inactive → fall through to next eligible.
             }
 
             // Advance to the next member in rotation (skip the inactive one and look for someone active).

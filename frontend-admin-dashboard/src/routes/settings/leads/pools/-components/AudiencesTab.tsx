@@ -7,8 +7,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { AUDIENCE_CAMPAIGNS_LIST } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
@@ -20,6 +18,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
+    handleFetchCampaignsList,
+    type CampaignItem,
+} from '@/routes/audience-manager/list/-services/get-campaigns-list';
+import {
     CounselorPoolDTO,
     useAddAudienceToPool,
     useRemoveAudienceFromPool,
@@ -29,38 +31,19 @@ interface AudiencesTabProps {
     pool: CounselorPoolDTO;
 }
 
-interface CampaignItem {
-    id?: string;
-    campaign_name: string;
-    status: string;
-}
-
-interface CampaignListResponse {
-    content: CampaignItem[];
-}
-
-const fetchAllInstituteCampaigns = async (): Promise<CampaignItem[]> => {
-    const instituteId = getCurrentInstituteId();
-    const response = await authenticatedAxiosInstance<CampaignListResponse>({
-        method: 'POST',
-        url: AUDIENCE_CAMPAIGNS_LIST,
-        data: {
-            institute_id: instituteId,
-            page: 0,
-            size: 500, // adequate for any institute's campaign count
-        },
-    });
-    return response.data?.content ?? [];
-};
-
 export default function AudiencesTab({ pool }: AudiencesTabProps) {
     const [pendingAudienceId, setPendingAudienceId] = useState<string>('');
 
-    const { data: allCampaigns = [], isLoading } = useQuery({
-        queryKey: ['institute-campaigns-for-pool'],
-        queryFn: fetchAllInstituteCampaigns,
-        staleTime: 60 * 1000,
+    // Reuse the existing campaign-list service from audience-manager. Pull a wide page
+    // (size 500) so we get every campaign in the institute regardless of pagination.
+    const instituteId = getCurrentInstituteId() ?? '';
+    const campaignsQuery = handleFetchCampaignsList({
+        institute_id: instituteId,
+        page: 0,
+        size: 500,
     });
+    const { data: campaignsPage, isLoading } = useQuery(campaignsQuery);
+    const allCampaigns: CampaignItem[] = campaignsPage?.content ?? [];
 
     const { mutate: addAudience, isPending: adding } = useAddAudienceToPool(pool.id);
     const { mutate: removeAudience, isPending: removing } = useRemoveAudienceFromPool(pool.id);

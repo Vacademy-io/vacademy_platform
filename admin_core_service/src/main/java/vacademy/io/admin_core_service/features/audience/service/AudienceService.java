@@ -477,14 +477,30 @@ public class AudienceService {
                 // pool's mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this
                 // lead and writes that to user_lead_profile.assigned_counselor_id. MANUAL pools
                 // and audiences not in any pool return Optional.empty() and we leave the lead
-                // unassigned. Non-blocking — submission still succeeds if routing fails.
+                // unassigned. The full_name lookup mirrors what the manual-assign UI does so
+                // the Counsellor column on lead-list pages renders the name (the UI checks
+                // assigned_counselor_name; an id-without-name shows up as Unassigned).
+                // Non-blocking — submission still succeeds if routing fails.
                 final String leadUserIdForAssignment = userId;
                 final String instituteIdForAssignment = instituteId;
                 try {
                     counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
-                            .ifPresent(counselorUserId ->
-                                    userLeadProfileService.assignCounselor(
-                                            leadUserIdForAssignment, instituteIdForAssignment, counselorUserId, null));
+                            .ifPresent(counselorUserId -> {
+                                String counselorName = null;
+                                try {
+                                    List<UserDTO> fetched = authService
+                                            .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+                                    if (!fetched.isEmpty() && fetched.get(0) != null) {
+                                        counselorName = fetched.get(0).getFullName();
+                                    }
+                                } catch (Exception nameLookupFailure) {
+                                    logger.warn("Could not fetch counselor name for {}: {}",
+                                            counselorUserId, nameLookupFailure.getMessage());
+                                }
+                                userLeadProfileService.assignCounselor(
+                                        leadUserIdForAssignment, instituteIdForAssignment,
+                                        counselorUserId, counselorName);
+                            });
                 } catch (Exception e) {
                     logger.error("Failed to auto-assign counselor for response {}: {}",
                             savedResponse.getId(), e.getMessage());

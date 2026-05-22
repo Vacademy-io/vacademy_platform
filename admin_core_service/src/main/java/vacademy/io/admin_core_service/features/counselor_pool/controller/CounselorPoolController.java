@@ -79,6 +79,20 @@ public class CounselorPoolController {
         return ResponseEntity.ok("Audience detached");
     }
 
+    /**
+     * Replace the rotation order of counselors for one (pool, audience) pair.
+     * Body: { counselor_user_ids: [..., ..., ...] } in the desired rotation order.
+     * The backend assigns display_order = 1..N based on list position.
+     */
+    @PutMapping("/{poolId}/audiences/{audienceId}/order")
+    public ResponseEntity<String> updateAudienceOrder(
+            @PathVariable String poolId,
+            @PathVariable String audienceId,
+            @RequestBody UpdateAudienceOrderRequest request) {
+        poolService.updateAudienceMemberOrder(poolId, audienceId, request.getCounselorUserIds());
+        return ResponseEntity.ok("Order updated");
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Counselor (member) management
     // ────────────────────────────────────────────────────────────────

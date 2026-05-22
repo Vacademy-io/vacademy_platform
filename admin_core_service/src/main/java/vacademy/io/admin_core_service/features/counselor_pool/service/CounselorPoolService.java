@@ -138,9 +138,18 @@ public class CounselorPoolService {
 
     @Transactional(readOnly = true)
     public List<CounselorPoolDTO> listPools(String instituteId) {
-        // Slim list — no nested audiences/members/shifts. Frontend calls getPool(id) for detail.
-        return poolRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId).stream()
-                .map(p -> toPoolDTO(p, null, null, null))
+        // The list view shows "N campaigns · M counselors" per card, so we need at least the
+        // child rows hydrated. Shifts are skipped here (only used inside the detail view).
+        // For institute-sized data (handful of pools, dozens of members), this is cheap.
+        List<CounselorPool> pools = poolRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId);
+        return pools.stream()
+                .map(p -> {
+                    List<PoolAudienceDTO> audiences = poolAudienceRepository.findByPoolId(p.getId())
+                            .stream().map(CounselorPoolService::toAudienceDTO).toList();
+                    List<PoolMemberDTO> members = poolMemberRepository.findByPoolId(p.getId())
+                            .stream().map(CounselorPoolService::toMemberDTO).toList();
+                    return toPoolDTO(p, audiences, members, null);
+                })
                 .toList();
     }
 
@@ -219,6 +228,42 @@ public class CounselorPoolService {
         poolMemberRepository.deleteAll(rows);
     }
 
+    /**
+     * Replace the display_order of counselors for a single (pool, audience) pair.
+     * Accepts the desired counselor_user_ids in the order they should rotate.
+     * Validates: every id must be an existing member of (pool, audience); the input
+     * list must cover EVERY current member (no missing, no extras).
+     */
+    @Transactional
+    public void updateAudienceMemberOrder(String poolId, String audienceId,
+                                          List<String> orderedCounselorUserIds) {
+        if (orderedCounselorUserIds == null || orderedCounselorUserIds.isEmpty()) {
+            throw new VacademyException("counselor_user_ids must be a non-empty ordered list");
+        }
+        List<CounselorPoolMember> existing = poolMemberRepository
+                .findByPoolIdAndAudienceIdOrderByDisplayOrderAsc(poolId, audienceId);
+        if (existing.isEmpty()) {
+            throw new VacademyException("No members configured for this audience in the pool");
+        }
+        Set<String> existingIds = existing.stream()
+                .map(CounselorPoolMember::getCounselorUserId)
+                .collect(Collectors.toSet());
+        Set<String> requestedIds = new HashSet<>(orderedCounselorUserIds);
+        if (requestedIds.size() != orderedCounselorUserIds.size()) {
+            throw new VacademyException("Ordered list contains duplicate counselors");
+        }
+        if (!existingIds.equals(requestedIds)) {
+            throw new VacademyException("Ordered list must cover exactly the existing members of this audience");
+        }
+        Map<String, CounselorPoolMember> rowsByCounselor = existing.stream()
+                .collect(Collectors.toMap(CounselorPoolMember::getCounselorUserId, m -> m));
+        for (int i = 0; i < orderedCounselorUserIds.size(); i++) {
+            CounselorPoolMember row = rowsByCounselor.get(orderedCounselorUserIds.get(i));
+            row.setDisplayOrder(i + 1);
+            poolMemberRepository.save(row);
+        }
+    }
+
     @Transactional
     public void updateMemberStatus(String poolId, String counselorUserId, UpdateMemberStatusRequest request) {
         String status = request.getStatus();
@@ -232,13 +277,11 @@ public class CounselorPoolService {
             if (counselorUserId.equals(backupId)) {
                 throw new VacademyException("Backup must be a different counselor");
             }
-            // Backup must already be an active member of this pool (any audience).
-            List<CounselorPoolMember> backupRows = poolMemberRepository.findByPoolIdAndCounselorUserId(poolId, backupId);
-            boolean backupActive = backupRows.stream()
-                    .anyMatch(r -> PoolStatus.ACTIVE.name().equals(r.getStatus()));
-            if (!backupActive) {
-                throw new VacademyException("Backup counselor must be an active member of this pool");
-            }
+            // No pool-membership check on the backup. Backups can be any institute
+            // counsellor — even one who isn't in this pool — so admin can temporarily
+            // route leads to someone outside the team while the primary is paused.
+            // The frontend dropdown already filters out inactive pool members; here
+            // we trust the id and rely on app-layer rules upstream.
         } else {
             backupId = null; // clear backup when going back to ACTIVE
         }

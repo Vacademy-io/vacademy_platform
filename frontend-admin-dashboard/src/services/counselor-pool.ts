@@ -14,6 +14,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     COUNSELOR_POOL_AUDIENCE,
+    COUNSELOR_POOL_AUDIENCE_ORDER,
     COUNSELOR_POOL_BASE,
     COUNSELOR_POOL_BY_ID,
     COUNSELOR_POOL_COUNSELOR,
@@ -186,6 +187,21 @@ export const updateMemberStatus = async (
     );
 };
 
+/**
+ * Replace the rotation order for one (pool, audience). The list must contain
+ * every existing member's user_id in the desired order. Backend assigns
+ * display_order = 1..N based on position.
+ */
+export const updateAudienceOrder = async (
+    poolId: string,
+    audienceId: string,
+    counselorUserIds: string[]
+): Promise<void> => {
+    await authenticatedAxiosInstance.put(COUNSELOR_POOL_AUDIENCE_ORDER(poolId, audienceId), {
+        counselor_user_ids: counselorUserIds,
+    });
+};
+
 export const fetchWeeklySchedule = async (poolId: string): Promise<PoolShiftDTO[]> => {
     const response = await authenticatedAxiosInstance.get(COUNSELOR_POOL_SCHEDULE(poolId));
     return response.data ?? [];
@@ -290,6 +306,15 @@ export const useRemoveCounselorFromPool = (poolId: string) => {
     const invalidate = useInvalidatePool();
     return useMutation({
         mutationFn: (counselorUserId: string) => removeCounselorFromPool(poolId, counselorUserId),
+        onSuccess: () => invalidate(poolId),
+    });
+};
+
+export const useUpdateAudienceOrder = (poolId: string) => {
+    const invalidate = useInvalidatePool();
+    return useMutation({
+        mutationFn: (args: { audienceId: string; counselorUserIds: string[] }) =>
+            updateAudienceOrder(poolId, args.audienceId, args.counselorUserIds),
         onSuccess: () => invalidate(poolId),
     });
 };

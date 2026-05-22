@@ -53,13 +53,42 @@ interface InstituteUser {
     email?: string | null;
 }
 
+/**
+ * Fetch users in the institute who can be added as counsellors.
+ * Reuses the existing GET_INSTITUTE_USERS endpoint (auth-service). Filters by
+ * COUNSELLOR + ADMIN since both are valid for pool routing. Backend's role
+ * filter is OR-additive, so we pass both. Page size 500 is well above any
+ * realistic institute headcount; backend has no hard cap.
+ */
 const fetchInstituteCounselors = async (): Promise<InstituteUser[]> => {
     const instituteId = getCurrentInstituteId();
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: GET_INSTITUTE_USERS,
         params: { instituteId, pageNumber: 0, pageSize: 500 },
-        data: { roles: ['TEACHER', 'ADMIN'], status: ['ACTIVE'] },
+        data: { roles: ['COUNSELLOR', 'ADMIN'], status: ['ACTIVE'] },
+    });
+    const raw = Array.isArray(response.data) ? response.data : response.data?.content || [];
+    return raw.map((u: Record<string, unknown>) => ({
+        id: u.id as string,
+        full_name: u.full_name as string,
+        email: (u.email as string) || null,
+    }));
+};
+
+/**
+ * Fetch institute users eligible to be a backup counsellor. Strictly the
+ * COUNSELLOR role (admins not allowed as backup, per requirement) and only
+ * accounts that are ACTIVE in auth-service. Pool-level status (INACTIVE
+ * member of this pool) is filtered out in the component, not here.
+ */
+const fetchBackupEligibleCounsellors = async (): Promise<InstituteUser[]> => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: GET_INSTITUTE_USERS,
+        params: { instituteId, pageNumber: 0, pageSize: 500 },
+        data: { roles: ['COUNSELLOR'], status: ['ACTIVE'] },
     });
     const raw = Array.isArray(response.data) ? response.data : response.data?.content || [];
     return raw.map((u: Record<string, unknown>) => ({
@@ -81,6 +110,13 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
     const { data: instituteUsers = [], isLoading: usersLoading } = useQuery({
         queryKey: ['institute-counselors'],
         queryFn: fetchInstituteCounselors,
+        staleTime: 60 * 1000,
+    });
+
+    // Separate fetch for backup candidates — strictly COUNSELLOR role only.
+    const { data: backupEligibleUsers = [] } = useQuery({
+        queryKey: ['institute-backup-counsellors'],
+        queryFn: fetchBackupEligibleCounsellors,
         staleTime: 60 * 1000,
     });
 
@@ -161,18 +197,23 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
         );
     };
 
-    // Backup picker options: other active counselors in this pool (excluding self).
+    // Backup picker options: any COUNSELLOR-role user in the institute, minus:
+    //   - the counsellor being deactivated (self-exclude)
+    //   - anyone whose pool-membership status here is INACTIVE (no point routing
+    //     leads to someone who's also paused in this pool)
+    // Backups are NOT required to be members of this pool — picking an outside
+    // counsellor temporarily covers the deactivated one's leads.
     const backupCandidates = useMemo(() => {
         if (!statusDialog) return [] as { id: string; name: string }[];
-        const out: { id: string; name: string }[] = [];
+        const poolInactiveIds = new Set<string>();
         for (const [userId, rows] of counselorsInPool.entries()) {
-            if (userId === statusDialog.counselorUserId) continue;
-            const isActive = rows.some((r) => r.status === 'ACTIVE');
-            if (!isActive) continue;
-            out.push({ id: userId, name: userById.get(userId)?.full_name ?? userId });
+            if (rows.every((r) => r.status === 'INACTIVE')) poolInactiveIds.add(userId);
         }
-        return out;
-    }, [statusDialog, counselorsInPool, userById]);
+        return backupEligibleUsers
+            .filter((u) => u.id !== statusDialog.counselorUserId)
+            .filter((u) => !poolInactiveIds.has(u.id))
+            .map((u) => ({ id: u.id, name: u.full_name }));
+    }, [statusDialog, backupEligibleUsers, counselorsInPool]);
 
     return (
         <div className="space-y-6">

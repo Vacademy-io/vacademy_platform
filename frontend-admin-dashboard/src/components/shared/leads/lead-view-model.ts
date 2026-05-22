@@ -237,14 +237,30 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
 
 export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
     const userId = row._user?.id || row._user_id || '';
+    const name =
+        (row.full_name as string) ||
+        row._user?.full_name ||
+        (row.email as string) ||
+        row._user?.email ||
+        (row.phone_number as string) ||
+        row._user?.mobile_number ||
+        'Unknown lead';
     return {
         key: row.id,
         userId: userId || null,
-        name: (row.full_name as string) || row._user?.full_name || '-',
+        name,
         email: (row.email as string) || row._user?.email || '-',
         phone: (row.phone_number as string) || row._user?.mobile_number || '-',
         audience: (row._audience_campaign_name as string) || (row.opted_out_from as string) || '-',
         submittedDisplay: row.submittedAt || '-',
+        submittedIso: row.submittedAt,
+        responseId: row._response_id ?? undefined,
+        leadStatus: row._lead_status,
+        tatOverdue: row._tat_overdue,
+        tatDueSoon: row._tat_due_soon,
+        followUpOverdue: row._follow_up_overdue,
+        tatDueAt: row._tat_due_at,
+        followUpDueAt: row._follow_up_due_at,
         toStudent: () => mapCampaignRowToStudent(row),
     };
 };

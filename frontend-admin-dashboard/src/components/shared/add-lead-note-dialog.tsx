@@ -101,8 +101,13 @@ export const AddLeadNoteDialog = ({
 
     return (
         <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : handleClose())}>
-            <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
+            <DialogContent
+                className="flex w-full flex-col overflow-hidden p-0 sm:max-w-lg"
+                // Inline style: cap height to the viewport so tall content (e.g. Call Log)
+                // scrolls inside the dialog instead of overflowing the screen.
+                style={{ maxHeight: '90vh' }}
+            >
+                <DialogHeader className="border-b border-neutral-100 px-6 py-4">
                     <div className="flex items-center gap-3">
                         <LeadAvatar name={userName} size="md" />
                         <div className="min-w-0 text-left">
@@ -116,7 +121,7 @@ export const AddLeadNoteDialog = ({
                     </div>
                 </DialogHeader>
 
-                <div className="space-y-4 py-1">
+                <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
                     {/* Activity type — segmented control */}
                     <div className="flex rounded-lg bg-neutral-100 p-0.5">
                         {NOTE_ACTION_TYPES.map((type) => (
@@ -161,7 +166,7 @@ export const AddLeadNoteDialog = ({
                     )}
                 </div>
 
-                <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
+                <DialogFooter className="flex-row items-center justify-between gap-2 border-t border-neutral-100 px-6 py-4 sm:justify-between">
                     <span className="hidden items-center gap-1.5 text-xs text-neutral-400 sm:flex">
                         <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-xs font-medium text-neutral-500">
                             Ctrl + Enter

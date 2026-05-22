@@ -23,7 +23,7 @@ import {
     Code,
     EnvelopeSimple,
     WhatsappLogo,
-    Plus,
+    Sparkle,
 } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -72,6 +72,7 @@ interface TriggerWorkflowDialogProps {
 type ActionType = 'communication' | 'payload';
 type Channel = 'EMAIL' | 'WHATSAPP';
 type TemplateMode = 'select' | 'create';
+type Recipient = 'counselor' | 'parent';
 
 const LEAD_EVENTS: { value: string; label: string }[] = [
     { value: 'LEAD_ASSIGNED_TO_COUNSELOR', label: 'Lead assigned to counselor' },
@@ -96,6 +97,8 @@ export function TriggerWorkflowDialog({
     // For LEAD_STATUS_CHANGED: the lead status_key to fire on (ANY_STATUS = fire on any change).
     const [targetStatus, setTargetStatus] = useState<string>(ANY_STATUS);
     const [channel, setChannel] = useState<Channel>('EMAIL');
+    // Who should receive the notification — defaults to the assigned counsellor.
+    const [recipient, setRecipient] = useState<Recipient>('counselor');
     const [templateMode, setTemplateMode] = useState<TemplateMode>('select');
     const [selectedTemplate, setSelectedTemplate] = useState('');
     const [name, setName] = useState('');
@@ -117,6 +120,7 @@ export function TriggerWorkflowDialog({
             setEvent('');
             setTargetStatus(ANY_STATUS);
             setChannel('EMAIL');
+            setRecipient('counselor');
             setTemplateMode('select');
             setSelectedTemplate('');
             setName('');
@@ -224,10 +228,17 @@ export function TriggerWorkflowDialog({
                     : eventVars.map((v) => v.key);
             const templateVars = Object.fromEntries(varKeys.map((k) => [k, k]));
 
+            // Resolve which ctx field carries the recipient address. Counsellor uses the
+            // enriched counselorEmail/counselorMobile (LeadTriggerContextBuilder looks these up
+            // from auth-service); parent uses the audience_response snapshot.
+            const emailField = recipient === 'counselor' ? 'counselorEmail' : 'parentEmail';
+            const mobileField = recipient === 'counselor' ? 'counselorMobile' : 'parentMobile';
+
             if (channel === 'EMAIL') {
                 // Wrap the whole context into a one-element list so the per-item sender runs
-                // once for this lead; recipientField pulls the parent's email. When a status
-                // gate is set, return an empty list (no send) unless the new status matches.
+                // once for this lead; recipientField pulls the chosen address from the ctx
+                // map. When a status gate is set, return an empty list (no send) unless the
+                // new status matches.
                 const onExpr = statusGate ? `${statusGate} ? {#ctx} : {}` : '{#ctx}';
                 actionNode = {
                     id: actionId,
@@ -236,7 +247,7 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
-                        recipientField: 'parentEmail',
+                        recipientField: emailField,
                         templateVars,
                         routing: [{ type: 'end' }],
                     },
@@ -247,10 +258,11 @@ export function TriggerWorkflowDialog({
                 };
             } else {
                 // WhatsApp resolves the mobile from fixed keys (mobileNumber/mobile/phone/to),
-                // not parentMobile — so expose it via a one-element list of a map literal that
-                // also carries the template variables. Status gate empties the list when unmatched.
+                // not counselorMobile / parentMobile — so expose the chosen mobile via a
+                // one-element list of a map literal that also carries the template variables.
+                // Status gate empties the list when unmatched.
                 const mapEntries = [
-                    "mobileNumber: #ctx['parentMobile']",
+                    `mobileNumber: #ctx['${mobileField}']`,
                     ...varKeys.map((k) => `${k}: #ctx['${k}']`),
                 ].join(', ');
                 const onExpr = statusGate
@@ -435,7 +447,6 @@ export function TriggerWorkflowDialog({
                                         }}
                                         icon={<EnvelopeSimple size={18} />}
                                         title="Email"
-                                        description="Send to the lead's parent email."
                                     />
                                     <ChoiceCard
                                         selected={channel === 'WHATSAPP'}
@@ -446,9 +457,31 @@ export function TriggerWorkflowDialog({
                                         }}
                                         icon={<WhatsappLogo size={18} />}
                                         title="WhatsApp"
-                                        description="Send to the lead's parent mobile."
                                     />
                                 </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <Label className="text-sm font-medium">
+                                    Send notification to{' '}
+                                    <span className="text-danger-500">*</span>
+                                </Label>
+                                <Select
+                                    value={recipient}
+                                    onValueChange={(v) => setRecipient(v as Recipient)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="counselor">
+                                            Assigned counsellor (default)
+                                        </SelectItem>
+                                        <SelectItem value="parent">
+                                            Lead&apos;s parent contact
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
 
                             {templateMode === 'select' ? (
@@ -463,7 +496,7 @@ export function TriggerWorkflowDialog({
                                                 className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-400"
                                                 onClick={() => setTemplateMode('create')}
                                             >
-                                                <Plus size={14} /> Create sample template
+                                                <Sparkle size={14} weight="fill" /> Create sample template
                                             </button>
                                         )}
                                     </div>
@@ -599,7 +632,7 @@ function ChoiceCard({
     onClick: () => void;
     icon: React.ReactNode;
     title: string;
-    description: string;
+    description?: string;
 }) {
     return (
         <button
@@ -621,7 +654,9 @@ function ChoiceCard({
                 {icon}
                 <span className="text-sm font-semibold">{title}</span>
             </span>
-            <span className="text-xs text-muted-foreground">{description}</span>
+            {description && (
+                <span className="text-xs text-muted-foreground">{description}</span>
+            )}
         </button>
     );
 }

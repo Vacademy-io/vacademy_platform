@@ -291,6 +291,8 @@ public class WorkflowCatalogController {
                 ctxVar("campaignName", "Campaign name"),
                 ctxVar("counselorId", "Counselor user ID"),
                 ctxVar("counselorName", "Counselor name"),
+                ctxVar("counselorEmail", "Counselor email"),
+                ctxVar("counselorMobile", "Counselor mobile"),
                 ctxVar("parentName", "Parent name"),
                 ctxVar("parentEmail", "Parent email"),
                 ctxVar("parentMobile", "Parent mobile")));

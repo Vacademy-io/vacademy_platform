@@ -1,11 +1,15 @@
 package vacademy.io.admin_core_service.features.audience.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,6 +22,7 @@ import java.util.Map;
  * are omitted so templates can null-check cleanly.</p>
  */
 @Component
+@Slf4j
 public class LeadTriggerContextBuilder {
 
     // Canonical stage tokens persisted on audience_response.tat_reminder_stage.
@@ -29,9 +34,12 @@ public class LeadTriggerContextBuilder {
     public static final String STAGE_FOLLOW_UP_OVERDUE = "FOLLOW_UP_OVERDUE";
 
     private final CounselorPoolAudienceRepository poolAudienceRepository;
+    private final AuthService authService;
 
-    public LeadTriggerContextBuilder(CounselorPoolAudienceRepository poolAudienceRepository) {
+    public LeadTriggerContextBuilder(CounselorPoolAudienceRepository poolAudienceRepository,
+                                     AuthService authService) {
         this.poolAudienceRepository = poolAudienceRepository;
+        this.authService = authService;
     }
 
     /**
@@ -48,6 +56,31 @@ public class LeadTriggerContextBuilder {
                     .orElse(null);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * Look up the counselor's email/mobile from auth-service and add them to the ctx so a
+     * communication workflow can default to "send to the assigned counsellor". Without this
+     * the ctx only carries counselorId, which SEND_EMAIL / SEND_WHATSAPP can't resolve into
+     * an address. Best-effort; never throws into the emit path.
+     */
+    public void enrichCounselorContact(Map<String, Object> ctx, String counselorId) {
+        if (counselorId == null || counselorId.isBlank()) return;
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(counselorId));
+            if (users == null || users.isEmpty()) return;
+            UserDTO u = users.get(0);
+            put(ctx, "counselorEmail", u.getEmail());
+            put(ctx, "counselorMobile", u.getMobileNumber());
+            // Only set counselorName if the caller didn't already provide one (don't overwrite
+            // a snapshot the emit site chose to use).
+            if (!ctx.containsKey("counselorName")) {
+                put(ctx, "counselorName", u.getFullName());
+            }
+        } catch (Exception e) {
+            log.warn("[LeadTrigger] Failed to enrich counselor contact for {}: {}",
+                    counselorId, e.getMessage());
         }
     }
 
@@ -70,6 +103,7 @@ public class LeadTriggerContextBuilder {
         put(ctx, "campaignName", campaignName);
         put(ctx, "counselorId", counselorId);
         put(ctx, "counselorName", counselorName);
+        enrichCounselorContact(ctx, counselorId);
         return ctx;
     }
 
@@ -82,6 +116,7 @@ public class LeadTriggerContextBuilder {
         put(ctx, "leadId", userId);
         put(ctx, "counselorId", counselorId);
         put(ctx, "counselorName", counselorName);
+        enrichCounselorContact(ctx, counselorId);
         return ctx;
     }
 

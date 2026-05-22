@@ -364,7 +364,7 @@ export function LeadTable({
                             <th
                                 key={c.id}
                                 className={cn(
-                                    'whitespace-nowrap px-4 py-3 text-xs font-semibold text-neutral-600',
+                                    'whitespace-nowrap border-r border-neutral-200 px-4 py-3 text-xs font-semibold text-neutral-600 last:border-r-0',
                                     c.id === 'name' &&
                                         'sticky left-0 z-20 border-r border-neutral-200 bg-primary-50',
                                     c.thClass
@@ -383,7 +383,7 @@ export function LeadTable({
                                       <td
                                           key={c.id}
                                           className={cn(
-                                              'px-4 py-3.5',
+                                              'border-r border-neutral-100 px-4 py-3.5 last:border-r-0',
                                               c.id === 'name' &&
                                                   'sticky left-0 z-10 border-r border-neutral-200 bg-white'
                                           )}
@@ -405,7 +405,7 @@ export function LeadTable({
                                           <td
                                               key={c.id}
                                               className={cn(
-                                                  'px-4 py-3.5 align-middle',
+                                                  'border-r border-neutral-100 px-4 py-3.5 align-middle last:border-r-0',
                                                   c.id === 'name' &&
                                                       'sticky left-0 z-10 border-r border-neutral-200 bg-white group-hover/row:bg-neutral-50'
                                               )}

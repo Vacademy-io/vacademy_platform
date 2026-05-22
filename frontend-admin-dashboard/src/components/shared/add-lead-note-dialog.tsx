@@ -125,7 +125,7 @@ export const AddLeadNoteDialog = ({
                                 type="button"
                                 onClick={() => setActionType(type.value)}
                                 className={cn(
-                                    'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-all',
+                                    'flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-medium transition-all',
                                     actionType === type.value
                                         ? 'bg-white text-primary-700 shadow-sm'
                                         : 'text-neutral-500 hover:text-neutral-700'

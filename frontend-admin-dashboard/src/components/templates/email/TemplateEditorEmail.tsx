@@ -20,9 +20,12 @@ const EmailBuilder = React.lazy(() => import('./EmailBuilder'));
 
 interface TemplateEditorEmailProps {
     templateId: string | null; // null for create, string for edit
+    // Preselects the template category when creating (e.g. INVOICE / INVOICE_EMAIL
+    // when launched from Invoice Settings). Ignored when editing an existing template.
+    initialType?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL';
 }
 
-export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templateId }) => {
+export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templateId, initialType }) => {
     const navigate = useNavigate();
     const [template, setTemplate] = useState<MessageTemplate | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -140,6 +143,11 @@ export const TemplateEditorEmail: React.FC<TemplateEditorEmailProps> = ({ templa
                     onBack={handleBack}
                     onSave={handleSave}
                     isSaving={isSaving}
+                    initialTemplateType={
+                        initialType === 'INVOICE' || initialType === 'INVOICE_EMAIL'
+                            ? initialType
+                            : undefined
+                    }
                 />
             </Suspense>
         </div>

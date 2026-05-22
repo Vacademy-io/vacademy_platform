@@ -34,6 +34,9 @@ interface EmailBuilderProps {
     onBack: () => void;
     onSave: (template: MessageTemplate) => Promise<void>;
     isSaving?: boolean;
+    // Preselects the category when creating a new template (e.g. opening straight
+    // into "Invoice (PDF Layout)" / "Invoice Email" from Invoice Settings).
+    initialTemplateType?: 'INVOICE' | 'INVOICE_EMAIL';
 }
 
 // Font list for the rich text toolbar font-family dropdown
@@ -73,13 +76,37 @@ const defaultMergeTags = {
     },
 };
 
-// Invoice-specific merge tags (shown when template type is INVOICE or INVOICE_EMAIL)
+// Invoice-specific merge tags (shown when template type is INVOICE or INVOICE_EMAIL).
+// These resolve in InvoiceService.replaceTemplatePlaceholders at generation time.
 const invoiceMergeTags = {
     Invoice: {
         'Invoice Number': '{{invoice_number}}',
+        'Invoice Date': '{{invoice_date}}',
+        'Due Date': '{{due_date}}',
         'User Name': '{{user_name}}',
+        'User Email': '{{user_email}}',
+        'User Address': '{{user_address}}',
         'Line Items (HTML)': '{{line_items}}',
+        Subtotal: '{{subtotal}}',
+        'Tax Amount': '{{tax_amount}}',
         'Total Amount': '{{total_amount}}',
+        Currency: '{{currency}}',
+        'Currency Symbol': '{{currency_symbol}}',
+    },
+    Institute: {
+        'Institute Name': '{{institute_name}}',
+        'Institute Address': '{{institute_address}}',
+        'Institute Contact': '{{institute_contact}}',
+        'Institute Logo': '{{institute_logo}}',
+    },
+    'Tax & Country': {
+        Country: '{{country}}',
+        'Country Code': '{{country_code}}',
+        'Tax Registration No.': '{{tax_registration_number}}',
+        'HSN / SAC Code': '{{hsn_code}}',
+        'Tax Components (HTML)': '{{tax_components}}',
+        'Tax Label': '{{tax_label}}',
+        'Tax Rate': '{{tax_rate}}',
     },
 };
 
@@ -324,12 +351,13 @@ const EmailBuilder: React.FC<EmailBuilderProps> = ({
     onBack,
     onSave,
     isSaving: externalIsSaving = false,
+    initialTemplateType,
 }) => {
     const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
     const [imageResolve, setImageResolve] = useState<((url: string) => void) | null>(null);
     const [templateName, setTemplateName] = useState(template?.name || 'Untitled Template');
     const [templateType, setTemplateType] = useState<'marketing' | 'utility' | 'transactional' | 'INVOICE' | 'INVOICE_EMAIL'>(
-        template?.templateType || 'utility'
+        template?.templateType || initialTemplateType || 'utility'
     );
     const [isSaving, setIsSaving] = useState(false);
     const [previewText, setPreviewText] = useState(template?.previewText || '');

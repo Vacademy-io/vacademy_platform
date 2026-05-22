@@ -99,6 +99,9 @@ public class InvoiceService {
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionInvitationRepository;
+
+    @Autowired
     private InstituteSettingService instituteSettingService;
 
     @Autowired
@@ -324,6 +327,19 @@ public class InvoiceService {
         BigDecimal taxRate = BigDecimal.valueOf(taxRateValue);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
+        // Per-package-type tax components (INVOICE_SETTING.country). When any components
+        // are configured, tax is computed PER LINE ITEM by the line's package type
+        // (falling back to the default list); otherwise the legacy single-rate path
+        // (taxRate) runs unchanged so existing institutes are unaffected.
+        Map<String, Object> countryConfig = asStringObjectMap(invoiceSettings.get("country"));
+        List<Map<String, Object>> defaultTaxComponents = asComponentList(countryConfig.get("taxComponents"));
+        Map<String, Object> taxComponentsByType = asStringObjectMap(countryConfig.get("taxComponentsByPackageType"));
+        boolean hasComponentConfig = !defaultTaxComponents.isEmpty() || !taxComponentsByType.isEmpty();
+        // label -> [rate, summed amount], insertion-ordered for stable rendering.
+        java.util.LinkedHashMap<String, BigDecimal[]> componentAccumulator = new java.util.LinkedHashMap<>();
+        BigDecimal componentSubtotalSum = BigDecimal.ZERO;
+        BigDecimal componentTaxSum = BigDecimal.ZERO;
+
         // Aggregate data from all payment logs
         BigDecimal totalPaymentAmount = BigDecimal.ZERO;
         BigDecimal totalPlanPrice = BigDecimal.ZERO;
@@ -384,6 +400,36 @@ public class InvoiceService {
             }
             totalPaymentAmount = totalPaymentAmount.add(paymentAmount);
 
+            // Per-line tax by package type (only when components are configured).
+            if (hasComponentConfig) {
+                String packageType = resolvePackageType(paymentLog);
+                List<Map<String, Object>> comps = effectiveTaxComponents(
+                        defaultTaxComponents, taxComponentsByType, packageType);
+                BigDecimal rateFraction = totalComponentRateFraction(comps);
+                BigDecimal lineSubtotal = paymentAmount.divide(
+                        BigDecimal.ONE.add(rateFraction), 2, RoundingMode.HALF_UP);
+                componentSubtotalSum = componentSubtotalSum.add(lineSubtotal);
+                componentTaxSum = componentTaxSum.add(paymentAmount.subtract(lineSubtotal));
+                for (Map<String, Object> comp : comps) {
+                    String label = comp.get("label") != null ? comp.get("label").toString() : "";
+                    if (label.isEmpty()) {
+                        continue;
+                    }
+                    BigDecimal rate;
+                    try {
+                        rate = new BigDecimal(comp.get("rate") != null ? comp.get("rate").toString() : "0");
+                    } catch (NumberFormatException e) {
+                        rate = BigDecimal.ZERO;
+                    }
+                    BigDecimal amt = lineSubtotal.multiply(rate)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    final BigDecimal compRate = rate;
+                    BigDecimal[] acc = componentAccumulator.computeIfAbsent(label,
+                            k -> new BigDecimal[] { compRate, BigDecimal.ZERO });
+                    acc[1] = acc[1].add(amt);
+                }
+            }
+
             // Calculate discount for line items display
             BigDecimal discountAmount = calculateDiscountAmount(paymentLogLineItems, planPrice);
 
@@ -399,28 +445,38 @@ public class InvoiceService {
         // Use payment amount from payment log as the total amount
         BigDecimal totalAmount = totalPaymentAmount;
 
-        // Calculate tax and subtotal based on payment amount
+        // Calculate tax and subtotal.
         BigDecimal subtotal;
         BigDecimal taxAmount;
+        String taxLineDescription;
+        List<Map<String, Object>> aggregatedTaxComponents = null;
 
-        if (taxIncluded) {
-            // Tax is already included in payment amount
-            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
-            subtotal = totalAmount.divide(divisor, 2, RoundingMode.HALF_UP);
-            taxAmount = totalAmount.subtract(subtotal);
+        if (hasComponentConfig) {
+            // Per-line per-package-type tax, summed across the invoice.
+            subtotal = componentSubtotalSum;
+            taxAmount = componentTaxSum;
+            taxLineDescription = taxLabel;
+            aggregatedTaxComponents = new ArrayList<>();
+            for (Map.Entry<String, BigDecimal[]> e : componentAccumulator.entrySet()) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("label", e.getKey());
+                m.put("rate", e.getValue()[0]);
+                m.put("amount", e.getValue()[1]);
+                aggregatedTaxComponents.add(m);
+            }
         } else {
-            // Tax is additional, so payment amount = subtotal + tax
-            // We need to work backwards: if paymentAmount = subtotal * (1 + taxRate)
+            // Legacy single-rate path: payment amount treated as tax-inclusive total.
             BigDecimal divisor = BigDecimal.ONE.add(taxRate);
             subtotal = totalAmount.divide(divisor, 2, RoundingMode.HALF_UP);
             taxAmount = totalAmount.subtract(subtotal);
+            taxLineDescription = taxLabel + " @ " + taxRate.multiply(BigDecimal.valueOf(100)).setScale(0) + "%";
         }
 
         // Add tax as line item if applicable
         if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             InvoiceLineItemData taxItem = InvoiceLineItemData.builder()
                     .itemType("TAX")
-                    .description(taxLabel + " @ " + taxRate.multiply(BigDecimal.valueOf(100)).setScale(0) + "%")
+                    .description(taxLineDescription)
                     .quantity(1)
                     .unitPrice(taxAmount)
                     .amount(taxAmount)
@@ -451,6 +507,7 @@ public class InvoiceService {
                 .transactionId(transactionId)
                 .paymentDate(paymentDate)
                 .lineItems(allLineItems)
+                .aggregatedTaxComponents(aggregatedTaxComponents)
                 .build();
 
         log.debug("Invoice data built successfully from {} payment logs", paymentLogs.size());
@@ -1013,6 +1070,40 @@ public class InvoiceService {
                 invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
                         : "");
 
+        // Country & tax registration details (from INVOICE_SETTING.country).
+        // These let templates render the operating country, the institute's tax
+        // registration number (GSTIN/VAT no.) and a breakdown of tax components.
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        String countryName = "";
+        String countryCode = "";
+        String taxRegistrationNumber = "";
+        String hsnSacCode = "";
+        String taxComponentsHtml = "";
+        Object countryObj = invoiceSettings.get("country");
+        if (countryObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> country = (Map<String, Object>) countryObj;
+            countryName = country.get("name") != null ? country.get("name").toString() : "";
+            countryCode = country.get("code") != null ? country.get("code").toString() : "";
+            taxRegistrationNumber = country.get("taxRegistrationNumber") != null
+                    ? country.get("taxRegistrationNumber").toString() : "";
+            hsnSacCode = country.get("hsnSacCode") != null ? country.get("hsnSacCode").toString() : "";
+        }
+        // Tax components are computed per line item by package type during buildInvoiceData;
+        // render the aggregated breakdown (label, rate %, computed amount).
+        List<Map<String, Object>> aggComps = invoiceData.getAggregatedTaxComponents();
+        if (aggComps != null && !aggComps.isEmpty()) {
+            taxComponentsHtml = renderTaxComponentsHtml(aggComps, currencySymbol);
+        }
+        filled = filled.replace("{{country}}", countryName);
+        filled = filled.replace("{{country_code}}", countryCode.toUpperCase());
+        filled = filled.replace("{{tax_registration_number}}", taxRegistrationNumber);
+        filled = filled.replace("{{hsn_code}}", hsnSacCode);
+        filled = filled.replace("{{tax_components}}", taxComponentsHtml);
+        filled = filled.replace("{{tax_label}}",
+                invoiceSettings.get("taxLabel") != null ? invoiceSettings.get("taxLabel").toString() : "Tax");
+        filled = filled.replace("{{tax_rate}}", formatRate(invoiceSettings.get("taxRate")));
+
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
@@ -1032,6 +1123,143 @@ public class InvoiceService {
         }
 
         return filled;
+    }
+
+    /**
+     * Render the aggregated tax-component breakdown (computed per line item by
+     * package type in buildInvoiceData) into the {{tax_components}} HTML table.
+     * Each entry holds: label, rate (percent), amount (already summed). Returns an
+     * empty string when nothing is configured so templates can hide the section.
+     */
+    private String renderTaxComponentsHtml(List<Map<String, Object>> components, String currencySymbol) {
+        if (components == null || components.isEmpty()) {
+            return "";
+        }
+        String symbol = currencySymbol != null ? currencySymbol : "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("<table class=\"tax-components\" style=\"border-collapse:collapse;font-size:12px;\">");
+        for (Map<String, Object> comp : components) {
+            if (comp == null) {
+                continue;
+            }
+            String label = comp.get("label") != null ? comp.get("label").toString() : "";
+            String rate = formatRate(comp.get("rate"));
+            if (label.isEmpty() && rate.isEmpty()) {
+                continue;
+            }
+            String amount = comp.get("amount") != null ? comp.get("amount").toString() : "0";
+            sb.append("<tr>")
+                    .append("<td style=\"padding:2px 12px 2px 0;\">").append(escapeXmlAttributeValue(label))
+                    .append("</td>")
+                    .append("<td style=\"padding:2px 12px 2px 0;text-align:right;\">")
+                    .append(escapeXmlAttributeValue(rate))
+                    .append(rate.isEmpty() ? "" : "%")
+                    .append("</td>")
+                    .append("<td style=\"padding:2px 0;text-align:right;\">")
+                    .append(escapeXmlAttributeValue(symbol + amount))
+                    .append("</td>")
+                    .append("</tr>");
+        }
+        sb.append("</table>");
+        return sb.toString();
+    }
+
+    /** Cast a settings value to a String->Object map, or empty map. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asStringObjectMap(Object o) {
+        return o instanceof Map ? (Map<String, Object>) o : new HashMap<>();
+    }
+
+    /** Cast a settings value to a list of component maps, or empty list. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> asComponentList(Object o) {
+        return o instanceof List ? (List<Map<String, Object>>) o : new ArrayList<>();
+    }
+
+    /**
+     * Pick the tax components for a package type: the per-type list when configured
+     * and non-empty, otherwise the institute's default list.
+     */
+    private List<Map<String, Object>> effectiveTaxComponents(List<Map<String, Object>> defaultComponents,
+            Map<String, Object> byPackageType, String packageType) {
+        if (packageType != null && byPackageType != null) {
+            List<Map<String, Object>> forType = asComponentList(byPackageType.get(packageType));
+            if (!forType.isEmpty()) {
+                return forType;
+            }
+        }
+        return defaultComponents;
+    }
+
+    /** Sum of component rates as a fraction (e.g. CGST 9 + SGST 9 -> 0.18). */
+    private BigDecimal totalComponentRateFraction(List<Map<String, Object>> components) {
+        BigDecimal total = BigDecimal.ZERO;
+        if (components == null) {
+            return total;
+        }
+        for (Map<String, Object> comp : components) {
+            if (comp == null || comp.get("rate") == null) {
+                continue;
+            }
+            try {
+                total = total.add(new BigDecimal(comp.get("rate").toString()));
+            } catch (NumberFormatException ignored) {
+                // skip non-numeric rates
+            }
+        }
+        return total.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Resolve the package type for a payment log's line, via
+     * UserPlan -> EnrollInvite -> PackageSessionLearnerInvitationToPaymentOption ->
+     * PackageSession -> PackageEntity.packageType. Returns the first non-blank type
+     * found, or null when it can't be resolved (caller falls back to default tax).
+     */
+    private String resolvePackageType(PaymentLog paymentLog) {
+        try {
+            if (paymentLog == null || paymentLog.getUserPlan() == null
+                    || paymentLog.getUserPlan().getEnrollInvite() == null) {
+                return null;
+            }
+            String enrollInviteId = paymentLog.getUserPlan().getEnrollInvite().getId();
+            if (enrollInviteId == null) {
+                return null;
+            }
+            var rows = packageSessionInvitationRepository
+                    .findByEnrollInviteIdAndStatusWithPackageSession(enrollInviteId, List.of("ACTIVE"));
+            for (var row : rows) {
+                if (row.getPackageSession() != null && row.getPackageSession().getPackageEntity() != null) {
+                    String type = row.getPackageSession().getPackageEntity().getPackageType();
+                    if (type != null && !type.isBlank()) {
+                        return type;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve package type for payment log {}: {}",
+                    paymentLog != null ? paymentLog.getId() : null, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Format a tax rate value (Number or String) into a clean display string:
+     * whole numbers drop the trailing ".0" (9.0 -> "9"), others keep their value.
+     */
+    private String formatRate(Object rateObj) {
+        if (rateObj == null) {
+            return "";
+        }
+        try {
+            double d = Double.parseDouble(rateObj.toString());
+            if (d == Math.floor(d) && !Double.isInfinite(d)) {
+                return String.valueOf((long) d);
+            }
+            return String.valueOf(d);
+        } catch (NumberFormatException e) {
+            return rateObj.toString();
+        }
     }
 
     /**

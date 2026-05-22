@@ -149,6 +149,12 @@ public class AudienceService {
     private vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository leadScoreRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository userLeadProfileRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
+
+    @Autowired
     private vacademy.io.admin_core_service.features.counselor_pool.service.CounselorAssignmentService counselorAssignmentService;
 
     @Autowired
@@ -1579,6 +1585,7 @@ public class AudienceService {
                 && !filterDTO.getInstituteId().isBlank()) {
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
+                    filterDTO.getLeadStatusId(),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -1598,6 +1605,7 @@ public class AudienceService {
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
+                filterDTO.getLeadStatusId(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),

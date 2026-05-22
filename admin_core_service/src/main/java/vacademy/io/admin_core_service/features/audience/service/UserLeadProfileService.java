@@ -134,9 +134,12 @@ public class UserLeadProfileService {
         return userLeadProfileRepository
                 .findByUserIdAndInstituteId(userId, instituteId)
                 .map(profile -> {
+                    Timestamp now = new Timestamp(System.currentTimeMillis());
                     profile.setConversionStatus("CONVERTED");
-                    profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
-                    profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+                    profile.setConvertedAt(now);
+                    // Note: first_response_at is NOT stamped here. TAT is measured strictly as
+                    // counsellor-activity time (MIN timeline_event by counsellor), not status flips.
+                    profile.setUpdatedAt(now);
                     userLeadProfileRepository.save(profile);
                     return true;
                 })
@@ -156,9 +159,12 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        Timestamp now = new Timestamp(System.currentTimeMillis());
         profile.setConversionStatus("CONVERTED");
-        profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
-        profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        profile.setConvertedAt(now);
+        // Note: first_response_at is NOT stamped here. TAT is measured strictly as
+        // counsellor-activity time (MIN timeline_event by counsellor), not status flips.
+        profile.setUpdatedAt(now);
         return userLeadProfileRepository.save(profile);
     }
 
@@ -177,14 +183,18 @@ public class UserLeadProfileService {
                         .build());
 
         String oldStatus = profile.getConversionStatus();
+        Timestamp now = new Timestamp(System.currentTimeMillis());
         profile.setConversionStatus(status);
-        profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        profile.setUpdatedAt(now);
 
         if ("CONVERTED".equals(status)) {
-            profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
+            profile.setConvertedAt(now);
         } else {
             profile.setConvertedAt(null);
         }
+        // Note: first_response_at is NOT stamped here. TAT is measured strictly as the time
+        // the counsellor took to log their first activity (timeline_event by the assigned
+        // counsellor) — status changes by admins don't count toward TAT.
 
         UserLeadProfile saved = userLeadProfileRepository.save(profile);
         emitStatusChanged(saved, "CONVERSION_STATUS", oldStatus, status);

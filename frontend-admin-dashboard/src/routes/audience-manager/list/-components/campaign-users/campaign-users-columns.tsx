@@ -76,6 +76,7 @@ export interface CampaignUserTable {
     _custom_field_values?: Record<string, string | null>;
     // TAT / follow-up SLA deadlines + badge (visual only)
     _tat_due_at?: string | null;
+    _first_response_at?: string | null; // drives "Responded in N" in the Reach-out-by cell
     _follow_up_due_at?: string | null;
     _tat_overdue?: boolean | null;
     _tat_due_soon?: boolean | null;
@@ -434,14 +435,16 @@ export const generateDynamicColumns = (
         columns.push({
             id: 'reach_out_by',
             header: 'Reach out by',
-            size: 150,
-            minSize: 120,
-            maxSize: 180,
+            size: 160,
+            minSize: 130,
+            maxSize: 200,
             cell: ({ row }) => (
                 <div className="p-3">
                     <SlaDeadlineCell
                         dueAt={row.original._tat_due_at}
                         overdue={row.original._tat_overdue}
+                        respondedAt={row.original._first_response_at}
+                        baselineAt={row.original.submittedAt}
                     />
                 </div>
             ),

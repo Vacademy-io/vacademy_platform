@@ -124,6 +124,8 @@ public class LeadSlaScheduler {
         ctxBuilder.put(ctx, "poolId", ctxBuilder.resolvePoolId(c.getAudienceId()));
         ctxBuilder.put(ctx, "campaignName", c.getCampaignName());
         ctxBuilder.put(ctx, "counselorId", counselorId);
+        // Look up counselor email/mobile so workflows can default to "send to counsellor".
+        ctxBuilder.enrichCounselorContact(ctx, counselorId);
         ctxBuilder.put(ctx, "parentName", c.getParentName());
         ctxBuilder.put(ctx, "parentEmail", c.getParentEmail());
         ctxBuilder.put(ctx, "parentMobile", c.getParentMobile());

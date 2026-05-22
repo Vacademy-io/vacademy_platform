@@ -27,6 +27,11 @@ import {
 export type AssignmentMode = 'MANUAL' | 'ROUND_ROBIN' | 'TIME_BASED';
 export type PoolStatus = 'ACTIVE' | 'INACTIVE';
 export type DayOfWeek = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
+/**
+ * How the admin authored a pool's weekly schedule. Drives which editor the
+ * Schedule tab renders. Routing engine ignores this — it reads flat shift rows.
+ */
+export type SchedulePattern = 'PER_DAY' | 'SAME_HOURS_ALL_DAYS';
 
 export const DAYS_OF_WEEK: DayOfWeek[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
@@ -81,6 +86,8 @@ export interface CounselorPoolDTO {
     name: string;
     description?: string;
     assignment_mode: AssignmentMode;
+    /** PER_DAY | SAME_HOURS_ALL_DAYS — drives which Schedule editor renders. */
+    schedule_pattern?: SchedulePattern;
     created_by?: string;
     created_at?: string;
     updated_at?: string;
@@ -94,6 +101,8 @@ export interface CreatePoolRequest {
     name: string;
     description?: string;
     assignment_mode: AssignmentMode;
+    /** Optional: defaults to PER_DAY on the backend. */
+    schedule_pattern?: SchedulePattern;
     audience_ids?: string[];
     counselor_user_ids?: string[];
 }
@@ -102,6 +111,11 @@ export interface UpdatePoolRequest {
     name?: string;
     description?: string;
     assignment_mode?: AssignmentMode;
+    /**
+     * Changing pattern with shifts already configured is rejected backend-side.
+     * Admin must clear the schedule (delete all shifts) before switching.
+     */
+    schedule_pattern?: SchedulePattern;
 }
 
 export interface UpdateMemberStatusRequest {

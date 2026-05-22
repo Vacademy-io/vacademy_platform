@@ -193,9 +193,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.created_at AS createdAt,
 
                 /* 1. Progress Calculation (Removed DISTINCT to ensure accuracy) */
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
 
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                COALESCE(MAX(ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
 
                 COALESCE((
                     SELECT AVG(r.points)
@@ -232,11 +232,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND ssigm.user_id = :userId
                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND (:userId IS NULL OR user_id = :userId)
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
@@ -285,9 +288,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) ps_read_time ON ps.id = ps_read_time.package_session_id
 
             WHERE
-                p.is_course_published_to_catalaouge = true
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
@@ -317,10 +318,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.package_type, p.created_at,
-                ps.id /* 4. Added Grouping by Session ID */
+                p.course_setting, ps.id /* 4. Added Grouping by Session ID */
 
             HAVING
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+                COALESCE(MAX(lo.total_progress), 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
             """,
 
             countQuery = """
@@ -334,20 +335,17 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 ON ssigm.package_session_id = ps.id
                                 AND ssigm.user_id = :userId
                                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                            LEFT JOIN learner_operation lo
-                                ON lo.source = 'PACKAGE_SESSION'
-                                AND lo.source_id = ps.id
-                                AND (:userId IS NULL OR lo.user_id = :userId)
-                                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                            LEFT JOIN faculty_subject_package_session_mapping fspm
-                                ON fspm.package_session_id = ps.id
-                                AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
+                            LEFT JOIN (
+                                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                                FROM learner_operation
+                                WHERE source = 'PACKAGE_SESSION'
+                                  AND (:userId IS NULL OR user_id = :userId)
+                                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                                GROUP BY source_id
+                            ) lo ON lo.source_id = ps.id
                             WHERE
-                                p.is_course_published_to_catalaouge = true
-                                AND (:userId IS NULL OR lo.user_id = :userId)
-                                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                                (:instituteId IS NULL OR pi.institute_id = :instituteId)
                                 AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -370,8 +368,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                         WHERE tag ILIKE ANY (array[:#{#tags}])
                                     )
                                 )
-                            GROUP BY ps.id
-                            HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+                            GROUP BY ps.id, lo.total_progress, p.course_setting
+                            HAVING COALESCE(lo.total_progress, 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
                         ) AS count_subquery
                     """,
 
@@ -415,8 +413,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
 
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
+                COALESCE(MAX(ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
 
                 COALESCE((
                     SELECT AVG(r.points)
@@ -448,18 +446,19 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
 
-            JOIN package_institute pi ON pi.package_id = p.id
-
             JOIN student_session_institute_group_mapping ssigm
                 ON ssigm.package_session_id = ps.id
                 AND ssigm.user_id = :userId
                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND (:userId IS NULL OR user_id = :userId)
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
@@ -507,9 +506,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) ps_read_time ON ps.id = ps_read_time.package_session_id
 
             WHERE
-                p.is_course_published_to_catalaouge = true
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -528,8 +525,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_preview_image_media_id, p.course_banner_media_id, p.course_media_id,
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.package_type, p.created_at,
-                ps.id
-            HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+                p.course_setting, ps.id
+            HAVING COALESCE(MAX(lo.total_progress), 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
             """,
 
             countQuery = """
@@ -543,15 +540,18 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                 ON ssigm.package_session_id = ps.id
                                 AND ssigm.user_id = :userId
                                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                            LEFT JOIN learner_operation lo ON lo.source = 'PACKAGE_SESSION' AND lo.source_id = ps.id
-                                AND (:userId IS NULL OR lo.user_id = :userId)
-                                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+                            LEFT JOIN (
+                                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                                FROM learner_operation
+                                WHERE source = 'PACKAGE_SESSION'
+                                  AND (:userId IS NULL OR user_id = :userId)
+                                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                                GROUP BY source_id
+                            ) lo ON lo.source_id = ps.id
                             LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id
                                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                             WHERE
-                                p.is_course_published_to_catalaouge = true
-                                AND (:userId IS NULL OR lo.user_id = :userId)
-                                AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
+                                (:instituteId IS NULL OR pi.institute_id = :instituteId)
                                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                         AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                                 AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -565,8 +565,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                     ) OR
                                     LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                                 )
-                            GROUP BY ps.id
-                            HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) >= 80
+                            GROUP BY ps.id, lo.total_progress, p.course_setting
+                            HAVING COALESCE(lo.total_progress, 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
                         ) AS count_sub
                     """, nativeQuery = true)
     Page<PackageDetailProjection> getCompletedLearnerPackageDetail(
@@ -1727,8 +1727,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.package_type AS packageType,
                 p.created_at AS createdAt,
 
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
+                COALESCE(MAX(ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
 
                 COALESCE((
                     SELECT AVG(r.points)
@@ -1790,11 +1790,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND ssigm.user_id = :userId
                 AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND lo.user_id = :userId
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND user_id = :userId
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
@@ -1878,7 +1881,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 ps.id
 
-            HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) < 100
+            HAVING COALESCE(MAX(lo.total_progress), 0) < 100
             """,
 
             countQuery = """
@@ -1892,21 +1895,17 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             ON ssigm.package_session_id = ps.id
                             AND ssigm.user_id = :userId
                             AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
-                        LEFT JOIN learner_operation lo
-                            ON lo.source = 'PACKAGE_SESSION'
-                            AND lo.source_id = ps.id
-                            AND lo.user_id = :userId
-                            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                        LEFT JOIN faculty_subject_package_session_mapping fspm
-                            ON fspm.package_session_id = ps.id
-                            AND (
-                                :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
-                                OR fspm.status IN (:facultySubjectSessionStatus)
-                            )
+                        LEFT JOIN (
+                            SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                            FROM learner_operation
+                            WHERE source = 'PACKAGE_SESSION'
+                              AND user_id = :userId
+                              AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                            GROUP BY source_id
+                        ) lo ON lo.source_id = ps.id
                         WHERE
                             (:instituteId IS NULL OR pi.institute_id = :instituteId)
                             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                             AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -1929,8 +1928,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                     WHERE tag ILIKE ANY (array[:#{#tags}])
                                 )
                             )
-                        GROUP BY ps.id
-                        HAVING COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) < 100
+                        GROUP BY ps.id, lo.total_progress
+                        HAVING COALESCE(lo.total_progress, 0) < 100
                     ) AS count_subquery
                     """, nativeQuery = true)
     Page<PackageDetailProjection> getIncompleteMappedPackages(
@@ -2036,8 +2035,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     p.package_type AS packageType,
                 p.created_at AS createdAt,
 
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
+                COALESCE(MAX(ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
 
                 COALESCE((
                     SELECT AVG(r.points)
@@ -2102,11 +2101,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
               AND ssigm.user_id = :userId
               AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
 
-            LEFT JOIN learner_operation lo
-              ON lo.source = 'PACKAGE_SESSION'
-              AND lo.source_id = ps.id
-              AND lo.user_id = :userId
-              AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND user_id = :userId
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
               ON fspm.package_session_id = ps.id
@@ -2244,9 +2246,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.created_at AS createdAt,
 
                 /* 1. Calculate Progress */
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
 
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                COALESCE(MAX(ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
 
                 COALESCE((
                     SELECT AVG(r.points)
@@ -2279,11 +2281,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
 
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND (:userId IS NULL OR user_id = :userId)
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
@@ -2374,19 +2379,10 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         JOIN package_session ps ON ps.package_id = p.id
                         JOIN level l ON l.id = ps.level_id
                         JOIN package_institute pi ON pi.package_id = p.id
-                        LEFT JOIN learner_operation lo
-                            ON lo.source = 'PACKAGE_SESSION'
-                            AND lo.source_id = ps.id
-                            AND (:userId IS NULL OR lo.user_id = :userId)
-                            AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
-                        LEFT JOIN faculty_subject_package_session_mapping fspm
-                            ON fspm.package_session_id = ps.id
-                            AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                         WHERE
                             p.is_course_published_to_catalaouge = true
                             AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                             AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR l.id IN (:levelIds))
-                    AND (:#{#sessionIds == null || #sessionIds.isEmpty()} = true OR ps.session_id IN (:sessionIds))
                             AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
                             AND (:#{#packageSessionStatus == null || #packageSessionStatus.isEmpty()} = true OR ps.status IN (:packageSessionStatus))
@@ -2448,8 +2444,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.package_type AS packageType,
                 p.created_at AS createdAt,
 
-                COALESCE(SUM(CAST(lo.value AS DOUBLE PRECISION)), 0) AS percentageCompleted,
-                SUM(COALESCE(ps_read_time.total_read_time_minutes, 0)) AS readTimeInMinutes,
+                COALESCE(MAX(lo.total_progress), 0) AS percentageCompleted,
+                COALESCE(MAX(ps_read_time.total_read_time_minutes), 0) AS readTimeInMinutes,
 
                 COALESCE((
                     SELECT AVG(r.points)
@@ -2481,11 +2477,14 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
 
-            LEFT JOIN learner_operation lo
-                ON lo.source = 'PACKAGE_SESSION'
-                AND lo.source_id = ps.id
-                AND (:userId IS NULL OR lo.user_id = :userId)
-                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
+            LEFT JOIN (
+                SELECT source_id, SUM(CAST(value AS DOUBLE PRECISION)) AS total_progress
+                FROM learner_operation
+                WHERE source = 'PACKAGE_SESSION'
+                  AND (:userId IS NULL OR user_id = :userId)
+                  AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
+                GROUP BY source_id
+            ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
                 ON fspm.package_session_id = ps.id
@@ -2535,7 +2534,6 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
             WHERE
                 p.is_course_published_to_catalaouge = true
-                AND (:userId IS NULL OR lo.user_id = :userId)
                 AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                 AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))
@@ -2565,17 +2563,11 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             JOIN package_session ps ON ps.package_id = p.id
                             JOIN level l ON l.id = ps.level_id
                             JOIN package_institute pi ON pi.package_id = p.id
-                            LEFT JOIN learner_operation lo
-                                ON lo.source = 'PACKAGE_SESSION'
-                                AND lo.source_id = ps.id
-                                AND (:userId IS NULL OR lo.user_id = :userId)
-                                AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR lo.operation IN (:learnerOperations))
                             LEFT JOIN faculty_subject_package_session_mapping fspm
                                 ON fspm.package_session_id = ps.id
                                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                             WHERE
                                 p.is_course_published_to_catalaouge = true
-                                AND (:userId IS NULL OR lo.user_id = :userId)
                                 AND (:instituteId IS NULL OR pi.institute_id = :instituteId)
                                 AND (:#{#packageStatus == null || #packageStatus.isEmpty()} = true OR p.status IN (:packageStatus))
                     AND (:#{#packageTypes == null || #packageTypes.isEmpty()} = true OR p.package_type IN (:packageTypes))

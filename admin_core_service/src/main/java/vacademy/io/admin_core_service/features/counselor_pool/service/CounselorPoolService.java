@@ -389,6 +389,9 @@ public class CounselorPoolService {
 
         log.info("Reassigned {} open leads from counselor={} to backup={} in pool={} (institute={})",
                 userIds.size(), fromCounselorUserId, backupUserId, pool.getId(), instituteId);
+    }
+
+    /**
      * Set monthly_target per audience for one counsellor in one pool. Each
      * entry in the request is applied independently — null clears the target,
      * non-null sets it. The matrix structure (one row per (pool, audience,

@@ -152,6 +152,21 @@ public class CounselorPoolController {
         return ResponseEntity.ok("Status updated");
     }
 
+    /**
+     * Set monthly_target per audience for one counsellor in this pool. Body
+     * carries a list of {audience_id, monthly_target} entries — one per cell
+     * of this counsellor's row in the audience × counsellor matrix. Null
+     * targets clear the cell; non-null must be >= 0.
+     */
+    @PatchMapping("/{poolId}/counselors/{counselorUserId}/monthly-target")
+    public ResponseEntity<String> updateMemberMonthlyTargets(
+            @PathVariable String poolId,
+            @PathVariable String counselorUserId,
+            @RequestBody UpdateMemberMonthlyTargetsRequest request) {
+        poolService.updateMemberMonthlyTargets(poolId, counselorUserId, request);
+        return ResponseEntity.ok("Monthly targets updated");
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Weekly schedule (TIME_BASED mode)
     // ────────────────────────────────────────────────────────────────

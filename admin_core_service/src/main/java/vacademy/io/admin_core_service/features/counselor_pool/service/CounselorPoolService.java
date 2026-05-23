@@ -326,6 +326,38 @@ public class CounselorPoolService {
     }
 
     /**
+     * Set monthly_target per audience for one counsellor in one pool. Each
+     * entry in the request is applied independently — null clears the target,
+     * non-null sets it. The matrix structure (one row per (pool, audience,
+     * counsellor)) means each entry maps to exactly one row update.
+     *
+     * Validation:
+     *   - monthly_target must be null or >= 0 (negative values rejected)
+     *
+     * Intentionally NOT validated (UI guarantees, harmless when violated):
+     *   - whether the counsellor has a row for the supplied audience_id
+     *   - whether the audience_id belongs to this pool
+     * In both cases an UPDATE affecting 0 rows is a silent no-op, which is
+     * the intended behaviour for direct API hits with stale or invalid ids.
+     */
+    @Transactional
+    public void updateMemberMonthlyTargets(String poolId, String counselorUserId,
+                                           UpdateMemberMonthlyTargetsRequest request) {
+        if (request == null || request.getTargets() == null || request.getTargets().isEmpty()) {
+            return; // Nothing to do — same shape as a save-with-no-changes.
+        }
+        for (UpdateMemberMonthlyTargetsRequest.TargetEntry entry : request.getTargets()) {
+            requireNonBlank(entry.getAudienceId(), "audience_id is required for each target entry");
+            Integer target = entry.getMonthlyTarget();
+            if (target != null && target < 0) {
+                throw new VacademyException("monthly_target must be zero or positive");
+            }
+            poolMemberRepository.updateMonthlyTarget(
+                    poolId, entry.getAudienceId(), counselorUserId, target);
+        }
+    }
+
+    /**
      * List every pool (in the given institute) where this counselor currently
      * has at least one ACTIVE row. Pools where they're already INACTIVE are
      * excluded — the multi-pool "mark inactive" UI only lets admin act on

@@ -182,7 +182,11 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                         />
                     </div>
                     {form.watch('hasDateRange') && (
-                        <div className="flex items-center gap-6">
+                        <>
+                            <p className="text-caption text-neutral-500">
+                                Times are interpreted in your local timezone. Submissions before the start time are blocked; submissions after the end time are accepted but flagged as late.
+                            </p>
+                            <div className="flex items-center gap-6">
                             <FormField
                                 control={form.control}
                                 name="startDate"
@@ -225,7 +229,8 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                                     </FormItem>
                                 )}
                             />
-                        </div>
+                            </div>
+                        </>
                     )}
                 </div>
 

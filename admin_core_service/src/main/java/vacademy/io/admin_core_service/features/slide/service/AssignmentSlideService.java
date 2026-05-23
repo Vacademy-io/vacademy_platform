@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.slide.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
@@ -17,7 +18,7 @@ import vacademy.io.common.ai.dto.RichTextDataDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
-import java.sql.Date;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,11 @@ public class AssignmentSlideService {
     }
 
     public String addAssignmentSlide(SlideDTO slideDTO, String chapterId) {
-        AssignmentSlide assignmentSlide = new AssignmentSlide(slideDTO.getAssignmentSlide());
+        AssignmentSlideDTO assignmentSlideDTO = slideDTO.getAssignmentSlide();
+        validateWindow(
+                assignmentSlideDTO != null ? assignmentSlideDTO.getLiveDate() : null,
+                assignmentSlideDTO != null ? assignmentSlideDTO.getEndDate() : null);
+        AssignmentSlide assignmentSlide = new AssignmentSlide(assignmentSlideDTO);
         AssignmentSlide savedAssignmentSlide = assignmentSlideRepository.save(assignmentSlide);
         return slideService.saveSlide(
                 slideDTO.getId(),
@@ -90,6 +95,13 @@ public class AssignmentSlideService {
     }
 
     public void updateData(AssignmentSlideDTO dto, AssignmentSlide assignmentSlide) {
+        // Validate the FINAL window state, not the DTO alone — admin could be
+        // updating only one bound, in which case we need to check it against
+        // the existing entity value.
+        Instant finalLive = dto.getLiveDate() != null ? dto.getLiveDate() : assignmentSlide.getLiveDate();
+        Instant finalEnd = dto.getEndDate() != null ? dto.getEndDate() : assignmentSlide.getEndDate();
+        validateWindow(finalLive, finalEnd);
+
         if (dto.getId() != null) {
             assignmentSlide.setId(dto.getId());
         }
@@ -124,6 +136,13 @@ public class AssignmentSlideService {
         }
 
         updateQuestionsInPlace(assignmentSlide, dto.getQuestions());
+    }
+
+    private void validateWindow(Instant liveDate, Instant endDate) {
+        if (liveDate != null && endDate != null && !liveDate.isBefore(endDate)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "Assignment start time must be before end time");
+        }
     }
 
     private void updateQuestionsInPlace(AssignmentSlide assignmentSlide, List<AssignmentSlideQuestionDTO> questionDTOs) {

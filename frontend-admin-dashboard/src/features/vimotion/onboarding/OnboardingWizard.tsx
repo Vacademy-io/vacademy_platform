@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useVimotionOnboardingStore } from './store';
 import type { OnboardingStep } from './store';
+import { InviteCodeStep } from './steps/InviteCodeStep';
 import { ContactStep } from './steps/ContactStep';
 import { OtpStep } from './steps/OtpStep';
 import { AccountTypeStep } from './steps/AccountTypeStep';
@@ -10,8 +12,13 @@ import { BrandPanel } from './BrandPanel';
 import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
 import { useVimotionNativeShell } from '../native/useVimotionNativeShell';
+import { getVimotionConfig } from '../api/signup';
 
 const STEP_META: Record<OnboardingStep, { title: string; description: string }> = {
+    'invite-code': {
+        title: 'Enter your invite code',
+        description: 'Vimotion is invite-only during launch.',
+    },
     contact: {
         title: 'Create your Vimotion account',
         description: 'Start producing AI-powered videos in minutes.',
@@ -30,22 +37,50 @@ const STEP_META: Record<OnboardingStep, { title: string; description: string }> 
     },
 };
 
-const STEP_ORDER: OnboardingStep[] = ['contact', 'otp', 'account-type', 'studio-details'];
-
 export function OnboardingWizard() {
     useVimotionDocumentChrome();
     useVimotionNativeShell();
-    const { step, signupToken, setStep } = useVimotionOnboardingStore();
+    const { step, signupToken, inviteCode, setStep } = useVimotionOnboardingStore();
+
+    const { data: config } = useQuery({
+        queryKey: ['vimotion', 'config'],
+        queryFn: getVimotionConfig,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const inviteOnly = config?.invite_only ?? false;
+
+    const stepOrder = useMemo<OnboardingStep[]>(
+        () =>
+            inviteOnly
+                ? ['invite-code', 'contact', 'otp', 'account-type', 'studio-details']
+                : ['contact', 'otp', 'account-type', 'studio-details'],
+        [inviteOnly]
+    );
+
+    // When invite-only is on and the user lands without a validated code, send
+    // them to step 0. When invite-only is off, treat the wizard as 4-step like
+    // before — if a stale `step === 'invite-code'` is in the store from a
+    // previous session, bump to 'contact'.
+    useEffect(() => {
+        if (inviteOnly && !inviteCode && step !== 'invite-code') {
+            setStep('invite-code');
+            return;
+        }
+        if (!inviteOnly && step === 'invite-code') {
+            setStep('contact');
+        }
+    }, [inviteOnly, inviteCode, step, setStep]);
 
     // Guard: a fresh refresh on a later step without a token sends the user
     // back to step 1, otherwise the BE would reject signup.
     useEffect(() => {
         if ((step === 'account-type' || step === 'studio-details') && !signupToken) {
-            setStep('contact');
+            setStep(inviteOnly && !inviteCode ? 'invite-code' : 'contact');
         }
-    }, [step, signupToken, setStep]);
+    }, [step, signupToken, setStep, inviteOnly, inviteCode]);
 
-    const stepIndex = STEP_ORDER.indexOf(step);
+    const stepIndex = Math.max(0, stepOrder.indexOf(step));
     const meta = STEP_META[step];
 
     return (
@@ -66,7 +101,7 @@ export function OnboardingWizard() {
                 <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-10 sm:py-12">
                     <div className="w-full max-w-md space-y-8">
                         <div className="space-y-3">
-                            <Stepper total={STEP_ORDER.length} current={stepIndex} />
+                            <Stepper total={stepOrder.length} current={stepIndex} />
                             <div className="space-y-1">
                                 <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
                                     {meta.title}
@@ -76,6 +111,7 @@ export function OnboardingWizard() {
                         </div>
 
                         <div>
+                            {step === 'invite-code' && <InviteCodeStep />}
                             {step === 'contact' && <ContactStep />}
                             {step === 'otp' && <OtpStep />}
                             {step === 'account-type' && <AccountTypeStep />}

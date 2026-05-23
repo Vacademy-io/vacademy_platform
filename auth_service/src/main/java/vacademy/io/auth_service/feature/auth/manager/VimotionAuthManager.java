@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.auth_service.feature.auth.constants.AuthConstants;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.auth.dto.VimotionRequestOtpRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionSignupRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionVerifyOtpRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionVerifyOtpResponse;
@@ -23,6 +24,8 @@ import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.auth.service.VimotionSignupTokenService;
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
+import vacademy.io.auth_service.feature.vimotion.entity.InviteCode;
+import vacademy.io.auth_service.feature.vimotion.service.InviteCodeService;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
@@ -68,11 +71,17 @@ public class VimotionAuthManager {
     @Autowired
     private InternalClientUtils internalClientUtils;
 
+    @Autowired
+    private InviteCodeService inviteCodeService;
+
     @Value("${admin.core.service.base_url}")
     private String adminCoreServiceBaseUrl;
 
     @Value("${spring.application.name}")
     private String applicationName;
+
+    @Value("${vimotion.invite-only.enabled:false}")
+    private boolean inviteOnlyEnabled;
 
     public JwtResponseDto login(VimotionLoginRequest request) {
         if (request == null
@@ -108,12 +117,18 @@ public class VimotionAuthManager {
         return authService.generateJwtTokenForUser(user, refreshToken, userRoles);
     }
 
-    public String requestSignupOtp(String phoneNumber) {
-        if (!StringUtils.hasText(phoneNumber)) {
+    public String requestSignupOtp(VimotionRequestOtpRequest request) {
+        if (request == null || !StringUtils.hasText(request.getPhoneNumber())) {
             throw new VacademyException("Phone number is required");
         }
-        notificationService.sendPlatformDefaultWhatsAppOtp(phoneNumber);
-        return "WhatsApp OTP sent to " + phoneNumber;
+        if (inviteOnlyEnabled) {
+            if (!StringUtils.hasText(request.getInviteCode())) {
+                throw new VacademyException(HttpStatus.BAD_REQUEST, "Invite code is required");
+            }
+            inviteCodeService.validateByCode(request.getInviteCode());
+        }
+        notificationService.sendPlatformDefaultWhatsAppOtp(request.getPhoneNumber());
+        return "WhatsApp OTP sent to " + request.getPhoneNumber();
     }
 
     public VimotionVerifyOtpResponse verifySignupOtp(VimotionVerifyOtpRequest request) {
@@ -121,6 +136,15 @@ public class VimotionAuthManager {
                 || !StringUtils.hasText(request.getPhoneNumber())
                 || !StringUtils.hasText(request.getOtp())) {
             throw new VacademyException("Phone number and OTP are required");
+        }
+
+        String inviteCodeId = null;
+        if (inviteOnlyEnabled) {
+            if (!StringUtils.hasText(request.getInviteCode())) {
+                throw new VacademyException(HttpStatus.BAD_REQUEST, "Invite code is required");
+            }
+            InviteCode code = inviteCodeService.validateByCode(request.getInviteCode());
+            inviteCodeId = code.getId();
         }
 
         WhatsAppOTPVerifyRequest verifyRequest = WhatsAppOTPVerifyRequest.builder()
@@ -133,7 +157,7 @@ public class VimotionAuthManager {
             throw new VacademyException(HttpStatus.UNAUTHORIZED, "Invalid or expired OTP");
         }
 
-        String token = signupTokenService.issue(request.getPhoneNumber(), request.getEmail());
+        String token = signupTokenService.issue(request.getPhoneNumber(), request.getEmail(), inviteCodeId);
         return VimotionVerifyOtpResponse.builder()
                 .signupToken(token)
                 .expiresAt(System.currentTimeMillis() + signupTokenService.ttlMillis())
@@ -151,6 +175,18 @@ public class VimotionAuthManager {
             throw new VacademyException("Signup token does not match email");
         }
 
+        // Re-validate the invite code (if any) before doing the expensive,
+        // non-rollback-able institute creation. Race condition between this and
+        // the redeem at the end is rare and accepted; the redeem itself is
+        // atomic against used_count.
+        String inviteCodeId = claims.get("invite_code_id", String.class);
+        if (inviteOnlyEnabled && !StringUtils.hasText(inviteCodeId)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Invite code is required");
+        }
+        if (StringUtils.hasText(inviteCodeId)) {
+            inviteCodeService.validateById(inviteCodeId);
+        }
+
         InstituteInfoDTO instituteDto = buildInstituteDto(request);
         InstituteIdAndNameDTO created = createInstitute(instituteDto);
 
@@ -164,6 +200,15 @@ public class VimotionAuthManager {
         userRoles.add(userRole);
 
         User user = upsertVimotionUser(request, userRoles);
+
+        if (StringUtils.hasText(inviteCodeId)) {
+            inviteCodeService.redeem(
+                    inviteCodeId,
+                    user.getId(),
+                    created.getInstituteId(),
+                    request.getEmail(),
+                    request.getPhoneNumber());
+        }
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "VIMOTION-WEB");
         return authService.generateJwtTokenForUser(user, refreshToken, userRoles.stream().toList());

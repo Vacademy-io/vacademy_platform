@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
@@ -19,16 +19,27 @@ import { contactSchema, type ContactValues } from '../schema';
 import { requestSignupOtp } from '../../api/signup';
 
 export function ContactStep() {
-    const { contact, setContact, setStep } = useVimotionOnboardingStore();
+    const { contact, inviteCode, setContact, setStep } = useVimotionOnboardingStore();
     const [showPassword, setShowPassword] = useState(false);
+    const isLocked = inviteCode?.kind === 'locked';
 
     const form = useForm<ContactValues>({
         resolver: zodResolver(contactSchema),
         defaultValues: contact,
     });
 
+    // Locked codes pre-bind email/phone — keep the form in sync if the store
+    // value changes after this step mounts (e.g. ?code=… deep link).
+    useEffect(() => {
+        if (isLocked) {
+            if (contact.email) form.setValue('email', contact.email);
+            if (contact.phoneNumber) form.setValue('phoneNumber', contact.phoneNumber);
+        }
+    }, [isLocked, contact.email, contact.phoneNumber, form]);
+
     const requestOtp = useMutation({
-        mutationFn: (phoneNumber: string) => requestSignupOtp({ phone_number: phoneNumber }),
+        mutationFn: (phoneNumber: string) =>
+            requestSignupOtp({ phone_number: phoneNumber, invite_code: inviteCode?.code }),
         onSuccess: () => {
             toast.success('OTP sent on WhatsApp');
             setStep('otp');
@@ -82,9 +93,15 @@ export function ContactStep() {
                                     placeholder="you@example.com"
                                     autoComplete="email"
                                     className="h-11"
+                                    disabled={isLocked}
                                     {...field}
                                 />
                             </FormControl>
+                            {isLocked && (
+                                <p className="text-xs text-neutral-500">
+                                    Your invite is tied to this email.
+                                </p>
+                            )}
                             <FormMessage />
                         </FormItem>
                     )}
@@ -104,11 +121,14 @@ export function ContactStep() {
                                     placeholder="+91 98xxxxxxxx"
                                     autoComplete="tel"
                                     className="h-11"
+                                    disabled={isLocked}
                                     {...field}
                                 />
                             </FormControl>
                             <p className="text-xs text-neutral-500">
-                                We&rsquo;ll send a 6-digit code to verify it&rsquo;s really you.
+                                {isLocked
+                                    ? 'Your invite is tied to this number.'
+                                    : 'We’ll send a 6-digit code to verify it’s really you.'}
                             </p>
                             <FormMessage />
                         </FormItem>

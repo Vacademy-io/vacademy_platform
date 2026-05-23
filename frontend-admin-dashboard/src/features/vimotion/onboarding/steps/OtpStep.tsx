@@ -10,7 +10,7 @@ import { otpSchema, type OtpValues } from '../schema';
 import { requestSignupOtp, verifySignupOtp } from '../../api/signup';
 
 export function OtpStep() {
-    const { contact, setSignupToken, setStep } = useVimotionOnboardingStore();
+    const { contact, inviteCode, setSignupToken, setStep } = useVimotionOnboardingStore();
 
     const form = useForm<OtpValues>({
         resolver: zodResolver(otpSchema),
@@ -24,6 +24,7 @@ export function OtpStep() {
                 email: contact.email,
                 phone_number: contact.phoneNumber,
                 otp,
+                invite_code: inviteCode?.code,
             }),
         onSuccess: (data) => {
             setSignupToken(data.signup_token, data.expires_at);
@@ -36,7 +37,11 @@ export function OtpStep() {
     });
 
     const resend = useMutation({
-        mutationFn: () => requestSignupOtp({ phone_number: contact.phoneNumber }),
+        mutationFn: () =>
+            requestSignupOtp({
+                phone_number: contact.phoneNumber,
+                invite_code: inviteCode?.code,
+            }),
         onSuccess: () => toast.success('New OTP sent'),
         onError: (err: unknown) => {
             const msg = err instanceof Error ? err.message : 'Failed to resend OTP';

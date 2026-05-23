@@ -24,6 +24,7 @@ import {
   FolderOpen,
 } from "@phosphor-icons/react";
 import { Steps } from "@phosphor-icons/react";
+import { format, parseISO } from "date-fns";
 import {
   Collapsible,
   CollapsibleContent,
@@ -200,7 +201,16 @@ export const CourseStructureDetails = ({
       }
       if (slide.assignment_slide) {
         const end = slide.assignment_slide.end_date;
-        if (end) return `Due ${end}`;
+        if (end) {
+          // Backend now returns LocalDateTime (e.g. "2026-03-25T23:59:00"),
+          // with legacy date-only ("2026-03-25") still possible. Normalize.
+          try {
+            const normalized = end.length <= 10 ? `${end}T00:00:00` : end;
+            return `Due ${format(parseISO(normalized), "MMM d, yyyy h:mm a")}`;
+          } catch {
+            return `Due ${end}`;
+          }
+        }
       }
       return "";
     },

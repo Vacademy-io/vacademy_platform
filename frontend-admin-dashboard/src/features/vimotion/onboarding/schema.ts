@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const inviteCodeSchema = z.object({
+    inviteCode: z.string().trim().min(1, 'Enter your invite code').max(64, 'Code is too long'),
+});
+
 export const contactSchema = z.object({
     fullName: z.string().trim().min(2, 'Full name is required'),
     email: z.string().trim().email('Enter a valid email'),
@@ -30,6 +34,7 @@ export const studioSchema = z.object({
     companySize: z.enum(['1-10', '11-50', '51-200', '201+']),
 });
 
+export type InviteCodeValues = z.infer<typeof inviteCodeSchema>;
 export type ContactValues = z.infer<typeof contactSchema>;
 export type OtpValues = z.infer<typeof otpSchema>;
 export type AccountTypeValues = z.infer<typeof accountTypeSchema>;

@@ -65,6 +65,7 @@ export interface AssignmentSlide {
     marks: number | null;
     feedback: string | null;
     checked_file_id: string | null;
+    late_submission?: boolean | null;
 }
 
 export interface VideoSlideQuestion {

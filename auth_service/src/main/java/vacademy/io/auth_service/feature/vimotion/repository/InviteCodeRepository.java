@@ -1,5 +1,7 @@
 package vacademy.io.auth_service.feature.vimotion.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,6 +15,14 @@ import java.util.Optional;
 public interface InviteCodeRepository extends JpaRepository<InviteCode, String> {
 
     Optional<InviteCode> findByCode(String code);
+
+    Page<InviteCode> findByKind(String kind, Pageable pageable);
+
+    Page<InviteCode> findByStatus(String status, Pageable pageable);
+
+    Page<InviteCode> findByKindAndStatus(String kind, String status, Pageable pageable);
+
+    long countByStatus(String status);
 
     /**
      * Atomically increments used_count for an active code that still has uses

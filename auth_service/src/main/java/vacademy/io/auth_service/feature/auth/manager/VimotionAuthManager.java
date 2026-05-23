@@ -26,6 +26,7 @@ import vacademy.io.auth_service.feature.notification.service.NotificationService
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
 import vacademy.io.auth_service.feature.vimotion.entity.InviteCode;
 import vacademy.io.auth_service.feature.vimotion.service.InviteCodeService;
+import vacademy.io.auth_service.feature.vimotion.service.WaitlistService;
 import vacademy.io.common.auth.entity.RefreshToken;
 import vacademy.io.common.auth.entity.Role;
 import vacademy.io.common.auth.entity.User;
@@ -73,6 +74,9 @@ public class VimotionAuthManager {
 
     @Autowired
     private InviteCodeService inviteCodeService;
+
+    @Autowired
+    private WaitlistService waitlistService;
 
     @Value("${admin.core.service.base_url}")
     private String adminCoreServiceBaseUrl;
@@ -202,12 +206,16 @@ public class VimotionAuthManager {
         User user = upsertVimotionUser(request, userRoles);
 
         if (StringUtils.hasText(inviteCodeId)) {
+            InviteCode redeemedCode = inviteCodeService.get(inviteCodeId);
             inviteCodeService.redeem(
                     inviteCodeId,
                     user.getId(),
                     created.getInstituteId(),
                     request.getEmail(),
                     request.getPhoneNumber());
+            // If the code came from a waitlist invite, flip that row to
+            // converted so the admin tool's funnel stats stay honest.
+            waitlistService.markConvertedByWaitlistId(redeemedCode.getWaitlistId());
         }
 
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUsername(), "VIMOTION-WEB");

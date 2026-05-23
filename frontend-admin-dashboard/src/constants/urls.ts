@@ -61,6 +61,9 @@ export const VIMOTION_SIGNUP = `${BASE_URL}/auth-service/v1/vimotion/signup`;
 export const VIMOTION_LOGIN = `${BASE_URL}/auth-service/v1/vimotion/login`;
 export const VIMOTION_VALIDATE_INVITE_CODE = `${BASE_URL}/auth-service/v1/vimotion/invite-codes/validate`;
 export const VIMOTION_CONFIG = `${BASE_URL}/auth-service/v1/vimotion/config`;
+export const VIMOTION_WAITLIST_JOIN = `${BASE_URL}/auth-service/v1/vimotion/waitlist/join`;
+export const VIMOTION_WAITLIST_STATUS = `${BASE_URL}/auth-service/v1/vimotion/waitlist/status`;
+export const VIMOTION_WAITLIST_COUNT = `${BASE_URL}/auth-service/v1/vimotion/waitlist/count`;
 
 // Vimotion brand kits + studio avatars (admin_core_service, JWT-auth)
 export const VIMOTION_BRAND_KITS = `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits`;

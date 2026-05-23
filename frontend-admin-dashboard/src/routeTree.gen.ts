@@ -46,6 +46,7 @@ import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
 import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activity-logs/index"
+import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
@@ -434,6 +435,11 @@ const AdminActivityLogsIndexRoute = AdminActivityLogsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/admin-activity-logs/index.lazy").then((d) => d.Route),
 )
+const VimWaitlistRoute = VimWaitlistRouteImport.update({
+  id: "/vim/waitlist",
+  path: "/vim/waitlist",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VimLoginRoute = VimLoginRouteImport.update({
   id: "/vim/login",
   path: "/vim/login",
@@ -1511,6 +1517,7 @@ export interface FileRoutesByFullPath {
   "/pricing": typeof PricingLazyRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
+  "/vim/waitlist": typeof VimWaitlistRoute
   "/admin-activity-logs/": typeof AdminActivityLogsIndexRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
@@ -1680,6 +1687,7 @@ export interface FileRoutesByTo {
   "/pricing": typeof PricingLazyRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
+  "/vim/waitlist": typeof VimWaitlistRoute
   "/admin-activity-logs": typeof AdminActivityLogsIndexRoute
   "/admin-package-management": typeof AdminPackageManagementIndexRoute
   "/admissions": typeof AdmissionsIndexRoute
@@ -1851,6 +1859,7 @@ export interface FileRoutesById {
   "/pricing": typeof PricingLazyRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
+  "/vim/waitlist": typeof VimWaitlistRoute
   "/admin-activity-logs/": typeof AdminActivityLogsIndexRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
@@ -2023,6 +2032,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/vim/dashboard"
     | "/vim/login"
+    | "/vim/waitlist"
     | "/admin-activity-logs/"
     | "/admin-package-management/"
     | "/admissions/"
@@ -2192,6 +2202,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/vim/dashboard"
     | "/vim/login"
+    | "/vim/waitlist"
     | "/admin-activity-logs"
     | "/admin-package-management"
     | "/admissions"
@@ -2362,6 +2373,7 @@ export interface FileRouteTypes {
     | "/pricing"
     | "/vim/dashboard"
     | "/vim/login"
+    | "/vim/waitlist"
     | "/admin-activity-logs/"
     | "/admin-package-management/"
     | "/admissions/"
@@ -2533,6 +2545,7 @@ export interface RootRouteChildren {
   PricingLazyRoute: typeof PricingLazyRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
+  VimWaitlistRoute: typeof VimWaitlistRoute
   AdminActivityLogsIndexRoute: typeof AdminActivityLogsIndexRoute
   AdminPackageManagementIndexRoute: typeof AdminPackageManagementIndexRoute
   AdmissionsIndexRoute: typeof AdmissionsIndexRoute
@@ -2966,6 +2979,13 @@ declare module "@tanstack/react-router" {
       path: "/admin-activity-logs"
       fullPath: "/admin-activity-logs/"
       preLoaderRoute: typeof AdminActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/vim/waitlist": {
+      id: "/vim/waitlist"
+      path: "/vim/waitlist"
+      fullPath: "/vim/waitlist"
+      preLoaderRoute: typeof VimWaitlistRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/login": {
@@ -3895,6 +3915,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingLazyRoute: PricingLazyRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
+  VimWaitlistRoute: VimWaitlistRoute,
   AdminActivityLogsIndexRoute: AdminActivityLogsIndexRoute,
   AdminPackageManagementIndexRoute: AdminPackageManagementIndexRoute,
   AdmissionsIndexRoute: AdmissionsIndexRoute,

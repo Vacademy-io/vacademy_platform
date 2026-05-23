@@ -54,7 +54,9 @@ export async function validateInviteCode(
     return data;
 }
 
-export async function getVimotionConfig(): Promise<VimotionConfigResponse> {
-    const { data } = await axios.get<VimotionConfigResponse>(VIMOTION_CONFIG);
+export async function getVimotionConfig(timeoutMs?: number): Promise<VimotionConfigResponse> {
+    const { data } = await axios.get<VimotionConfigResponse>(VIMOTION_CONFIG, {
+        timeout: timeoutMs,
+    });
     return data;
 }

@@ -110,6 +110,7 @@ export const ActivityStatsSidebar = () => {
         last_active: string;
         last_active_raw: string;
         review_status: 'PENDING' | 'REVIEWED' | null;
+        late_submission: boolean;
     };
 
     const students: StudentRow[] = useMemo(() => {
@@ -123,6 +124,7 @@ export const ActivityStatsSidebar = () => {
             last_active: formatLastActive(item.lastActive),
             last_active_raw: item.lastActive,
             review_status: item.reviewStatus ?? null,
+            late_submission: !!item.lateSubmission,
         }));
     }, [activityStats]);
 
@@ -309,6 +311,14 @@ export const ActivityStatsSidebar = () => {
                                             </div>
                                         </div>
 
+                                        {student.late_submission && (
+                                            <span
+                                                className="flex shrink-0 items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700"
+                                                title="Submitted after the assignment's end date"
+                                            >
+                                                Late
+                                            </span>
+                                        )}
                                         {student.review_status && (
                                             <span
                                                 className={`flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${

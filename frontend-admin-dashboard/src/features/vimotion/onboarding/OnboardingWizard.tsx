@@ -42,13 +42,20 @@ export function OnboardingWizard() {
     useVimotionNativeShell();
     const { step, signupToken, inviteCode, setStep } = useVimotionOnboardingStore();
 
-    const { data: config } = useQuery({
+    const {
+        data: config,
+        isLoading: configLoading,
+        isError: configError,
+    } = useQuery({
         queryKey: ['vimotion', 'config'],
-        queryFn: getVimotionConfig,
+        queryFn: () => getVimotionConfig(),
         staleTime: 5 * 60 * 1000,
+        retry: 1,
     });
 
-    const inviteOnly = config?.invite_only ?? false;
+    // Fail closed: if the config endpoint is unreachable, assume invite-only
+    // is on so we never accidentally expose the open signup flow.
+    const inviteOnly = configError ? true : (config?.invite_only ?? false);
 
     const stepOrder = useMemo<OnboardingStep[]>(
         () =>
@@ -100,23 +107,33 @@ export function OnboardingWizard() {
 
                 <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-10 sm:py-12">
                     <div className="w-full max-w-md space-y-8">
-                        <div className="space-y-3">
-                            <Stepper total={stepOrder.length} current={stepIndex} />
-                            <div className="space-y-1">
-                                <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-                                    {meta.title}
-                                </h1>
-                                <p className="text-sm text-neutral-500">{meta.description}</p>
+                        {configLoading ? (
+                            <div className="flex h-64 items-center justify-center">
+                                <div className="size-6 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-900" />
                             </div>
-                        </div>
+                        ) : (
+                            <>
+                                <div className="space-y-3">
+                                    <Stepper total={stepOrder.length} current={stepIndex} />
+                                    <div className="space-y-1">
+                                        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+                                            {meta.title}
+                                        </h1>
+                                        <p className="text-sm text-neutral-500">
+                                            {meta.description}
+                                        </p>
+                                    </div>
+                                </div>
 
-                        <div>
-                            {step === 'invite-code' && <InviteCodeStep />}
-                            {step === 'contact' && <ContactStep />}
-                            {step === 'otp' && <OtpStep />}
-                            {step === 'account-type' && <AccountTypeStep />}
-                            {step === 'studio-details' && <StudioDetailsStep />}
-                        </div>
+                                <div>
+                                    {step === 'invite-code' && <InviteCodeStep />}
+                                    {step === 'contact' && <ContactStep />}
+                                    {step === 'otp' && <OtpStep />}
+                                    {step === 'account-type' && <AccountTypeStep />}
+                                    {step === 'studio-details' && <StudioDetailsStep />}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
 

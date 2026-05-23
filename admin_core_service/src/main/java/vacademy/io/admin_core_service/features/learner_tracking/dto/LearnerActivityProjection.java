@@ -12,4 +12,6 @@ public interface LearnerActivityProjection {
     Timestamp getLastActive();
 
     String getReviewStatus();
+
+    Boolean getLateSubmission();
 }

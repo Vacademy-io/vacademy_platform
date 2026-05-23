@@ -53,6 +53,7 @@ interface AssignmentRowData {
     marks: number | null;
     feedback: string | null;
     checkedFileId: string | null;
+    lateSubmission: boolean;
 }
 
 const FileCell = ({ files }: { files: AssignmentFileInfo[] }) => {
@@ -201,22 +202,32 @@ const SubmissionCard = ({
                                 </span>
                                 <span className="text-xs text-neutral-500">{row.uploadTime}</span>
                             </div>
-                            {isGraded ? (
-                                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                                        {row.marks} marks
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                {row.lateSubmission && (
+                                    <span
+                                        className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700"
+                                        title="Submitted after the assignment's end date"
+                                    >
+                                        Late
                                     </span>
-                                    {row.checkedFileId && (
-                                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-                                            ✓ Checked
+                                )}
+                                {isGraded ? (
+                                    <>
+                                        <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                                            {row.marks} marks
                                         </span>
-                                    )}
-                                </div>
-                            ) : (
-                                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                                    Pending Review
-                                </span>
-                            )}
+                                        {row.checkedFileId && (
+                                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                                                ✓ Checked
+                                            </span>
+                                        )}
+                                    </>
+                                ) : (
+                                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                                        Pending Review
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         {/* Submitted Files */}
@@ -606,6 +617,7 @@ export const ActivityLogDialog = ({
                         marks: submission?.marks ?? null,
                         feedback: submission?.feedback ?? null,
                         checkedFileId: submission?.checked_file_id ?? null,
+                        lateSubmission: !!submission?.late_submission,
                     };
                 });
         }

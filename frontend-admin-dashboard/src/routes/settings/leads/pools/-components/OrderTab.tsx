@@ -1,7 +1,10 @@
 /**
- * Rotation order editor for ROUND_ROBIN mode. Two render modes (matching
- * OverviewTab's UX pattern):
+ * Rotation order editor. Used by ROUND_ROBIN and TIME_BASED pools — the same
+ * `display_order` column drives both. For TIME_BASED, order only matters
+ * when multiple counsellors are on the same shift block (it tie-breaks the
+ * pick within that intersection). Copy below adapts to the pool's mode.
  *
+ * Two render modes (matching OverviewTab's UX pattern):
  *   - Read-only (default) — shows the current order(s) as plain numbered
  *     lists. Header has an Edit button.
  *   - Editing — toggle + up/down arrows + Save/Cancel. Two operating
@@ -67,6 +70,14 @@ const fetchUsers = async (): Promise<InstituteUser[]> => {
 export default function OrderTab({ pool }: OrderTabProps) {
     const audiences = pool.audiences ?? [];
     const members = pool.members ?? [];
+    const isTimeBased = pool.assignment_mode === 'TIME_BASED';
+
+    const readOnlyDescription = isTimeBased
+        ? 'Used as a tie-breaker when multiple counsellors are on the same shift. The lower-numbered counsellor goes first.'
+        : 'Round-robin cycles counsellors in this order.';
+    const editDescription = isTimeBased
+        ? 'Set the order in which on-shift counsellors are tried. Only matters when more than one is on the same shift.'
+        : 'Use the same order for every campaign, or customise it per campaign.';
 
     const { data: users = [] } = useQuery({
         queryKey: ['institute-counselors-order'],
@@ -192,9 +203,7 @@ export default function OrderTab({ pool }: OrderTabProps) {
                     <CardHeader className="flex flex-row items-start justify-between space-y-0">
                         <div>
                             <CardTitle>Rotation Order</CardTitle>
-                            <CardDescription>
-                                Round-robin cycles counselors in this order.
-                            </CardDescription>
+                            <CardDescription>{readOnlyDescription}</CardDescription>
                         </div>
                         <MyButton buttonType="secondary" scale="small" onClick={startEdit}>
                             Edit
@@ -256,9 +265,7 @@ export default function OrderTab({ pool }: OrderTabProps) {
             <Card>
                 <CardHeader>
                     <CardTitle>Rotation Order</CardTitle>
-                    <CardDescription>
-                        Use the same order for every campaign, or customize it per campaign.
-                    </CardDescription>
+                    <CardDescription>{editDescription}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
                     <div className="flex items-center gap-3">

@@ -1,6 +1,5 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
-import { Trash2, UserPlus } from 'lucide-react';
-import { ArrowSquareOut } from '@phosphor-icons/react';
+import { Trash, UserPlus, ArrowSquareOut } from '@phosphor-icons/react';
 import { LeadActivityNotesCell } from '@/components/shared/lead-activity-notes-cell';
 import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -491,7 +490,7 @@ export const generateDynamicColumns = (
                     return (
                         <div className="flex items-center justify-between gap-2 p-3">
                             <div className="flex min-w-0 items-center gap-2">
-                                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700">
+                                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700">
                                     {counselorName[0]?.toUpperCase()}
                                 </div>
                                 <span className="truncate text-sm text-neutral-800">
@@ -504,7 +503,7 @@ export const generateDynamicColumns = (
                                     e.stopPropagation();
                                     onAssignCounsellor(userId, userName);
                                 }}
-                                className="shrink-0 text-[11px] text-neutral-400 hover:text-primary-600"
+                                className="shrink-0 text-xs text-neutral-400 hover:text-primary-600"
                             >
                                 Reassign
                             </button>
@@ -590,7 +589,7 @@ export const generateDynamicColumns = (
                         className="text-neutral-400 transition-colors hover:text-red-500"
                         title="Delete lead"
                     >
-                        <Trash2 className="size-4" />
+                        <Trash className="size-4" />
                     </button>
                 </div>
             ),

@@ -766,12 +766,22 @@ public class PaymentLogService {
         LocalDateTime endDate = resolveEndDate(filterDTO);
         String userId = StringUtils.hasText(filterDTO.getUserId()) ? filterDTO.getUserId() : null;
 
-        // Native UNION query: pass null for empty lists so IS NULL checks work in SQL
-        List<String> paymentStatusesOrNull = paymentStatuses.isEmpty() ? null : paymentStatuses;
-        List<String> userPlanStatusesOrNull = userPlanStatuses.isEmpty() ? null : userPlanStatuses;
-        List<String> sourcesOrNull = sources.isEmpty() ? null : sources;
-        List<String> enrollInviteIdsOrNull = enrollInviteIds.isEmpty() ? null : enrollInviteIds;
-        List<String> packageSessionIdsOrNull = packageSessionIds.isEmpty() ? null : packageSessionIds;
+        // Boolean flags tell the query which IN clauses to skip (PostgreSQL can't type-infer NULL lists).
+        // When a filter is inactive, pass a sentinel list so JDBC binding always succeeds.
+        boolean noPaymentStatusFilter = paymentStatuses.isEmpty();
+        boolean noUserPlanStatusFilter = userPlanStatuses.isEmpty();
+        boolean noSourceFilter = sources.isEmpty();
+        boolean noEnrollInviteFilter = enrollInviteIds.isEmpty();
+        boolean noPackageSessionFilter = packageSessionIds.isEmpty();
+        // Invoice-path logs only appear when no user-plan-specific filter is active.
+        boolean includeInvoiceLogs = noUserPlanStatusFilter && noSourceFilter && noEnrollInviteFilter && noPackageSessionFilter;
+
+        List<String> SENTINEL = List.of("__none__");
+        List<String> paymentStatusesBound = noPaymentStatusFilter ? SENTINEL : paymentStatuses;
+        List<String> userPlanStatusesBound = noUserPlanStatusFilter ? SENTINEL : userPlanStatuses;
+        List<String> sourcesBound = noSourceFilter ? SENTINEL : sources;
+        List<String> enrollInviteIdsBound = noEnrollInviteFilter ? SENTINEL : enrollInviteIds;
+        List<String> packageSessionIdsBound = noPackageSessionFilter ? SENTINEL : packageSessionIds;
 
         // Use unsorted pageable — ORDER BY is hardcoded in the native query (created_at DESC)
         Pageable pageable = PageRequest.of(pageNo, pageSize);
@@ -780,12 +790,18 @@ public class PaymentLogService {
                 filterDTO.getInstituteId(),
                 startDate,
                 endDate,
-                paymentStatusesOrNull,
-                userPlanStatusesOrNull,
-                sourcesOrNull,
-                enrollInviteIdsOrNull,
-                packageSessionIdsOrNull,
+                paymentStatusesBound,
+                noPaymentStatusFilter,
+                userPlanStatusesBound,
+                noUserPlanStatusFilter,
+                sourcesBound,
+                noSourceFilter,
+                enrollInviteIdsBound,
+                noEnrollInviteFilter,
+                packageSessionIdsBound,
+                noPackageSessionFilter,
                 userId,
+                includeInvoiceLogs,
                 pageable);
 
         List<String> ids = idsPage.getContent();

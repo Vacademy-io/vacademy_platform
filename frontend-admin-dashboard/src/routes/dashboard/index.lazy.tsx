@@ -543,7 +543,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                         Welcome aboard! We&apos;re excited to have you here. Let&apos;s set up your
                         admin dashboard and make learning seamless and engaging.
                     </p>
-                    {!showForInstitutes([HOLISTIC_INSTITUTE_ID, SSDC_INSTITUTE_ID]) && (
+                    {/* {!showForInstitutes([HOLISTIC_INSTITUTE_ID, SSDC_INSTITUTE_ID]) && (
                         <iframe
                             className="m-auto mt-4 h-[35vh] w-full rounded-lg md:h-[60vh] md:w-[65%]"
                             src="https://www.youtube.com/embed/s2z1xbCWwRE?si=cgJvdMCJ8xg32lZ7"
@@ -551,7 +551,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                             allowFullScreen
                         />
-                    )}
+                    )} */}
                 </>
             )}
             {/* Main content */}

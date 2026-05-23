@@ -119,7 +119,7 @@ function CompletePopover({
 // ── Follow-up Card ────────────────────────────────────────────────────────────
 
 function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: string }) {
-    const config = STATUS_CONFIG[followup.status] ?? STATUS_CONFIG['PENDING'];
+    const config = (STATUS_CONFIG[followup.status] ?? STATUS_CONFIG['PENDING'])!;
 
     const formattedTime = followup.schedule_time
         ? format(new Date(followup.schedule_time), 'd MMM yyyy, h:mm a')

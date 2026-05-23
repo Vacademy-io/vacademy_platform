@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -17,6 +19,7 @@ public class InboxConversationDTO {
     private String userId;
     private String lastMessage;
     private String lastMessageType;   // OUTGOING or INCOMING
-    private String lastMessageTime;
+    /** When the last message was sent/received. Jackson emits Instant as ISO-8601 with trailing Z. */
+    private Instant lastMessageTime;
     private long unreadCount;
 }

@@ -43,12 +43,15 @@ public class EmailInboxService {
      */
     public List<EmailConversationDTO> getConversations(String instituteId, int offset, int limit,
                                                        String instituteAddress, String direction) {
-        List<String> fromAddresses = scopeFromAddresses(instituteId, instituteAddress);
-        if (fromAddresses.isEmpty()) return List.of();
+        if (instituteId == null || instituteId.isBlank()) return List.of();
+
+        String senderFilter = narrowSender(instituteId, instituteAddress);
+        // narrowSender returned a sentinel ("__none__") to mean "address doesn't belong to this institute".
+        if (NO_MATCH.equals(senderFilter)) return List.of();
 
         List<String> types = resolveTypes(direction);
         List<NotificationLog> latest = notificationLogRepository
-                .findEmailConversationsForInbox(fromAddresses, types, limit, offset);
+                .findEmailConversationsForInbox(instituteId, senderFilter, types, limit, offset);
         if (latest.isEmpty()) return List.of();
 
         Map<String, Long> unread = batchUnread(latest);
@@ -61,15 +64,17 @@ public class EmailInboxService {
     public List<EmailConversationDTO> searchConversations(String instituteId, String rawQuery,
                                                           int offset, int limit,
                                                           String instituteAddress, String direction) {
-        List<String> fromAddresses = scopeFromAddresses(instituteId, instituteAddress);
-        if (fromAddresses.isEmpty() || rawQuery == null || rawQuery.isBlank()) return List.of();
+        if (instituteId == null || instituteId.isBlank() || rawQuery == null || rawQuery.isBlank()) return List.of();
+
+        String senderFilter = narrowSender(instituteId, instituteAddress);
+        if (NO_MATCH.equals(senderFilter)) return List.of();
 
         String safe = "%" + rawQuery.replace("%", "\\%").replace("_", "\\_") + "%";
         List<String> types = resolveTypes(direction);
         int safeLimit = Math.max(1, Math.min(limit, 100));
         int safeOffset = Math.max(0, offset);
         List<NotificationLog> rows = notificationLogRepository
-                .searchEmailConversations(fromAddresses, types, safe, safeLimit, safeOffset);
+                .searchEmailConversations(instituteId, senderFilter, types, safe, safeLimit, safeOffset);
         Map<String, Long> unread = batchUnread(rows);
         return rows.stream().map(nl -> toConversation(nl, unread)).collect(Collectors.toList());
     }
@@ -100,7 +105,7 @@ public class EmailInboxService {
                 .userId(nl.getUserId())
                 .lastMessageDirection(inbound ? "INCOMING" : "OUTGOING")
                 .lastMessagePreview(buildPreview(nl))
-                .lastMessageTime(nl.getNotificationDate() != null ? nl.getNotificationDate().toString() : null)
+                .lastMessageTime(nl.getNotificationDate())
                 .unreadCount(unread.getOrDefault(nl.getChannelId(), 0L))
                 .build();
     }
@@ -110,12 +115,14 @@ public class EmailInboxService {
     public List<EmailMessageDTO> getMessages(String instituteId, String counterpartyEmail,
                                              String cursor, int limit,
                                              String instituteAddress, String direction) {
-        List<String> fromAddresses = scopeFromAddresses(instituteId, instituteAddress);
-        if (fromAddresses.isEmpty()) return List.of();
+        if (instituteId == null || instituteId.isBlank()) return List.of();
+
+        String senderFilter = narrowSender(instituteId, instituteAddress);
+        if (NO_MATCH.equals(senderFilter)) return List.of();
 
         List<String> types = resolveTypes(direction);
         List<NotificationLog> rows = notificationLogRepository
-                .findEmailMessagesForConversation(counterpartyEmail, fromAddresses, types, cursor, limit);
+                .findEmailMessagesForConversation(counterpartyEmail, instituteId, senderFilter, types, cursor, limit);
 
         return rows.stream().map(this::toMessage).collect(Collectors.toList());
     }
@@ -145,7 +152,7 @@ public class EmailInboxService {
                 .body(body)
                 .counterpartyEmail(nl.getChannelId())
                 .instituteAddress(nl.getSenderBusinessChannelId())
-                .timestamp(nl.getNotificationDate() != null ? nl.getNotificationDate().toString() : null)
+                .timestamp(nl.getNotificationDate())
                 .source(nl.getSource())
                 .build();
     }
@@ -213,7 +220,7 @@ public class EmailInboxService {
                 .body(req.getBody())
                 .counterpartyEmail(req.getToEmail())
                 .instituteAddress(fromEmail)
-                .timestamp(java.time.LocalDateTime.now().toString())
+                .timestamp(java.time.Instant.now())
                 .source("EMAIL_INBOX")
                 .build();
     }
@@ -221,17 +228,28 @@ public class EmailInboxService {
     // ==================== Helpers ====================
 
     /**
-     * Resolve the institute-side address scope.
-     * - If {@code instituteAddress} is non-blank AND belongs to the institute, returns just it.
-     * - If it's non-blank but does NOT belong, returns empty list (silently scopes to nothing
-     *   so an admin can't peek into another institute's data via a crafted query param).
-     * - Otherwise returns all of the institute's configured from-addresses.
+     * Sentinel returned by {@link #narrowSender} when the caller-supplied sender doesn't belong
+     * to this institute — the inbox must return zero rows in that case (don't fall back to "all").
      */
-    private List<String> scopeFromAddresses(String instituteId, String instituteAddress) {
-        List<String> all = emailConfigurationService.getInstituteConfiguredFromAddresses(instituteId);
-        if (instituteAddress == null || instituteAddress.isBlank()) return all;
+    private static final String NO_MATCH = "__no_match__";
+
+    /**
+     * Resolve the optional sender-narrowing filter passed to the repository queries.
+     * <ul>
+     *   <li>If {@code instituteAddress} is blank → {@code null} (no narrowing; all senders for
+     *       this institute).</li>
+     *   <li>If it's set AND belongs to the institute's configured from-addresses → the
+     *       normalized address.</li>
+     *   <li>If it's set but does NOT belong → {@link #NO_MATCH}, signalling the caller to
+     *       short-circuit with an empty result (defends against an admin peeking into
+     *       another institute's data via a crafted query param).</li>
+     * </ul>
+     */
+    private String narrowSender(String instituteId, String instituteAddress) {
+        if (instituteAddress == null || instituteAddress.isBlank()) return null;
         String normalized = instituteAddress.toLowerCase().trim();
-        return all.contains(normalized) ? List.of(normalized) : List.of();
+        List<String> configured = emailConfigurationService.getInstituteConfiguredFromAddresses(instituteId);
+        return configured.contains(normalized) ? normalized : NO_MATCH;
     }
 
     /**

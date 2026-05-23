@@ -33,6 +33,14 @@ public class CreatePoolRequest {
     @JsonProperty("assignment_mode")
     private String assignmentMode;
 
+    /**
+     * Optional: PER_DAY | SAME_HOURS_ALL_DAYS. Drives the schedule editor used
+     * by the UI. Defaults to PER_DAY when omitted. Only meaningful for
+     * TIME_BASED pools but accepted on any pool for forward compatibility.
+     */
+    @JsonProperty("schedule_pattern")
+    private String schedulePattern;
+
     /** Optional: campaigns to link at creation. */
     @JsonProperty("audience_ids")
     private List<String> audienceIds;

@@ -18,7 +18,9 @@ import {
     COUNSELOR_POOL_BASE,
     COUNSELOR_POOL_BY_ID,
     COUNSELOR_POOL_COUNSELOR,
+    COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS,
     COUNSELOR_POOL_COUNSELOR_STATUS,
+    COUNSELOR_POOL_COUNSELOR_STATUS_MULTI,
     COUNSELOR_POOL_SCHEDULE,
 } from '@/constants/urls';
 
@@ -27,6 +29,11 @@ import {
 export type AssignmentMode = 'MANUAL' | 'ROUND_ROBIN' | 'TIME_BASED';
 export type PoolStatus = 'ACTIVE' | 'INACTIVE';
 export type DayOfWeek = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
+/**
+ * How the admin authored a pool's weekly schedule. Drives which editor the
+ * Schedule tab renders. Routing engine ignores this — it reads flat shift rows.
+ */
+export type SchedulePattern = 'PER_DAY' | 'SAME_HOURS_ALL_DAYS';
 
 export const DAYS_OF_WEEK: DayOfWeek[] = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
@@ -81,6 +88,8 @@ export interface CounselorPoolDTO {
     name: string;
     description?: string;
     assignment_mode: AssignmentMode;
+    /** PER_DAY | SAME_HOURS_ALL_DAYS — drives which Schedule editor renders. */
+    schedule_pattern?: SchedulePattern;
     created_by?: string;
     created_at?: string;
     updated_at?: string;
@@ -94,6 +103,8 @@ export interface CreatePoolRequest {
     name: string;
     description?: string;
     assignment_mode: AssignmentMode;
+    /** Optional: defaults to PER_DAY on the backend. */
+    schedule_pattern?: SchedulePattern;
     audience_ids?: string[];
     counselor_user_ids?: string[];
 }
@@ -102,12 +113,48 @@ export interface UpdatePoolRequest {
     name?: string;
     description?: string;
     assignment_mode?: AssignmentMode;
+    /**
+     * Changing pattern with shifts already configured is rejected backend-side.
+     * Admin must clear the schedule (delete all shifts) before switching.
+     */
+    schedule_pattern?: SchedulePattern;
 }
 
 export interface UpdateMemberStatusRequest {
     status: PoolStatus;
     /** Required when status = INACTIVE. */
     backup_counselor_user_id?: string | null;
+    /**
+     * INACTIVE only. When true, also move the counselor's currently open
+     * (conversion_status = LEAD) leads — scoped to this pool's audiences —
+     * over to the backup. Leads stay with the backup after reactivation
+     * (no rollback, no history).
+     */
+    reassign_existing_leads?: boolean;
+}
+
+/**
+ * One pool the counselor currently belongs to (powered by GET
+ * /counselors/{id}/memberships). Backend filters to pools where status =
+ * ACTIVE — pools where they're already inactive aren't returned.
+ */
+export interface CounselorPoolMembershipDTO {
+    pool_id: string;
+    pool_name: string;
+    status: PoolStatus;
+}
+
+/**
+ * Body for PATCH /counselors/{id}/status-multi — flips a counselor across
+ * multiple pools at once. Same backup + reassign flag apply to every pool.
+ * Backend wraps the whole batch in one @Transactional: any failure rolls
+ * back all the pools.
+ */
+export interface BulkUpdateMemberStatusRequest {
+    pool_ids: string[];
+    status: PoolStatus;
+    backup_counselor_user_id?: string | null;
+    reassign_existing_leads?: boolean;
 }
 
 export interface ShiftBlockRequest {
@@ -183,6 +230,28 @@ export const updateMemberStatus = async (
 ): Promise<void> => {
     await authenticatedAxiosInstance.patch(
         COUNSELOR_POOL_COUNSELOR_STATUS(poolId, counselorUserId),
+        request
+    );
+};
+
+export const fetchCounselorMemberships = async (
+    counselorUserId: string
+): Promise<CounselorPoolMembershipDTO[]> => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS(counselorUserId),
+        params: { instituteId },
+    });
+    return response.data ?? [];
+};
+
+export const bulkUpdateMemberStatus = async (
+    counselorUserId: string,
+    request: BulkUpdateMemberStatusRequest
+): Promise<void> => {
+    await authenticatedAxiosInstance.patch(
+        COUNSELOR_POOL_COUNSELOR_STATUS_MULTI(counselorUserId),
         request
     );
 };
@@ -325,6 +394,43 @@ export const useUpdateMemberStatus = (poolId: string) => {
         mutationFn: (args: { counselorUserId: string; request: UpdateMemberStatusRequest }) =>
             updateMemberStatus(poolId, args.counselorUserId, args.request),
         onSuccess: () => invalidate(poolId),
+    });
+};
+
+/**
+ * Fetch a counselor's ACTIVE pool memberships. Pools where the counselor is
+ * already INACTIVE are filtered out backend-side and won't appear here.
+ *
+ * Disabled when {@code counselorUserId} is falsy so the hook can sit in a
+ * component that opens its dialog on demand without firing a wasted request.
+ */
+export const useCounselorMemberships = (counselorUserId: string | undefined) =>
+    useQuery({
+        queryKey: ['counselor-pool-memberships', counselorUserId ?? ''],
+        queryFn: () => fetchCounselorMemberships(counselorUserId!),
+        enabled: !!counselorUserId,
+        staleTime: 30 * 1000,
+    });
+
+/**
+ * Multi-pool status flip. On success, invalidates every pool the call touched
+ * so member lists refresh — plus the institute-wide pool list. Both the
+ * current pool view and any sibling pool detail caches are kept in sync.
+ */
+export const useBulkUpdateMemberStatus = () => {
+    const invalidate = useInvalidatePool();
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (args: { counselorUserId: string; request: BulkUpdateMemberStatusRequest }) =>
+            bulkUpdateMemberStatus(args.counselorUserId, args.request),
+        onSuccess: (_data, variables) => {
+            for (const poolId of variables.request.pool_ids) {
+                invalidate(poolId);
+            }
+            qc.invalidateQueries({
+                queryKey: ['counselor-pool-memberships', variables.counselorUserId],
+            });
+        },
     });
 };
 

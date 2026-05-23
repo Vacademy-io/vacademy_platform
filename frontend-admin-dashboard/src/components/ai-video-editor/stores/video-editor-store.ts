@@ -343,6 +343,7 @@ interface HistorySnapshot {
     entryBackgrounds: Record<string, string>;
     entryTransitions: Record<string, TransitionPair>;
     dirtyEntryIds: string[];
+    htmlEditedEntryIds: string[];
     newEntryIds: string[];
     deletedEntryIds: string[];
     pendingReorders: ReorderOp[];
@@ -400,6 +401,13 @@ export interface VideoEditorState {
 
     // Dirty tracking (HTML edits)
     dirtyEntryIds: string[];
+    /** IDs whose static HTML has been mutated this session (updateEntryHtml).
+     *  Separate from `dirtyEntryIds` so that overrides reset to default
+     *  (transform → identity, background → cleared, transition → cleared) can
+     *  *correctly* remove an entry from the dirty set without erasing the
+     *  fact that the HTML still differs from the last-saved baseline.
+     *  Cleared on save success alongside `dirtyEntryIds`. */
+    htmlEditedEntryIds: string[];
     /** IDs of entries that are brand-new and have never been saved to the backend. */
     newEntryIds: string[];
     /** IDs of previously-persisted entries the user has deleted in this session
@@ -679,10 +687,44 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
         entryBackgrounds: s.entryBackgrounds,
         entryTransitions: s.entryTransitions,
         dirtyEntryIds: s.dirtyEntryIds,
+        htmlEditedEntryIds: s.htmlEditedEntryIds,
         newEntryIds: s.newEntryIds,
         deletedEntryIds: s.deletedEntryIds,
         pendingReorders: s.pendingReorders,
     };
+}
+
+/**
+ * B6 helper — recompute whether an entry should remain in `dirtyEntryIds`
+ * after a mutation. An entry is dirty iff *any* of the save-worthy sources
+ * still has a non-baseline value:
+ *
+ *   - HTML was edited this session (`htmlEditedEntryIds`)
+ *   - Brand-new entry (`newEntryIds`)
+ *   - Non-identity transform stored
+ *   - Background set
+ *   - Any transition set
+ *
+ * Without this, resetting an override (e.g. transform → identity) would
+ * leave the entry in `dirtyEntryIds` forever and keep the Save button
+ * misleadingly lit.
+ */
+function entryIsDirty(s: VideoEditorState, entryId: string): boolean {
+    if (s.htmlEditedEntryIds.includes(entryId)) return true;
+    if (s.newEntryIds.includes(entryId)) return true;
+    const t = s.entryTransforms[entryId];
+    if (t && !isIdentity(t)) return true;
+    if (s.entryBackgrounds[entryId]) return true;
+    if (s.entryTransitions[entryId]) return true;
+    return false;
+}
+
+function recomputeDirty(state: VideoEditorState, entryId: string): string[] {
+    const inSet = state.dirtyEntryIds.includes(entryId);
+    const shouldBeDirty = entryIsDirty(state, entryId);
+    if (shouldBeDirty && !inSet) return [...state.dirtyEntryIds, entryId];
+    if (!shouldBeDirty && inSet) return state.dirtyEntryIds.filter((id) => id !== entryId);
+    return state.dirtyEntryIds;
 }
 
 function pushPast(s: VideoEditorState): Pick<VideoEditorState, 'past' | 'future'> {
@@ -712,6 +754,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     viewMode: loadViewMode(),
     displayNames: {},
     dirtyEntryIds: [],
+    htmlEditedEntryIds: [],
     newEntryIds: [],
     deletedEntryIds: [],
     pendingReorders: [],
@@ -752,6 +795,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // Display names are per-video though, so reload them now.
             displayNames: loadDisplayNames(params.videoId),
             dirtyEntryIds: [],
+            htmlEditedEntryIds: [],
             newEntryIds: [],
             deletedEntryIds: [],
             pendingReorders: [],
@@ -969,6 +1013,13 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
                 ? s.dirtyEntryIds
                 : [...s.dirtyEntryIds, entryId],
+            // Track html-edits separately from dirtyEntryIds so a later
+            // override-reset (transform → identity, bg cleared, transition
+            // cleared) can correctly decide whether the entry still has
+            // anything worth saving. See `entryIsDirty` / `recomputeDirty`.
+            htmlEditedEntryIds: s.htmlEditedEntryIds.includes(entryId)
+                ? s.htmlEditedEntryIds
+                : [...s.htmlEditedEntryIds, entryId],
         }));
     },
 
@@ -1056,13 +1107,27 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set((s) => {
             const current = s.entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
             const updated = { ...current, ...patch };
+            // B6: if the updated transform is the identity, *remove* it from
+            // the map rather than storing an identity override. That way the
+            // entry doesn't get serialised as a transform on save and — more
+            // visibly — the Save button doesn't stay lit if nothing else
+            // actually differs from the saved baseline.
+            const nextTransforms = { ...s.entryTransforms };
+            if (isIdentity(updated)) {
+                delete nextTransforms[entryId];
+            } else {
+                nextTransforms[entryId] = updated;
+            }
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
+                entryTransforms: nextTransforms,
+            };
             return {
-                ...pushPast(s),
-                entryTransforms: { ...s.entryTransforms, [entryId]: updated },
-                // Mark dirty so Save button lights up
-                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
-                    ? s.dirtyEntryIds
-                    : [...s.dirtyEntryIds, entryId],
+                ...past,
+                entryTransforms: nextTransforms,
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1071,16 +1136,16 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         set((s) => {
             const next = { ...s.entryTransforms };
             delete next[entryId];
-            // If HTML is also not dirty, remove from dirtyEntryIds
-            const htmlAlsoDirty = s.entries.some(
-                (e) => e.id === entryId && s.dirtyEntryIds.includes(entryId)
-            );
-            return {
-                ...pushPast(s),
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
                 entryTransforms: next,
-                dirtyEntryIds: htmlAlsoDirty
-                    ? s.dirtyEntryIds
-                    : s.dirtyEntryIds.filter((id) => id !== entryId),
+            };
+            return {
+                ...past,
+                entryTransforms: next,
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1316,12 +1381,18 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             else updated[which] = transition;
             if (!updated.in && !updated.out) delete next[entryId];
             else next[entryId] = updated;
-            return {
-                ...pushPast(s),
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
                 entryTransitions: next,
-                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
-                    ? s.dirtyEntryIds
-                    : [...s.dirtyEntryIds, entryId],
+            };
+            return {
+                ...past,
+                entryTransitions: next,
+                // B6: clearing both sides of the transition can take this entry
+                // out of dirty if nothing else differs.
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1335,12 +1406,17 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             } else {
                 delete next[entryId];
             }
-            return {
-                ...pushPast(s),
+            const past = pushPast(s);
+            const intermediate: VideoEditorState = {
+                ...s,
+                ...past,
                 entryBackgrounds: next,
-                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
-                    ? s.dirtyEntryIds
-                    : [...s.dirtyEntryIds, entryId],
+            };
+            return {
+                ...past,
+                entryBackgrounds: next,
+                // B6: clearing the background can take this entry out of dirty.
+                dirtyEntryIds: recomputeDirty(intermediate, entryId),
             };
         });
     },
@@ -1379,6 +1455,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryBackgrounds: prev.entryBackgrounds,
                 entryTransitions: prev.entryTransitions,
                 dirtyEntryIds: prev.dirtyEntryIds,
+                htmlEditedEntryIds: prev.htmlEditedEntryIds,
                 newEntryIds: prev.newEntryIds,
                 deletedEntryIds: prev.deletedEntryIds,
                 pendingReorders: prev.pendingReorders,
@@ -1398,6 +1475,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryBackgrounds: next.entryBackgrounds,
                 entryTransitions: next.entryTransitions,
                 dirtyEntryIds: next.dirtyEntryIds,
+                htmlEditedEntryIds: next.htmlEditedEntryIds,
                 newEntryIds: next.newEntryIds,
                 deletedEntryIds: next.deletedEntryIds,
                 pendingReorders: next.pendingReorders,
@@ -1452,6 +1530,19 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
 
         set({ isSaving: true });
 
+        // B7: collect failures instead of aborting on the first one. Each
+        // operation is tracked independently so a partial-save (e.g. delete
+        // succeeded, one of N updates failed) leaves the *succeeded* changes
+        // baked in locally + cleared from the dirty set, while the *failed*
+        // ones stay dirty for the user to retry. We throw a single summary
+        // error at the end so the caller's existing toast.error still fires.
+        const succeededDeletes = new Set<string>();
+        const succeededReorders = new Set<string>();
+        const succeededSaves = new Set<string>();
+        const failedDeletes: { id: string; message: string }[] = [];
+        const failedReorders: { id: string; message: string }[] = [];
+        const failedSaves: { id: string; message: string }[] = [];
+
         try {
             if (!apiKey) {
                 set({ isSaving: false });
@@ -1462,20 +1553,28 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // refer to the post-deletion timeline. Delete by entry_id (order-
             // independent), so the order within deletedEntryIds doesn't matter.
             for (const entryId of deletedEntryIds) {
-                const res = await fetch(`${frameBase}/delete`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Institute-Key': apiKey,
-                    },
-                    body: JSON.stringify({
-                        [idField]: videoId,
-                        entry_id: entryId,
-                    }),
-                });
-                if (!res.ok) {
-                    const text = await res.text().catch(() => res.statusText);
-                    throw new Error(`Delete frame failed (${entryId}): ${text}`);
+                try {
+                    const res = await fetch(`${frameBase}/delete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Institute-Key': apiKey,
+                        },
+                        body: JSON.stringify({
+                            [idField]: videoId,
+                            entry_id: entryId,
+                        }),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text().catch(() => res.statusText);
+                        throw new Error(text);
+                    }
+                    succeededDeletes.add(entryId);
+                } catch (err) {
+                    failedDeletes.push({
+                        id: entryId,
+                        message: err instanceof Error ? err.message : String(err),
+                    });
                 }
             }
 
@@ -1487,168 +1586,245 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // updates would destroy entries at the target positions, which is
             // why we route through this dedicated endpoint.
             for (const op of pendingReorders) {
-                const res = await fetch(`${frameBase}/reorder`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Institute-Key': apiKey,
-                    },
-                    body: JSON.stringify({
-                        [idField]: videoId,
-                        entry_id: op.entry_id,
-                        to_index: op.to_index,
-                    }),
-                });
-                if (!res.ok) {
-                    const text = await res.text().catch(() => res.statusText);
-                    throw new Error(`Reorder frame failed (${op.entry_id}): ${text}`);
+                try {
+                    const res = await fetch(`${frameBase}/reorder`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Institute-Key': apiKey,
+                        },
+                        body: JSON.stringify({
+                            [idField]: videoId,
+                            entry_id: op.entry_id,
+                            to_index: op.to_index,
+                        }),
+                    });
+                    if (!res.ok) {
+                        const text = await res.text().catch(() => res.statusText);
+                        throw new Error(text);
+                    }
+                    succeededReorders.add(op.entry_id);
+                } catch (err) {
+                    failedReorders.push({
+                        id: op.entry_id,
+                        message: err instanceof Error ? err.message : String(err),
+                    });
                 }
             }
 
             // Send to backend sequentially to avoid S3 concurrent-write race (C26).
             // New entries (never persisted) use frame/add; existing use frame/update.
             for (const entry of toSave) {
-                const t = entryTransforms[entry.id];
-                const bg = entryBackgrounds[entry.id];
-                const tr = entryTransitions[entry.id];
-                const dur =
-                    entry.inTime != null && entry.exitTime != null
-                        ? entry.exitTime - entry.inTime
-                        : undefined;
-                const newHtml = injectShotWrapper(entry.html, t, bg, tr, dur);
-                const isNew = newEntryIds.includes(entry.id);
-
-                if (isNew) {
-                    // Same entry_meta logic as the /frame/update branch: send
-                    // the display name (including empty string for "clear")
-                    // when the user has touched it, plus any per-shot
-                    // caption_style override. Skipped entirely when there's
-                    // neither so we don't bloat the timeline JSON with empty
-                    // entry_meta objects for plain new shots.
-                    const pendingNameAdd = useVideoEditorStore.getState().displayNames[entry.id];
-                    const captionStyleAdd = entry.entry_meta?.caption_style;
-                    const addEntryMetaPayload: Record<string, unknown> | undefined =
-                        pendingNameAdd !== undefined || captionStyleAdd !== undefined
-                            ? {
-                                  ...(pendingNameAdd !== undefined
-                                      ? { display_name: pendingNameAdd }
-                                      : {}),
-                                  ...(captionStyleAdd !== undefined
-                                      ? { caption_style: captionStyleAdd }
-                                      : {}),
-                              }
+                try {
+                    const t = entryTransforms[entry.id];
+                    const bg = entryBackgrounds[entry.id];
+                    const tr = entryTransitions[entry.id];
+                    const dur =
+                        entry.inTime != null && entry.exitTime != null
+                            ? entry.exitTime - entry.inTime
                             : undefined;
+                    const newHtml = injectShotWrapper(entry.html, t, bg, tr, dur);
+                    const isNew = newEntryIds.includes(entry.id);
 
-                    const res = await fetch(`${frameBase}/add`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Institute-Key': apiKey,
-                        },
-                        body: JSON.stringify({
-                            [idField]: videoId,
-                            html: newHtml,
-                            in_time: entry.inTime ?? entry.start ?? null,
-                            exit_time: entry.exitTime ?? entry.end ?? null,
-                            z: entry.z ?? 0,
-                            entry_id: entry.id,
-                            ...(addEntryMetaPayload ? { entry_meta: addEntryMetaPayload } : {}),
-                        }),
-                    });
-                    if (!res.ok) {
-                        const text = await res.text().catch(() => res.statusText);
-                        throw new Error(`Add frame failed: ${text}`);
-                    }
-                } else {
-                    const frameIndex = entries.indexOf(entry);
-                    // Build entry_meta payload for the server. Includes any
-                    // pending display-name override; empty string explicitly
-                    // clears the override (server treats empty as "drop the
-                    // key"). When there's nothing rename-related to send, omit
-                    // the field entirely so we don't trigger an unnecessary
-                    // entry_meta merge round-trip on every HTML edit.
-                    const pendingName = useVideoEditorStore.getState().displayNames[entry.id];
-                    // Per-shot caption override. Always send when present on
-                    // the entry (including `null` to clear an existing override
-                    // — BE merges naively, so null lands on disk and the
-                    // render server / load path treats null as "no override").
-                    const captionStyle = entry.entry_meta?.caption_style;
-                    const entryMetaPayload: Record<string, unknown> | undefined =
-                        pendingName !== undefined || captionStyle !== undefined
-                            ? {
-                                  ...(pendingName !== undefined
-                                      ? { display_name: pendingName ?? '' }
-                                      : {}),
-                                  // captionStyle can be undefined (no override set this
-                                  // session) or a value. We only enter this branch when
-                                  // it's defined OR a display name is pending — narrow
-                                  // explicitly so we don't emit `caption_style: undefined`.
-                                  ...(captionStyle !== undefined
-                                      ? { caption_style: captionStyle }
-                                      : {}),
-                              }
-                            : undefined;
+                    if (isNew) {
+                        // Same entry_meta logic as the /frame/update branch: send
+                        // the display name (including empty string for "clear")
+                        // when the user has touched it, plus any per-shot
+                        // caption_style override. Skipped entirely when there's
+                        // neither so we don't bloat the timeline JSON with empty
+                        // entry_meta objects for plain new shots.
+                        const pendingNameAdd =
+                            useVideoEditorStore.getState().displayNames[entry.id];
+                        const captionStyleAdd = entry.entry_meta?.caption_style;
+                        const addEntryMetaPayload: Record<string, unknown> | undefined =
+                            pendingNameAdd !== undefined || captionStyleAdd !== undefined
+                                ? {
+                                      ...(pendingNameAdd !== undefined
+                                          ? { display_name: pendingNameAdd }
+                                          : {}),
+                                      ...(captionStyleAdd !== undefined
+                                          ? { caption_style: captionStyleAdd }
+                                          : {}),
+                                  }
+                                : undefined;
 
-                    const res = await fetch(`${frameBase}/update`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Institute-Key': apiKey,
-                        },
-                        body: JSON.stringify({
-                            [idField]: videoId,
-                            frame_index: frameIndex,
-                            new_html: newHtml,
-                            in_time: entry.inTime ?? entry.start ?? null,
-                            exit_time: entry.exitTime ?? entry.end ?? null,
-                            z: entry.z ?? 0,
-                            entry_id: entry.id,
-                            ...(entryMetaPayload ? { entry_meta: entryMetaPayload } : {}),
-                            // Persist the model that authored this HTML.
-                            // Read at regen time so "Remake with AI" uses
-                            // the same model on next edit.
-                            ...(entry.html_model ? { html_model: entry.html_model } : {}),
-                        }),
-                    });
-                    if (!res.ok) {
-                        const text = await res.text().catch(() => res.statusText);
-                        throw new Error(`Frame ${frameIndex}: ${text}`);
+                        const res = await fetch(`${frameBase}/add`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Institute-Key': apiKey,
+                            },
+                            body: JSON.stringify({
+                                [idField]: videoId,
+                                html: newHtml,
+                                in_time: entry.inTime ?? entry.start ?? null,
+                                exit_time: entry.exitTime ?? entry.end ?? null,
+                                z: entry.z ?? 0,
+                                entry_id: entry.id,
+                                ...(addEntryMetaPayload ? { entry_meta: addEntryMetaPayload } : {}),
+                            }),
+                        });
+                        if (!res.ok) {
+                            const text = await res.text().catch(() => res.statusText);
+                            throw new Error(`Add frame failed: ${text}`);
+                        }
+                        succeededSaves.add(entry.id);
+                    } else {
+                        const frameIndex = entries.indexOf(entry);
+                        // Build entry_meta payload for the server. Includes any
+                        // pending display-name override; empty string explicitly
+                        // clears the override (server treats empty as "drop the
+                        // key"). When there's nothing rename-related to send, omit
+                        // the field entirely so we don't trigger an unnecessary
+                        // entry_meta merge round-trip on every HTML edit.
+                        const pendingName = useVideoEditorStore.getState().displayNames[entry.id];
+                        // Per-shot caption override. Always send when present on
+                        // the entry (including `null` to clear an existing override
+                        // — BE merges naively, so null lands on disk and the
+                        // render server / load path treats null as "no override").
+                        const captionStyle = entry.entry_meta?.caption_style;
+                        const entryMetaPayload: Record<string, unknown> | undefined =
+                            pendingName !== undefined || captionStyle !== undefined
+                                ? {
+                                      ...(pendingName !== undefined
+                                          ? { display_name: pendingName ?? '' }
+                                          : {}),
+                                      // captionStyle can be undefined (no override set this
+                                      // session) or a value. We only enter this branch when
+                                      // it's defined OR a display name is pending — narrow
+                                      // explicitly so we don't emit `caption_style: undefined`.
+                                      ...(captionStyle !== undefined
+                                          ? { caption_style: captionStyle }
+                                          : {}),
+                                  }
+                                : undefined;
+
+                        const res = await fetch(`${frameBase}/update`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Institute-Key': apiKey,
+                            },
+                            body: JSON.stringify({
+                                [idField]: videoId,
+                                frame_index: frameIndex,
+                                new_html: newHtml,
+                                in_time: entry.inTime ?? entry.start ?? null,
+                                exit_time: entry.exitTime ?? entry.end ?? null,
+                                z: entry.z ?? 0,
+                                entry_id: entry.id,
+                                ...(entryMetaPayload ? { entry_meta: entryMetaPayload } : {}),
+                                // Persist the model that authored this HTML.
+                                // Read at regen time so "Remake with AI" uses
+                                // the same model on next edit.
+                                ...(entry.html_model ? { html_model: entry.html_model } : {}),
+                            }),
+                        });
+                        if (!res.ok) {
+                            const text = await res.text().catch(() => res.statusText);
+                            throw new Error(`Frame ${frameIndex}: ${text}`);
+                        }
+                        succeededSaves.add(entry.id);
                     }
+                } catch (err) {
+                    failedSaves.push({
+                        id: entry.id,
+                        message: err instanceof Error ? err.message : String(err),
+                    });
                 }
             }
 
-            // Bake transforms + backgrounds + transitions into local entry HTML
-            set((s) => ({
-                entries: s.entries.map((e) => {
-                    const t = s.entryTransforms[e.id];
-                    const bg = s.entryBackgrounds[e.id];
-                    const tr = s.entryTransitions[e.id];
-                    const hasT = t && !isIdentity(t);
-                    if (!hasT && !bg && !tr) return e;
-                    const dur =
-                        e.inTime != null && e.exitTime != null ? e.exitTime - e.inTime : undefined;
-                    return { ...e, html: injectShotWrapper(e.html, t, bg, tr, dur) };
-                }),
-                entryTransforms: {},
-                entryBackgrounds: {},
-                entryTransitions: {},
-                dirtyEntryIds: [],
-                newEntryIds: [], // all new entries are now persisted
-                deletedEntryIds: [], // server-side deletions completed above
-                pendingReorders: [], // server-side reorders completed above
-                past: [],
-                future: [],
-                isSaving: false,
-            }));
+            // Bake transforms / backgrounds / transitions into the local entry
+            // HTML for entries whose save succeeded. Failed entries keep their
+            // overrides in place (and their dirty bit, and any newEntryId
+            // marker) so the next Save click retries them and the canvas
+            // still renders the in-flight override.
+            set((s) => {
+                const filterMap = <V>(m: Record<string, V>): Record<string, V> => {
+                    const next: Record<string, V> = {};
+                    for (const [id, v] of Object.entries(m)) {
+                        if (!succeededSaves.has(id)) next[id] = v;
+                    }
+                    return next;
+                };
+                return {
+                    entries: s.entries.map((e) => {
+                        if (!succeededSaves.has(e.id)) return e;
+                        const t = s.entryTransforms[e.id];
+                        const bg = s.entryBackgrounds[e.id];
+                        const tr = s.entryTransitions[e.id];
+                        const hasT = t && !isIdentity(t);
+                        if (!hasT && !bg && !tr) return e;
+                        const dur =
+                            e.inTime != null && e.exitTime != null
+                                ? e.exitTime - e.inTime
+                                : undefined;
+                        return { ...e, html: injectShotWrapper(e.html, t, bg, tr, dur) };
+                    }),
+                    // Only the FAILED entries retain in-flight overrides.
+                    entryTransforms: filterMap(s.entryTransforms),
+                    entryBackgrounds: filterMap(s.entryBackgrounds),
+                    entryTransitions: filterMap(s.entryTransitions),
+                    dirtyEntryIds: s.dirtyEntryIds.filter((id) => !succeededSaves.has(id)),
+                    htmlEditedEntryIds: s.htmlEditedEntryIds.filter(
+                        (id) => !succeededSaves.has(id)
+                    ),
+                    newEntryIds: s.newEntryIds.filter((id) => !succeededSaves.has(id)),
+                    deletedEntryIds: s.deletedEntryIds.filter((id) => !succeededDeletes.has(id)),
+                    pendingReorders: s.pendingReorders.filter(
+                        (op) => !succeededReorders.has(op.entry_id)
+                    ),
+                    // Undo history is cleared only on a fully-successful save
+                    // — preserving it for partial-fail lets the user step
+                    // back if they want to inspect what they edited.
+                    past:
+                        failedSaves.length === 0 &&
+                        failedDeletes.length === 0 &&
+                        failedReorders.length === 0
+                            ? []
+                            : s.past,
+                    future:
+                        failedSaves.length === 0 &&
+                        failedDeletes.length === 0 &&
+                        failedReorders.length === 0
+                            ? []
+                            : s.future,
+                    isSaving: false,
+                };
+            });
             // Display-name overrides are now reflected server-side in
-            // entry_meta. Clear the localStorage offline buffer so the next
-            // reload pulls names from the server. The in-memory
-            // `displayNames` map stays intact — it matches the server and
-            // continues to drive the UI without a reload.
-            try {
-                window.localStorage.removeItem(DISPLAY_NAMES_LS_PREFIX + videoId);
-            } catch {
-                /* private mode — fine */
+            // entry_meta for every succeeded save. Only wipe the localStorage
+            // offline buffer when nothing failed — partial-fail keeps the
+            // unsaved names on disk so a reload doesn't lose them.
+            if (
+                failedSaves.length === 0 &&
+                failedDeletes.length === 0 &&
+                failedReorders.length === 0
+            ) {
+                try {
+                    window.localStorage.removeItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+                } catch {
+                    /* private mode — fine */
+                }
+            }
+            // Surface failures through the existing toast.error path. The
+            // caller's catch will format the message; succeeded changes are
+            // already persisted locally so it's safe to "throw" after the
+            // state reset above.
+            const totalFailed = failedDeletes.length + failedReorders.length + failedSaves.length;
+            if (totalFailed > 0) {
+                const totalSucceeded =
+                    succeededDeletes.size + succeededReorders.size + succeededSaves.size;
+                const sample =
+                    failedSaves[0]?.message ??
+                    failedDeletes[0]?.message ??
+                    failedReorders[0]?.message ??
+                    'Unknown error';
+                throw new Error(
+                    `Saved ${totalSucceeded} change${
+                        totalSucceeded === 1 ? '' : 's'
+                    }; ${totalFailed} failed (${sample}). Click Save again to retry.`
+                );
             }
         } catch (err) {
             set({ isSaving: false });

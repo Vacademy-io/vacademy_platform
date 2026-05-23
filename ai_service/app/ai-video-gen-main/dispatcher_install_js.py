@@ -698,6 +698,71 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             const _shotTL = (scope.host && scope.host._shotTL) || null;
                             const gsap = createScopedGsap(_shotTL);
 
+                            // ── Preserve CSS percentage-translate centering ──────────────
+                            // LLM-authored shots commonly center elements with
+                            //   transform: translate(-50%, -50%)
+                            // and then animate y/scale/rotation via GSAP fromTo/to. GSAP
+                            // reads getComputedStyle(el).transform to seed its internal
+                            // x/y/xPercent/yPercent. The browser computes percentage
+                            // translates into a matrix() with pixel values, losing the
+                            // "percent" intent. In the production render's shadow DOM,
+                            // this read sometimes happens before the matrix is populated,
+                            // so GSAP records xPercent: 0, yPercent: 0 and every later
+                            // write of transform drops the -50%/-50% centering — the
+                            // element anchors at its top-left, not its center, and
+                            // visibly shifts right and down.
+                            //
+                            // To stop that, walk the shot's <style> rules, find any
+                            // selectors with transform: translate(X%, Y%), and pre-seed
+                            // GSAP's transform state with xPercent/yPercent + x:0/y:0/
+                            // scale:1/rotation:0. From this moment on, GSAP's tween
+                            // pipeline knows the element's "natural" centering offset
+                            // and preserves it through every subsequent fromTo/to/from.
+                            try {
+                                if (window.gsap && typeof window.gsap.set === 'function') {
+                                    const _styles = scope.querySelectorAll('style');
+                                    const _seen = new WeakSet();
+                                    const _trRe = /translate(?:3d)?\s*\(\s*(-?\d+(?:\.\d+)?)\s*%\s*(?:,\s*(-?\d+(?:\.\d+)?)\s*%)?/i;
+                                    for (let _si = 0; _si < _styles.length; _si++) {
+                                        const _sheet = _styles[_si].sheet;
+                                        if (!_sheet) continue;
+                                        let _rules;
+                                        try { _rules = _sheet.cssRules || _sheet.rules; } catch (e) { continue; }
+                                        if (!_rules) continue;
+                                        for (let _ri = 0; _ri < _rules.length; _ri++) {
+                                            const _r = _rules[_ri];
+                                            if (!_r || !_r.style || !_r.selectorText) continue;
+                                            const _tf = _r.style.transform || _r.style.webkitTransform || '';
+                                            if (!_tf) continue;
+                                            const _m = _tf.match(_trRe);
+                                            if (!_m) continue;
+                                            const _xp = parseFloat(_m[1]);
+                                            const _yp = _m[2] !== undefined ? parseFloat(_m[2]) : 0;
+                                            if (!isFinite(_xp) && !isFinite(_yp)) continue;
+                                            let _els;
+                                            try { _els = scope.querySelectorAll(_r.selectorText); } catch (e) { continue; }
+                                            if (!_els || !_els.length) continue;
+                                            for (let _ei = 0; _ei < _els.length; _ei++) {
+                                                const _el = _els[_ei];
+                                                if (_seen.has(_el)) continue;
+                                                _seen.add(_el);
+                                                try {
+                                                    window.gsap.set(_el, {
+                                                        xPercent: isFinite(_xp) ? _xp : 0,
+                                                        yPercent: isFinite(_yp) ? _yp : 0,
+                                                        x: 0, y: 0,
+                                                    });
+                                                } catch (e) {
+                                                    console.warn('[percent-translate-preinit] gsap.set failed for ' + _r.selectorText + ':', e && e.message);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_ptpErr) {
+                                console.warn('[percent-translate-preinit] scan failed:', _ptpErr && _ptpErr.message);
+                            }
+
                             // Scoped d3 proxy — d3.select/selectAll search inside shadow root
                             const d3 = window.d3 ? (() => {
                                 const proxy = Object.create(window.d3);

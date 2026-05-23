@@ -232,10 +232,26 @@ export const USER_OVERRIDABLE_STAGE_META: readonly {
     hint?: string;
 }[] = [
     { value: 'shot_planner', label: 'Shot planning', hint: 'Plans the whole video shot-by-shot.' },
-    { value: 'narration_writer', label: 'Narration writing', hint: 'Authors per-shot narration text.' },
-    { value: 'per_shot_html', label: 'Per-shot HTML', hint: 'Generates HTML for every shot — biggest token bucket.' },
-    { value: 'act_planner', label: 'Act planner', hint: 'Decomposes intent into acts before shot planning.' },
-    { value: 'regen_html', label: 'HTML regeneration', hint: 'Corrective regen for failed validation passes.' },
+    {
+        value: 'narration_writer',
+        label: 'Narration writing',
+        hint: 'Authors per-shot narration text.',
+    },
+    {
+        value: 'per_shot_html',
+        label: 'Per-shot HTML',
+        hint: 'Generates HTML for every shot — biggest token bucket.',
+    },
+    {
+        value: 'act_planner',
+        label: 'Act planner',
+        hint: 'Decomposes intent into acts before shot planning.',
+    },
+    {
+        value: 'regen_html',
+        label: 'HTML regeneration',
+        hint: 'Corrective regen for failed validation passes.',
+    },
 ] as const;
 
 export interface ModelOverrides {
@@ -1133,6 +1149,49 @@ export interface HistoryItem {
 
 const HISTORY_STORAGE_KEY = 'vacademy_video_generation_history';
 
+/**
+ * Cross-tab handoff for the "Reuse settings from this video" action on the
+ * Recent grid. RecentTab writes a snapshot to sessionStorage and navigates
+ * to the Create tab; VideoConsoleWorkspace consumes the handoff in its
+ * useState initializers and clears it in a useEffect. One-shot.
+ *
+ * Per-run fields (reference_files / input_video_ids / routing_overrides)
+ * are intentionally stripped before write — re-attaching another run's
+ * uploads to a fresh prompt would surprise the user. The user's tonal
+ * choices (tier, voice, host, brand kit, visual mix) are what get carried.
+ */
+export const REUSE_SETTINGS_HANDOFF_KEY = 'vimotion_reuse_settings';
+
+export interface ReuseSettingsHandoff {
+    prompt: string;
+    options: Partial<Omit<GenerateVideoRequest, 'prompt'>>;
+}
+
+/** Fields that must NOT carry over via "Reuse settings". Stripped at write time. */
+const REUSE_BLOCKED_FIELDS = [
+    'reference_files',
+    'input_video_ids',
+    'input_video_audio',
+    'mute_tts_on_source_clips',
+    'routing_overrides',
+] as const;
+
+/**
+ * Strip per-run fields from an options object before staging it for the
+ * "Reuse settings" handoff. Returns a shallow clone — the input is not
+ * mutated.
+ */
+export function buildReuseSettingsPayload(
+    prompt: string,
+    options: Partial<Omit<GenerateVideoRequest, 'prompt'>>
+): ReuseSettingsHandoff {
+    const cleaned: Partial<Omit<GenerateVideoRequest, 'prompt'>> = { ...options };
+    for (const key of REUSE_BLOCKED_FIELDS) {
+        delete (cleaned as Record<string, unknown>)[key];
+    }
+    return { prompt, options: cleaned };
+}
+
 export const LANGUAGES = [
     // English variants
     { value: 'English (US)', label: 'English (US)', group: 'English' },
@@ -1620,6 +1679,9 @@ export type RenderResolution = '720p' | '1080p';
 export type RenderFps = 15 | 20 | 25 | 30 | 45 | 60;
 export type CaptionSize = 'S' | 'M' | 'L';
 export type CaptionPosition = 'top' | 'bottom';
+export type CaptionStyle = 'phrase' | 'karaoke';
+export type CaptionFontFamily = 'system' | 'inter' | 'montserrat' | 'noto-sans' | 'fira-code';
+export type CaptionPreset = 'youtube' | 'tiktok' | 'karaoke' | 'cinema' | 'branded' | 'custom';
 
 export interface RenderSettings {
     resolution: RenderResolution;
@@ -1630,6 +1692,20 @@ export interface RenderSettings {
     captionBgColor: string;
     captionBgOpacity: number; // 0-100
     captionSize: CaptionSize;
+    /** Phrase shows the whole line; karaoke highlights the active word. */
+    captionStyle: CaptionStyle;
+    /** 'system' (default) or one of the four harness-loaded Google Fonts. */
+    captionFontFamily: CaptionFontFamily;
+    /** 400 / 500 / 600 / 700 / 800 / 900. Default 400. */
+    captionFontWeight: number;
+    /** Outline width in "px at 1920w canvas". 0 = no stroke. */
+    captionTextStrokeWidth: number;
+    /** Hex color for the outline. Ignored when width is 0. */
+    captionTextStrokeColor: string;
+    /** Hex color used for the active word in karaoke style. */
+    captionHighlightColor: string;
+    /** Informational — UI shows which preset is currently selected. */
+    captionPreset?: CaptionPreset;
     watermark: boolean;
 }
 
@@ -1642,6 +1718,13 @@ export const DEFAULT_RENDER_SETTINGS: RenderSettings = {
     captionBgColor: '#000000',
     captionBgOpacity: 60,
     captionSize: 'M',
+    captionStyle: 'phrase',
+    captionFontFamily: 'system',
+    captionFontWeight: 400,
+    captionTextStrokeWidth: 0,
+    captionTextStrokeColor: '#000000',
+    captionHighlightColor: '#fbbf24',
+    captionPreset: 'youtube',
     watermark: true,
 };
 
@@ -1667,6 +1750,13 @@ export async function requestVideoRender(
             caption_bg_color: settings.captionBgColor,
             caption_bg_opacity: settings.captionBgOpacity,
             caption_size: settings.captionSize,
+            caption_style: settings.captionStyle,
+            caption_font_family: settings.captionFontFamily,
+            caption_font_weight: settings.captionFontWeight,
+            caption_text_stroke_width: settings.captionTextStrokeWidth,
+            caption_text_stroke_color: settings.captionTextStrokeColor,
+            caption_highlight_color: settings.captionHighlightColor,
+            caption_preset: settings.captionPreset,
         });
     }
 

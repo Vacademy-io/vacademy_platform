@@ -294,6 +294,16 @@ export type CaptionFontSize = 'small' | 'medium' | 'large';
 export type CaptionStyle = 'phrase' | 'karaoke';
 
 /**
+ * Caption font family. Kept in lockstep with the admin app + render harness.
+ */
+export type CaptionFontFamily = 'system' | 'inter' | 'montserrat' | 'noto-sans' | 'fira-code';
+
+/**
+ * Quick named style packs.
+ */
+export type CaptionPreset = 'youtube' | 'tiktok' | 'karaoke' | 'cinema' | 'branded' | 'custom';
+
+/**
  * User-customizable caption settings
  */
 export interface CaptionSettings {
@@ -304,6 +314,11 @@ export interface CaptionSettings {
   backgroundOpacity: number; // 0 to 1
   textColor: string;
   highlightColor: string; // For karaoke style
+  fontFamily: CaptionFontFamily;
+  fontWeight: number;
+  textStrokeWidth: number;
+  textStrokeColor: string;
+  preset?: CaptionPreset;
 }
 
 /**
@@ -317,6 +332,11 @@ export const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {
   backgroundOpacity: 0.6,
   textColor: '#ffffff',
   highlightColor: '#fbbf24', // Amber/yellow for current word
+  fontFamily: 'system',
+  fontWeight: 400,
+  textStrokeWidth: 0,
+  textStrokeColor: '#000000',
+  preset: 'youtube',
 };
 
 /**

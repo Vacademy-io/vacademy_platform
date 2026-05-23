@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Optional, Sequence, Tuple
 
@@ -32,7 +33,15 @@ logger = logging.getLogger(__name__)
 
 # Axis weights for composite (geometric mean). Hook is highest per research
 # (3s gate is the kill switch — TTS Vibes / Socialync data).
-AXIS_WEIGHTS = {"hook": 0.40, "pacing": 0.25, "info": 0.20, "loop": 0.15}
+AXIS_WEIGHTS = {
+    "hook": 0.34,
+    "pacing": 0.21,
+    "info": 0.17,
+    "loop": 0.13,
+    # A3 (2026-05-22) — topic-coherence axis. Weights of the other four
+    # were each scaled by 0.85 to make room. Sum stays at 1.00.
+    "topic": 0.15,
+}
 
 # Window enumeration.
 WINDOW_STRIDE_S = 2.0
@@ -82,6 +91,19 @@ EMPHASIS_RATIO_CHAOTIC = 2.5
 MAX_WORD_CUT_PCT = 0.20              # >20% surgery would mangle meaning
 MAX_SPEAKER_MOVES = 2                # ≥3 face_segments touching a window is jumpy
 
+# A1 — dead-zone pre-filter (2026-05-22). Before paying the cost of computing
+# the 4 axes, drop windows that are objectively unusable. Two signals fire:
+#   1. SILENCE_FRACTION_REJECT: window is >this fraction silence. Even with
+#      aggressive silence-trim, the kept content would be too thin.
+#   2. FACE_COVERAGE_REJECT: face_segments touch <this fraction of the window
+#      duration. Speaker isn't on screen — a stacked/PiP layout has nothing
+#      to anchor on. Gated by `MIN_FACE_SEGMENTS_FOR_FILTER` so sources where
+#      the indexer didn't run face detection (screen recordings) aren't
+#      blanket-rejected.
+SILENCE_FRACTION_REJECT = 0.50
+FACE_COVERAGE_REJECT = 0.20
+MIN_FACE_SEGMENTS_FOR_FILTER = 5     # only apply face filter when indexer has data
+
 # Diversity penalty: windows within this many seconds of an already-top-ranked
 # window get a recency penalty so the top-N spreads across the source.
 DIVERSITY_RADIUS_S = 60.0
@@ -93,11 +115,13 @@ DIVERSITY_RADIUS_S = 60.0
 
 @dataclass
 class ScoreVec:
-    """One window's 4-axis score + composite + a breakdown payload."""
+    """One window's 5-axis score + composite + a breakdown payload.
+    A3 (2026-05-22): added `topic` axis."""
     hook: float
     pacing: float
     info: float
     loop: float
+    topic: float
     composite: float
     breakdown: dict = field(default_factory=dict)
 
@@ -167,6 +191,23 @@ def score_windows(
     # silent/sparse sources don't divide-by-near-zero.
     source_emphasis_density = max(0.05, len(emphasis) / max(1.0, duration_s))
 
+    # A4 + A3 (Phase 3, 2026-05-22) — single-pass source-level baselines for
+    # both info-density (A4) and topic-coherence (A3). One walk of the full
+    # transcript: tokenize → strip stopwords → Counter. From that one Counter
+    # we derive A4's `unique_count / duration` AND A3's per-token IDF input.
+    # Same lowercase + STOPWORDS filter as `_score_info` keeps ratios apples-
+    # to-apples. CR4 (2026-05-22): merged the two previously-separate passes.
+    _src_blob = " ".join(s.get("text", "") for s in transcript)
+    _src_tokens = re.findall(r"[A-Za-z']+", _src_blob.lower())
+    source_token_counts: Counter[str] = Counter(
+        t for t in _src_tokens if t not in STOPWORDS and len(t) > 2
+    )
+    source_total_content_tokens = max(1, sum(source_token_counts.values()))
+    source_info_density = max(
+        0.2,
+        len(source_token_counts) / max(1.0, duration_s),
+    )
+
     target = request.target_duration_sec
     tol = request.duration_tolerance_sec
     win_min = target * (1 - WINDOW_SIZE_TOLERANCE)
@@ -180,6 +221,14 @@ def score_windows(
     # Typical savings: 5-15% on a 1hr source.
     candidates: list[CandidateScore] = []
     seen_windows: set[tuple[float, float]] = set()
+    # P2-B observability: count what the pre-filter dropped so ops can tune
+    # thresholds. Logged once at end. Cheap (just ints).
+    enum_count = 0
+    drop_silence = 0
+    drop_face_coverage = 0
+    drop_word_cut_pct = 0
+    drop_speaker_moves = 0
+    drop_no_snippet = 0
     t = 0.0
     while t + win_min < duration_s:
         win_start, win_end = _snap_window_to_sentence(
@@ -202,9 +251,47 @@ def score_windows(
             t += WINDOW_STRIDE_S
             continue
         seen_windows.add(key)
+        enum_count += 1
+
+        # P1 fix: user-pinned ranges bypass the pre-filter (and the existing
+        # speaker_moves reject). If the caller explicitly said "include this
+        # timestamp," respect the pin even if framing/silence aren't ideal —
+        # framing fixes happen at SOURCE_CLIP and the user can edit cuts.
+        is_pinned = bool(request.must_include_ranges) and _overlaps_any(
+            win_start, win_end, request.must_include_ranges
+        )
+
+        # A1 — dead-zone pre-filter (2026-05-22). Reject windows that are
+        # silence-dominated or have no speaker presence BEFORE paying for the
+        # 4-axis computation. Cheap O(touching-segments) checks. Face filter
+        # gated by indexer-has-data threshold so screen-recording sources
+        # (no face tracking) aren't blanket-rejected.
+        # P2-A: face_coverage_fraction is ALWAYS computed when face_segments
+        # is non-empty (so the diagnostic chip is informative for low-segment
+        # sources too); the rejection check only fires when count >= threshold.
+        win_duration = win_end - win_start
+        silence_s = _silence_seconds_in(pauses, win_start, win_end)
+        silence_frac_check = silence_s / max(0.001, win_duration)
+        if silence_frac_check > SILENCE_FRACTION_REJECT and not is_pinned:
+            drop_silence += 1
+            t += WINDOW_STRIDE_S
+            continue
+        face_cov: Optional[float] = None
+        if face_segments:
+            face_cov = _face_coverage_fraction(face_segments, win_start, win_end)
+            if (
+                len(face_segments) >= MIN_FACE_SEGMENTS_FOR_FILTER
+                and face_cov < FACE_COVERAGE_REJECT
+                and not is_pinned
+            ):
+                drop_face_coverage += 1
+                t += WINDOW_STRIDE_S
+                continue
 
         # Compute axes.
         breakdown: dict = {}
+        if face_cov is not None:
+            breakdown["face_coverage_fraction"] = round(face_cov, 3)
         hook = _score_hook(
             win_start, win_end, transcript, energy_series, pitch_series,
             mean_rms, breakdown,
@@ -213,26 +300,33 @@ def score_windows(
             win_start, win_end, transcript, emphasis, pauses, scenes,
             target, tol, source_emphasis_density, breakdown,
         )
-        # Hard reject: too much word surgery needed.
-        if cut_pct > MAX_WORD_CUT_PCT:
+        # Hard reject: too much word surgery needed (pinned ranges bypass).
+        if cut_pct > MAX_WORD_CUT_PCT and not is_pinned:
+            drop_word_cut_pct += 1
             t += WINDOW_STRIDE_S
             continue
 
         # User-pinned ranges bypass the speaker_moves rejection (F4) — if the
         # caller explicitly said "include this timestamp", we honor the pin
         # even if framing isn't perfect. They can fix framing in the editor.
-        is_pinned = bool(request.must_include_ranges) and _overlaps_any(
-            win_start, win_end, request.must_include_ranges
-        )
+        # (is_pinned already computed above pre-filter — P1 fix 2026-05-22.)
         speaker_moves = _count_speaker_moves(win_start, win_end, face_segments)
         breakdown["speaker_moves_in_window"] = speaker_moves
         if speaker_moves > MAX_SPEAKER_MOVES and not is_pinned:
+            drop_speaker_moves += 1
             t += WINDOW_STRIDE_S
             continue
 
-        info = _score_info(win_start, win_end, transcript, request.topic_keywords, breakdown)
+        info = _score_info(
+            win_start, win_end, transcript, request.topic_keywords,
+            source_info_density, breakdown,
+        )
         loop = _score_loop(
             win_start, win_end, transcript, energy_series, pitch_series, breakdown,
+        )
+        topic = _score_topic_coherence(
+            win_start, win_end, transcript,
+            source_token_counts, source_total_content_tokens, breakdown,
         )
 
         # Must-include boost.
@@ -247,10 +341,11 @@ def score_windows(
         # in dead-air stretches and have no usable content to surface even
         # if the heuristic axes happen to land somewhere non-zero.
         if not snippet:
+            drop_no_snippet += 1
             t += WINDOW_STRIDE_S
             continue
 
-        composite = _composite(hook, pacing, info, loop)
+        composite = _composite(hook, pacing, info, loop, topic)
         # End-quality adjustment (Issue 4A — production audit 2026-05-21).
         # The previous boundary-alignment bonus was a math no-op (every
         # window got +10 because snap_to_sentence forced edges to align).
@@ -261,8 +356,8 @@ def score_windows(
         composite = max(0.0, min(100.0, composite + eq_delta))
         breakdown.update(eq_breakdown)
         score = ScoreVec(
-            hook=hook, pacing=pacing, info=info, loop=loop, composite=composite,
-            breakdown=breakdown,
+            hook=hook, pacing=pacing, info=info, loop=loop, topic=topic,
+            composite=composite, breakdown=breakdown,
         )
 
         candidates.append(CandidateScore(
@@ -275,6 +370,19 @@ def score_windows(
             transcript_snippet=snippet,
         ))
         t += WINDOW_STRIDE_S
+
+    # P2-B observability log (single INFO line). Lets ops grep "[reels.scan]"
+    # to see how the pre-filter is firing per source.
+    logger.info(
+        "[reels.scan] enumerated=%d passed=%d "
+        "drop_silence=%d drop_face_coverage=%d drop_word_cut_pct=%d "
+        "drop_speaker_moves=%d drop_no_snippet=%d "
+        "face_segments=%d duration_s=%.1f",
+        enum_count, len(candidates),
+        drop_silence, drop_face_coverage, drop_word_cut_pct,
+        drop_speaker_moves, drop_no_snippet,
+        len(face_segments), duration_s,
+    )
 
     if not candidates:
         return []
@@ -869,10 +977,18 @@ def _score_info(
     win_end: float,
     transcript: list[dict],
     topic_keywords: Sequence[str],
+    source_info_density: float,
     breakdown: dict,
 ) -> float:
     """Information density: unique content words/s + numeric tokens + keyword
-    matches − repetition penalty."""
+    matches − repetition penalty.
+
+    A4 (Phase 3): density is scored RELATIVE to the source-level baseline,
+    not against absolute thresholds. A soft-spoken lecturer at 0.4 unique-
+    words/s with a 0.3 source baseline scores well (1.33× the speaker's own
+    norm); a fast podcaster at the same 0.4 with 1.5 source baseline scores
+    poorly (0.27×). Per-speaker fair.
+    """
     duration = win_end - win_start
     text_blob = " ".join(
         s.get("text", "")
@@ -887,15 +1003,18 @@ def _score_info(
     rate = unique_content / max(0.001, duration)
     breakdown["unique_content_words_per_s"] = round(rate, 2)
 
-    # 1.5-3.0 unique content words/s is a comfortable density.
-    if rate >= 3.0:
-        density_score = 100.0
-    elif rate >= 1.5:
-        density_score = 70.0 + (rate - 1.5) * 20.0
-    elif rate >= 0.7:
-        density_score = 40.0 + (rate - 0.7) * 37.5
+    # Same piecewise as emphasis but WITHOUT a chaotic cap on the high end
+    # — high info density is generally good (research §12.2: dense content
+    # holds attention longer). Bottoms out at 0 for ratio<<1, plateaus at
+    # 100 above ratio=1.5×.
+    ratio = rate / max(0.05, source_info_density)
+    breakdown["info_density_ratio"] = round(ratio, 2)
+    if ratio < 0.5:
+        density_score = 60.0 * (ratio / 0.5)
+    elif ratio <= 1.5:
+        density_score = 60.0 + 40.0 * ((ratio - 0.5) / 1.0)
     else:
-        density_score = max(0.0, 40.0 * rate / 0.7)
+        density_score = 100.0
 
     # Numeric token bonus.
     numeric_count = sum(1 for t in re.findall(r"\b\d[\d,.]*\b", text_blob))
@@ -915,7 +1034,6 @@ def _score_info(
 
     # Repetition penalty (very crude: top-3 most-common content tokens >25%).
     if content_tokens:
-        from collections import Counter
         c = Counter(content_tokens)
         top_share = sum(n for _, n in c.most_common(3)) / max(1, len(content_tokens))
         rep_penalty = max(0.0, (top_share - 0.25) * 80.0)
@@ -1031,10 +1149,91 @@ def _text_callback_score(first: Optional[dict], last: Optional[dict]) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Axis: TOPIC COHERENCE  (A3 — added 2026-05-22)
+# ---------------------------------------------------------------------------
+
+def _score_topic_coherence(
+    win_start: float,
+    win_end: float,
+    transcript: list[dict],
+    source_token_counts: dict,
+    source_total_content_tokens: int,
+    breakdown: dict,
+) -> float:
+    """How focused is this window on a small set of topics?
+
+    Uses TF-IDF against the FULL-SOURCE token distribution as the corpus.
+    A focused window concentrates TF-IDF mass in a few rare-in-source
+    tokens; a rambling window spreads mass evenly across many tokens.
+    We score the share of the top-5 tokens' TF-IDF over the window's total.
+
+    PB19 (2026-05-22) — thresholds calibrated from traced real numbers,
+    not intuition. A 75-token window where one term repeats 8× yields a
+    top-5 share around 0.16-0.18 (real focused content). An all-unique
+    window yields ~0.05-0.07. The buckets reflect that observed range:
+      * share < 0.08 → rambling / multi-topic
+      * 0.08-0.18 → mixed
+      * 0.18-0.30 → focused
+      * >= 0.30 → very focused (single dominant concept)
+
+    Floors at 0 (sub-rambling) and ceilings at 100. Each band is linear.
+    """
+    text_blob = " ".join(
+        s.get("text", "")
+        for s in transcript
+        if s.get("start", 999) >= win_start and s.get("end", 0) <= win_end + 0.5
+    )
+    if not text_blob:
+        return 30.0
+    tokens = re.findall(r"[A-Za-z']+", text_blob.lower())
+    content = [t for t in tokens if t not in STOPWORDS and len(t) > 2]
+    if len(content) < 10:
+        # Not enough tokens to compute a meaningful TF-IDF distribution.
+        # PB20: scale the floor rather than returning a fixed mid-range
+        # value — an empty window shouldn't outscore a focused one.
+        return 15.0 + 15.0 * (len(content) / 10)
+
+    win_counts = Counter(content)
+    win_total = len(content)
+
+    tfidf: dict[str, float] = {}
+    for token, w_count in win_counts.items():
+        tf = w_count / win_total
+        src_count = source_token_counts.get(token, 1)
+        # log(N / df) — common tokens get small IDF, rare ones get large.
+        idf = math.log(max(1.0, source_total_content_tokens / max(1, src_count)))
+        tfidf[token] = tf * idf
+
+    total_tfidf = sum(tfidf.values())
+    if total_tfidf <= 0:
+        return 40.0
+
+    # Top-5 share of the window's TF-IDF mass.
+    sorted_tfidf = sorted(tfidf.items(), key=lambda kv: kv[1], reverse=True)
+    top_share = sum(v for _, v in sorted_tfidf[:5]) / total_tfidf
+    breakdown["topic_top5_share"] = round(top_share, 3)
+    if sorted_tfidf:
+        breakdown["topic_top_token"] = sorted_tfidf[0][0]
+
+    # PB19: thresholds recalibrated to observed real-world top-5 shares.
+    if top_share < 0.08:
+        score = 30.0 * (top_share / 0.08)
+    elif top_share < 0.18:
+        score = 30.0 + 35.0 * ((top_share - 0.08) / 0.10)
+    elif top_share < 0.30:
+        score = 65.0 + 25.0 * ((top_share - 0.18) / 0.12)
+    else:
+        score = min(100.0, 90.0 + 10.0 * ((top_share - 0.30) / 0.20))
+    return max(0.0, min(100.0, score))
+
+
+# ---------------------------------------------------------------------------
 # Compose + diversity
 # ---------------------------------------------------------------------------
 
-def _composite(hook: float, pacing: float, info: float, loop: float) -> float:
+def _composite(
+    hook: float, pacing: float, info: float, loop: float, topic: float,
+) -> float:
     """Weighted geometric mean. Each axis floor of 1.0 to keep the product
     nonzero — otherwise a single 0 axis nukes the score for purely numeric
     reasons rather than reflecting the user-facing penalty we want."""
@@ -1042,11 +1241,13 @@ def _composite(hook: float, pacing: float, info: float, loop: float) -> float:
     p = max(1.0, pacing)
     i = max(1.0, info)
     l = max(1.0, loop)
+    tp = max(1.0, topic)
     log_sum = (
         AXIS_WEIGHTS["hook"] * math.log(h)
         + AXIS_WEIGHTS["pacing"] * math.log(p)
         + AXIS_WEIGHTS["info"] * math.log(i)
         + AXIS_WEIGHTS["loop"] * math.log(l)
+        + AXIS_WEIGHTS["topic"] * math.log(tp)
     )
     return max(0.0, min(100.0, math.exp(log_sum)))
 
@@ -1387,6 +1588,38 @@ def _silence_seconds_in(pauses: list[dict], t_start: float, t_end: float) -> flo
             continue
         total += min(pe, t_end) - max(ps, t_start)
     return total
+
+
+def _face_coverage_fraction(
+    face_segments: list[dict], t_start: float, t_end: float,
+) -> float:
+    """Fraction of [t_start, t_end] that has at least one face_segment.
+
+    Handles overlapping segments by merging before measuring (avoids
+    double-counting a stretch where two detections overlap)."""
+    duration = max(0.001, t_end - t_start)
+    if not face_segments:
+        return 0.0
+    intervals: list[tuple[float, float]] = []
+    for seg in face_segments:
+        ss = float(seg.get("t_start", 0.0))
+        se = float(seg.get("t_end", 0.0))
+        if se <= t_start or ss >= t_end:
+            continue
+        intervals.append((max(ss, t_start), min(se, t_end)))
+    if not intervals:
+        return 0.0
+    intervals.sort()
+    merged_total = 0.0
+    cur_s, cur_e = intervals[0]
+    for s, e in intervals[1:]:
+        if s <= cur_e:
+            cur_e = max(cur_e, e)
+        else:
+            merged_total += cur_e - cur_s
+            cur_s, cur_e = s, e
+    merged_total += cur_e - cur_s
+    return merged_total / duration
 
 
 def _count_words_in_window(transcript: list[dict], t_start: float, t_end: float) -> int:

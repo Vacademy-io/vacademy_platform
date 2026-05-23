@@ -51,6 +51,12 @@ class RenderService:
         caption_bg_color: Optional[str] = None,
         caption_bg_opacity: Optional[int] = None,
         caption_font_size: Optional[int] = None,
+        caption_style: Optional[str] = None,
+        caption_font_family: Optional[str] = None,
+        caption_font_weight: Optional[int] = None,
+        caption_text_stroke_width: Optional[int] = None,
+        caption_text_stroke_color: Optional[str] = None,
+        caption_highlight_color: Optional[str] = None,
         source_video_url: Optional[str] = None,
         source_video_urls: Optional[list] = None,
     ) -> str:
@@ -87,6 +93,18 @@ class RenderService:
             payload["caption_bg_opacity"] = caption_bg_opacity
         if caption_font_size is not None:
             payload["caption_font_size"] = caption_font_size
+        if caption_style is not None:
+            payload["caption_style"] = caption_style
+        if caption_font_family is not None:
+            payload["caption_font_family"] = caption_font_family
+        if caption_font_weight is not None:
+            payload["caption_font_weight"] = caption_font_weight
+        if caption_text_stroke_width is not None:
+            payload["caption_text_stroke_width"] = caption_text_stroke_width
+        if caption_text_stroke_color is not None:
+            payload["caption_text_stroke_color"] = caption_text_stroke_color
+        if caption_highlight_color is not None:
+            payload["caption_highlight_color"] = caption_highlight_color
         if source_video_urls is not None:
             payload["source_video_urls"] = source_video_urls
         elif source_video_url is not None:

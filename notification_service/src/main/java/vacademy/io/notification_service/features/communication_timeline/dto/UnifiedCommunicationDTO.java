@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -70,7 +70,7 @@ public class UnifiedCommunicationDTO {
     /**
      * When the message was sent or received
      */
-    private LocalDateTime timestamp;
+    private Instant timestamp;
 
     /**
      * Source system (e.g., announcement-service, chatbot-flow, otp, email-service)
@@ -93,7 +93,7 @@ public class UnifiedCommunicationDTO {
     @AllArgsConstructor
     public static class StatusEvent {
         private String status;
-        private LocalDateTime timestamp;
+        private Instant timestamp;
         private String details;
     }
 }

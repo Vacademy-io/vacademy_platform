@@ -385,11 +385,11 @@ export const CourseSidebar = ({
                 ? "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30"
                 : "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20 [.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
               "[.ui-vibrant_&]:shadow-md",
-              // Play Styles — solid, bold, Duolingo-style
-              "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:font-bold",
+              // Play Styles — solid hero card with soft layered shadow
+              "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-transparent [.ui-play_&]:font-bold",
               percentageCompleted === 100
-                ? "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:border-[#46a302] [.ui-play_&]:text-white [.ui-play_&]:shadow-[0_4px_0_#46a302]"
-                : "[.ui-play_&]:bg-[#1cb0f6] [.ui-play_&]:border-[#1899d6] [.ui-play_&]:text-white [.ui-play_&]:shadow-[0_4px_0_#1899d6]",
+                ? "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:text-white [.ui-play_&]:shadow-[0_1px_2px_rgba(70,163,2,0.22),0_16px_32px_-12px_rgba(88,204,2,0.45)]"
+                : "[.ui-play_&]:bg-[#1cb0f6] [.ui-play_&]:text-white [.ui-play_&]:shadow-[0_1px_2px_rgba(24,153,214,0.22),0_16px_32px_-12px_rgba(28,176,246,0.45)]",
             )}
           >
             <CardHeader

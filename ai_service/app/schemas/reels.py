@@ -49,14 +49,16 @@ ReelStatus = Literal["PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"]
 # ---------------------------------------------------------------------------
 
 class ScoreAxes(BaseModel):
-    """Four-axis composite engagement score. Each axis is 0-100.
+    """Five-axis composite engagement score. Each axis is 0-100.
 
     Composite = weighted geometric mean — one weak axis tanks the whole clip.
+    A3 (2026-05-22): added `topic` axis (TF-IDF concentration).
     """
     hook: float = Field(..., ge=0, le=100, description="Strength of the first 2.5s")
     pacing: float = Field(..., ge=0, le=100, description="Cadence, density, sentence boundary quality")
     info: float = Field(..., ge=0, le=100, description="Information density per second")
     loop: float = Field(..., ge=0, le=100, description="Loop-back potential (replay-friendliness)")
+    topic: float = Field(0.0, ge=0, le=100, description="Topic concentration (TF-IDF top-5 share)")
     composite: float = Field(..., ge=0, le=100, description="Overall reel score (weighted geometric mean)")
 
 
@@ -75,7 +77,19 @@ class ScoreBreakdown(BaseModel):
     predicted_after_silence_s: Optional[float] = None
     # Info
     unique_content_words_per_s: Optional[float] = None
+    # A4 (2026-05-22): ratio of window's info-density to the source-level
+    # baseline. >1.0 = denser than the speaker's average; <1.0 = sparser.
+    info_density_ratio: Optional[float] = None
     numeric_token_count: Optional[int] = None
+    # A2 (2026-05-22): per-candidate LLM rationale + the factor by which the
+    # rerank pass adjusted the composite. Both None when rerank didn't run
+    # (no API key, transport error, etc.) — heuristic composite stands.
+    llm_rerank_factor: Optional[float] = None
+    llm_rerank_reason: Optional[str] = None
+    # A3 (2026-05-22): topic-coherence diagnostic. Share of top-5 tokens'
+    # TF-IDF mass in the window, and the single highest-TF-IDF token.
+    topic_top5_share: Optional[float] = None
+    topic_top_token: Optional[str] = None
     # Loop
     first_last_mfcc_similarity: Optional[float] = None
     has_verbal_cta_end: Optional[bool] = None
@@ -83,11 +97,17 @@ class ScoreBreakdown(BaseModel):
     word_cut_savings_needed_s: Optional[float] = None
     word_cut_savings_pct: Optional[float] = None
     speaker_moves_in_window: Optional[int] = None
+    # A5 — fraction of the window covered by at least one face_segment.
+    # None when indexer didn't run face detection (screen recordings).
+    face_coverage_fraction: Optional[float] = None
     # End-quality (Issue 4A — measures whether the snapped window opens
     # and closes at real sentence boundaries vs trailing mid-thought).
     end_quality_score: Optional[float] = None
     end_last_word: Optional[str] = None
-    end_terminator: Optional[str] = None        # "punctuation" | "continuator" | "no_punct"
+    # CR1 (2026-05-22): tightened from Optional[str] to a literal so the FE
+    # type narrowing (which expects exactly these three) can't silently drift
+    # if a future emit-path adds a new bucket without updating the FE.
+    end_terminator: Optional[Literal["punctuation", "continuator", "no_punct"]] = None
     start_first_word: Optional[str] = None
     start_bad_opener: Optional[bool] = None
 
@@ -163,10 +183,15 @@ class ScanResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class CutSpan(BaseModel):
-    """A contiguous range to remove from source audio + video."""
+    """A contiguous range to remove from source audio + video.
+
+    `user` cuts come from the FE trim UI (Phase 2 B3) and can run up to
+    MAX_USER_CUT_SPAN_S (~15s) — auto-generated cuts (silence/word/filler)
+    are capped at MAX_CUT_SPAN_S (~2s).
+    """
     t_start: float
     t_end: float
-    kind: Literal["silence", "word", "filler"] = "word"
+    kind: Literal["silence", "word", "filler", "user"] = "word"
 
 
 class WordImportance(BaseModel):
@@ -290,6 +315,19 @@ class RenderRequest(BaseModel):
     #              may underperform Hormozi yellow on retention; ship as
     #              A/B opt-in only.
     palette: Literal["default", "source_derived"] = "default"
+    # B3 (2026-05-22) — user-toggled cuts from the FE trim UI. Merged with
+    # the enriched candidate's auto cut_plan at /render time. Each span:
+    #   * kind must be "user"
+    #   * 0.08 <= duration <= MAX_USER_CUT_SPAN_S (15.0s)
+    #   * within [source_window.t_start, source_window.t_end]
+    #   * no overlap with another override
+    #   * no overlap with any importance>=2 word from the enriched payload
+    # Total override duration capped at 40% of window duration; beyond that,
+    # the user should re-scan with different params rather than salvage.
+    # PB4: max_length=50 caps the validator's input — a 25s clip at one cut
+    # per word would emit ~50-80 cuts, so 50 is a soft real-world ceiling
+    # and a hard DoS guard.
+    cut_plan_overrides: Optional[list[CutSpan]] = Field(default=None, max_length=50)
 
 
 # ---------------------------------------------------------------------------

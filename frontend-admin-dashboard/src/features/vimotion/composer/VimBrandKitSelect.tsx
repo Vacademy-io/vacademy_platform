@@ -62,14 +62,28 @@ export function VimBrandKitSelect({ value, onChange }: VimBrandKitSelectProps) {
     }
 
     if (kits.length === 0) {
+        // Without a kit, request.brand_kit_id is undefined and the BE falls
+        // back to institute.setting_json (legacy VIDEO_STYLE + VIDEO_BRANDING).
+        // The video still generates, but with defaults the user didn't pick —
+        // surface this so it's not a silent surprise.
         return (
-            <div className="space-y-2 rounded-md border border-dashed border-neutral-300 bg-neutral-50/60 p-3 text-center">
-                <Palette className="mx-auto size-5 text-neutral-400" />
-                <p className="text-[11px] text-neutral-600">No brand kits yet.</p>
+            <div className="space-y-2 rounded-md border border-amber-200 bg-amber-50/70 p-3">
+                <div className="flex items-start gap-2">
+                    <Palette className="size-4 shrink-0 text-amber-700" />
+                    <div className="min-w-0 text-left">
+                        <p className="text-[11px] font-medium text-amber-900">
+                            Using studio default branding
+                        </p>
+                        <p className="mt-0.5 text-[10px] leading-snug text-amber-800">
+                            Your video will use your studio&apos;s default palette, fonts, and
+                            layout. Create a brand kit to lock in your own.
+                        </p>
+                    </div>
+                </div>
                 <Link
                     to="/vim/dashboard"
                     search={{ tab: 'brand-kits' }}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-900 hover:underline"
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-900 hover:underline"
                 >
                     Create your first kit
                     <ArrowRight className="size-3" />

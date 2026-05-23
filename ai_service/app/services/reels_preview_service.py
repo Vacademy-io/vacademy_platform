@@ -52,6 +52,12 @@ _LLM_DEFAULT_MODEL = "anthropic/claude-3-5-haiku"
 # Cut planner constraints.
 MIN_CUT_SPAN_S = 0.080         # below this = sub-syllable, audible artifact risk
 MAX_CUT_SPAN_S = 2.000         # longer than this feels jumpy even with crossfade
+# B2 (2026-05-22) — user-toggled cuts (kind="user") from the FE trim UI can
+# run longer than auto-cuts because the user explicitly judges the span as
+# removable. Up to 15s per single user span; the audio_edit pipeline uses
+# atrim+concat which handles arbitrary-length joins cleanly at word
+# boundaries (the FE only lets users toggle whole words, not partial spans).
+MAX_USER_CUT_SPAN_S = 15.000
 # Validation drops sub-MIN_CUT_SPAN_S spans (lossy step). The planner over-
 # marks by this fraction so the validated total still hits the target.
 # Empirically ~10% covers typical stutter-heavy windows; higher would risk

@@ -76,6 +76,12 @@ class RenderWorker:
         caption_bg_color: Optional[str] = None,
         caption_bg_opacity: Optional[int] = None,
         caption_font_size: Optional[int] = None,
+        caption_style: Optional[str] = None,
+        caption_font_family: Optional[str] = None,
+        caption_font_weight: Optional[int] = None,
+        caption_text_stroke_width: Optional[int] = None,
+        caption_text_stroke_color: Optional[str] = None,
+        caption_highlight_color: Optional[str] = None,
         audio_tracks: Optional[list] = None,
         source_video_urls: Optional[list] = None,
     ) -> str:
@@ -280,7 +286,11 @@ class RenderWorker:
 
             # Build caption settings override if custom options provided
             _captions_settings_path = CAPTIONS_SETTINGS  # default baked-in file
-            if any(v is not None for v in [caption_position, caption_text_color, caption_bg_color, caption_bg_opacity, caption_font_size]):
+            if any(v is not None for v in [
+                caption_position, caption_text_color, caption_bg_color, caption_bg_opacity,
+                caption_font_size, caption_style, caption_font_family, caption_font_weight,
+                caption_text_stroke_width, caption_text_stroke_color, caption_highlight_color,
+            ]):
                 try:
                     base_settings = json.loads(CAPTIONS_SETTINGS.read_text()) if CAPTIONS_SETTINGS.exists() else {}
                 except Exception:
@@ -305,6 +315,23 @@ class RenderWorker:
                     base_settings["background_color"] = f"rgba({r},{g},{b},{alpha})"
                 if caption_position is not None:
                     base_settings["position"] = caption_position
+                # Style-polish fields — all pass-through to generate_video.py
+                # which reads them from caption_styles dict and applies them
+                # during the per-frame caption HTML emission. None of these
+                # need canvas-relative pre-scaling (font_size is the only one
+                # that does, handled above).
+                if caption_style is not None:
+                    base_settings["style"] = caption_style
+                if caption_font_family is not None:
+                    base_settings["font_family_key"] = caption_font_family
+                if caption_font_weight is not None:
+                    base_settings["font_weight"] = int(caption_font_weight)
+                if caption_text_stroke_width is not None:
+                    base_settings["text_stroke_width"] = int(caption_text_stroke_width)
+                if caption_text_stroke_color is not None:
+                    base_settings["text_stroke_color"] = caption_text_stroke_color
+                if caption_highlight_color is not None:
+                    base_settings["highlight_color"] = caption_highlight_color
                 override_path = work_dir / "captions_settings_override.json"
                 override_path.write_text(json.dumps(base_settings, indent=2))
                 _captions_settings_path = override_path

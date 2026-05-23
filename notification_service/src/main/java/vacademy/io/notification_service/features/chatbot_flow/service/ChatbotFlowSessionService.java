@@ -82,8 +82,9 @@ public class ChatbotFlowSessionService {
         List<ChatbotFlowSessionDTO.SessionMessage> messages = logs.stream()
                 .filter(l -> {
                     if (session.getStartedAt() == null) return true;
-                    java.time.LocalDateTime logTime = l.getNotificationDate();
-                    java.time.LocalDateTime sessionStart = session.getStartedAt().toLocalDateTime();
+                    java.time.Instant logTime = l.getNotificationDate();
+                    // session.startedAt is java.sql.Timestamp → toInstant() gives UTC moment.
+                    java.time.Instant sessionStart = session.getStartedAt().toInstant();
                     return logTime != null && !logTime.isBefore(sessionStart);
                 })
                 .map(l -> ChatbotFlowSessionDTO.SessionMessage.builder()

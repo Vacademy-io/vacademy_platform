@@ -31,7 +31,7 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.util.EmailDomainBlocklistUtil;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -116,6 +116,10 @@ public class EmailService {
      * @param userId Optional user ID
      */
     private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail) {
+        saveEmailNotificationLog(to, subject, body, source, sourceId, userId, fromEmail, null);
+    }
+
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail, String instituteId) {
         try {
             NotificationLog notificationLog = new NotificationLog();
             notificationLog.setId(UUID.randomUUID().toString());
@@ -133,7 +137,10 @@ public class EmailService {
             if (normalizedFrom != null) {
                 notificationLog.setSenderBusinessChannelId(normalizedFrom);
             }
-            notificationLog.setNotificationDate(LocalDateTime.now());
+            if (instituteId != null && !instituteId.isBlank()) {
+                notificationLog.setInstituteId(instituteId);
+            }
+            notificationLog.setNotificationDate(Instant.now());
 
             notificationLogRepository.save(notificationLog);
             logger.debug("Saved email notification log for: {} with ID: {}", to, notificationLog.getId());
@@ -626,7 +633,7 @@ public class EmailService {
 
                     String messageId = null;
                     try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null, finalFromEmail);
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null, finalFromEmail, instituteId);
 
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);

@@ -64,6 +64,7 @@ def make_standalone_seedream_call(api_key: str) -> Callable[..., Tuple[Optional[
         width: int = 1920,
         height: int = 1080,
         reference_image_url: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
         if not api_key:
             print("   ⚠️ No OpenRouter API key for standalone image-gen call")
@@ -86,7 +87,7 @@ def make_standalone_seedream_call(api_key: str) -> Callable[..., Tuple[Optional[
             content = full_prompt
 
         payload = {
-            "model": _IMAGE_GEN_MODEL,
+            "model": model_override or _IMAGE_GEN_MODEL,
             "messages": [{"role": "user", "content": content}],
             "modalities": ["image"],
         }
@@ -378,18 +379,31 @@ def run(
         )
 
         try:
-            # If a custom-avatar face URL is available, feed it to Recraft as
-            # an image-to-image reference. Recraft's chat-completions endpoint
-            # treats `reference_image_url` as a visual prior — the rendered
-            # thumbnail will keep the same person's identity (face, build,
-            # hair) and place them in a new pose / framing per the prompt.
-            # Built-in catalog avatars (Argil / VEED) have no face_image_url
-            # to feed and skip this path automatically.
+            # When a custom-avatar face URL is available we want the host
+            # to appear in the thumbnail with their actual identity (face,
+            # ethnicity, build) — not Recraft's interpretation of "a person
+            # who looks vaguely like this." Recraft's i2i path drifts on
+            # identity (same comment lives on the host-shot call site in
+            # automation_pipeline._call_image_generation_llm), so route this
+            # specific call to Seedream 4.5, which preserves identity across
+            # image-to-image. Text rendering on Seedream is slightly weaker
+            # than Recraft, but for the avatar case the host's face matters
+            # more than perfect typography — we'd rather show the right
+            # person with okay text than the wrong person with great text.
+            # Without an avatar URL we stay on Recraft (default) for the
+            # crisper headline rendering. Built-in catalog avatars (Argil /
+            # VEED) have no face_image_url and skip both this branch and
+            # the i2i reference image entirely.
+            _i2i_kwargs: Dict[str, Any] = {}
+            if avatar_face_url:
+                _i2i_kwargs["model_override"] = "bytedance-seed/seedream-4.5"
+
             image_bytes, _img_usage = seedream_call(
                 prompt=prompt,
                 width=out_w,
                 height=out_h,
                 reference_image_url=avatar_face_url,
+                **_i2i_kwargs,
             )
         except Exception as e:
             print(f"   ⚠️ Thumbnail image-gen call raised: {e}")

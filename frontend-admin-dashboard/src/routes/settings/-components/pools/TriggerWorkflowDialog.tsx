@@ -23,7 +23,7 @@ import {
     Code,
     EnvelopeSimple,
     WhatsappLogo,
-    Plus,
+    Sparkle,
 } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -54,6 +54,7 @@ import { createMessageTemplate } from '@/services/message-template-service';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { getUserId } from '@/utils/userDetails';
 import type { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
+import { SAMPLE_TEMPLATES } from '@/routes/workflow/create/-components/sample-email-templates';
 
 const LEAD_STATUS_CHANGED = 'LEAD_STATUS_CHANGED';
 /** Sentinel for the "any status change" option in the status picker. */
@@ -71,7 +72,7 @@ interface TriggerWorkflowDialogProps {
 
 type ActionType = 'communication' | 'payload';
 type Channel = 'EMAIL' | 'WHATSAPP';
-type TemplateMode = 'select' | 'create';
+type Recipient = 'counselor' | 'parent';
 
 const LEAD_EVENTS: { value: string; label: string }[] = [
     { value: 'LEAD_ASSIGNED_TO_COUNSELOR', label: 'Lead assigned to counselor' },
@@ -96,16 +97,11 @@ export function TriggerWorkflowDialog({
     // For LEAD_STATUS_CHANGED: the lead status_key to fire on (ANY_STATUS = fire on any change).
     const [targetStatus, setTargetStatus] = useState<string>(ANY_STATUS);
     const [channel, setChannel] = useState<Channel>('EMAIL');
-    const [templateMode, setTemplateMode] = useState<TemplateMode>('select');
+    // Who should receive the notification — defaults to the assigned counsellor.
+    const [recipient, setRecipient] = useState<Recipient>('counselor');
     const [selectedTemplate, setSelectedTemplate] = useState('');
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-
-    // Create-sample-template fields
-    const [sampleName, setSampleName] = useState('');
-    const [sampleSubject, setSampleSubject] = useState('');
-    const [sampleBody, setSampleBody] = useState('');
-    const [insertedVars, setInsertedVars] = useState<string[]>([]);
 
     // Paste-to-payload fields
     const [payloadUrl, setPayloadUrl] = useState('');
@@ -117,14 +113,10 @@ export function TriggerWorkflowDialog({
             setEvent('');
             setTargetStatus(ANY_STATUS);
             setChannel('EMAIL');
-            setTemplateMode('select');
+            setRecipient('counselor');
             setSelectedTemplate('');
             setName('');
             setDescription('');
-            setSampleName('');
-            setSampleSubject('');
-            setSampleBody('');
-            setInsertedVars([]);
             setPayloadUrl('');
         }
     }, [open]);
@@ -152,29 +144,29 @@ export function TriggerWorkflowDialog({
             ? `#ctx['newStatus'] == '${targetStatus}'`
             : null;
 
-    const insertToken = (key: string) => {
-        setSampleBody((prev) => `${prev}{{${key}}}`);
-        setInsertedVars((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    };
-
-    const createTemplateMutation = useMutation({
+    // One-click sample template creation. Mirrors the workflow wizard's "Use sample" pattern
+    // (SAMPLE_TEMPLATES in routes/workflow/.../sample-email-templates.ts) — no form, no token
+    // picker; just create a pre-built template for the chosen event and select it.
+    const createSampleTemplateMutation = useMutation({
         mutationFn: async () => {
-            const created = await createMessageTemplate({
-                name: sampleName.trim(),
-                type: channel,
-                subject: channel === 'EMAIL' ? sampleSubject.trim() : undefined,
-                content: sampleBody,
-                variables: insertedVars,
+            const sample = SAMPLE_TEMPLATES[event];
+            if (!sample) {
+                throw new Error('No sample template available for this event.');
+            }
+            return createMessageTemplate({
+                name: sample.name,
+                type: 'EMAIL',
+                subject: sample.subject,
+                content: sample.html,
+                variables: sample.variables,
             });
-            return created;
         },
         onSuccess: (created) => {
-            toast.success('Sample template created');
+            toast.success(`Sample template "${created.name}" created`);
             queryClient.invalidateQueries({
                 queryKey: ['trigger-workflow-templates', instituteId, channel],
             });
             setSelectedTemplate(created.name);
-            setTemplateMode('select');
         },
         onError: (err) => {
             toast.error(err instanceof Error ? err.message : 'Failed to create template');
@@ -216,18 +208,24 @@ export function TriggerWorkflowDialog({
 
         let actionNode;
         if (actionType === 'communication') {
-            // Variables to fill the template: the ones inserted into a sample template, else the
-            // event's full context variable set so any placeholder in an existing template resolves.
-            const varKeys =
-                templateMode === 'create' && insertedVars.length > 0
-                    ? insertedVars
-                    : eventVars.map((v) => v.key);
+            // Identity templateVars over the event's full context — every placeholder in the
+            // selected (or sample) template resolves to the matching ctx key.
+            const varKeys = eventVars.map((v) => v.key);
             const templateVars = Object.fromEntries(varKeys.map((k) => [k, k]));
+
+            // Resolve which ctx field carries the recipient address. Counsellor uses the
+            // enriched counselorEmail/counselorMobile (LeadTriggerContextBuilder looks these up
+            // from auth-service); parent uses the audience_response snapshot.
+            const emailField = recipient === 'counselor' ? 'counselorEmail' : 'parentEmail';
+            const mobileField = recipient === 'counselor' ? 'counselorMobile' : 'parentMobile';
 
             if (channel === 'EMAIL') {
                 // Wrap the whole context into a one-element list so the per-item sender runs
-                // once for this lead; recipientField pulls the parent's email. When a status
-                // gate is set, return an empty list (no send) unless the new status matches.
+                // once for this lead; recipientField pulls the chosen address from the ctx
+                // map. When a status gate is set, return an empty list (no send) unless the
+                // new status matches. forEach is REQUIRED by SendEmailNodeHandler — without it
+                // the handler logs "No forEach configuration found in SendEmail node" and
+                // silently skips the send. Same shape the audience confirmation dialog uses.
                 const onExpr = statusGate ? `${statusGate} ? {#ctx} : {}` : '{#ctx}';
                 actionNode = {
                     id: actionId,
@@ -236,7 +234,8 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
-                        recipientField: 'parentEmail',
+                        forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                        recipientField: emailField,
                         templateVars,
                         routing: [{ type: 'end' }],
                     },
@@ -247,10 +246,12 @@ export function TriggerWorkflowDialog({
                 };
             } else {
                 // WhatsApp resolves the mobile from fixed keys (mobileNumber/mobile/phone/to),
-                // not parentMobile — so expose it via a one-element list of a map literal that
-                // also carries the template variables. Status gate empties the list when unmatched.
+                // not counselorMobile / parentMobile — so expose the chosen mobile via a
+                // one-element list of a map literal that also carries the template variables.
+                // Status gate empties the list when unmatched. forEach mirrors SEND_EMAIL — the
+                // per-item dispatch needs it to bind {#ctx['item']} for each iteration.
                 const mapEntries = [
-                    "mobileNumber: #ctx['parentMobile']",
+                    `mobileNumber: #ctx['${mobileField}']`,
                     ...varKeys.map((k) => `${k}: #ctx['${k}']`),
                 ].join(', ');
                 const onExpr = statusGate
@@ -263,6 +264,7 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
+                        forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
                         templateVars,
                         routing: [{ type: 'end' }],
                     },
@@ -331,11 +333,6 @@ export function TriggerWorkflowDialog({
         // communication
         return !!selectedTemplate;
     }, [name, event, actionType, payloadUrl, selectedTemplate]);
-
-    const canCreateSample =
-        !!sampleName.trim() &&
-        !!sampleBody.trim() &&
-        (channel === 'WHATSAPP' || !!sampleSubject.trim());
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -431,90 +428,95 @@ export function TriggerWorkflowDialog({
                                         onClick={() => {
                                             setChannel('EMAIL');
                                             setSelectedTemplate('');
-                                            setTemplateMode('select');
                                         }}
                                         icon={<EnvelopeSimple size={18} />}
                                         title="Email"
-                                        description="Send to the lead's parent email."
                                     />
                                     <ChoiceCard
                                         selected={channel === 'WHATSAPP'}
                                         onClick={() => {
                                             setChannel('WHATSAPP');
                                             setSelectedTemplate('');
-                                            setTemplateMode('select');
                                         }}
                                         icon={<WhatsappLogo size={18} />}
                                         title="WhatsApp"
-                                        description="Send to the lead's parent mobile."
                                     />
                                 </div>
                             </div>
 
-                            {templateMode === 'select' ? (
-                                <div className="space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <Label className="text-sm font-medium">
-                                            Template <span className="text-danger-500">*</span>
-                                        </Label>
-                                        {channel === 'EMAIL' && (
-                                            <button
-                                                type="button"
-                                                className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-400"
-                                                onClick={() => setTemplateMode('create')}
-                                            >
-                                                <Plus size={14} /> Create sample template
-                                            </button>
-                                        )}
-                                    </div>
-                                    <Select
-                                        value={selectedTemplate}
-                                        onValueChange={setSelectedTemplate}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue
-                                                placeholder={
-                                                    templatesLoading
-                                                        ? 'Loading templates…'
-                                                        : 'Select a template'
-                                                }
-                                            />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {templates.map((t) => (
-                                                <SelectItem key={t.id} value={t.name}>
-                                                    {t.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    {templates.length === 0 && !templatesLoading && (
-                                        <p className="text-xs text-warning-600">
-                                            No {channel === 'EMAIL' ? 'email' : 'WhatsApp'} templates
-                                            found.{' '}
-                                            {channel === 'WHATSAPP'
-                                                ? 'Create an approved WhatsApp template first.'
-                                                : 'Create one below or in Communications.'}
-                                        </p>
+                            <div className="space-y-1.5">
+                                <Label className="text-sm font-medium">
+                                    Send notification to{' '}
+                                    <span className="text-danger-500">*</span>
+                                </Label>
+                                <Select
+                                    value={recipient}
+                                    onValueChange={(v) => setRecipient(v as Recipient)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="counselor">
+                                            Assigned counsellor (default)
+                                        </SelectItem>
+                                        <SelectItem value="parent">
+                                            Lead&apos;s parent contact
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-medium">
+                                        Template <span className="text-danger-500">*</span>
+                                    </Label>
+                                    {channel === 'EMAIL' && !!SAMPLE_TEMPLATES[event] && (
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                            disabled={createSampleTemplateMutation.isPending}
+                                            onClick={() => createSampleTemplateMutation.mutate()}
+                                        >
+                                            <Sparkle size={14} weight="fill" />
+                                            {createSampleTemplateMutation.isPending
+                                                ? 'Creating sample…'
+                                                : 'Create sample template'}
+                                        </button>
                                     )}
                                 </div>
-                            ) : (
-                                <SampleTemplateEditor
-                                    channel={channel}
-                                    eventVars={eventVars}
-                                    sampleName={sampleName}
-                                    setSampleName={setSampleName}
-                                    sampleSubject={sampleSubject}
-                                    setSampleSubject={setSampleSubject}
-                                    sampleBody={sampleBody}
-                                    setSampleBody={setSampleBody}
-                                    onInsertToken={insertToken}
-                                    onCancel={() => setTemplateMode('select')}
-                                    onCreate={() => createTemplateMutation.mutate()}
-                                    creating={createTemplateMutation.isPending}
-                                    canCreate={canCreateSample}
-                                />
-                            )}
+                                <Select
+                                    value={selectedTemplate}
+                                    onValueChange={setSelectedTemplate}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue
+                                            placeholder={
+                                                templatesLoading
+                                                    ? 'Loading templates…'
+                                                    : 'Select a template'
+                                            }
+                                        />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {templates.map((t) => (
+                                            <SelectItem key={t.id} value={t.name}>
+                                                {t.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {templates.length === 0 && !templatesLoading && (
+                                    <p className="text-xs text-warning-600">
+                                        No {channel === 'EMAIL' ? 'email' : 'WhatsApp'} templates
+                                        found.{' '}
+                                        {channel === 'WHATSAPP'
+                                            ? 'Create an approved WhatsApp template first.'
+                                            : 'Click "Create sample template" above for a ready-made starter.'}
+                                    </p>
+                                )}
+                            </div>
                         </>
                     )}
 
@@ -537,7 +539,7 @@ export function TriggerWorkflowDialog({
                     )}
 
                     {/* Name + description */}
-                    {actionType && event && templateMode === 'select' && (
+                    {actionType && event && (
                         <>
                             <div className="space-y-1.5">
                                 <Label className="text-sm font-medium">
@@ -599,7 +601,7 @@ function ChoiceCard({
     onClick: () => void;
     icon: React.ReactNode;
     title: string;
-    description: string;
+    description?: string;
 }) {
     return (
         <button
@@ -621,110 +623,10 @@ function ChoiceCard({
                 {icon}
                 <span className="text-sm font-semibold">{title}</span>
             </span>
-            <span className="text-xs text-muted-foreground">{description}</span>
+            {description && (
+                <span className="text-xs text-muted-foreground">{description}</span>
+            )}
         </button>
     );
 }
 
-function SampleTemplateEditor({
-    channel,
-    eventVars,
-    sampleName,
-    setSampleName,
-    sampleSubject,
-    setSampleSubject,
-    sampleBody,
-    setSampleBody,
-    onInsertToken,
-    onCancel,
-    onCreate,
-    creating,
-    canCreate,
-}: {
-    channel: Channel;
-    eventVars: { key: string; label: string }[];
-    sampleName: string;
-    setSampleName: (v: string) => void;
-    sampleSubject: string;
-    setSampleSubject: (v: string) => void;
-    sampleBody: string;
-    setSampleBody: (v: string) => void;
-    onInsertToken: (key: string) => void;
-    onCancel: () => void;
-    onCreate: () => void;
-    creating: boolean;
-    canCreate: boolean;
-}) {
-    return (
-        <div className="space-y-3 rounded-lg border border-neutral-200 p-3">
-            <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Create sample template</Label>
-                <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:text-neutral-700"
-                    onClick={onCancel}
-                >
-                    Cancel
-                </button>
-            </div>
-
-            <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Template name</Label>
-                <Input
-                    value={sampleName}
-                    onChange={(e) => setSampleName(e.target.value)}
-                    placeholder="e.g. Follow-up reminder"
-                />
-            </div>
-
-            {channel === 'EMAIL' && (
-                <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Subject</Label>
-                    <Input
-                        value={sampleSubject}
-                        onChange={(e) => setSampleSubject(e.target.value)}
-                        placeholder="e.g. A quick follow-up about your enquiry"
-                    />
-                </div>
-            )}
-
-            <div className="space-y-1.5">
-                <Label className="text-xs font-medium">Body</Label>
-                <Textarea
-                    value={sampleBody}
-                    onChange={(e) => setSampleBody(e.target.value)}
-                    rows={4}
-                    placeholder="Write your message. Click a variable below to insert it."
-                />
-            </div>
-
-            {eventVars.length > 0 && (
-                <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Insert variable</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                        {eventVars.map((v) => (
-                            <button
-                                key={v.key}
-                                type="button"
-                                title={v.label}
-                                onClick={() => onInsertToken(v.key)}
-                                className="rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-700 hover:border-primary-300 hover:bg-primary-50"
-                            >
-                                {`{{${v.key}}}`}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            <MyButton
-                buttonType="primary"
-                scale="medium"
-                onClick={onCreate}
-                disable={!canCreate || creating}
-            >
-                {creating ? 'Creating…' : 'Create template'}
-            </MyButton>
-        </div>
-    );
-}

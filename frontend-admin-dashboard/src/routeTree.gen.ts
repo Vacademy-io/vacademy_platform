@@ -96,6 +96,7 @@ import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
+import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
@@ -844,6 +845,14 @@ const AutomationChatbotFlowsIndexRoute =
   } as any).lazy(() =>
     import("./routes/automation/chatbot-flows/index.lazy").then((d) => d.Route),
   )
+const AudienceManagerReportsIndexRoute =
+  AudienceManagerReportsIndexRouteImport.update({
+    id: "/audience-manager/reports/",
+    path: "/audience-manager/reports/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/reports/index.lazy").then((d) => d.Route),
+  )
 const AudienceManagerRecentLeadsIndexRoute =
   AudienceManagerRecentLeadsIndexRouteImport.update({
     id: "/audience-manager/recent-leads/",
@@ -1563,6 +1572,7 @@ export interface FileRoutesByFullPath {
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
+  "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
@@ -1731,6 +1741,7 @@ export interface FileRoutesByTo {
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
+  "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
@@ -1901,6 +1912,7 @@ export interface FileRoutesById {
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
+  "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
@@ -2072,6 +2084,7 @@ export interface FileRouteTypes {
     | "/assessment/question-papers/"
     | "/audience-manager/list/"
     | "/audience-manager/recent-leads/"
+    | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
@@ -2240,6 +2253,7 @@ export interface FileRouteTypes {
     | "/assessment/question-papers"
     | "/audience-manager/list"
     | "/audience-manager/recent-leads"
+    | "/audience-manager/reports"
     | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
@@ -2409,6 +2423,7 @@ export interface FileRouteTypes {
     | "/assessment/question-papers/"
     | "/audience-manager/list/"
     | "/audience-manager/recent-leads/"
+    | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
@@ -2578,6 +2593,7 @@ export interface RootRouteChildren {
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
+  AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
@@ -3302,6 +3318,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AutomationChatbotFlowsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/audience-manager/reports/": {
+      id: "/audience-manager/reports/"
+      path: "/audience-manager/reports"
+      fullPath: "/audience-manager/reports/"
+      preLoaderRoute: typeof AudienceManagerReportsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/recent-leads/": {
       id: "/audience-manager/recent-leads/"
       path: "/audience-manager/recent-leads"
@@ -3936,6 +3959,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
+  AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,

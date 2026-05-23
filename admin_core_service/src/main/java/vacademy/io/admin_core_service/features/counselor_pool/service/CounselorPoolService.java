@@ -1,13 +1,18 @@
 package vacademy.io.admin_core_service.features.counselor_pool.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.*;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.*;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.AssignmentMode;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.PoolStatus;
+import vacademy.io.admin_core_service.features.counselor_pool.enums.SchedulePattern;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.*;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -18,6 +23,7 @@ import java.util.stream.Collectors;
  * Shift management lives in CounselorPoolShiftService.
  * Assignment-time logic (round-robin / time-based) lives in CounselorAssignmentService.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CounselorPoolService {
@@ -27,6 +33,8 @@ public class CounselorPoolService {
     private final CounselorPoolMemberRepository poolMemberRepository;
     private final CounselorPoolShiftRepository poolShiftRepository;
     private final CounselorPoolShiftMemberRepository poolShiftMemberRepository;
+    private final UserLeadProfileRepository userLeadProfileRepository;
+    private final AuthService authService;
 
     // ────────────────────────────────────────────────────────────────
     // Pool CRUD
@@ -42,11 +50,14 @@ public class CounselorPoolService {
             throw new VacademyException("A pool with this name already exists in the institute");
         }
 
+        String schedulePattern = resolveSchedulePattern(request.getSchedulePattern());
+
         CounselorPool pool = CounselorPool.builder()
                 .instituteId(request.getInstituteId())
                 .name(request.getName())
                 .description(request.getDescription())
                 .assignmentMode(request.getAssignmentMode())
+                .schedulePattern(schedulePattern)
                 .createdBy(createdByUserId)
                 .build();
         pool = poolRepository.save(pool);
@@ -84,6 +95,16 @@ public class CounselorPoolService {
         if (request.getAssignmentMode() != null) {
             validateAssignmentMode(request.getAssignmentMode());
             pool.setAssignmentMode(request.getAssignmentMode());
+        }
+        if (request.getSchedulePattern() != null) {
+            String newPattern = resolveSchedulePattern(request.getSchedulePattern());
+            // Switching pattern with shifts already configured would silently break the
+            // editor's "trust the column" load path. Force admin to clear the schedule first.
+            if (!newPattern.equals(pool.getSchedulePattern())
+                    && poolShiftRepository.findByPoolIdOrderByDayOfWeekAscStartTimeAsc(poolId).size() > 0) {
+                throw new VacademyException("Cannot change schedule_pattern while shifts exist. Clear the schedule first.");
+            }
+            pool.setSchedulePattern(newPattern);
         }
         poolRepository.save(pool);
 
@@ -272,6 +293,7 @@ public class CounselorPoolService {
         }
 
         String backupId = request.getBackupCounselorUserId();
+        boolean reassignExistingLeads = Boolean.TRUE.equals(request.getReassignExistingLeads());
         if (PoolStatus.INACTIVE.name().equals(status)) {
             requireNonBlank(backupId, "backup_counselor_user_id is required when marking INACTIVE");
             if (counselorUserId.equals(backupId)) {
@@ -284,12 +306,124 @@ public class CounselorPoolService {
             // we trust the id and rely on app-layer rules upstream.
         } else {
             backupId = null; // clear backup when going back to ACTIVE
+            reassignExistingLeads = false; // flag only meaningful on the INACTIVE path
         }
 
         int updated = poolMemberRepository.bulkUpdateStatusForCounselorInPool(poolId, counselorUserId, status, backupId);
         if (updated == 0) {
             throw new VacademyException("Counselor is not in this pool");
         }
+
+        if (reassignExistingLeads) {
+            CounselorPool pool = poolRepository.findById(poolId)
+                    .orElseThrow(() -> new VacademyException("Pool not found: " + poolId));
+            String backupName = resolveCounselorDisplayName(backupId);
+            int moved = userLeadProfileRepository.reassignOpenLeadsInPool(
+                    poolId, counselorUserId, backupId, backupName, pool.getInstituteId());
+            log.info("Reassigned {} open leads from counselor={} to backup={} in pool={} (institute={})",
+                    moved, counselorUserId, backupId, poolId, pool.getInstituteId());
+        }
+    }
+
+    /**
+     * List every pool (in the given institute) where this counselor currently
+     * has at least one ACTIVE row. Pools where they're already INACTIVE are
+     * excluded — the multi-pool "mark inactive" UI only lets admin act on
+     * pools where the counselor is still operational.
+     *
+     * Pool-level status mirrors the UI's rollup: ACTIVE iff every member row
+     * in that pool is ACTIVE.
+     */
+    @Transactional(readOnly = true)
+    public List<CounselorPoolMembershipDTO> listActiveMembershipsForCounselor(String instituteId,
+                                                                              String counselorUserId) {
+        requireNonBlank(instituteId, "instituteId is required");
+        requireNonBlank(counselorUserId, "counselorUserId is required");
+
+        List<CounselorPoolMember> rows = poolMemberRepository
+                .findByInstituteAndCounselor(instituteId, counselorUserId);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        // Group by pool, roll up status
+        Map<String, List<CounselorPoolMember>> rowsByPool = rows.stream()
+                .collect(Collectors.groupingBy(CounselorPoolMember::getPoolId));
+
+        List<String> activePoolIds = rowsByPool.entrySet().stream()
+                .filter(e -> e.getValue().stream()
+                        .allMatch(m -> PoolStatus.ACTIVE.name().equals(m.getStatus())))
+                .map(Map.Entry::getKey)
+                .toList();
+        if (activePoolIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, String> poolNameById = poolRepository.findAllById(activePoolIds).stream()
+                .collect(Collectors.toMap(CounselorPool::getId, CounselorPool::getName));
+
+        return activePoolIds.stream()
+                .map(poolId -> CounselorPoolMembershipDTO.builder()
+                        .poolId(poolId)
+                        .poolName(poolNameById.getOrDefault(poolId, poolId))
+                        .status(PoolStatus.ACTIVE.name())
+                        .build())
+                .toList();
+    }
+
+    /**
+     * Flip the counselor's status across several pools in one transactional
+     * call. Per pool, the same per-pool logic runs (validate, write member
+     * rows, optionally reassign open leads). If any pool fails, the whole
+     * transaction rolls back — admin sees one error and nothing changed.
+     *
+     * Backup is one id for all pools — a backup is just any institute
+     * counsellor and not pool-membership-bound.
+     */
+    @Transactional
+    public void bulkUpdateMemberStatusAcrossPools(String counselorUserId, BulkUpdateMemberStatusRequest request) {
+        requireNonBlank(counselorUserId, "counselorUserId is required");
+        if (request == null || request.getPoolIds() == null || request.getPoolIds().isEmpty()) {
+            throw new VacademyException("pool_ids must contain at least one pool");
+        }
+        // De-dup but preserve insertion order so log lines are deterministic.
+        List<String> poolIds = request.getPoolIds().stream()
+                .filter(Objects::nonNull)
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .toList();
+        if (poolIds.isEmpty()) {
+            throw new VacademyException("pool_ids must contain at least one pool");
+        }
+
+        UpdateMemberStatusRequest perPool = UpdateMemberStatusRequest.builder()
+                .status(request.getStatus())
+                .backupCounselorUserId(request.getBackupCounselorUserId())
+                .reassignExistingLeads(request.getReassignExistingLeads())
+                .build();
+        for (String poolId : poolIds) {
+            // Each iteration is part of the outer @Transactional — any throw
+            // from updateMemberStatus rolls back the work done for earlier pools.
+            updateMemberStatus(poolId, counselorUserId, perPool);
+        }
+    }
+
+    /**
+     * Best-effort display-name lookup via auth-service. Name is a denormalized
+     * cache on user_lead_profile; failure to resolve is non-fatal — the leads
+     * still get repointed, the cached name just becomes null and the UI falls
+     * back to "Unassigned"-style rendering until the next assignment refreshes it.
+     */
+    private String resolveCounselorDisplayName(String counselorUserId) {
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+            if (!users.isEmpty() && users.get(0) != null) {
+                return users.get(0).getFullName();
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve display name for counselor={}: {}", counselorUserId, e.getMessage());
+        }
+        return null;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -336,6 +470,22 @@ public class CounselorPoolService {
         }
     }
 
+    /**
+     * Validates the schedule_pattern string. Returns null when input is null
+     * or blank — the column is nullable so the UI can distinguish "not picked
+     * yet" (NULL) from "explicitly picked X".
+     */
+    private static String resolveSchedulePattern(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return SchedulePattern.valueOf(raw).name();
+        } catch (IllegalArgumentException e) {
+            throw new VacademyException("schedule_pattern must be one of PER_DAY, SAME_HOURS_ALL_DAYS");
+        }
+    }
+
     private static void requireNonBlank(String value, String message) {
         if (value == null || value.isBlank()) {
             throw new VacademyException(message);
@@ -356,6 +506,7 @@ public class CounselorPoolService {
                 .name(p.getName())
                 .description(p.getDescription())
                 .assignmentMode(p.getAssignmentMode())
+                .schedulePattern(p.getSchedulePattern())
                 .createdBy(p.getCreatedBy())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())

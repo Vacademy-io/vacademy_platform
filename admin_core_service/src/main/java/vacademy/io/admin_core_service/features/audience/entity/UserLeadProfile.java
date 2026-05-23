@@ -52,6 +52,14 @@ public class UserLeadProfile {
     @Column(name = "converted_at")
     private Timestamp convertedAt;
 
+    /**
+     * First time this profile's conversion_status moved off the default 'LEAD' — set ONCE,
+     * by UserLeadProfileService on first non-default status change (or first markConverted).
+     * Powers the "Reach out by → ✓ Responded in N" display in the leads tables / reports.
+     */
+    @Column(name = "first_response_at")
+    private Timestamp firstResponseAt;
+
     /** How many distinct campaigns (audiences) this user has submitted to. */
     @Column(name = "campaign_count", nullable = false)
     @Builder.Default

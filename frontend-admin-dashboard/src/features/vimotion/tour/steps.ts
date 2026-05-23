@@ -66,7 +66,7 @@ export const VIM_TOURS: Record<VimTourId, Step[]> = {
             target: '[data-tour="vim-composer-prompt"]',
             title: 'Describe your video',
             content:
-                'Type a brief — topic, audience, tone, length. You can paste a script, upload a PDF, or attach reference images. The clearer the brief, the better the result.',
+                'Topic, audience, tone, length — the clearer the brief, the better the result. You can also drop in phrases like "use more SVG diagrams" or "less text on screen" — the planner picks those up directly.',
             placement: 'top',
             disableBeacon: true,
         },
@@ -74,28 +74,28 @@ export const VIM_TOURS: Record<VimTourId, Step[]> = {
             target: '[data-tour="vim-composer-attach"]',
             title: 'Reference files',
             content:
-                'Upload PDFs or images that should ground the video. Reference images influence the visual style; PDFs feed the script writer.',
+                'Upload PDFs (script extraction will turn them into your prompt) or images (the planner uses them as visual references). Up to 10 files, 50 MB each.',
             placement: 'top',
         },
         {
             target: '[data-tour="vim-composer-source-video"]',
-            title: 'Source clips',
+            title: 'Source clips (optional)',
             content:
-                'Optional: pick existing indexed videos to splice into the output. Useful for tutorials where you want real footage between AI scenes.',
+                'Pick already-indexed videos to splice into the output — useful when you want real footage between AI-generated scenes.',
             placement: 'top',
         },
         {
             target: '[data-tour="vim-composer-settings"]',
-            title: 'Settings',
+            title: 'Settings — three knobs that matter most',
             content:
-                'Tabs for output (orientation / duration / quality), voice (TTS provider, language, gender), host (AI presenter), and visuals (brand kit). Changes here override the studio defaults — only for this video.',
+                'Open ⚙ for the three that move the needle: Quality tier (defaults to Ultra — step down to Premium for daily volume), Visual Mix sliders in the Advanced tab (bias the planner toward stock footage, SVG diagrams, motion graphics, or less on-screen text), and a Host avatar (talking-head presenter — pick a saved one in the Host tab).',
             placement: 'top',
         },
         {
             target: '[data-tour="vim-composer-send"]',
-            title: 'Generate',
+            title: 'Generate — cost is shown before commit',
             content:
-                "You'll see a cost preview first. Confirm to deduct credits and start the run — script → narration → visuals → render. You can navigate away; it keeps generating in the background.",
+                'Clicking Generate opens a confirmation modal with a per-line cost breakdown and your balance after. Nothing is charged until you confirm. After that, script → narration → visuals → render runs in the background — you can navigate away and come back when Recent shows it as Ready.',
             placement: 'top',
         },
     ],

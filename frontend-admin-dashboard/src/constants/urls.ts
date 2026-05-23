@@ -87,6 +87,9 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+// Lead Reports endpoints — pinned to localhost:8072 for local dev (swap to ${BASE_URL} for stage/prod).
+export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
+export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
@@ -123,6 +126,10 @@ export const COUNSELOR_POOL_COUNSELOR = (poolId: string, counselorUserId: string
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}`;
 export const COUNSELOR_POOL_COUNSELOR_STATUS = (poolId: string, counselorUserId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}/status`;
+export const COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS = (counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/memberships`;
+export const COUNSELOR_POOL_COUNSELOR_STATUS_MULTI = (counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/status-multi`;
 export const COUNSELOR_POOL_SCHEDULE = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/schedule`;
 

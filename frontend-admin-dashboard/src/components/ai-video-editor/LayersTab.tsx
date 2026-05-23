@@ -34,6 +34,17 @@ import {
 import { inferDisplayMeta } from './registry/friendly-labels';
 import { AdvancedSection } from './AdvancedSection';
 import { LengthControl, RotationControl } from './controls';
+import { OverlayEditor } from './OverlayEditor';
+import {
+    listOverlays,
+    upsertOverlay,
+    deleteOverlay,
+    newTextOverlay,
+    newImageOverlay,
+    newVideoOverlay,
+    findOverlayPath,
+    type Overlay,
+} from './utils/html-overlay-editor';
 
 interface LayersTabProps {
     entryId: string;
@@ -44,8 +55,21 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
     const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
     const selectedPath = useVideoEditorStore((s) => s.selectedLayerPath);
     const selectLayer = useVideoEditorStore((s) => s.selectLayer);
+    const canvasW = useVideoEditorStore((s) => s.meta.dimensions?.width ?? 1080);
+    const canvasH = useVideoEditorStore((s) => s.meta.dimensions?.height ?? 1920);
 
     const tree = useMemo(() => buildLayerTree(entryHtml), [entryHtml]);
+
+    // Chip filter — narrows the visible tree to a kind. "Overlays" matches
+    // any node carrying `data-vx-overlay-id` (i.e. anything inside
+    // `.vx-overlay`). Container ancestors of matches are preserved so the
+    // hierarchy still reads correctly; empty containers with no matching
+    // descendants are pruned.
+    const [chipFilter, setChipFilter] = useState<ChipFilter>('all');
+    const filteredTree = useMemo(
+        () => (chipFilter === 'all' ? tree : filterTreeByChip(tree, chipFilter)),
+        [tree, chipFilter]
+    );
 
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const toggle = useCallback((id: string) => {
@@ -76,6 +100,137 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
         () => findNode(tree, selectedPath),
         [tree, selectedPath, findNode]
     );
+
+    // Overlay detection: a layer node carrying `data-vx-overlay-id` is one of
+    // the overlay rows inside the entry's `.vx-overlay` container, and its
+    // canonical model lives in the `Overlay` interface (slider-based geometry,
+    // anchor, objectFit). When the user selects such a node we render
+    // `OverlayEditor` instead of `NodeInspector` so they get the overlay-aware
+    // controls — without losing the Layers tree above, where the node still
+    // shows in context.
+    const overlayId = selectedNode?.attrs['data-vx-overlay-id'];
+    const overlays = useMemo<Overlay[]>(
+        () => (overlayId ? listOverlays(entryHtml, { w: canvasW, h: canvasH }) : []),
+        [overlayId, entryHtml, canvasW, canvasH]
+    );
+    const selectedOverlay = useMemo<Overlay | null>(
+        () => (overlayId ? overlays.find((o) => o.id === overlayId) ?? null : null),
+        [overlays, overlayId]
+    );
+
+    // File-picker wiring for the OverlayEditor's "Replace" button.
+    const { uploadFile, getPublicUrl } = useFileUpload();
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
+    // `id === 'NEW'` is the sentinel meaning "the picked file should create a
+    // fresh overlay" (used by the Add-Image / Add-Video toolbar buttons).
+    // Any other id means "replace the existing overlay's src" (Replace button
+    // inside OverlayEditor).
+    const replaceTargetRef = useRef<{ id: string; kind: 'image' | 'video' } | null>(null);
+    const [uploadingReplace, setUploadingReplace] = useState(false);
+
+    const onOverlayReplaceSrc = useCallback(() => {
+        if (!selectedOverlay) return;
+        if (selectedOverlay.kind !== 'image' && selectedOverlay.kind !== 'video') return;
+        replaceTargetRef.current = {
+            id: selectedOverlay.id,
+            kind: selectedOverlay.kind,
+        };
+        fileInputRef.current?.click();
+    }, [selectedOverlay]);
+
+    // Toolbar handlers — Add Text Overlay, Add Image Overlay, Add Video Overlay.
+    const addTextOverlay = useCallback(() => {
+        const overlay = newTextOverlay('New text');
+        const nextHtml = upsertOverlay(entryHtml, overlay);
+        updateEntryHtml(entryId, nextHtml);
+        // Select the new overlay so the inspector opens immediately on it.
+        const path = findOverlayPath(nextHtml, overlay.id);
+        if (path) selectLayer(path);
+    }, [entryHtml, entryId, updateEntryHtml, selectLayer]);
+
+    const addMediaOverlay = useCallback((kind: 'image' | 'video') => {
+        replaceTargetRef.current = { id: 'NEW', kind };
+        const input = fileInputRef.current;
+        if (!input) return;
+        input.accept = kind === 'image' ? 'image/*' : 'video/*';
+        input.value = '';
+        input.click();
+    }, []);
+
+    const handleReplaceFile = useCallback(
+        async (e: React.ChangeEvent<HTMLInputElement>) => {
+            const file = e.target.files?.[0];
+            const target = replaceTargetRef.current;
+            // Reset input so picking the same file twice still fires onChange.
+            e.target.value = '';
+            if (!file || !target) return;
+            setUploadingReplace(true);
+            try {
+                const fileId = await uploadFile({
+                    file,
+                    setIsUploading: () => {},
+                    userId: getUserId(),
+                    source: 'VIDEO_EDITOR_MEDIA',
+                    sourceId: 'ADMIN',
+                    publicUrl: true,
+                });
+                if (!fileId) {
+                    toast.error('Upload failed');
+                    return;
+                }
+                const url = await getPublicUrl(fileId as string);
+                if (!url) {
+                    toast.error('Could not resolve uploaded URL');
+                    return;
+                }
+                if (target.id === 'NEW') {
+                    // Create-overlay flow (Add Image / Add Video toolbar).
+                    const fresh =
+                        target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
+                    const nextHtml = upsertOverlay(entryHtml, fresh);
+                    updateEntryHtml(entryId, nextHtml);
+                    const path = findOverlayPath(nextHtml, fresh.id);
+                    if (path) selectLayer(path);
+                    return;
+                }
+                // Replace-src flow (Replace button inside OverlayEditor).
+                const existing = listOverlays(entryHtml, { w: canvasW, h: canvasH }).find(
+                    (o) => o.id === target.id
+                );
+                if (!existing) return;
+                const next = { ...existing, src: url } as Overlay;
+                updateEntryHtml(entryId, upsertOverlay(entryHtml, next));
+            } finally {
+                setUploadingReplace(false);
+                replaceTargetRef.current = null;
+            }
+        },
+        [
+            entryHtml,
+            entryId,
+            canvasW,
+            canvasH,
+            updateEntryHtml,
+            uploadFile,
+            getPublicUrl,
+            selectLayer,
+        ]
+    );
+
+    const onOverlayPatch = useCallback(
+        (patch: Partial<Overlay>) => {
+            if (!selectedOverlay) return;
+            const next = { ...selectedOverlay, ...patch } as Overlay;
+            updateEntryHtml(entryId, upsertOverlay(entryHtml, next));
+        },
+        [selectedOverlay, entryHtml, entryId, updateEntryHtml]
+    );
+
+    const onOverlayDelete = useCallback(() => {
+        if (!selectedOverlay) return;
+        updateEntryHtml(entryId, deleteOverlay(entryHtml, selectedOverlay.id));
+        selectLayer(null);
+    }, [selectedOverlay, entryHtml, entryId, updateEntryHtml, selectLayer]);
 
     const insertChild = useCallback(
         (parentPath: number[] | null, kind: NewLayerKind) => {
@@ -126,6 +281,73 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
 
     return (
         <div className="flex h-full flex-col">
+            {/* Add Overlay toolbar — replaces the old Overlays tab. Drops
+                Text / Image / Video overlays into the shot's .vx-overlay
+                container; the new row appears in the tree below and the
+                inspector auto-routes to OverlayEditor for it. */}
+            <div className="flex shrink-0 items-center gap-1 border-b border-gray-100 px-2 py-1.5">
+                <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                    Add overlay
+                </span>
+                <button
+                    type="button"
+                    onClick={addTextOverlay}
+                    title="Add text overlay"
+                    className="flex h-6 items-center gap-1 rounded border border-gray-200 bg-white px-2 text-[11px] text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+                >
+                    <TypeIcon className="size-3" />
+                    Text
+                </button>
+                <button
+                    type="button"
+                    onClick={() => addMediaOverlay('image')}
+                    title="Add image overlay"
+                    className="flex h-6 items-center gap-1 rounded border border-gray-200 bg-white px-2 text-[11px] text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+                >
+                    <ImageIcon className="size-3" />
+                    Image
+                </button>
+                <button
+                    type="button"
+                    onClick={() => addMediaOverlay('video')}
+                    title="Add video overlay"
+                    className="flex h-6 items-center gap-1 rounded border border-gray-200 bg-white px-2 text-[11px] text-gray-600 transition-colors hover:border-indigo-300 hover:text-indigo-600"
+                >
+                    <VideoIcon className="size-3" />
+                    Video
+                </button>
+            </div>
+
+            {/* Chip filters — narrow the tree to a kind without losing
+                hierarchy. "All" disables filtering. */}
+            {tree.length > 0 && (
+                <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-gray-100 px-2 py-1.5">
+                    {(
+                        [
+                            { id: 'all', label: 'All' },
+                            { id: 'text', label: 'Text' },
+                            { id: 'image', label: 'Image' },
+                            { id: 'video', label: 'Video' },
+                            { id: 'overlays', label: 'Overlays' },
+                        ] as const
+                    ).map(({ id, label }) => (
+                        <button
+                            key={id}
+                            type="button"
+                            onClick={() => setChipFilter(id)}
+                            className={[
+                                'h-6 shrink-0 rounded-full border px-2.5 text-[11px] transition-colors',
+                                chipFilter === id
+                                    ? 'border-indigo-500 bg-indigo-100 text-indigo-700'
+                                    : 'border-gray-200 bg-white text-gray-500 hover:text-gray-800',
+                            ].join(' ')}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Tree */}
             <div className="flex-1 overflow-y-auto p-1">
                 {tree.length === 0 ? (
@@ -136,8 +358,12 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
                             onPick={(kind) => insertChild(null, kind)}
                         />
                     </div>
+                ) : filteredTree.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-[11px] text-gray-400">
+                        No {chipFilter} in this entry.
+                    </div>
                 ) : (
-                    tree.map((node) => (
+                    filteredTree.map((node) => (
                         <LayerRow
                             key={node.id}
                             node={node}
@@ -155,8 +381,32 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
                 )}
             </div>
 
-            {/* Inspector */}
-            {selectedNode ? (
+            {/* Inspector — routes by overlay-ness. Nodes inside `.vx-overlay`
+                that carry a `data-vx-overlay-id` use the overlay-aware editor
+                (sliders + objectFit + auto-aspect). Everything else uses the
+                generic DOM-node inspector. */}
+            {selectedNode && selectedOverlay ? (
+                <div className="border-t border-gray-200 p-2">
+                    <OverlayEditor
+                        key={selectedOverlay.id}
+                        overlay={selectedOverlay}
+                        selected={true}
+                        onSelect={() => {
+                            /* already selected via tree row */
+                        }}
+                        onPatch={onOverlayPatch}
+                        onDelete={onOverlayDelete}
+                        onReplaceSrc={onOverlayReplaceSrc}
+                        hideHeader={true}
+                    />
+                    {uploadingReplace && (
+                        <div className="mt-2 flex items-center gap-1.5 text-[10px] text-gray-500">
+                            <Loader2 className="size-3 animate-spin" />
+                            Uploading replacement…
+                        </div>
+                    )}
+                </div>
+            ) : selectedNode ? (
                 <NodeInspector
                     key={selectedNode.id}
                     node={selectedNode}
@@ -168,6 +418,21 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
                     Select a layer to edit its properties.
                 </div>
             )}
+
+            {/* Hidden file input used by the OverlayEditor's Replace button */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept={
+                    replaceTargetRef.current?.kind === 'video'
+                        ? 'video/*'
+                        : replaceTargetRef.current?.kind === 'image'
+                          ? 'image/*'
+                          : 'image/*,video/*'
+                }
+                className="hidden"
+                onChange={handleReplaceFile}
+            />
         </div>
     );
 }
@@ -838,6 +1103,39 @@ function StyleInput({
             className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
         />
     );
+}
+
+// ── Chip filter ─────────────────────────────────────────────────────────────
+
+/** Active chip filter for the Layers tree. */
+type ChipFilter = 'all' | 'text' | 'image' | 'video' | 'overlays';
+
+/** Whether a single node satisfies the chip filter. */
+function nodeMatchesChip(node: LayerNode, filter: ChipFilter): boolean {
+    if (filter === 'all') return true;
+    if (filter === 'overlays') return !!node.attrs['data-vx-overlay-id'];
+    if (filter === 'text') return node.kind === 'text';
+    if (filter === 'image') return node.kind === 'image';
+    if (filter === 'video') return node.kind === 'video';
+    return true;
+}
+
+/**
+ * Recursively prune the tree to nodes that either match the chip filter or
+ * have at least one matching descendant. Preserves the hierarchy so a Text
+ * inside two Containers still shows both containers as expandable ancestors
+ * — the chip narrows the view, it doesn't flatten it.
+ */
+function filterTreeByChip(nodes: LayerNode[], filter: ChipFilter): LayerNode[] {
+    if (filter === 'all') return nodes;
+    const out: LayerNode[] = [];
+    for (const n of nodes) {
+        const children = filterTreeByChip(n.children, filter);
+        if (nodeMatchesChip(n, filter) || children.length > 0) {
+            out.push({ ...n, children });
+        }
+    }
+    return out;
 }
 
 /**

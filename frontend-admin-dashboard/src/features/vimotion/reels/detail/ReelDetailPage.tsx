@@ -329,9 +329,15 @@ function ReelFactsList({ reel }: { reel: ReelResponse }) {
     const trim = reel.trim_map as
         | { total_new_duration_s?: number; speed_multiplier?: number }
         | undefined;
+    // B5 (2026-05-22) — render-time echo for user-cut renders. Present
+    // only when /render received cut_plan_overrides; backend writes the
+    // resolved override summary into ai_reels.extra_metadata.
     const meta = (reel.metadata ?? {}) as {
         output_resolution?: { width?: number; height?: number };
         render_duration_s?: number;
+        cut_plan_override_count?: number;
+        cut_plan_override_total_s?: number;
+        final_predicted_duration_s?: number;
     };
     const sourceWindowLabel =
         window?.t_start != null && window?.t_end != null
@@ -340,6 +346,9 @@ function ReelFactsList({ reel }: { reel: ReelResponse }) {
     const dims = meta.output_resolution
         ? `${meta.output_resolution.width ?? '?'}×${meta.output_resolution.height ?? '?'}`
         : '—';
+    const hasUserCuts =
+        typeof meta.cut_plan_override_count === 'number'
+        && meta.cut_plan_override_count > 0;
     return (
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-neutral-200 bg-white p-4 text-sm">
             <Fact label="Aspect" value={(reel.config?.aspect as string) ?? '9:16'} />
@@ -365,6 +374,26 @@ function ReelFactsList({ reel }: { reel: ReelResponse }) {
                         : '—'
                 }
             />
+            {hasUserCuts && (
+                <div className="col-span-2 rounded-md bg-orange-50 px-3 py-2">
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-orange-700">
+                        <Scissors className="mr-1 inline size-3" />
+                        Your edits
+                    </dt>
+                    <dd className="mt-0.5 text-sm font-medium text-orange-900">
+                        {meta.cut_plan_override_count} user cut
+                        {meta.cut_plan_override_count === 1 ? '' : 's'}
+                        {typeof meta.cut_plan_override_total_s === 'number' && (
+                            <> · {meta.cut_plan_override_total_s.toFixed(1)}s removed</>
+                        )}
+                        {typeof meta.final_predicted_duration_s === 'number' && (
+                            <span className="ml-2 text-xs text-orange-700">
+                                (predicted {meta.final_predicted_duration_s.toFixed(1)}s)
+                            </span>
+                        )}
+                    </dd>
+                </div>
+            )}
         </dl>
     );
 }

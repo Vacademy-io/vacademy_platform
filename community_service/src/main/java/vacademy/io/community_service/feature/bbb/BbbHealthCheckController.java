@@ -32,6 +32,16 @@ public class BbbHealthCheckController {
         return ResponseEntity.ok(healthCheckService.runHealthCheck());
     }
 
+    /**
+     * Pool-aware health check — iterates running servers, updates DB.
+     * notify=false skips WhatsApp pages (default for manual UI clicks).
+     */
+    @PostMapping("/pool/health-check")
+    public ResponseEntity<Map<String, Object>> triggerPoolHealthCheck(
+            @RequestParam(defaultValue = "false") boolean notify) {
+        return ResponseEntity.ok(healthCheckService.runPoolHealthCheck(notify));
+    }
+
     /** Legacy endpoint — backward compatible */
     @PostMapping("/server")
     public ResponseEntity<Map<String, Object>> triggerServerAction(

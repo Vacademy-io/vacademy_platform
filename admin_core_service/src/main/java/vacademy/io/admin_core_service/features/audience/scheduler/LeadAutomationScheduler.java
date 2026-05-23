@@ -169,6 +169,15 @@ public class LeadAutomationScheduler {
         }
         ctxBuilder.put(ctx, "dueAt", emission.dueAt.toString());
         ctxBuilder.put(ctx, "minutesToBreach", Math.max(0, (emission.dueAt.getEpochSecond() - now.getEpochSecond()) / 60));
+        // Surface the institute's configured TAT so templates can render copy like
+        // "Please reach out before {{tat}}". Falls back gracefully when not configured.
+        Integer tatHours = config.getTatReminder() != null ? config.getTatReminder().getTatHours() : null;
+        if (tatHours != null) {
+            ctxBuilder.put(ctx, "tatHours", tatHours);
+            ctxBuilder.put(ctx, "tat", tatHours == 1 ? "1 hour" : tatHours + " hours");
+        } else {
+            ctxBuilder.put(ctx, "tat", "the earliest");
+        }
 
         try {
             workflowTriggerService.handleTriggerEvents(emission.triggerKey, c.getLeadId(), c.getInstituteId(), ctx);

@@ -455,6 +455,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
       'leadMobile',
       'leadEmail',
       'campaignName',
+      'tat',
     ],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:#1a1a1a">Hi {{counselorName}},</h2>
@@ -465,7 +466,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
     <li><strong>Email:</strong> {{leadEmail}}</li>
     <li><strong>Campaign:</strong> {{campaignName}}</li>
   </ul>
-  <p style="color:#444;line-height:1.6">Please reach out at the earliest.</p>
+  <p style="color:#444;line-height:1.6">Please reach within {{tat}} time.</p>
 </div>`,
   },
 

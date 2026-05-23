@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_LEAD_JOURNEY } from '@/constants/urls';
+import { GET_ALL_LEAD_EVENTS } from '@/constants/urls';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyButton } from '@/components/design-system/button';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
-    CaretDown,
-    CaretUp,
     Path,
     UserPlus,
     UserCheck,
@@ -25,25 +23,32 @@ import {
     Warning,
     ArrowRight,
     PencilSimple,
+    Note,
+    Phone,
+    CaretDown,
+    CaretUp,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface JourneyEvent {
+interface TimelineEvent {
     id: string;
+    type: string;
+    type_id: string;
     action_type: string;
     actor_type: string;
     actor_name: string | null;
     title: string;
     description: string | null;
     metadata: Record<string, unknown> | null;
-    category: string;
+    category: 'JOURNEY' | 'ACTIVITY';
+    is_pinned: boolean;
     created_at: string;
 }
 
-interface JourneyPage {
-    content: JourneyEvent[];
+interface EventPage {
+    content: TimelineEvent[];
     totalElements: number;
     totalPages: number;
     last: boolean;
@@ -51,13 +56,9 @@ interface JourneyPage {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-async function fetchJourneyEvents(
-    responseId: string,
-    page: number,
-    size: number,
-): Promise<JourneyPage> {
-    const res = await authenticatedAxiosInstance.get(GET_LEAD_JOURNEY, {
-        params: { type: 'AUDIENCE_RESPONSE', typeId: responseId, page, size },
+async function fetchAllEvents(userId: string, page: number, size: number): Promise<EventPage> {
+    const res = await authenticatedAxiosInstance.get(GET_ALL_LEAD_EVENTS(userId), {
+        params: { page, size },
     });
     return res.data;
 }
@@ -72,6 +73,7 @@ type ActionConfig = {
 };
 
 const ACTION_CONFIG: Record<string, ActionConfig> = {
+    // JOURNEY events
     LEAD_SUBMITTED: {
         Icon: UserPlus,
         dotBg: 'bg-info-50 ring-info-200',
@@ -144,6 +146,37 @@ const ACTION_CONFIG: Record<string, ActionConfig> = {
         iconColor: 'text-success-700',
         label: 'Enrolled',
     },
+    // ACTIVITY events
+    NOTE: {
+        Icon: Note,
+        dotBg: 'bg-secondary ring-border',
+        iconColor: 'text-neutral-500',
+        label: 'Note',
+    },
+    CALL: {
+        Icon: Phone,
+        dotBg: 'bg-secondary ring-border',
+        iconColor: 'text-neutral-500',
+        label: 'Call',
+    },
+    WALK_IN_NOTE: {
+        Icon: Note,
+        dotBg: 'bg-secondary ring-border',
+        iconColor: 'text-neutral-500',
+        label: 'Walk-in Note',
+    },
+    FOLLOWUP_SCHEDULED: {
+        Icon: CalendarCheck,
+        dotBg: 'bg-info-50 ring-info-200',
+        iconColor: 'text-info-500',
+        label: 'Follow-up Scheduled',
+    },
+    STATUS_CHANGE: {
+        Icon: ArrowsLeftRight,
+        dotBg: 'bg-secondary ring-border',
+        iconColor: 'text-muted-foreground',
+        label: 'Status Changed',
+    },
 };
 
 const FALLBACK_CONFIG: ActionConfig = {
@@ -161,7 +194,11 @@ function getConfig(actionType: string): ActionConfig {
 
 function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
     const from = (meta.from_status_label as string) || (meta.from_status_key as string) || null;
-    const to = (meta.to_status_label as string) || (meta.to_status_key as string) || null;
+    const to =
+        (meta.to_status_label as string) ||
+        (meta.to_status_key as string) ||
+        (meta.new_status as string) ||
+        null;
     if (!from && !to) return null;
     return (
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
@@ -170,7 +207,7 @@ function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
                     {from}
                 </span>
             ) : (
-                <span className="text-xs text-muted-foreground italic">None</span>
+                <span className="text-xs text-muted-foreground italic">Previous</span>
             )}
             <ArrowRight weight="bold" className="size-3 shrink-0 text-muted-foreground" />
             {to && (
@@ -186,8 +223,8 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
     const oldScore = meta.old_score as number | undefined;
     const newScore = meta.new_score as number | undefined;
     const tier = meta.tier as string | undefined;
-    if (oldScore === undefined || newScore === undefined) return null;
-    const improved = newScore > oldScore;
+    if (newScore === undefined) return null;
+    const improved = oldScore === undefined || newScore >= oldScore;
     const TierIcon = improved ? TrendUp : TrendDown;
     const tierColor =
         tier === 'HOT'
@@ -199,15 +236,14 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
     return (
         <div className="mt-1.5 flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1">
-                <span className="text-xs font-semibold tabular-nums text-muted-foreground">
-                    {oldScore}
-                </span>
+                {oldScore !== undefined && (
+                    <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                        {oldScore}
+                    </span>
+                )}
                 <TierIcon
                     weight="bold"
-                    className={cn(
-                        'size-3.5',
-                        improved ? 'text-success-500' : 'text-danger-500',
-                    )}
+                    className={cn('size-3.5', improved ? 'text-success-500' : 'text-danger-500')}
                 />
                 <span
                     className={cn(
@@ -218,7 +254,6 @@ function ScoreUpdateMeta({ meta }: { meta: Record<string, unknown> }) {
                     {newScore}
                 </span>
             </div>
-            {/* mini bar */}
             <div className="h-1.5 w-16 rounded-full bg-neutral-100 overflow-hidden">
                 <div
                     className={cn(
@@ -274,12 +309,13 @@ function SourceMeta({ meta }: { meta: Record<string, unknown> }) {
     );
 }
 
-function EventMeta({ event }: { event: JourneyEvent }) {
+function EventMeta({ event }: { event: TimelineEvent }) {
     const meta = event.metadata ?? {};
     switch (event.action_type) {
         case 'STATUS_CHANGED':
         case 'LEAD_CONVERTED':
         case 'LEAD_LOST':
+        case 'STATUS_CHANGE':
             return <StatusChangeMeta meta={meta} />;
         case 'SCORE_UPDATED':
         case 'MANUAL_SCORE_UPDATE':
@@ -297,22 +333,31 @@ function EventMeta({ event }: { event: JourneyEvent }) {
     }
 }
 
+// ── Category badge ────────────────────────────────────────────────────────────
+
+function CategoryBadge({ category }: { category: 'JOURNEY' | 'ACTIVITY' }) {
+    if (category === 'ACTIVITY') {
+        return (
+            <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
+                Activity
+            </span>
+        );
+    }
+    return null;
+}
+
 // ── Single event row ───────────────────────────────────────────────────────────
 
-function JourneyEventRow({
-    event,
-    isLast,
-}: {
-    event: JourneyEvent;
-    isLast: boolean;
-}) {
+function EventRow({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
     const config = getConfig(event.action_type);
     const { Icon, dotBg, iconColor } = config;
-    const isTerminal = event.action_type === 'LEAD_CONVERTED' || event.action_type === 'LEAD_LOST';
+    const isConverted = event.action_type === 'LEAD_CONVERTED';
+    const isLost = event.action_type === 'LEAD_LOST';
+    const isTerminal = isConverted || isLost;
 
     return (
         <div className="flex gap-3">
-            {/* Left rail: connector line + icon dot */}
+            {/* Left rail */}
             <div className="flex flex-col items-center">
                 <div
                     className={cn(
@@ -326,30 +371,33 @@ function JourneyEventRow({
                 {!isLast && <div className="mt-1 w-px flex-1 bg-border min-h-6" />}
             </div>
 
-            {/* Right: card */}
+            {/* Card */}
             <div
                 className={cn(
                     'mb-4 flex-1 min-w-0 rounded-lg border px-3 py-2.5',
-                    isTerminal && event.action_type === 'LEAD_CONVERTED'
+                    isConverted
                         ? 'border-success-200 bg-success-50/60'
-                        : isTerminal && event.action_type === 'LEAD_LOST'
+                        : isLost
                           ? 'border-danger-200 bg-danger-50/40'
                           : 'border-border bg-card',
                 )}
             >
                 <div className="flex items-start justify-between gap-2">
-                    <p
-                        className={cn(
-                            'text-xs font-semibold leading-tight',
-                            isTerminal && event.action_type === 'LEAD_CONVERTED'
-                                ? 'text-success-700'
-                                : isTerminal && event.action_type === 'LEAD_LOST'
-                                  ? 'text-danger-700'
-                                  : 'text-neutral-800',
-                        )}
-                    >
-                        {event.title}
-                    </p>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                        <p
+                            className={cn(
+                                'text-xs font-semibold leading-tight truncate',
+                                isConverted
+                                    ? 'text-success-700'
+                                    : isLost
+                                      ? 'text-danger-700'
+                                      : 'text-neutral-800',
+                            )}
+                        >
+                            {event.title}
+                        </p>
+                        <CategoryBadge category={event.category} />
+                    </div>
                     <time
                         className="shrink-0 text-xs text-muted-foreground tabular-nums"
                         title={format(new Date(event.created_at), 'MMM d, yyyy h:mm a')}
@@ -371,9 +419,9 @@ function JourneyEventRow({
     );
 }
 
-// ── Skeleton rows ─────────────────────────────────────────────────────────────
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
-function JourneySkeletonRows() {
+function SkeletonRows() {
     return (
         <div className="flex flex-col">
             {[1, 2, 3].map((i) => (
@@ -393,13 +441,13 @@ function JourneySkeletonRows() {
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function JourneyEmptyState() {
+function EmptyState() {
     return (
         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 py-8 text-center">
             <Path weight="duotone" className="size-8 text-muted-foreground/50" />
-            <p className="text-sm font-medium text-muted-foreground">No journey events yet</p>
+            <p className="text-sm font-medium text-muted-foreground">No events yet</p>
             <p className="text-xs text-muted-foreground/70 max-w-xs">
-                Events are logged automatically as the lead progresses
+                Events appear here as the lead progresses — submissions, scores, notes, and more
             </p>
         </div>
     );
@@ -408,27 +456,26 @@ function JourneyEmptyState() {
 // ── Main exported component ───────────────────────────────────────────────────
 
 interface LeadJourneyTimelineProps {
-    /** audience_response ID — typically profile.best_score_response_id */
-    responseId: string | null | undefined;
+    /** The student user ID — all events across all types are fetched by this */
+    userId: string | null | undefined;
 }
 
-export function LeadJourneyTimeline({ responseId }: LeadJourneyTimelineProps) {
+export function LeadJourneyTimeline({ userId }: LeadJourneyTimelineProps) {
     const [open, setOpen] = useState(false);
     const [page, setPage] = useState(0);
-    const pageSize = 20;
+    const pageSize = 50;
 
     const { data, isLoading, isError } = useQuery({
-        queryKey: ['lead-journey', responseId, page, pageSize],
-        queryFn: () => fetchJourneyEvents(responseId!, page, pageSize),
-        enabled: open && !!responseId,
-        staleTime: 60 * 1000,
+        queryKey: ['lead-all-events', userId, page],
+        queryFn: () => fetchAllEvents(userId!, page, pageSize),
+        enabled: open && !!userId,
+        staleTime: 30 * 1000,
     });
 
     const totalCount = data?.totalElements;
 
     return (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {/* Header — always visible toggle */}
             <button
                 onClick={() => setOpen((v) => !v)}
                 className={cn(
@@ -456,24 +503,21 @@ export function LeadJourneyTimeline({ responseId }: LeadJourneyTimelineProps) {
                 )}
             </button>
 
-            {/* Expanded content */}
             {open && (
                 <div className="p-4">
-                    {!responseId && (
+                    {!userId && (
                         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 py-6 text-center">
                             <Path weight="duotone" className="size-7 text-muted-foreground/40" />
-                            <p className="text-xs text-muted-foreground">
-                                No campaign submission linked to this profile yet
-                            </p>
+                            <p className="text-xs text-muted-foreground">No lead profile linked</p>
                         </div>
                     )}
 
-                    {responseId && isLoading && <JourneySkeletonRows />}
+                    {userId && isLoading && <SkeletonRows />}
 
-                    {responseId && isError && (
+                    {userId && isError && (
                         <div className="flex flex-col items-center gap-2 rounded-lg border border-danger-200 bg-danger-50/50 py-5 text-center">
                             <p className="text-xs font-medium text-danger-600">
-                                Failed to load journey
+                                Failed to load events
                             </p>
                             <MyButton
                                 buttonType="secondary"
@@ -485,21 +529,20 @@ export function LeadJourneyTimeline({ responseId }: LeadJourneyTimelineProps) {
                         </div>
                     )}
 
-                    {responseId && !isLoading && !isError && data && (
+                    {userId && !isLoading && !isError && data && (
                         <>
                             {data.content.length === 0 ? (
-                                <JourneyEmptyState />
+                                <EmptyState />
                             ) : (
                                 <div>
                                     {data.content.map((event, idx) => (
-                                        <JourneyEventRow
+                                        <EventRow
                                             key={event.id}
                                             event={event}
                                             isLast={idx === data.content.length - 1 && data.last}
                                         />
                                     ))}
 
-                                    {/* Pagination */}
                                     {data.totalPages > 1 && (
                                         <div className="mt-1 flex items-center justify-between border-t border-border pt-3">
                                             <span className="text-xs text-muted-foreground">

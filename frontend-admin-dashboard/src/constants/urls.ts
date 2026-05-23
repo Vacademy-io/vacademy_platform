@@ -108,6 +108,14 @@ export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline
 export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
+export const GET_ALL_LEAD_EVENTS = (studentUserId: string) =>
+    `${BASE_URL}/admin-core-service/timeline/v1/student/${studentUserId}/all`;
+const FOLLOWUP_BASE = `${BASE_URL}/admin-core-service/v1/lead-followup`;
+export const GET_LEAD_FOLLOWUPS = (audienceResponseId: string) =>
+    `${FOLLOWUP_BASE}/${audienceResponseId}`;
+export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
+export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
+export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;

@@ -209,17 +209,21 @@ public class LeadScoringService {
         logger.info("Lead score calculated: response={}, score={}, tier={}",
                 audienceResponseId, rawScore, saved.getTier());
 
-        // Log SCORE_UPDATED only when the value actually changes on a re-calculation.
-        // Skip for brand-new leads (oldRawScore == null) — LEAD_SUBMITTED covers the initial score.
-        if (oldRawScore != null && !oldRawScore.equals(rawScore)) {
+        // Log SCORE_UPDATED whenever the score is set or changes (including initial calculation).
+        if (!Integer.valueOf(rawScore).equals(oldRawScore)) {
             try {
+                String title = oldRawScore == null
+                        ? "Lead score calculated"
+                        : "Lead score updated";
+                String desc = oldRawScore == null
+                        ? "Initial score: " + rawScore
+                        : "Score changed from " + oldRawScore + " to " + rawScore;
                 timelineEventService.logJourneyEvent(
                         "AUDIENCE_RESPONSE", audienceResponseId,
                         LeadJourneyActionType.SCORE_UPDATED,
                         "SYSTEM", null, "System",
-                        "Lead score updated",
-                        "Score changed from " + oldRawScore + " to " + rawScore,
-                        Map.of("old_score", oldRawScore,
+                        title, desc,
+                        Map.of("old_score", oldRawScore != null ? oldRawScore : 0,
                                "new_score", rawScore,
                                "tier", saved.getTier() != null ? saved.getTier() : ""),
                         responseForScoring != null ? responseForScoring.getStudentUserId() : null

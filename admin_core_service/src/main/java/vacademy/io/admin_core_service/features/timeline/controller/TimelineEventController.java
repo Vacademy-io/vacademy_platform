@@ -126,4 +126,20 @@ public class TimelineEventController {
                 Pageable pageable = PageRequest.of(page, size);
                 return ResponseEntity.ok(timelineEventService.getCrossStageJourney(studentUserId, pageable));
         }
+
+        /**
+         * Unified timeline: ALL events (JOURNEY + ACTIVITY) for a student, sorted by timestamp DESC.
+         * Powers the lead journey panel that shows submission, score updates, notes, follow-ups,
+         * counselor assignment and status changes in a single chronological stream.
+         * GET /admin-core-service/timeline/v1/student/{studentUserId}/all
+         */
+        @GetMapping("/student/{studentUserId}/all")
+        public ResponseEntity<Page<TimelineEventDTO>> getAllEventsForStudent(
+                        @PathVariable String studentUserId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "50") int size) {
+
+                Pageable pageable = PageRequest.of(page, size);
+                return ResponseEntity.ok(timelineEventService.getAllEventsForStudent(studentUserId, pageable));
+        }
 }

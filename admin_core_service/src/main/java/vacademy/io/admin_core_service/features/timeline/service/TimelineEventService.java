@@ -149,6 +149,14 @@ public class TimelineEventService {
                                 .map(this::mapToDTO);
         }
 
+        /** All events (JOURNEY + ACTIVITY) for a student, sorted purely by createdAt DESC. */
+        @Transactional(readOnly = true)
+        public Page<TimelineEventDTO> getAllEventsForStudent(String studentUserId, Pageable pageable) {
+                return timelineEventRepository
+                                .findByStudentUserIdOrderByCreatedAtDesc(studentUserId, pageable)
+                                .map(this::mapToDTO);
+        }
+
         @Transactional(readOnly = true)
         public Page<TimelineEventDTO> getJourneyEvents(String type, String typeId, Pageable pageable) {
                 return timelineEventRepository

@@ -141,7 +141,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 WHERE psli_int.enroll_invite_id = ei.id
                   AND psli_int.package_session_id IN (
                     SELECT ps.id FROM package_session ps
-                    JOIN package_entity pe ON ps.package_id = pe.id
+                    JOIN package pe ON ps.package_id = pe.id
                     WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
         UNION
         SELECT pl.id, pl.created_at
@@ -183,7 +183,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 WHERE psli_int.enroll_invite_id = ei.id
                   AND psli_int.package_session_id IN (
                     SELECT ps.id FROM package_session ps
-                    JOIN package_entity pe ON ps.package_id = pe.id
+                    JOIN package pe ON ps.package_id = pe.id
                     WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
         UNION
         SELECT pl.id

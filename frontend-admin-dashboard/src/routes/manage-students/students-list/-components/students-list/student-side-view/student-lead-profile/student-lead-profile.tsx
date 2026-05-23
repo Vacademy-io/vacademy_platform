@@ -10,9 +10,11 @@ import {
     GET_USER_AUDIENCES,
     GET_CROSS_STAGE_TIMELINE,
     CREATE_TIMELINE_EVENT,
+    CREATE_LEAD_FOLLOWUP,
 } from '@/constants/urls';
 import { cn } from '@/lib/utils';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
+import { FollowUpsWidget } from './follow-ups-widget';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
@@ -54,6 +56,7 @@ import {
     PushPin,
     GitMerge,
     ListBullets,
+    CalendarDot,
 } from '@phosphor-icons/react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -251,10 +254,10 @@ interface LeadScoreDetail {
 }
 
 const FACTOR_META: Record<string, { label: string; color: string }> = {
-    source_quality:      { label: 'Source Quality',      color: 'bg-primary-500' },
-    profile_completeness:{ label: 'Profile Completeness', color: 'bg-success-500' },
-    recency:             { label: 'Recency',              color: 'bg-warning-500' },
-    engagement:          { label: 'Engagement',           color: 'bg-info-500' },
+    source_quality: { label: 'Source Quality', color: 'bg-primary-500' },
+    profile_completeness: { label: 'Profile Completeness', color: 'bg-success-500' },
+    recency: { label: 'Recency', color: 'bg-warning-500' },
+    engagement: { label: 'Engagement', color: 'bg-info-500' },
 };
 
 function ManualScoreEditor({ responseId }: { responseId: string }) {
@@ -262,7 +265,10 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
     const [editing, setEditing] = useState(false);
     const [value, setValue] = useState('');
 
-    const scoreData = queryClient.getQueryData<LeadScoreDetail>(['lead-score-breakdown', responseId]);
+    const scoreData = queryClient.getQueryData<LeadScoreDetail>([
+        'lead-score-breakdown',
+        responseId,
+    ]);
     const isManual = scoreData?.is_manual_override ?? false;
     const currentScore = scoreData?.raw_score;
 
@@ -299,7 +305,10 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
                     max={100}
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setEditing(false); }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSave();
+                        if (e.key === 'Escape') setEditing(false);
+                    }}
                     className="w-16 rounded-md border border-neutral-300 px-2 py-1 text-xs tabular-nums focus:border-primary-400 focus:outline-none"
                     placeholder="0–100"
                 />
@@ -323,8 +332,11 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
     return (
         <div className="mt-1.5 flex items-center gap-2">
             <button
-                onClick={() => { setValue(currentScore?.toString() ?? ''); setEditing(true); }}
-                className="flex items-center gap-1 text-xs text-neutral-400 hover:text-primary-600 transition-colors"
+                onClick={() => {
+                    setValue(currentScore?.toString() ?? '');
+                    setEditing(true);
+                }}
+                className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
             >
                 <PencilSimple size={11} />
                 {isManual ? `Manual: ${currentScore}` : 'Set score manually'}
@@ -333,7 +345,7 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
                 <button
                     onClick={handleClear}
                     disabled={isPending}
-                    className="text-xs text-neutral-300 hover:text-danger-500 transition-colors disabled:opacity-50"
+                    className="text-xs text-neutral-300 transition-colors hover:text-danger-500 disabled:opacity-50"
                     title="Clear manual override — restores calculated score"
                 >
                     <X size={11} />
@@ -363,7 +375,7 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
         <div className="mt-2">
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-1 text-xs text-neutral-400 hover:text-primary-600 transition-colors"
+                className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
             >
                 <ChartBar size={13} weight="bold" />
                 {open ? 'Hide breakdown' : 'Score breakdown'}
@@ -387,30 +399,43 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
 
                     {factors && (
                         <div className="flex flex-col gap-2.5">
-                            {(Object.entries(FACTOR_META) as [string, { label: string; color: string }][]).map(
-                                ([key, meta]) => {
-                                    const f = factors[key as keyof ScoringFactors] as ScoreFactor | undefined;
-                                    if (!f) return null;
-                                    return (
-                                        <div key={key}>
-                                            <div className="mb-1 flex items-center justify-between gap-2">
-                                                <span className="min-w-0 truncate font-medium text-neutral-600">{meta.label}</span>
-                                                <span className="shrink-0 tabular-nums text-neutral-500">
-                                                    {f.contribution}
-                                                    <span className="text-neutral-300"> / {f.weight}</span>
+                            {(
+                                Object.entries(FACTOR_META) as [
+                                    string,
+                                    { label: string; color: string },
+                                ][]
+                            ).map(([key, meta]) => {
+                                const f = factors[key as keyof ScoringFactors] as
+                                    | ScoreFactor
+                                    | undefined;
+                                if (!f) return null;
+                                return (
+                                    <div key={key}>
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                            <span className="min-w-0 truncate font-medium text-neutral-600">
+                                                {meta.label}
+                                            </span>
+                                            <span className="shrink-0 tabular-nums text-neutral-500">
+                                                {f.contribution}
+                                                <span className="text-neutral-300">
+                                                    {' '}
+                                                    / {f.weight}
                                                 </span>
-                                            </div>
-                                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
-                                                {/* dynamic: score-based percentage width, cannot be expressed as a token */}
-                                                <div
-                                                    className={cn('h-full rounded-full transition-all', meta.color)}
-                                                    style={{ width: `${f.score}%` }}
-                                                />
-                                            </div>
+                                            </span>
                                         </div>
-                                    );
-                                }
-                            )}
+                                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-200">
+                                            {/* dynamic: score-based percentage width, cannot be expressed as a token */}
+                                            <div
+                                                className={cn(
+                                                    'h-full rounded-full transition-all',
+                                                    meta.color
+                                                )}
+                                                style={{ width: `${f.score}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
 
                             {(factors.initial_score?.value ?? 0) > 0 && (
                                 <div className="flex items-center justify-between border-t border-neutral-200 pt-2">
@@ -532,6 +557,21 @@ const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: s
         color: 'text-neutral-600',
         bgColor: 'bg-neutral-100',
     },
+    FOLLOW_UP_SCHEDULED: {
+        icon: <CalendarDot weight="fill" className="size-4" />,
+        color: 'text-violet-600',
+        bgColor: 'bg-violet-100',
+    },
+    FOLLOW_UP_COMPLETED: {
+        icon: <CheckCircle weight="fill" className="size-4" />,
+        color: 'text-emerald-600',
+        bgColor: 'bg-emerald-100',
+    },
+    FOLLOW_UP_CANCELLED: {
+        icon: <CalendarCheck weight="fill" className="size-4" />,
+        color: 'text-neutral-500',
+        bgColor: 'bg-neutral-100',
+    },
 };
 
 const DEFAULT_ACTION_CONFIG = {
@@ -585,7 +625,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
                         )}
                         {event.title}
                     </h4>
-                    <span className="shrink-0 text-xs font-medium tabular-nums text-neutral-400">
+                    <span className="shrink-0 text-caption font-medium tabular-nums text-neutral-400">
                         {formatTime(event.created_at)}
                     </span>
                 </div>
@@ -626,7 +666,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
                         );
                     })()}
                 {event.actor_name && (
-                    <p className="mt-1.5 text-xs text-neutral-400">
+                    <p className="mt-1.5 text-caption text-neutral-400">
                         by <span className="font-medium text-neutral-500">{event.actor_name}</span>
                     </p>
                 )}
@@ -642,11 +682,18 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
 
 // ── Add Note Form (for cross-stage) ──────────────────────────────────────────
 
-function AddNoteForm({ userId }: { userId: string }) {
+interface AddNoteFormProps {
+    userId: string;
+    /** The best audience response id — required to schedule a follow-up. */
+    audienceResponseId?: string | null;
+}
+
+function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const [noteText, setNoteText] = useState('');
     const [actionType, setActionType] = useState('NOTE');
     const [isExpanded, setIsExpanded] = useState(false);
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
+    const [scheduleTime, setScheduleTime] = useState('');
     const queryClient = useQueryClient();
 
     // The rich text editor emits HTML — check the rendered text for emptiness.
@@ -657,9 +704,42 @@ function AddNoteForm({ userId }: { userId: string }) {
         actionType === 'CALL_LOG' && !isCallActivityEmpty(callActivity)
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
-    const canSubmit = !isNoteEmpty || callMeta !== undefined;
 
-    const createMutation = useMutation({
+    // For Follow Up the schedule time is mandatory; content is optional.
+    const isFollowUp = actionType === 'FOLLOW_UP';
+    const canSubmit = isFollowUp
+        ? !!scheduleTime && !!audienceResponseId
+        : !isNoteEmpty || callMeta !== undefined;
+
+    function resetForm() {
+        setNoteText('');
+        setCallActivity(null);
+        setScheduleTime('');
+        setIsExpanded(false);
+    }
+
+    const createFollowUpMutation = useMutation({
+        mutationFn: () =>
+            authenticatedAxiosInstance.post(CREATE_LEAD_FOLLOWUP, {
+                audience_response_id: audienceResponseId,
+                schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : null,
+                content: noteText.trim() || null,
+            }),
+        onSuccess: () => {
+            toast.success('Follow-up scheduled');
+            resetForm();
+            // Invalidate follow-ups list and lead caches.
+            if (audienceResponseId) {
+                queryClient.invalidateQueries({
+                    queryKey: ['lead-followups', audienceResponseId],
+                });
+            }
+            invalidateLeadCaches(queryClient, userId);
+        },
+        onError: () => toast.error('Failed to schedule follow-up'),
+    });
+
+    const createNoteMutation = useMutation({
         mutationFn: () => {
             const label = NOTE_ACTION_TYPES.find((t) => t.value === actionType)?.label || 'Note';
             return createTimelineEventApi({
@@ -674,9 +754,7 @@ function AddNoteForm({ userId }: { userId: string }) {
         },
         onSuccess: () => {
             toast.success('Note added');
-            setNoteText('');
-            setCallActivity(null);
-            setIsExpanded(false);
+            resetForm();
             // Invalidate every lead-related cache so the new event count + recomputed
             // best_score show up on the drawer card and across all tables that pull
             // from ['lead-profiles-batch']. The backend recomputes synchronously on
@@ -685,6 +763,16 @@ function AddNoteForm({ userId }: { userId: string }) {
         },
         onError: () => toast.error('Failed to add note'),
     });
+
+    const isPending = createNoteMutation.isPending || createFollowUpMutation.isPending;
+
+    function handleSubmit() {
+        if (isFollowUp) {
+            createFollowUpMutation.mutate();
+        } else {
+            createNoteMutation.mutate();
+        }
+    }
 
     if (!isExpanded) {
         return (
@@ -724,48 +812,78 @@ function AddNoteForm({ userId }: { userId: string }) {
                     </button>
                 ))}
             </div>
-            <div
-                className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                        e.preventDefault();
-                        if (canSubmit) createMutation.mutate();
-                    }
-                }}
-            >
-                <RichTextEditor
-                    value={noteText}
-                    onChange={setNoteText}
-                    placeholder="Type your note here…"
-                    minHeight={64}
-                    minimalToolbar
-                />
-            </div>
+
+            {isFollowUp ? (
+                <div className="flex flex-col gap-2">
+                    <div>
+                        <label className="mb-1 block text-xs font-medium text-neutral-600">
+                            Schedule time <span className="text-danger-500">*</span>
+                        </label>
+                        <input
+                            type="datetime-local"
+                            value={scheduleTime}
+                            onChange={(e) => setScheduleTime(e.target.value)}
+                            className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-800 focus:border-primary-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary-300"
+                        />
+                    </div>
+                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2">
+                        <RichTextEditor
+                            value={noteText}
+                            onChange={setNoteText}
+                            placeholder="Add a note for this follow-up (optional)…"
+                            minHeight={56}
+                            minimalToolbar
+                        />
+                    </div>
+                    {!audienceResponseId && (
+                        <p className="text-caption text-amber-600">
+                            No campaign response linked — follow-up cannot be scheduled.
+                        </p>
+                    )}
+                </div>
+            ) : (
+                <div
+                    className="overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 text-sm text-neutral-800 focus-within:border-primary-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            if (canSubmit) handleSubmit();
+                        }
+                    }}
+                >
+                    <RichTextEditor
+                        value={noteText}
+                        onChange={setNoteText}
+                        placeholder="Type your note here…"
+                        minHeight={64}
+                        minimalToolbar
+                    />
+                </div>
+            )}
+
             {actionType === 'CALL_LOG' && (
                 <CallRecordingInput value={callActivity} onChange={setCallActivity} />
             )}
             <div className="mt-2 flex items-center justify-between">
-                <span className="text-xs text-neutral-400">Ctrl+Enter to submit</span>
+                <span className="text-caption text-neutral-400">
+                    {isFollowUp ? 'Schedule time is required' : 'Ctrl+Enter to submit'}
+                </span>
                 <div className="flex items-center gap-2">
                     <Button
                         variant="ghost"
                         size="sm"
                         className="h-7 px-3 text-xs text-neutral-500"
-                        onClick={() => {
-                            setIsExpanded(false);
-                            setNoteText('');
-                            setCallActivity(null);
-                        }}
+                        onClick={resetForm}
                     >
                         Cancel
                     </Button>
                     <Button
                         size="sm"
                         className="h-7 bg-primary-500 px-3 text-xs text-white hover:bg-primary-600"
-                        onClick={() => createMutation.mutate()}
-                        disabled={createMutation.isPending || !canSubmit}
+                        onClick={handleSubmit}
+                        disabled={isPending || !canSubmit}
                     >
-                        {createMutation.isPending ? 'Saving…' : 'Add Note'}
+                        {isPending ? 'Saving…' : isFollowUp ? 'Schedule Follow-up' : 'Add Note'}
                     </Button>
                 </div>
             </div>
@@ -794,7 +912,7 @@ function AudienceListSection({ userId }: { userId: string }) {
             <div className="flex items-center gap-2">
                 <div className="h-3.5 w-1 rounded-full bg-primary-500" />
                 <h4 className="text-sm font-semibold text-neutral-700">Linked Campaigns</h4>
-                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
                     {audiences.length}
                 </span>
             </div>
@@ -808,7 +926,7 @@ function AudienceListSection({ userId }: { userId: string }) {
                             <p className="truncate text-sm font-medium text-neutral-800">
                                 {a.campaign_name || 'Unnamed Campaign'}
                             </p>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-neutral-400">
+                            <div className="mt-0.5 flex items-center gap-2 text-caption text-neutral-400">
                                 {a.source_type && <span>{sourceLabel(a.source_type)}</span>}
                                 {a.submitted_at && <span>{formatDate(a.submitted_at)}</span>}
                             </div>
@@ -818,7 +936,7 @@ function AudienceListSection({ userId }: { userId: string }) {
                                 <LeadScoreBadge score={a.lead_score} size="sm" />
                             )}
                             <span
-                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${campaignStatusChip(a.campaign_status)}`}
+                                className={`rounded-full px-2 py-0.5 text-caption font-medium ${campaignStatusChip(a.campaign_status)}`}
                             >
                                 {a.campaign_status ?? '—'}
                             </span>
@@ -832,7 +950,13 @@ function AudienceListSection({ userId }: { userId: string }) {
 
 // ── Cross-Stage Timeline Section ──────────────────────────────────────────────
 
-function CrossStageTimeline({ userId }: { userId: string }) {
+function CrossStageTimeline({
+    userId,
+    audienceResponseId,
+}: {
+    userId: string;
+    audienceResponseId?: string | null;
+}) {
     const [page, setPage] = useState(0);
     const pageSize = 5;
 
@@ -849,13 +973,13 @@ function CrossStageTimeline({ userId }: { userId: string }) {
                 <div className="h-3.5 w-1 rounded-full bg-primary-500" />
                 <h4 className="text-sm font-semibold text-neutral-700">Activity & Notes</h4>
                 {data?.totalElements !== undefined && (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
                         {data.totalElements}
                     </span>
                 )}
             </div>
 
-            <AddNoteForm userId={userId} />
+            <AddNoteForm userId={userId} audienceResponseId={audienceResponseId} />
 
             {isLoading && (
                 <div className="flex items-center justify-center py-6">
@@ -874,14 +998,14 @@ function CrossStageTimeline({ userId }: { userId: string }) {
 
                     {data.totalPages > 1 && (
                         <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
-                            <span className="text-xs text-neutral-400">
+                            <span className="text-caption text-neutral-400">
                                 Page {page + 1} of {data.totalPages}
                             </span>
                             <div className="flex gap-1.5">
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-6 px-2 text-xs"
+                                    className="h-6 px-2 text-caption"
                                     onClick={() => setPage((p) => Math.max(0, p - 1))}
                                     disabled={page === 0}
                                 >
@@ -890,7 +1014,7 @@ function CrossStageTimeline({ userId }: { userId: string }) {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-6 px-2 text-xs"
+                                    className="h-6 px-2 text-caption"
                                     onClick={() =>
                                         setPage((p) => Math.min(data.totalPages - 1, p + 1))
                                     }
@@ -985,7 +1109,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 </div>
                 {/* Still show audience list and timeline even without a lead profile */}
                 <AudienceListSection userId={userId} />
-                <CrossStageTimeline userId={userId} />
+                <CrossStageTimeline userId={userId} audienceResponseId={null} />
             </div>
         );
     }
@@ -1007,7 +1131,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                         />
                         {profile.last_calculated_at && (
                             <p
-                                className="mt-1 text-xs text-neutral-400"
+                                className="mt-1 text-caption text-neutral-400"
                                 title={new Date(profile.last_calculated_at).toLocaleString()}
                             >
                                 Last calculated{' '}
@@ -1123,7 +1247,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                                 onClick={() => changeStatus(s.status_key)}
                                 disabled={changingStatus}
                                 className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-                                    active ? '' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
+                                    active
+                                        ? ''
+                                        : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
                                 }`}
                                 // Inline style: status colour is arbitrary user-picked hex (active state).
                                 style={
@@ -1142,7 +1268,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     })}
                 </div>
                 {isConverted && (
-                    <p className="mt-2 text-xs text-green-600">
+                    <p className="mt-2 text-caption text-green-600">
                         Score updates are frozen while converted.
                     </p>
                 )}
@@ -1154,7 +1280,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 {profile.assigned_counselor_name ? (
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <div className="flex size-7 items-center justify-center rounded-full bg-primary-100 text-primary-700 text-xs font-semibold">
+                            <div className="flex size-7 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700">
                                 {profile.assigned_counselor_name[0]?.toUpperCase()}
                             </div>
                             <span className="text-sm font-medium text-neutral-800">
@@ -1163,7 +1289,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                         </div>
                         <button
                             onClick={() => setShowAssignCounselor(true)}
-                            className="text-xs text-neutral-400 hover:text-primary-600"
+                            className="text-caption text-neutral-400 hover:text-primary-600"
                         >
                             Reassign
                         </button>
@@ -1191,11 +1317,19 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             {/* ── Linked Campaigns ── */}
             <AudienceListSection userId={userId} />
 
+            {/* ── Follow-ups ── */}
+            {profile.best_score_response_id && (
+                <FollowUpsWidget
+                    audienceResponseId={profile.best_score_response_id}
+                    userId={userId}
+                />
+            )}
+
             {/* ── Cross-Stage Timeline ── */}
             <CrossStageTimeline userId={userId} />
 
             {/* ── Lead Journey Timeline ── */}
-            <LeadJourneyTimeline responseId={profile?.best_score_response_id} />
+            <LeadJourneyTimeline userId={userId} />
         </div>
     );
 }

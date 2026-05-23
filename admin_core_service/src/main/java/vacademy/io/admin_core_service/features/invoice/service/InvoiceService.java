@@ -2665,6 +2665,26 @@ public class InvoiceService {
             String pdfUrl = pdfFileId != null ? mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId) : null;
             String paymentLink = buildPaymentLink(institute, invoice.getId());
 
+            // Notify the learner via in-app system alert
+            try {
+                String amountStr = request.getCurrency() + " " + totalAmount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+                String alertTitle = "New Invoice: " + amountStr;
+                String alertBody = "You have a new invoice (" + invoiceNumber + ") of " + amountStr
+                        + " due by " + (request.getDueDate() != null ? request.getDueDate().toLocalDate().toString() : "N/A")
+                        + ". Tap to pay: " + paymentLink;
+                notificationService.createSystemAlertAnnouncement(
+                        request.getInstituteId(),
+                        List.of(userId),
+                        alertTitle,
+                        alertBody,
+                        "system",
+                        institute.getInstituteName() != null ? institute.getInstituteName() : "Institute",
+                        "ADMIN",
+                        Map.of("priority", 3, "isDismissible", true, "showBadge", true, "isActive", true));
+            } catch (Exception e) {
+                log.warn("Failed to send invoice system alert to user {}: {}", userId, e.getMessage());
+            }
+
             results.add(AdminInvoicePaymentLinkResponseDTO.builder()
                     .invoiceId(invoice.getId())
                     .invoiceNumber(invoiceNumber)

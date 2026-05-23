@@ -14,16 +14,10 @@ import {
   Receipt,
   CalendarBlank,
   CreditCard,
-  SignIn,
   SpinnerGap,
   CheckCircle,
   Warning,
 } from "@phosphor-icons/react";
-import {
-  getTokenFromStorage,
-  getTokenFromCookie,
-} from "@/lib/auth/sessionUtility";
-import { TokenKey } from "@/constants/auth/tokens";
 import {
   GET_INVOICE_PUBLIC,
   INITIATE_INVOICE_PAYMENT,
@@ -125,22 +119,9 @@ function InvoicePaymentPage() {
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
   const pendingOrderId = useRef<string>("");
 
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [paymentInitiated, setPaymentInitiated] = useState(false);
   const [razorpayError, setRazorpayError] = useState<string | null>(null);
-
-  // Check auth on mount — cookie is set on web; Capacitor uses async storage
-  useEffect(() => {
-    const cookieToken = getTokenFromCookie(TokenKey.accessToken);
-    if (cookieToken) {
-      setIsLoggedIn(true);
-      return;
-    }
-    getTokenFromStorage(TokenKey.accessToken).then((token) => {
-      setIsLoggedIn(!!token);
-    });
-  }, []);
 
   // Fetch invoice publicly (no auth)
   const {
@@ -191,16 +172,10 @@ function InvoicePaymentPage() {
     if (!invoice) return;
     setIsPaying(true);
     try {
-      const token =
-        getTokenFromCookie(TokenKey.accessToken) ??
-        (await getTokenFromStorage(TokenKey.accessToken));
       const resp = await axios.post<PaymentResponseDTO>(
         INITIATE_INVOICE_PAYMENT(invoiceId),
         {},
-        {
-          params: { instituteId: invoice.institute_id },
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { params: { instituteId: invoice.institute_id } }
       );
       const data = resp.data;
       const rd = data.response_data ?? {};
@@ -326,7 +301,7 @@ function InvoicePaymentPage() {
             <img
               src={logoUrl}
               alt={instituteName ?? "Institute logo"}
-              className="h-12 w-auto max-w-[160px] object-contain"
+              className="h-12 w-auto max-w-40 object-contain"
             />
           ) : (
             <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
@@ -480,43 +455,29 @@ function InvoicePaymentPage() {
 
             {/* Action area */}
             <div className="space-y-2 pt-1">
-              {isLoggedIn ? (
-                <Button
-                  className="w-full gap-2"
-                  size="lg"
-                  disabled={isPaying || invoice.status === "PAID"}
-                  onClick={handlePay}
-                >
-                  {isPaying ? (
-                    <>
-                      <SpinnerGap size={18} className="animate-spin" weight="bold" />
-                      Processing…
-                    </>
-                  ) : invoice.status === "PAID" ? (
-                    <>
-                      <CheckCircle size={18} weight="fill" />
-                      Already Paid
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard size={18} weight="regular" />
-                      Pay {formatCurrency(invoice.total_amount, invoice.currency)}
-                    </>
-                  )}
-                </Button>
-              ) : (
-                <Button
-                  className="w-full gap-2"
-                  size="lg"
-                  variant="outline"
-                  onClick={() => {
-                    window.location.href = `/login?redirect=/pay/invoice/${invoiceId}`;
-                  }}
-                >
-                  <SignIn size={18} weight="regular" />
-                  Login to Pay
-                </Button>
-              )}
+              <Button
+                className="w-full gap-2"
+                size="lg"
+                disabled={isPaying || invoice.status === "PAID"}
+                onClick={handlePay}
+              >
+                {isPaying ? (
+                  <>
+                    <SpinnerGap size={18} className="animate-spin" weight="bold" />
+                    Processing…
+                  </>
+                ) : invoice.status === "PAID" ? (
+                  <>
+                    <CheckCircle size={18} weight="fill" />
+                    Already Paid
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={18} weight="regular" />
+                    Pay {formatCurrency(invoice.total_amount, invoice.currency)}
+                  </>
+                )}
+              </Button>
 
               <p className="text-center text-caption text-muted-foreground">
                 Secured payment · Your information is encrypted and safe

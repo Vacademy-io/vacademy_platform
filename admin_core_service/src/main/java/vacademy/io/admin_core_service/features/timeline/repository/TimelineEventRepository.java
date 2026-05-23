@@ -29,6 +29,12 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
     Page<TimelineEvent> findByStudentUserIdOrderByIsPinnedDescCreatedAtDesc(String studentUserId, Pageable pageable);
 
     /**
+     * Fetch ALL timeline events for a student (both JOURNEY and ACTIVITY), sorted purely
+     * by creation date descending. Used for the unified lead journey view.
+     */
+    Page<TimelineEvent> findByStudentUserIdOrderByCreatedAtDesc(String studentUserId, Pageable pageable);
+
+    /**
      * Fetch timeline events for a specific entity, with pinned first.
      * Used for notes-enhanced timeline view.
      */

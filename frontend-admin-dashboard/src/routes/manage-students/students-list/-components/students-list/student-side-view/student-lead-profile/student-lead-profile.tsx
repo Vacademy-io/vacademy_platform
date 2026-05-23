@@ -1107,9 +1107,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                         A profile will appear once this user submits an enquiry or is scored.
                     </p>
                 </div>
-                {/* Still show audience list and timeline even without a lead profile */}
+                {/* Still show audience list and note form even without a lead profile */}
                 <AudienceListSection userId={userId} />
-                <CrossStageTimeline userId={userId} audienceResponseId={null} />
+                <AddNoteForm userId={userId} audienceResponseId={null} />
             </div>
         );
     }
@@ -1325,11 +1325,11 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 />
             )}
 
-            {/* ── Cross-Stage Timeline ── */}
-            <CrossStageTimeline userId={userId} />
+            {/* ── Add Note / Log Activity ── */}
+            <AddNoteForm userId={userId} audienceResponseId={profile?.best_score_response_id} />
 
             {/* ── Lead Journey Timeline ── */}
-            <LeadJourneyTimeline userId={userId} />
+            <LeadJourneyTimeline userId={userId} responseId={profile?.best_score_response_id} />
         </div>
     );
 }

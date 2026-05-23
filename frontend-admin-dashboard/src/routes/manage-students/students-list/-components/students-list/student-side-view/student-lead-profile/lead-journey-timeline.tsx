@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_ALL_LEAD_EVENTS } from '@/constants/urls';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyButton } from '@/components/design-system/button';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
+import DOMPurify from 'dompurify';
 import {
     Path,
     UserPlus,
@@ -27,6 +28,7 @@ import {
     Phone,
     CaretDown,
     CaretUp,
+    ArrowsClockwise,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 
@@ -56,10 +58,17 @@ interface EventPage {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-async function fetchAllEvents(userId: string, page: number, size: number): Promise<EventPage> {
-    const res = await authenticatedAxiosInstance.get(GET_ALL_LEAD_EVENTS(userId), {
-        params: { page, size },
-    });
+async function fetchAllEvents(
+    userId: string,
+    responseId: string | null | undefined,
+    page: number,
+    size: number,
+): Promise<EventPage> {
+    const params: Record<string, unknown> = { page, size };
+    // Pass responseId as typeIds so legacy journey events (stored with type_id=responseId
+    // but null student_user_id) are also included in the OR query.
+    if (responseId) params['typeIds'] = responseId;
+    const res = await authenticatedAxiosInstance.get(GET_ALL_LEAD_EVENTS(userId), { params });
     return res.data;
 }
 
@@ -193,7 +202,7 @@ function getConfig(actionType: string): ActionConfig {
 // ── Metadata renderers ────────────────────────────────────────────────────────
 
 function StatusChangeMeta({ meta }: { meta: Record<string, unknown> }) {
-    const from = (meta.from_status_label as string) || (meta.from_status_key as string) || null;
+    const from = (meta.from_status_label as string) || (meta.from_status_key as string) || (meta.old_status as string) || null;
     const to =
         (meta.to_status_label as string) ||
         (meta.to_status_key as string) ||
@@ -309,6 +318,26 @@ function SourceMeta({ meta }: { meta: Record<string, unknown> }) {
     );
 }
 
+function FollowupMeta({ meta }: { meta: Record<string, unknown> }) {
+    const scheduleTime = meta.scheduleTime as string | number | undefined;
+    if (!scheduleTime) return null;
+    // Handles: epoch ms number, epoch ms string, or legacy SQL timestamp string "2026-05-23 02:40:53.228"
+    const asNumber = typeof scheduleTime === 'number' ? scheduleTime : Number(scheduleTime);
+    const d = isNaN(asNumber)
+        ? new Date(String(scheduleTime).replace(' ', 'T'))
+        : new Date(asNumber);
+    const isValid = !isNaN(d.getTime());
+    if (!isValid) return null;
+    return (
+        <div className="mt-1.5 flex items-center gap-1.5">
+            <CalendarCheck weight="fill" className="size-3.5 text-info-500 shrink-0" />
+            <span className="text-xs font-medium text-neutral-700">
+                {format(d, 'MMM d, yyyy · h:mm a')}
+            </span>
+        </div>
+    );
+}
+
 function EventMeta({ event }: { event: TimelineEvent }) {
     const meta = event.metadata ?? {};
     switch (event.action_type) {
@@ -324,26 +353,19 @@ function EventMeta({ event }: { event: TimelineEvent }) {
             return <CounselorMeta meta={meta} />;
         case 'LEAD_SUBMITTED':
             return <SourceMeta meta={meta} />;
+        case 'FOLLOWUP_SCHEDULED':
+        case 'FOLLOWUP':
+            return <FollowupMeta meta={meta} />;
         default:
-            return event.description ? (
-                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                    {event.description}
-                </p>
-            ) : null;
+            if (!event.description) return null;
+            // Sanitize and render rich text (HTML from the RichTextEditor)
+            return (
+                <div
+                    className="mt-1 text-xs text-muted-foreground leading-relaxed prose-xs [&_p]:m-0 [&_p+p]:mt-1"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(event.description) }}
+                />
+            );
     }
-}
-
-// ── Category badge ────────────────────────────────────────────────────────────
-
-function CategoryBadge({ category }: { category: 'JOURNEY' | 'ACTIVITY' }) {
-    if (category === 'ACTIVITY') {
-        return (
-            <span className="rounded-full border border-border bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
-                Activity
-            </span>
-        );
-    }
-    return null;
 }
 
 // ── Single event row ───────────────────────────────────────────────────────────
@@ -354,10 +376,18 @@ function EventRow({ event, isLast }: { event: TimelineEvent; isLast: boolean }) 
     const isConverted = event.action_type === 'LEAD_CONVERTED';
     const isLost = event.action_type === 'LEAD_LOST';
     const isTerminal = isConverted || isLost;
+    const isActivity = event.category === 'ACTIVITY';
+    const isSystem = event.actor_type === 'SYSTEM';
+    // Backend sends raw DB timestamp without timezone (e.g. "2026-05-23T09:03:36.590").
+    // Append IST offset so the browser interprets it correctly. Guard against
+    // old events that still carry a timezone suffix (Z / +HH:MM).
+    const rawTs = event.created_at ?? '';
+    const hasOffset = rawTs.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(rawTs);
+    const eventDate = new Date(hasOffset ? rawTs : rawTs + '+05:30');
 
     return (
         <div className="flex gap-3">
-            {/* Left rail */}
+            {/* Left rail — always at same x, line stays aligned */}
             <div className="flex flex-col items-center">
                 <div
                     className={cn(
@@ -375,45 +405,56 @@ function EventRow({ event, isLast }: { event: TimelineEvent; isLast: boolean }) 
             <div
                 className={cn(
                     'mb-4 flex-1 min-w-0 rounded-lg border px-3 py-2.5',
-                    isConverted
-                        ? 'border-success-200 bg-success-50/60'
-                        : isLost
-                          ? 'border-danger-200 bg-danger-50/40'
-                          : 'border-border bg-card',
+                    isActivity
+                        ? 'border-border/60 bg-muted/30'
+                        : isConverted
+                          ? 'border-success-200 bg-success-50/60'
+                          : isLost
+                            ? 'border-danger-200 bg-danger-50/40'
+                            : 'border-border bg-card',
                 )}
             >
                 <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                        <p
-                            className={cn(
-                                'text-xs font-semibold leading-tight truncate',
-                                isConverted
-                                    ? 'text-success-700'
-                                    : isLost
-                                      ? 'text-danger-700'
-                                      : 'text-neutral-800',
-                            )}
-                        >
-                            {event.title}
-                        </p>
-                        <CategoryBadge category={event.category} />
-                    </div>
-                    <time
-                        className="shrink-0 text-xs text-muted-foreground tabular-nums"
-                        title={format(new Date(event.created_at), 'MMM d, yyyy h:mm a')}
+                    <p
+                        className={cn(
+                            'text-xs leading-tight truncate',
+                            isActivity ? 'font-medium text-neutral-600' : 'font-semibold',
+                            isConverted
+                                ? 'text-success-700'
+                                : isLost
+                                  ? 'text-danger-700'
+                                  : isActivity
+                                    ? 'text-neutral-600'
+                                    : 'text-neutral-800',
+                        )}
                     >
-                        {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
+                        {event.title}
+                    </p>
+                    <time className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {format(eventDate, 'd MMM yyyy, h:mm a')}
                     </time>
                 </div>
 
                 <EventMeta event={event} />
 
-                {event.actor_name && event.actor_type !== 'SYSTEM' && (
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                        by{' '}
-                        <span className="font-medium text-neutral-600">{event.actor_name}</span>
-                    </p>
-                )}
+                {/* Actor line: "by name" for admins, "System" badge for system events */}
+                <div className="mt-1.5 flex items-center gap-1.5">
+                    {isSystem ? (
+                        <span className="rounded-full bg-secondary border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                            System
+                        </span>
+                    ) : event.actor_name ? (
+                        <p className="text-xs text-muted-foreground">
+                            by{' '}
+                            <span className="font-medium text-neutral-600">{event.actor_name}</span>
+                        </p>
+                    ) : null}
+                    {isActivity && (
+                        <span className="rounded-full bg-secondary border border-border px-1.5 py-0.5 text-xs text-muted-foreground">
+                            Activity
+                        </span>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -458,21 +499,30 @@ function EmptyState() {
 interface LeadJourneyTimelineProps {
     /** The student user ID — all events across all types are fetched by this */
     userId: string | null | undefined;
+    /** The best-score audience response ID — included in typeIds to catch legacy journey events */
+    responseId?: string | null;
 }
 
-export function LeadJourneyTimeline({ userId }: LeadJourneyTimelineProps) {
+export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineProps) {
     const [open, setOpen] = useState(false);
     const [page, setPage] = useState(0);
     const pageSize = 50;
+    const queryClient = useQueryClient();
+    const queryKey = ['lead-all-events', userId, responseId, page];
 
-    const { data, isLoading, isError } = useQuery({
-        queryKey: ['lead-all-events', userId, page],
-        queryFn: () => fetchAllEvents(userId!, page, pageSize),
+    const { data, isLoading, isError, isFetching } = useQuery({
+        queryKey,
+        queryFn: () => fetchAllEvents(userId!, responseId, page, pageSize),
         enabled: open && !!userId,
         staleTime: 30 * 1000,
     });
 
     const totalCount = data?.totalElements;
+
+    function handleRefresh(e: React.MouseEvent) {
+        e.stopPropagation();
+        queryClient.invalidateQueries({ queryKey });
+    }
 
     return (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -496,6 +546,17 @@ export function LeadJourneyTimeline({ userId }: LeadJourneyTimelineProps) {
                         {totalCount}
                     </span>
                 )}
+                <button
+                    onClick={handleRefresh}
+                    className="flex size-5 items-center justify-center rounded-full hover:bg-muted transition-colors duration-150 cursor-pointer"
+                    title="Refresh"
+                    aria-label="Refresh journey events"
+                >
+                    <ArrowsClockwise
+                        weight="bold"
+                        className={cn('size-3.5 text-muted-foreground', isFetching && 'animate-spin')}
+                    />
+                </button>
                 {open ? (
                     <CaretUp weight="bold" className="size-3.5 text-muted-foreground" />
                 ) : (

@@ -35,6 +35,28 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
     Page<TimelineEvent> findByStudentUserIdOrderByCreatedAtDesc(String studentUserId, Pageable pageable);
 
     /**
+     * Unified lead journey query: events where student_user_id matches OR type_id is in the
+     * provided list (covers legacy journey events stored before studentUserId backfill).
+     * Returns all categories sorted by created_at DESC.
+     */
+    @Query(value = """
+            SELECT * FROM timeline_event
+            WHERE student_user_id = :studentUserId
+               OR type_id IN (:typeIds)
+            ORDER BY created_at DESC
+            """,
+           countQuery = """
+            SELECT COUNT(*) FROM timeline_event
+            WHERE student_user_id = :studentUserId
+               OR type_id IN (:typeIds)
+            """,
+           nativeQuery = true)
+    Page<TimelineEvent> findAllEventsForLead(
+            @Param("studentUserId") String studentUserId,
+            @Param("typeIds") List<String> typeIds,
+            Pageable pageable);
+
+    /**
      * Fetch timeline events for a specific entity, with pinned first.
      * Used for notes-enhanced timeline view.
      */
@@ -74,7 +96,7 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
     @Query(value = """
             SELECT id, type, type_id, action_type, actor_type, actor_id,
                    actor_name, title, description, metadata_json,
-                   is_pinned, student_user_id, created_at
+                   is_pinned, student_user_id, category, created_at
             FROM (
                 SELECT te.*,
                        ROW_NUMBER() OVER (

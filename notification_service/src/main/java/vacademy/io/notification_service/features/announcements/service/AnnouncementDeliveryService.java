@@ -31,6 +31,7 @@ import vacademy.io.notification_service.service.EmailService;
 import vacademy.io.notification_service.features.firebase_notifications.service.PushNotificationService;
 import vacademy.io.common.auth.entity.User;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -552,8 +553,9 @@ public class AnnouncementDeliveryService {
         log.setSource("announcement-service");
         log.setSourceId(announcement.getId());
         log.setUserId(message.getUserId());
-        log.setNotificationDate(LocalDateTime.now());
-        
+        log.setInstituteId(announcement.getInstituteId());
+        log.setNotificationDate(Instant.now());
+
         notificationLogRepository.save(log);
     }
     
@@ -575,7 +577,8 @@ public class AnnouncementDeliveryService {
             if (normalizedFrom != null) {
                 notificationLog.setSenderBusinessChannelId(normalizedFrom);
             }
-            notificationLog.setNotificationDate(LocalDateTime.now());
+            notificationLog.setInstituteId(announcement.getInstituteId());
+            notificationLog.setNotificationDate(Instant.now());
 
             log.info("Saving EMAIL notification log: sourceId={}, channelId={}, userId={}",
                 notificationLog.getSourceId(), notificationLog.getChannelId(), notificationLog.getUserId());

@@ -129,8 +129,8 @@ export function UpcomingLiveClassesWidget({
         "[.ui-vibrant_&]:border-violet-200 dark:[.ui-vibrant_&]:border-violet-800/50",
         "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-violet-50/50",
         "dark:[.ui-vibrant_&]:from-card dark:[.ui-vibrant_&]:to-violet-950/20",
-        // Play Styles - Solid Bold Duolingo
-        "[.ui-play_&]:bg-[#E91E63] [.ui-play_&]:border-2 [.ui-play_&]:border-[#c2185b] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#c2185b]",
+        // Play Styles — bg/shadow handled by .upcoming-live-card rule in play-theme.css
+        "upcoming-live-card",
         "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
         "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
       )}

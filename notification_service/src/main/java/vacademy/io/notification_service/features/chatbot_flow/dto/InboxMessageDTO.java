@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -15,7 +17,8 @@ public class InboxMessageDTO {
     private String id;
     private String body;
     private String direction;     // OUTGOING or INCOMING
-    private String timestamp;
+    /** When the message was sent/received. Jackson emits Instant as ISO-8601 with trailing Z. */
+    private Instant timestamp;
     private String source;        // COMBOT, WATI, META
     private String senderName;
     private String status;        // notification_type raw value

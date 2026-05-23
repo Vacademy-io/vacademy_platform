@@ -77,6 +77,32 @@ class RenderOptionsBody(BaseModel):
     caption_bg_color: Optional[str] = Field(None, description="Hex color e.g. #000000")
     caption_bg_opacity: Optional[int] = Field(None, description="0-100")
     caption_size: Optional[str] = Field(None, description="S, M, or L")
+    # Style-polish fields (additive). All optional; render server defaults to
+    # the pre-feature behavior when any field is omitted.
+    caption_style: Optional[str] = Field(None, description="phrase or karaoke")
+    caption_font_family: Optional[str] = Field(
+        None, description="system | inter | montserrat | noto-sans | fira-code"
+    )
+    caption_font_weight: Optional[int] = Field(
+        None, description="400, 500, 600, 700, 800, or 900"
+    )
+    caption_text_stroke_width: Optional[int] = Field(
+        None, description="Outline width in px at 1920w canvas; 0 = no stroke"
+    )
+    caption_text_stroke_color: Optional[str] = Field(
+        None, description="Hex color for the text stroke"
+    )
+    caption_highlight_color: Optional[str] = Field(
+        None, description="Hex color for the active word in karaoke style"
+    )
+    caption_preset: Optional[str] = Field(
+        None,
+        description=(
+            "Informational: which preset the client picked "
+            "(youtube|tiktok|karaoke|cinema|branded|custom). "
+            "Server uses the resolved field values, not this label."
+        ),
+    )
 
 
 _RESOLUTION_MAP = {
@@ -1970,6 +1996,37 @@ async def request_video_render(
     _caption_bg_color = (body.caption_bg_color if body and body.caption_bg_color else None)
     _caption_bg_opacity = (body.caption_bg_opacity if body and body.caption_bg_opacity is not None else None)
     _caption_font_size = (_CAPTION_SIZE_PX.get(body.caption_size) if body and body.caption_size else None)
+    # Style-polish fields — all optional, pass-through to the render server.
+    # When omitted, the render server falls back to its existing defaults
+    # (phrase / system font / 400 weight / no stroke / yellow highlight).
+    _caption_style = (
+        body.caption_style if body and body.caption_style in ("phrase", "karaoke") else None
+    )
+    _caption_font_family = (
+        body.caption_font_family
+        if body
+        and body.caption_font_family
+        in ("system", "inter", "montserrat", "noto-sans", "fira-code")
+        else None
+    )
+    _caption_font_weight = (
+        body.caption_font_weight
+        if body
+        and body.caption_font_weight is not None
+        and body.caption_font_weight in (400, 500, 600, 700, 800, 900)
+        else None
+    )
+    _caption_text_stroke_width = (
+        body.caption_text_stroke_width
+        if body and body.caption_text_stroke_width is not None and body.caption_text_stroke_width >= 0
+        else None
+    )
+    _caption_text_stroke_color = (
+        body.caption_text_stroke_color if body and body.caption_text_stroke_color else None
+    )
+    _caption_highlight_color = (
+        body.caption_highlight_color if body and body.caption_highlight_color else None
+    )
 
     # Check if this video uses indexed source videos (for SOURCE_CLIP compositing).
     # Try metadata first; fall back to looking up ai_input_videos records directly.
@@ -2040,6 +2097,12 @@ async def request_video_render(
             caption_bg_color=_caption_bg_color,
             caption_bg_opacity=_caption_bg_opacity,
             caption_font_size=_caption_font_size,
+            caption_style=_caption_style,
+            caption_font_family=_caption_font_family,
+            caption_font_weight=_caption_font_weight,
+            caption_text_stroke_width=_caption_text_stroke_width,
+            caption_text_stroke_color=_caption_text_stroke_color,
+            caption_highlight_color=_caption_highlight_color,
             source_video_urls=_source_video_urls,
         )
     except RuntimeError as e:

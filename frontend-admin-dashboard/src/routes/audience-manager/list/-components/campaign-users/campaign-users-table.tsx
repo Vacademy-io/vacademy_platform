@@ -694,6 +694,7 @@ export const CampaignUsersTable = ({
                     _audience_campaign_name: (lead as any).campaign_name || null,
                     // TAT / follow-up SLA deadlines + badge (visual only)
                     _tat_due_at: (lead as any).tat_due_at ?? null,
+                    _first_response_at: (lead as any).first_response_at ?? null,
                     _follow_up_due_at: (lead as any).follow_up_due_at ?? null,
                     _tat_overdue: (lead as any).tat_overdue ?? null,
                     _tat_due_soon: (lead as any).tat_due_soon ?? null,

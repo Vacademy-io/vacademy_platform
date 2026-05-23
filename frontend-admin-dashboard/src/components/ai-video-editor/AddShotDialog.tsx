@@ -39,9 +39,24 @@ interface AddShotDialogProps {
  * For user_driven videos, the shot is simply appended at the end.
  */
 export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
-    const { entries, meta, currentTime, addEntry } = useVideoEditorStore();
+    const { entries, meta, currentTime, addEntry, newEntryIds, selectEntry, seek } =
+        useVideoEditorStore();
 
     const isTimeDriven = meta.navigation === 'time_driven';
+
+    // B18: when the user has already added (but not saved) a blank shot at
+    // the end, repeated "Add at end" clicks shouldn't stack more blanks —
+    // they almost always meant "go to the one I just added". The last entry
+    // qualifies as a stackable blank when:
+    //   - it's in `newEntryIds` (added since last save), AND
+    //   - its HTML still matches `BLANK_SHOT_HTML` exactly (i.e. the user
+    //     hasn't edited it yet — if they have, they explicitly want another
+    //     fresh blank).
+    const lastEntry = entries[entries.length - 1];
+    const existingUnsavedBlankAtEnd =
+        lastEntry && newEntryIds.includes(lastEntry.id) && lastEntry.html === BLANK_SHOT_HTML
+            ? lastEntry
+            : null;
 
     // Derive sensible boundary values from the existing timeline
     const firstStart = useMemo(() => {
@@ -83,6 +98,19 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
     const handleAdd = useCallback(() => {
         if (!isValid) return;
 
+        // B18: don't stack blanks. If the user is adding "at end" and there's
+        // already an unedited blank from this session sitting there, jump
+        // to it instead.
+        if (position === 'end' && existingUnsavedBlankAtEnd) {
+            selectEntry(existingUnsavedBlankAtEnd.id);
+            if (isTimeDriven) {
+                const t = existingUnsavedBlankAtEnd.inTime ?? existingUnsavedBlankAtEnd.start ?? 0;
+                seek(t);
+            }
+            onClose();
+            return;
+        }
+
         const id = `shot-${crypto.randomUUID()}`;
         const newEntry: Entry = isTimeDriven
             ? { id, html: BLANK_SHOT_HTML, z: 0, inTime, exitTime }
@@ -90,7 +118,18 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
 
         addEntry(newEntry);
         onClose();
-    }, [isValid, isTimeDriven, inTime, exitTime, addEntry, onClose]);
+    }, [
+        isValid,
+        isTimeDriven,
+        inTime,
+        exitTime,
+        addEntry,
+        onClose,
+        position,
+        existingUnsavedBlankAtEnd,
+        selectEntry,
+        seek,
+    ]);
 
     const fmt = (s: number) => {
         const m = Math.floor(s / 60);
@@ -121,12 +160,23 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
                                         [
                                             {
                                                 id: 'start',
-                                                label: firstStart > 0 ? 'Before first shot' : 'Before first shot',
+                                                label:
+                                                    firstStart > 0
+                                                        ? 'Before first shot'
+                                                        : 'Before first shot',
                                                 disabled: firstStart === 0,
                                             },
-                                            { id: 'current', label: 'At current time', disabled: false },
+                                            {
+                                                id: 'current',
+                                                label: 'At current time',
+                                                disabled: false,
+                                            },
                                             { id: 'end', label: 'At end', disabled: false },
-                                            { id: 'custom', label: 'Custom times', disabled: false },
+                                            {
+                                                id: 'custom',
+                                                label: 'Custom times',
+                                                disabled: false,
+                                            },
                                         ] as const
                                     ).map(({ id, label, disabled }) => (
                                         <button
@@ -134,9 +184,9 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
                                             disabled={disabled}
                                             onClick={() => !disabled && setPosition(id)}
                                             className={[
-                                                'rounded border px-3 py-1.5 text-[11px] text-left transition-colors',
+                                                'rounded border px-3 py-1.5 text-left text-[11px] transition-colors',
                                                 disabled
-                                                    ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                                                    ? 'cursor-not-allowed border-gray-100 bg-gray-50 text-gray-300'
                                                     : position === id
                                                       ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
                                                       : 'border-gray-200 text-gray-600 hover:border-gray-300',
@@ -207,33 +257,46 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
                                 </div>
                             )}
 
-                            {/* Preview of computed timing */}
-                            <div
-                                className={[
-                                    'rounded-md border px-3 py-2 text-[11px]',
-                                    isValid
-                                        ? 'border-indigo-100 bg-indigo-50 text-indigo-700'
-                                        : 'border-red-200 bg-red-50 text-red-700',
-                                ].join(' ')}
-                            >
-                                {isValid ? (
-                                    <>
-                                        <span className="font-mono">
-                                            {fmt(inTime)} → {fmt(exitTime)}
-                                        </span>
-                                        <span className="ml-2 opacity-70">
-                                            ({(exitTime - inTime).toFixed(1)}s)
-                                        </span>
-                                        {exitTime > (meta.total_duration ?? 0) && (
-                                            <span className="ml-2 font-medium text-amber-600">
-                                                · extends timeline to {fmt(exitTime)}
+                            {/* "Already unsaved" hint — replaces the preview
+                                banner when the Add-Shot will just open the
+                                existing blank (B18). */}
+                            {position === 'end' && existingUnsavedBlankAtEnd ? (
+                                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                                    You already added an empty shot at the end.
+                                    <span className="ml-1">
+                                        Clicking <b>Open existing</b> will jump to it instead of
+                                        creating another. Edit that one first, then come back to add
+                                        more.
+                                    </span>
+                                </div>
+                            ) : (
+                                <div
+                                    className={[
+                                        'rounded-md border px-3 py-2 text-[11px]',
+                                        isValid
+                                            ? 'border-indigo-100 bg-indigo-50 text-indigo-700'
+                                            : 'border-red-200 bg-red-50 text-red-700',
+                                    ].join(' ')}
+                                >
+                                    {isValid ? (
+                                        <>
+                                            <span className="font-mono">
+                                                {fmt(inTime)} → {fmt(exitTime)}
                                             </span>
-                                        )}
-                                    </>
-                                ) : (
-                                    'Start must be before end'
-                                )}
-                            </div>
+                                            <span className="ml-2 opacity-70">
+                                                ({(exitTime - inTime).toFixed(1)}s)
+                                            </span>
+                                            {exitTime > (meta.total_duration ?? 0) && (
+                                                <span className="ml-2 font-medium text-amber-600">
+                                                    · extends timeline to {fmt(exitTime)}
+                                                </span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        'Start must be before end'
+                                    )}
+                                </div>
+                            )}
                         </>
                     ) : (
                         <p className="text-xs text-gray-500">
@@ -253,7 +316,9 @@ export function AddShotDialog({ open, onClose }: AddShotDialogProps) {
                         onClick={handleAdd}
                         className="h-8 bg-indigo-600 text-xs text-white hover:bg-indigo-700 disabled:opacity-40"
                     >
-                        Add Shot
+                        {position === 'end' && existingUnsavedBlankAtEnd
+                            ? 'Open existing'
+                            : 'Add Shot'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

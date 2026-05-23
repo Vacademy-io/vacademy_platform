@@ -11,7 +11,7 @@ import vacademy.io.notification_service.features.combot.repository.ChannelToInst
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -24,17 +24,10 @@ public class WhatsAppInboxService {
     private final ChannelToInstituteMappingRepository channelMappingRepository;
     private final List<ChatbotMessageProvider> messageProviders;
 
-    private List<String> getChannelIds(String instituteId) {
-        return channelMappingRepository.findAllByInstituteId(instituteId).stream()
-                .map(ChannelToInstituteMapping::getChannelId)
-                .collect(Collectors.toList());
-    }
-
     public List<InboxConversationDTO> getConversations(String instituteId, int offset, int limit) {
-        List<String> channelIds = getChannelIds(instituteId);
-        if (channelIds.isEmpty()) return List.of();
+        if (instituteId == null || instituteId.isBlank()) return List.of();
 
-        List<NotificationLog> logs = notificationLogRepository.findConversationsForInbox(channelIds, limit, offset);
+        List<NotificationLog> logs = notificationLogRepository.findConversationsForInbox(instituteId, limit, offset);
         if (logs.isEmpty()) return List.of();
 
         // Batch unread counts (single query, not N+1)
@@ -55,23 +48,22 @@ public class WhatsAppInboxService {
                 .userId(nl.getUserId())
                 .lastMessage(truncate(nl.getBody(), 60))
                 .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
-                .lastMessageTime(nl.getNotificationDate() != null ? nl.getNotificationDate().toString() : null)
+                .lastMessageTime(nl.getNotificationDate())
                 .unreadCount(unreadMap.getOrDefault(nl.getChannelId(), 0L))
                 .build()
         ).collect(Collectors.toList());
     }
 
     public List<InboxMessageDTO> getMessages(String phone, String instituteId, String cursor, int limit) {
-        List<String> channelIds = getChannelIds(instituteId);
-        if (channelIds.isEmpty()) return List.of();
+        if (instituteId == null || instituteId.isBlank()) return List.of();
 
-        List<NotificationLog> logs = notificationLogRepository.findMessagesForPhone(phone, channelIds, cursor, limit);
+        List<NotificationLog> logs = notificationLogRepository.findMessagesForPhone(phone, instituteId, cursor, limit);
 
         return logs.stream().map(nl -> InboxMessageDTO.builder()
                 .id(nl.getId())
                 .body(nl.getBody())
                 .direction(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
-                .timestamp(nl.getNotificationDate() != null ? nl.getNotificationDate().toString() : null)
+                .timestamp(nl.getNotificationDate())
                 .source(nl.getSource())
                 .senderName(nl.getSenderName())
                 .status(nl.getNotificationType())
@@ -80,11 +72,10 @@ public class WhatsAppInboxService {
     }
 
     public List<InboxConversationDTO> searchConversations(String instituteId, String query) {
-        List<String> channelIds = getChannelIds(instituteId);
-        if (channelIds.isEmpty()) return List.of();
+        if (instituteId == null || instituteId.isBlank()) return List.of();
 
         String safeQuery = "%" + query.replace("%", "\\%").replace("_", "\\_") + "%";
-        List<NotificationLog> logs = notificationLogRepository.searchConversations(channelIds, safeQuery);
+        List<NotificationLog> logs = notificationLogRepository.searchConversations(instituteId, safeQuery);
 
         return logs.stream().map(nl -> InboxConversationDTO.builder()
                 .phone(nl.getChannelId())
@@ -92,7 +83,7 @@ public class WhatsAppInboxService {
                 .userId(nl.getUserId())
                 .lastMessage(truncate(nl.getBody(), 60))
                 .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
-                .lastMessageTime(nl.getNotificationDate() != null ? nl.getNotificationDate().toString() : null)
+                .lastMessageTime(nl.getNotificationDate())
                 .build()
         ).collect(Collectors.toList());
     }
@@ -133,7 +124,8 @@ public class WhatsAppInboxService {
         outLog.setBody(text);
         outLog.setSource("INBOX");
         outLog.setSenderBusinessChannelId(businessChannelId);
-        outLog.setNotificationDate(LocalDateTime.now());
+        outLog.setInstituteId(instituteId);
+        outLog.setNotificationDate(Instant.now());
 
         // Link userId from previous messages
         try {
@@ -148,7 +140,7 @@ public class WhatsAppInboxService {
                 .id(outLog.getId())
                 .body(text)
                 .direction("OUTGOING")
-                .timestamp(outLog.getNotificationDate().toString())
+                .timestamp(outLog.getNotificationDate())
                 .source("INBOX")
                 .build();
     }

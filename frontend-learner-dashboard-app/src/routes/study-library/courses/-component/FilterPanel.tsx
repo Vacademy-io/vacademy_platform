@@ -174,9 +174,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
             "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
             "[.ui-vibrant_&]:shadow-md",
-            // Play Styles — solid, bold, Duolingo-style
-            "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white",
-            "[.ui-play_&]:shadow-[0_4px_0_#1a3d6d]"
+            // Play Styles — deep navy panel with soft layered shadow
+            "[.ui-play_&]:bg-[#235390] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white [.ui-play_&]:border-transparent",
+            "[.ui-play_&]:shadow-[0_1px_2px_rgba(26,61,109,0.25),0_16px_32px_-12px_rgba(35,83,144,0.45)]"
         )}>
             {/* Desktop Header */}
             <div className={cn(
@@ -328,9 +328,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 "[.ui-vibrant_&]:border-slate-200/50 dark:[.ui-vibrant_&]:border-slate-800/30",
                                 "[.ui-vibrant_&]:shadow-sm",
                                 "[.ui-vibrant_&]:bg-slate-50/50 dark:[.ui-vibrant_&]:bg-slate-900/20",
-                                // Play Styles
-                                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:text-white [.ui-play_&]:border-[#46a302] [.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
-                                "[.ui-play_&]:shadow-[0_4px_0_#46a302] [.ui-play_&]:hover:bg-[#46a302]"
+                                // Play Styles — bright green CTA with soft colored glow
+                                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:text-white [.ui-play_&]:border-transparent [.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
+                                "[.ui-play_&]:shadow-[0_2px_8px_rgba(70,163,2,0.4)] [.ui-play_&]:hover:bg-[#46a302] [.ui-play_&]:hover:shadow-[0_4px_14px_rgba(70,163,2,0.55)]"
                             )}
                         >
                             <div className="flex items-center gap-2">

@@ -259,6 +259,7 @@ class AiReelRepository:
         config: Dict[str, Any],
         source_window: Dict[str, Any],
         created_by_user_id: Optional[str] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
     ) -> AiReel:
         session = self._get_session()
         try:
@@ -273,6 +274,7 @@ class AiReelRepository:
                 config=config,
                 source_window=source_window,
                 created_by_user_id=created_by_user_id,
+                extra_metadata=extra_metadata or {},
             )
             session.add(record)
             session.commit()

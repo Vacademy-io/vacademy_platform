@@ -838,6 +838,13 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     captionBgColor: captionSettings.bgColor,
                     captionBgOpacity: Math.round(captionSettings.bgOpacity * 100),
                     captionSize: snapSizeToBucket(captionSettings.sizePx),
+                    captionStyle: captionSettings.style,
+                    captionFontFamily: captionSettings.fontFamily,
+                    captionFontWeight: captionSettings.fontWeight,
+                    captionTextStrokeWidth: captionSettings.textStrokeWidth,
+                    captionTextStrokeColor: captionSettings.textStrokeColor,
+                    captionHighlightColor: captionSettings.highlightColor,
+                    captionPreset: captionSettings.preset,
                 }}
             />
         </>

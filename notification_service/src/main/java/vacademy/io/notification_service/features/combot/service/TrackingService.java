@@ -10,7 +10,7 @@ import vacademy.io.notification_service.features.combot.dto.TrackingRequest;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -76,7 +76,7 @@ public class TrackingService {
         }
 
         // 5. Date
-        logEntry.setNotificationDate(LocalDateTime.now());
+        logEntry.setNotificationDate(Instant.now());
 
         return logEntry;
     }

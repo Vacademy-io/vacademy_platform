@@ -1842,18 +1842,34 @@ public class AudienceService {
                 logger.warn("Failed to read SLA config for institute {}: {}", instituteId, ex.getMessage());
             }
         }
-        // Follow-up deadline needs each lead's last counselor action — only fetch when
-        // follow-up SLA is on.
+        // Counsellor activity drives BOTH TAT and follow-up displays — single source of
+        // truth.
+        // firstActionAt = MIN(timeline_event by assigned counsellor) → "Reach out by →
+        // ✓ Responded"
+        // lastActionAt = MAX(timeline_event by assigned counsellor) → follow-up
+        // deadline
+        // TAT is now strictly "time the counsellor took to log their first
+        // note/call/activity";
+        // status changes by admins no longer count. Fetch when
+        // EITHER TAT or follow-up SLA is on.
         final Integer followUpSlaHoursFinal = followUpSlaHours;
         final Integer tatHoursFinal = tatHours;
-        Map<String, Timestamp> lastActionByResponseId = (followUpSlaHours == null || responseIds.isEmpty())
-                ? Collections.emptyMap()
-                : audienceResponseRepository.findLastCounselorActionByResponseIds(responseIds).stream()
-                        .filter(p -> p.getLeadId() != null && p.getLastActionAt() != null)
-                        .collect(Collectors.toMap(
-                                vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
-                                vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLastActionAt,
-                                (a, b) -> a));
+        final List<vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection> counselorActions = ((tatHours != null
+                || followUpSlaHours != null) && !responseIds.isEmpty())
+                        ? audienceResponseRepository.findCounselorActionsByResponseIds(responseIds)
+                        : Collections.emptyList();
+        final Map<String, Timestamp> firstActionByResponseId = counselorActions.stream()
+                .filter(p -> p.getLeadId() != null && p.getFirstActionAt() != null)
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getFirstActionAt,
+                        (a, b) -> a));
+        final Map<String, Timestamp> lastActionByResponseId = counselorActions.stream()
+                .filter(p -> p.getLeadId() != null && p.getLastActionAt() != null)
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLastActionAt,
+                        (a, b) -> a));
 
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
         List<String> enquiryIds = content.stream()
@@ -1864,17 +1880,21 @@ public class AudienceService {
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds).stream()
                         .collect(Collectors.toMap(LinkedUsers::getSourceId, LinkedUsers::getUserId, (a, b) -> a));
 
-        // Lead status = the user's conversion_status (the value the profile widget
-        // sets). The frontend
-        // resolves it to a label/colour via the configurable status catalog. Keys align
-        // (LEAD/CONVERTED/LOST).
-        Map<String, String> userIdToConversionStatus = userIds.isEmpty() ? Collections.emptyMap()
-                : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
-                        .filter(p -> p.getConversionStatus() != null)
-                        .collect(Collectors.toMap(
-                                vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
-                                vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getConversionStatus,
-                                (a, b) -> a));
+        // Lead status (= user's conversion_status) + first_response_at both come from
+        // user_lead_profile.
+        // first_response_at is set the first time the lead's status moves off the
+        // default 'LEAD'
+        // (admin- or counselor-initiated), which is what the leads-table "Reach out by
+        // → ✓ Responded
+        // in N" display reads. Keep the full profile entity so we can read both fields
+        // per row.
+        Map<String, vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile> userIdToProfile = userIds
+                .isEmpty() ? Collections.emptyMap()
+                        : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
+                                .collect(Collectors.toMap(
+                                        vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
+                                        p -> p,
+                                        (a, b) -> a));
 
         // Pipeline status: prefer the lead's lead_status_id (set from the leads UI via
         // the
@@ -1970,6 +1990,14 @@ public class AudienceService {
             Timestamp computedFollowUpDueAt = (followUpSlaHoursFinal != null && lastAction != null)
                     ? Timestamp.from(lastAction.toInstant().plusSeconds(followUpSlaHoursFinal * 3600L))
                     : null;
+            // First-response timestamp powers the "Reach out by → ✓ Responded" display.
+            // Strict TAT definition: first counsellor activity (timeline_event by assigned
+            // counsellor)
+            // minus submitted_at. Status changes by admins do NOT count — only real
+            // activity.
+            vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile profile = response
+                    .getUserId() != null ? userIdToProfile.get(response.getUserId()) : null;
+            Timestamp firstResponseAt = firstActionByResponseId.get(response.getId());
 
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
@@ -1992,9 +2020,7 @@ public class AudienceService {
                             response.getLeadStatusId() != null
                                     && leadStatusIdToKey.containsKey(response.getLeadStatusId())
                                             ? leadStatusIdToKey.get(response.getLeadStatusId())
-                                            : (response.getUserId() != null
-                                                    ? userIdToConversionStatus.get(response.getUserId())
-                                                    : null))
+                                            : (profile != null ? profile.getConversionStatus() : null))
                     .parentName(response.getParentName())
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
@@ -2008,6 +2034,7 @@ public class AudienceService {
                             ? sourceAudienceIdToName.get(response.getSourceId())
                             : null)
                     .tatDueAt(computedTatDueAt)
+                    .firstResponseAt(firstResponseAt)
                     .followUpDueAt(computedFollowUpDueAt)
                     .tatReminderStage(response.getTatReminderStage())
                     .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(response.getTatReminderStage()))
@@ -4289,7 +4316,8 @@ public class AudienceService {
      * Best-effort — failures do not block the submission.
      */
     private void emitLeadAssigned(String instituteId, String audienceId, String enquiryId, String counsellorId) {
-        if (instituteId == null || instituteId.isBlank()) return;
+        if (instituteId == null || instituteId.isBlank())
+            return;
         try {
             Map<String, Object> ctx = new java.util.HashMap<>();
             ctx.put("audience_id", audienceId != null ? audienceId : "");

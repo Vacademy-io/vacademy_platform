@@ -97,4 +97,33 @@ public class TimelineEventController {
                 Page<TimelineEventDTO> response = timelineEventService.getTimelineEventsWithPinnedFirst(type, typeId, pageable);
                 return ResponseEntity.ok(response);
         }
+
+        /**
+         * Get JOURNEY events for a lead — lifecycle milestones only (status changes, submission, score updates).
+         * GET /admin-core-service/timeline/v1/journey?type=AUDIENCE_RESPONSE&typeId=X
+         */
+        @GetMapping("/journey")
+        public ResponseEntity<Page<TimelineEventDTO>> getJourneyEvents(
+                        @RequestParam String type,
+                        @RequestParam String typeId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "50") int size) {
+
+                Pageable pageable = PageRequest.of(page, size);
+                return ResponseEntity.ok(timelineEventService.getJourneyEvents(type, typeId, pageable));
+        }
+
+        /**
+         * Get JOURNEY events for a student across all stages — the full lead lifecycle view.
+         * GET /admin-core-service/timeline/v1/student/{studentUserId}/journey
+         */
+        @GetMapping("/student/{studentUserId}/journey")
+        public ResponseEntity<Page<TimelineEventDTO>> getCrossStageJourney(
+                        @PathVariable String studentUserId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "50") int size) {
+
+                Pageable pageable = PageRequest.of(page, size);
+                return ResponseEntity.ok(timelineEventService.getCrossStageJourney(studentUserId, pageable));
+        }
 }

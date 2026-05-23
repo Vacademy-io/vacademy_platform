@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchPaymentLogs, getPaymentLogsQueryKey } from '@/services/payment-logs';
@@ -7,8 +7,10 @@ import { fetchUserInvoices, getInvoiceDownloadUrl } from '@/services/invoice-ser
 import type { InvoiceDTO } from '@/services/invoice-service';
 import { PaymentLogsTable } from '@/routes/manage-payments/-components/PaymentLogsTable';
 import type { BatchForSession, PaymentLogsResponse } from '@/types/payment-logs';
-import { Download, FileText, ChevronLeft, ChevronRight, Wallet } from 'lucide-react';
+import { FileText, Wallet, Plus, DownloadSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
+import { CreateInvoiceDialog } from './create-invoice-dialog';
 
 const PAGE_SIZE = 20;
 const INVOICES_PER_PAGE = 10;
@@ -64,6 +66,8 @@ function getStatusBadge(status: string) {
         GENERATED: 'bg-blue-50 text-blue-700 border-blue-200',
         SENT: 'bg-green-50 text-green-700 border-green-200',
         VIEWED: 'bg-amber-50 text-amber-700 border-amber-200',
+        PENDING_PAYMENT: 'bg-warning-50 text-warning-700 border-warning-200',
+        PAID: 'bg-success-50 text-success-700 border-success-200',
     };
     return (
         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${styles[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
@@ -142,7 +146,7 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
                                         className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
                                         title="Download Invoice PDF"
                                     >
-                                        <Download className="size-3.5" />
+                                        <DownloadSimple className="size-3.5" />
                                         Download
                                     </button>
                                 )}
@@ -162,14 +166,14 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
                             disabled={page === 0}
                             className="rounded p-1 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
                         >
-                            <ChevronLeft className="size-4" />
+                            <CaretLeft className="size-4" />
                         </button>
                         <button
                             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                             disabled={page >= totalPages - 1}
                             className="rounded p-1 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
                         >
-                            <ChevronRight className="size-4" />
+                            <CaretRight className="size-4" />
                         </button>
                     </div>
                 </div>
@@ -181,7 +185,9 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
 export const StudentPaymentHistory = () => {
     const { selectedStudent } = useStudentSidebar();
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const queryClient = useQueryClient();
     const [currentPage, setCurrentPage] = useState(0);
+    const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
 
     const batchesForSessions: BatchForSession[] = useMemo(() => {
         const batches = instituteDetails?.batches_for_sessions;
@@ -264,13 +270,35 @@ export const StudentPaymentHistory = () => {
             <div>
                 <div className="mb-2 flex items-center gap-2">
                     <FileText className="size-4 text-gray-500" />
-                    <h3 className="text-sm font-semibold text-gray-700">
+                    <h3 className="flex-1 text-sm font-semibold text-gray-700">
                         Invoices
                         {invoicesData && invoicesData.length > 0 && (
                             <span className="ml-1.5 text-xs font-normal text-gray-400">({invoicesData.length})</span>
                         )}
                     </h3>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={() => setCreateInvoiceOpen(true)}
+                    >
+                        <Plus className="mr-1 size-3.5" />
+                        Create Invoice
+                    </MyButton>
                 </div>
+                {selectedStudent?.user_id && instituteDetails?.id && (
+                    <CreateInvoiceDialog
+                        userId={selectedStudent.user_id}
+                        userName={selectedStudent.full_name}
+                        instituteId={instituteDetails.id}
+                        open={createInvoiceOpen}
+                        onOpenChange={setCreateInvoiceOpen}
+                        onSuccess={() =>
+                            queryClient.invalidateQueries({
+                                queryKey: ['user-invoices', selectedStudent.user_id],
+                            })
+                        }
+                    />
+                )}
                 {isLoadingInvoices ? (
                     <div className="flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 p-6">
                         <div className="size-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />

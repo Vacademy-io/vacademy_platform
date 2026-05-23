@@ -33,43 +33,46 @@ const testInputFieldSchema = z.object({
     custom_field_data: z.any().optional(),
 });
 
-export const audienceCampaignSchema = z.object({
-    campaign_name: z
-        .string()
-        .min(1, 'Campaign name is required')
-        .min(3, 'Name must be at least 3 characters'),
-    campaign_type: z.string().toUpperCase().min(1, 'Campaign type is required'),
-    description: z.string().optional(),
-    campaign_objective: z.string().optional().default(''),
-    to_notify: z.string().optional(),
-    send_respondent_email: z.boolean().optional(),
-    start_date_local: z.string().min(1, 'Start date is required'),
-    end_date_local: z.string().min(1, 'End date is required'),
-    status: z.string().toUpperCase().default('Active'),
-    json_web_metadata: z.string().optional(),
-    institute_custom_fields: z.string().optional(),
-    custom_fields: z.array(testInputFieldSchema).default([]),
-    customHtml: z.string().default(''),
-    selectedOptionValue: z.string().default('textfield'),
-    textFieldValue: z.string().default(''),
-    dropdownOptions: z
-        .array(
-            z.object({
-                id: z.string(),
-                value: z.string(),
-                disabled: z.boolean(),
+export const audienceCampaignSchema = z
+    .object({
+        campaign_name: z
+            .string()
+            .min(1, 'Campaign name is required')
+            .min(3, 'Name must be at least 3 characters'),
+        campaign_type: z.string().toUpperCase().min(1, 'Campaign type is required'),
+        description: z.string().optional(),
+        campaign_objective: z.string().optional().default(''),
+        to_notify: z.string().optional(),
+        send_respondent_email: z.boolean().optional(),
+        start_date_local: z.string().min(1, 'Start date is required'),
+        end_date_local: z.string().min(1, 'End date is required'),
+        status: z.string().toUpperCase().default('Active'),
+        json_web_metadata: z.string().optional(),
+        institute_custom_fields: z.string().optional(),
+        custom_fields: z.array(testInputFieldSchema).default([]),
+        customHtml: z.string().default(''),
+        selectedOptionValue: z.string().default('textfield'),
+        textFieldValue: z.string().default(''),
+        dropdownOptions: z
+            .array(
+                z.object({
+                    id: z.string(),
+                    value: z.string(),
+                    disabled: z.boolean(),
+                })
+            )
+            .default([]),
+        isDialogOpen: z.boolean().default(false),
+        default_initial_score: z.number().min(0).max(50).default(20),
+        campaign_image: z.string().optional(),
+        campaign_imageBlob: z.string().optional(),
+        uploadingStates: z
+            .object({
+                campaign_image: z.boolean().default(false),
             })
-        )
-        .default([]),
-    isDialogOpen: z.boolean().default(false),
-    campaign_image: z.string().optional(),
-    campaign_imageBlob: z.string().optional(),
-    uploadingStates: z
-        .object({
-            campaign_image: z.boolean().default(false),
-        })
-        .default({ campaign_image: false }),
-}).catchall(z.any()); // Allow additional fields for preview (e.g., preview_Gender_0)
+            .default({ campaign_image: false }),
+    })
+    .catchall(z.any()); // Allow additional fields for preview (e.g., preview_Gender_0)
 
 export type AudienceCampaignForm = z.infer<typeof audienceCampaignSchema>;
 
@@ -77,7 +80,8 @@ export type AudienceCampaignForm = z.infer<typeof audienceCampaignSchema>;
 const today = new Date();
 const todayDateOnly = today.toISOString().split('T')[0] || today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
 const oneWeekLater = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-const oneWeekLaterDateOnly = oneWeekLater.toISOString().split('T')[0] || oneWeekLater.toISOString().substring(0, 10); // Format: YYYY-MM-DD
+const oneWeekLaterDateOnly =
+    oneWeekLater.toISOString().split('T')[0] || oneWeekLater.toISOString().substring(0, 10); // Format: YYYY-MM-DD
 
 export const defaultFormValues: AudienceCampaignForm = {
     campaign_name: '',
@@ -100,6 +104,7 @@ export const defaultFormValues: AudienceCampaignForm = {
     textFieldValue: '',
     dropdownOptions: [],
     isDialogOpen: false,
+    default_initial_score: 20,
     campaign_image: '',
     campaign_imageBlob: '',
     uploadingStates: {

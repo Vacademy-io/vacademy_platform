@@ -125,6 +125,10 @@ public class AudienceResponse {
     @Column(name = "lead_status_id")
     private String leadStatusId;
 
+    /** Snapshot of audience.defaultInitialScore at creation time. Null for leads created before this feature → treated as 0 in scoring. */
+    @Column(name = "initial_score")
+    private Integer initialScore;
+
     /**
      * Constructor from DTO
      */

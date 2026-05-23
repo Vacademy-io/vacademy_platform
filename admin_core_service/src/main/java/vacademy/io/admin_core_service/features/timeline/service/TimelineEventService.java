@@ -8,12 +8,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.dto.StudentLatestNoteDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.entity.TimelineEvent;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
+import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 import vacademy.io.admin_core_service.features.timeline.repository.TimelineEventRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -23,6 +25,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Pure event-persistence service.
+ * No cross-service dependencies — only TimelineEventRepository and ObjectMapper.
+ * This eliminates all circular dependency chains involving this service.
+ *
+ * Profile recompute after activity events (notes/calls) is the responsibility
+ * of the caller (controller or domain service), not this service.
+ */
 @Service
 public class TimelineEventService {
 
@@ -34,13 +44,8 @@ public class TimelineEventService {
         @Autowired
         private ObjectMapper objectMapper;
 
-        @Autowired
-        private UserLeadProfileService userLeadProfileService;
+        // ── Write: ACTIVITY events ────────────────────────────────────────────
 
-        /**
-         * Internal method to log a timeline event from other services.
-         * studentUserId is optional — pass null for non-student-linked events.
-         */
         @Transactional
         public void logEvent(String type, String typeId, String actionType,
                         String actorType, String actorId, String actorName,
@@ -49,54 +54,35 @@ public class TimelineEventService {
                                 title, description, metadata, null);
         }
 
-        /**
-         * Internal method to log a timeline event with optional student user ID for
-         * cross-stage continuity.
-         */
         @Transactional
         public void logEvent(String type, String typeId, String actionType,
                         String actorType, String actorId, String actorName,
                         String title, String description, Object metadata,
                         String studentUserId) {
-
-                String metadataJson = null;
-                if (metadata != null) {
-                        try {
-                                metadataJson = objectMapper.writeValueAsString(metadata);
-                        } catch (JsonProcessingException e) {
-                                logger.error("Failed to parse metadata to JSON for timeline event", e);
-                        }
-                }
-
-                TimelineEvent event = TimelineEvent.builder()
-                                .type(type)
-                                .typeId(typeId)
-                                .actionType(actionType)
-                                .actorType(actorType)
-                                .actorId(actorId)
-                                .actorName(actorName)
-                                .title(title)
-                                .description(description)
-                                .metadataJson(metadataJson)
-                                .studentUserId(studentUserId)
-                                .build();
-
-                timelineEventRepository.save(event);
-                logger.debug("Logged timeline event: {} on {}[{}]", actionType, type, typeId);
-
-                triggerLeadProfileRecompute(studentUserId);
+                saveEvent(type, typeId, actionType, actorType, actorId, actorName,
+                                title, description, metadata, studentUserId, TimelineCategory.ACTIVITY);
         }
 
+        // ── Write: JOURNEY events ─────────────────────────────────────────────
+
         /**
-         * Create a manual timeline event (used by the controller for frontend-submitted
-         * actions like notes, call logs, follow-ups).
+         * Log an automated lifecycle milestone (JOURNEY category).
+         * REQUIRES_NEW: always commits in its own transaction so the caller's
+         * rollback-only state can never silently discard the event.
          */
+        @Transactional(propagation = Propagation.REQUIRES_NEW)
+        public void logJourneyEvent(String type, String typeId, LeadJourneyActionType actionType,
+                        String actorType, String actorId, String actorName,
+                        String title, String description, Object metadata,
+                        String studentUserId) {
+                saveEvent(type, typeId, actionType.name(), actorType, actorId, actorName,
+                                title, description, metadata, studentUserId, TimelineCategory.JOURNEY);
+        }
+
+        // ── Write: manual event from frontend ────────────────────────────────
+
         @Transactional
         public TimelineEventDTO createManualEvent(TimelineEventRequestDTO request, CustomUserDetails user) {
-
-                String actorId = user.getUserId();
-                String actorName = user.getUsername();
-                String actorType = "ADMIN";
 
                 String metadataJson = null;
                 if (request.getMetadata() != null) {
@@ -107,109 +93,89 @@ public class TimelineEventService {
                         }
                 }
 
+                TimelineCategory category = request.getCategory() != null
+                                ? request.getCategory()
+                                : TimelineCategory.ACTIVITY;
+
                 TimelineEvent event = TimelineEvent.builder()
                                 .type(request.getType())
                                 .typeId(request.getTypeId())
                                 .actionType(request.getActionType())
-                                .actorType(actorType)
-                                .actorId(actorId)
-                                .actorName(actorName)
+                                .actorType("ADMIN")
+                                .actorId(user.getUserId())
+                                .actorName(user.getUsername())
                                 .title(request.getTitle())
                                 .description(request.getDescription())
                                 .metadataJson(metadataJson)
                                 .isPinned(request.getIsPinned() != null ? request.getIsPinned() : false)
                                 .studentUserId(request.getStudentUserId())
+                                .category(category)
                                 .build();
 
                 TimelineEvent savedEvent = timelineEventRepository.save(event);
-
-                triggerLeadProfileRecompute(savedEvent.getStudentUserId());
-
                 return mapToDTO(savedEvent);
         }
 
-        /**
-         * Trigger an immediate lead-profile recompute for the student tied to a
-         * timeline event.
-         *
-         * Without this, total_timeline_events and the engagement component of
-         * best_score
-         * would only update when the 30-min batchRebuildProfiles job runs, making admin
-         * actions (notes, calls, meetings) feel disconnected from the score they
-         * affect.
-         *
-         * Best-effort — failures are logged but do not roll back the timeline event.
-         */
-        private void triggerLeadProfileRecompute(String studentUserId) {
-                if (studentUserId == null)
-                        return;
-                try {
-                        userLeadProfileService.recomputeForUser(studentUserId);
-                } catch (Exception e) {
-                        logger.warn("Failed to recompute lead profile for studentUserId={}", studentUserId, e);
-                }
+        // ── Write: pin toggle ─────────────────────────────────────────────────
+
+        @Transactional
+        public TimelineEventDTO togglePin(String eventId) {
+                TimelineEvent event = timelineEventRepository.findById(eventId)
+                                .orElseThrow(() -> new VacademyException("Timeline event not found: " + eventId));
+                event.setIsPinned(event.getIsPinned() != null ? !event.getIsPinned() : true);
+                return mapToDTO(timelineEventRepository.save(event));
         }
 
-        /**
-         * Fetch timeline events for an entity (original — backward compatible).
-         */
+        // ── Read ──────────────────────────────────────────────────────────────
+
         @Transactional(readOnly = true)
         public Page<TimelineEventDTO> getTimelineEvents(String type, String typeId, Pageable pageable) {
-                Page<TimelineEvent> events = timelineEventRepository.findByTypeAndTypeIdOrderByCreatedAtDesc(type,
-                                typeId, pageable);
-                return events.map(this::mapToDTO);
+                return timelineEventRepository
+                                .findByTypeAndTypeIdOrderByCreatedAtDesc(type, typeId, pageable)
+                                .map(this::mapToDTO);
         }
 
-        /**
-         * Fetch timeline events for an entity, with pinned notes first.
-         */
         @Transactional(readOnly = true)
         public Page<TimelineEventDTO> getTimelineEventsWithPinnedFirst(String type, String typeId, Pageable pageable) {
-                Page<TimelineEvent> events = timelineEventRepository
-                                .findByTypeAndTypeIdOrderByIsPinnedDescCreatedAtDesc(type, typeId, pageable);
-                return events.map(this::mapToDTO);
+                return timelineEventRepository
+                                .findByTypeAndTypeIdOrderByIsPinnedDescCreatedAtDesc(type, typeId, pageable)
+                                .map(this::mapToDTO);
         }
 
-        /**
-         * Fetch ALL timeline events for a student across all stages (cross-stage
-         * notes).
-         * Pinned notes appear first.
-         */
         @Transactional(readOnly = true)
         public Page<TimelineEventDTO> getCrossStageTimeline(String studentUserId, Pageable pageable) {
-                Page<TimelineEvent> events = timelineEventRepository
-                                .findByStudentUserIdOrderByIsPinnedDescCreatedAtDesc(studentUserId, pageable);
-                return events.map(this::mapToDTO);
+                return timelineEventRepository
+                                .findByStudentUserIdOrderByIsPinnedDescCreatedAtDesc(studentUserId, pageable)
+                                .map(this::mapToDTO);
         }
 
-        /**
-         * Per-student cap for the recent-notes batch — small enough to stay
-         * cheap, large enough to cover the table preview + the CSV export.
-         */
+        @Transactional(readOnly = true)
+        public Page<TimelineEventDTO> getJourneyEvents(String type, String typeId, Pageable pageable) {
+                return timelineEventRepository
+                                .findByTypeAndTypeIdAndCategoryOrderByCreatedAtDesc(type, typeId, TimelineCategory.JOURNEY, pageable)
+                                .map(this::mapToDTO);
+        }
+
+        @Transactional(readOnly = true)
+        public Page<TimelineEventDTO> getCrossStageJourney(String studentUserId, Pageable pageable) {
+                return timelineEventRepository
+                                .findByStudentUserIdAndCategoryOrderByCreatedAtDesc(studentUserId, TimelineCategory.JOURNEY, pageable)
+                                .map(this::mapToDTO);
+        }
+
         private static final int RECENT_NOTES_PER_STUDENT = 5;
 
-        /**
-         * Batch fetch the most-recent cross-stage timeline events (capped at
-         * {@link #RECENT_NOTES_PER_STUDENT}) plus the total note count for each
-         * user in a list. Powers the "Activity & Notes" column on audience-list
-         * tables so we don't issue N round-trips per page, and the same data
-         * is reused for the CSV export.
-         */
         @Transactional(readOnly = true)
         public Map<String, StudentLatestNoteDTO> getLatestNotesForStudents(List<String> studentUserIds) {
                 Map<String, StudentLatestNoteDTO> result = new HashMap<>();
-                if (studentUserIds == null || studentUserIds.isEmpty()) {
-                        return result;
-                }
+                if (studentUserIds == null || studentUserIds.isEmpty()) return result;
 
                 List<TimelineEvent> recentEvents = timelineEventRepository
                                 .findRecentPerStudent(studentUserIds, RECENT_NOTES_PER_STUDENT);
                 Map<String, List<TimelineEventDTO>> recentByUser = new HashMap<>();
                 for (TimelineEvent e : recentEvents) {
-                        if (e.getStudentUserId() == null)
-                                continue;
-                        recentByUser
-                                        .computeIfAbsent(e.getStudentUserId(), k -> new ArrayList<>())
+                        if (e.getStudentUserId() == null) continue;
+                        recentByUser.computeIfAbsent(e.getStudentUserId(), k -> new ArrayList<>())
                                         .add(mapToDTO(e));
                 }
 
@@ -229,18 +195,38 @@ public class TimelineEventService {
                 return result;
         }
 
-        /**
-         * Toggle pin status on a timeline event.
-         * Returns the updated event.
-         */
-        @Transactional
-        public TimelineEventDTO togglePin(String eventId) {
-                TimelineEvent event = timelineEventRepository.findById(eventId)
-                                .orElseThrow(() -> new VacademyException("Timeline event not found: " + eventId));
+        // ── Private helpers ───────────────────────────────────────────────────
 
-                event.setIsPinned(event.getIsPinned() != null ? !event.getIsPinned() : true);
-                TimelineEvent saved = timelineEventRepository.save(event);
-                return mapToDTO(saved);
+        private void saveEvent(String type, String typeId, String actionType,
+                        String actorType, String actorId, String actorName,
+                        String title, String description, Object metadata,
+                        String studentUserId, TimelineCategory category) {
+
+                String metadataJson = null;
+                if (metadata != null) {
+                        try {
+                                metadataJson = objectMapper.writeValueAsString(metadata);
+                        } catch (JsonProcessingException e) {
+                                logger.error("Failed to serialize timeline event metadata", e);
+                        }
+                }
+
+                TimelineEvent event = TimelineEvent.builder()
+                                .type(type)
+                                .typeId(typeId)
+                                .actionType(actionType)
+                                .actorType(actorType)
+                                .actorId(actorId)
+                                .actorName(actorName)
+                                .title(title)
+                                .description(description)
+                                .metadataJson(metadataJson)
+                                .studentUserId(studentUserId)
+                                .category(category)
+                                .build();
+
+                timelineEventRepository.save(event);
+                logger.debug("Logged {} event: {} on {}[{}]", category, actionType, type, typeId);
         }
 
         private TimelineEventDTO mapToDTO(TimelineEvent event) {
@@ -249,10 +235,9 @@ public class TimelineEventService {
                         try {
                                 metadata = objectMapper.readValue(event.getMetadataJson(), Object.class);
                         } catch (JsonProcessingException e) {
-                                logger.error("Failed to deserialize metadata JSON", e);
+                                logger.error("Failed to deserialize timeline event metadata", e);
                         }
                 }
-
                 return TimelineEventDTO.builder()
                                 .id(event.getId())
                                 .type(event.getType())
@@ -266,6 +251,7 @@ public class TimelineEventService {
                                 .metadata(metadata)
                                 .isPinned(event.getIsPinned() != null ? event.getIsPinned() : false)
                                 .studentUserId(event.getStudentUserId())
+                                .category(event.getCategory())
                                 .createdAt(event.getCreatedAt())
                                 .build();
         }

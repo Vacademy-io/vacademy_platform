@@ -66,7 +66,10 @@ const parseFieldsInput = (fields?: any[] | string | null) => {
             }
             // console.warn('⚠️ [convertExistingCustomFields] Parsed custom fields is not an array');
         } catch (error) {
-            console.error('❌ [convertExistingCustomFields] Failed to parse custom fields JSON:', error);
+            console.error(
+                '❌ [convertExistingCustomFields] Failed to parse custom fields JSON:',
+                error
+            );
         }
     }
 
@@ -81,8 +84,6 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
         return null;
     }
 
-    console.log('📋 [convertExistingCustomFields] Converting', normalizedFields.length, 'fields from API');
-    
     // Seeded keys: Full Name / Email / Phone Number must stay locked even in
     // edit mode. The previous code hardcoded `oldKey: false` which let admins
     // delete these system fields when editing an existing audience campaign.
@@ -117,12 +118,11 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
                 name: fieldName,
                 oldKey: isSeeded,
                 isRequired:
-                    typeof meta.isMandatory === 'boolean' ? meta.isMandatory : field.isRequired ?? true,
+                    typeof meta.isMandatory === 'boolean'
+                        ? meta.isMandatory
+                        : field.isRequired ?? true,
                 key: fieldKey,
-                order:
-                    typeof meta.formOrder === 'number'
-                        ? Math.max(meta.formOrder - 1, 0)
-                        : index,
+                order: typeof meta.formOrder === 'number' ? Math.max(meta.formOrder - 1, 0) : index,
                 options: configOptions
                     ? configOptions.map((value: string, optIndex: number) => ({
                           id: `${field.id || meta.id || field.field_id || index}_opt_${optIndex}`,
@@ -140,8 +140,7 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
                 // Store full custom_field object for payload
                 custom_field_data: meta,
             };
-            
-            console.log('📋 [convertExistingCustomFields] Converted field:', fieldName, '(key:', fieldKey, ', status:', fieldStatus, ')');
+
             return convertedField;
         })
         .filter((field) => field.status !== 'DELETED') // Filter out deleted fields from display
@@ -151,7 +150,6 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
             order: index,
         }));
 
-    console.log('📋 [convertExistingCustomFields] Total converted fields:', converted.length);
     return converted;
 };
 
@@ -170,19 +168,21 @@ const formatDateTimeForPayload = (value?: string, isEndOfDay = false) => {
 const getCampaignIdentifier = (campaign?: CampaignItem | null) =>
     campaign?.campaign_id || campaign?.id || campaign?.audience_id || '';
 
-const buildInitialFormValues = (campaign?: CampaignItem | null): AudienceCampaignForm | undefined => {
+const buildInitialFormValues = (
+    campaign?: CampaignItem | null
+): AudienceCampaignForm | undefined => {
     if (!campaign) return undefined;
-    
+
     // Convert existing custom fields from campaign
     const existingCustomFields = convertExistingCustomFields(campaign.institute_custom_fields);
-    
+
     // Use existing fields from the campaign if available. If none saved,
     // start empty — the useEffect will async-load defaults from the API.
     let customFieldsToUse: any[] = [];
     if (existingCustomFields && existingCustomFields.length > 0) {
         customFieldsToUse = existingCustomFields;
     }
-    
+
     const initialValues = {
         ...defaultFormValues,
         campaign_name: campaign.campaign_name || '',
@@ -202,16 +202,14 @@ const buildInitialFormValues = (campaign?: CampaignItem | null): AudienceCampaig
             defaultFormValues.end_date_local,
         status: campaign.status?.toUpperCase?.() || defaultFormValues.status,
         json_web_metadata: campaign.json_web_metadata || '',
+        default_initial_score:
+            typeof campaign.default_initial_score === 'number'
+                ? campaign.default_initial_score
+                : defaultFormValues.default_initial_score,
         // Include existing custom fields, or load from settings if none exist
         custom_fields: customFieldsToUse || [],
     };
-    
-    console.log('📋 [buildInitialFormValues] Building initial values for edit mode');
-    console.log('📋 [buildInitialFormValues] Raw institute_custom_fields:', campaign.institute_custom_fields);
-    console.log('📋 [buildInitialFormValues] Has existing fields:', existingCustomFields && existingCustomFields.length > 0);
-    console.log('📋 [buildInitialFormValues] Custom fields to use:', initialValues.custom_fields.length, 'fields');
-    console.log('📋 [buildInitialFormValues] Custom fields:', initialValues.custom_fields.map(f => ({ name: f.name, key: f.key })));
-    
+
     return initialValues;
 };
 
@@ -224,7 +222,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     const { instituteDetails } = useInstituteDetailsStore();
     const isEditMode = Boolean(campaign);
     const editingCampaignId = useMemo(() => getCampaignIdentifier(campaign), [campaign]);
-    
+
     // Fetch campaign data when in edit mode
     const { data: fetchedCampaign, isLoading: isLoadingCampaign } = useGetCampaignById({
         instituteId: instituteDetails?.id || '',
@@ -240,8 +238,13 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         return campaign;
     }, [fetchedCampaign, campaign]);
 
-    const initialFormValues = useMemo(() => buildInitialFormValues(campaignData as CampaignItem), [campaignData]);
-    const [emails, setEmails] = useState<string[]>(() => parseEmailsFromCsv(campaignData?.to_notify as string || ''));
+    const initialFormValues = useMemo(
+        () => buildInitialFormValues(campaignData as CampaignItem),
+        [campaignData]
+    );
+    const [emails, setEmails] = useState<string[]>(() =>
+        parseEmailsFromCsv((campaignData?.to_notify as string) || '')
+    );
     const [latestCampaignShareLink, setLatestCampaignShareLink] = useState<string | null>(null);
     const { form, handleDateChange, handleSubmit, handleReset, isSubmitting } =
         useAudienceCampaignForm(initialFormValues);
@@ -261,7 +264,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     );
     const statusValue = watch('status');
     const isStatusActive = statusValue?.toUpperCase?.() === 'ACTIVE';
-    
+
     // Store initial custom fields for create mode (from settings) so we can restore them on reset
     const initialCreateModeCustomFields = useRef<any[] | null>(null);
 
@@ -289,7 +292,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     useEffect(() => {
         if (campaignData) return;
         const today = new Date();
-        const todayDateOnly = today.toISOString().split('T')[0] || today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
+        const todayDateOnly =
+            today.toISOString().split('T')[0] || today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
         if (todayDateOnly) {
             setValue('start_date_local', todayDateOnly, { shouldValidate: false });
         }
@@ -342,12 +346,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         if (isEditMode && isLoadingCampaign) {
             return; // Don't update form while loading
         }
-        
+
         if (initialFormValues) {
             form.reset(initialFormValues);
             // In edit mode, ensure custom fields are set immediately from initial values
-            if (isEditMode && initialFormValues.custom_fields && initialFormValues.custom_fields.length > 0) {
-                console.log('📋 [Form Reset] Setting custom fields from initial values:', initialFormValues.custom_fields.length, 'fields');
+            if (
+                isEditMode &&
+                initialFormValues.custom_fields &&
+                initialFormValues.custom_fields.length > 0
+            ) {
                 // Use a longer timeout to ensure form.reset() has fully completed
                 setTimeout(() => {
                     setValue('custom_fields', initialFormValues.custom_fields, {
@@ -673,7 +680,8 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         config?: Record<string, unknown>
     ) => {
         const rawOptions =
-            options ?? ((type === 'dropdown' || type === 'radio') ? getValues('dropdownOptions') : undefined);
+            options ??
+            (type === 'dropdown' || type === 'radio' ? getValues('dropdownOptions') : undefined);
         const resolvedOptions = rawOptions?.map((opt) => ({
             id: String(opt.id),
             value: opt.value,
@@ -694,7 +702,6 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
         setValue('textFieldValue', '');
         setValue('dropdownOptions', []);
     };
-
 
     const mapFieldTypeToPayload = (type?: string) => {
         if (!type) return 'TEXT';
@@ -730,7 +737,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             // Use existing field data if available (from API), otherwise create new structure
             const fieldId = field.id || field._id || field.field_id;
             const customFieldData = field.custom_field_data || field.custom_field || {};
-            
+
             // Build the payload according to the required structure
             const payload: any = {
                 ...(fieldId && { id: fieldId }),
@@ -743,16 +750,28 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 individual_order: field.individual_order ?? field.order ?? index,
                 group_internal_order: field.group_internal_order ?? 0,
                 custom_field: {
-                    ...(( customFieldData.id || field._id) && { id: customFieldData.id || field._id }),
+                    ...((customFieldData.id || field._id) && {
+                        id: customFieldData.id || field._id,
+                    }),
                     ...(customFieldData.guestId && { guestId: customFieldData.guestId }),
-                    fieldKey: field.key || customFieldData.fieldKey || generateKeyFromName(field.name),
+                    fieldKey:
+                        field.key || customFieldData.fieldKey || generateKeyFromName(field.name),
                     fieldName: field.name || customFieldData.fieldName || `Field ${index + 1}`,
                     fieldType: mapFieldTypeToPayload(field.type || customFieldData.fieldType),
                     defaultValue: customFieldData.defaultValue || '',
                     config: options
-                        ? JSON.stringify(options.map((v: string, i: number) => ({ id: i + 1, value: v, label: v })))
-                        : (customFieldData.config || ''),
-                    formOrder: typeof field.order === 'number' ? field.order + 1 : (customFieldData.formOrder || index + 1),
+                        ? JSON.stringify(
+                              options.map((v: string, i: number) => ({
+                                  id: i + 1,
+                                  value: v,
+                                  label: v,
+                              }))
+                          )
+                        : customFieldData.config || '',
+                    formOrder:
+                        typeof field.order === 'number'
+                            ? field.order + 1
+                            : customFieldData.formOrder || index + 1,
                     isMandatory: Boolean(
                         typeof field.isRequired === 'boolean'
                             ? field.isRequired
@@ -764,7 +783,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     ...(customFieldData.createdAt && { createdAt: customFieldData.createdAt }),
                     ...(customFieldData.updatedAt && { updatedAt: customFieldData.updatedAt }),
                     ...(customFieldData.sessionId && { sessionId: customFieldData.sessionId }),
-                    ...(customFieldData.liveSessionId && { liveSessionId: customFieldData.liveSessionId }),
+                    ...(customFieldData.liveSessionId && {
+                        liveSessionId: customFieldData.liveSessionId,
+                    }),
                     customFieldValue: customFieldData.customFieldValue || '',
                     groupName: field.group_name || customFieldData.groupName || '',
                     groupInternalOrder: field.group_internal_order ?? 0,
@@ -849,7 +870,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             start_date_local: formatDateTimeForPayload(data.start_date_local, false),
             end_date_local: formatDateTimeForPayload(data.end_date_local, true),
             status: data.status?.toUpperCase?.() || data.status,
-            institute_custom_fields: allCustomFieldsPayload.length > 0 ? allCustomFieldsPayload : customFieldsToSend,
+            default_initial_score: data.default_initial_score,
+            institute_custom_fields:
+                allCustomFieldsPayload.length > 0 ? allCustomFieldsPayload : customFieldsToSend,
         };
 
         try {
@@ -963,7 +986,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 {/* CampaignObjective */}
                 <div>
                     <label className="block text-sm font-semibold text-neutral-700">
-                        Campaign Objective 
+                        Campaign Objective
                         {/* <span className="text-red-500">*</span> */}
                     </label>
                     <input
@@ -981,22 +1004,28 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             </div>
 
             {/* Emails & Share Analytics */}
-            <div  className="  w-full  gap-2 rounded-lg border border-neutral-300 px-3 py-2">
+            <div className="  w-full  gap-2 rounded-lg border border-neutral-300 px-3 py-2">
                 <div className="flex flex-wrap gap-2">
-                <label className="block text-sm font-semibold text-neutral-700"> Team Notifications </label>
-                <TooltipProvider>
+                    <label className="block text-sm font-semibold text-neutral-700">
+                        {' '}
+                        Team Notifications{' '}
+                    </label>
+                    <TooltipProvider>
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                                 <button
                                     type="button"
-                                    className="inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 transition-colors focus:outline-none"
+                                    className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
                                     aria-label="Information about sharing campaign analytics"
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
-                            <TooltipContent className="max-w-xs bg-neutral-800 text-white text-xs">
-                                <p>Enter email addresses of team members who should receive campaign updates</p>
+                            <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                <p>
+                                    Enter email addresses of team members who should receive
+                                    campaign updates
+                                </p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1006,45 +1035,48 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     onChange={setEmails}
                     placeholder="Enter email addresses"
                     error={errors?.to_notify?.message}
-                    
                 />
-            
 
-            {/* Share Campaign Analytics */}
-            <div className="flex items-center justify-between gap-2 px-2 py-2">
-                <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-neutral-700">
-                        Share Campaign Analytics with Team Members
-                    </label>
-                    <TooltipProvider>
-                        <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 transition-colors focus:outline-none"
-                                    aria-label="Information about sharing campaign analytics"
-                                >
-                                    <Info className="size-4" weight="regular" />
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs bg-neutral-800 text-white text-xs">
-                                <p>Allow team members to view campaign performance metrics and reports</p>
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                </div>
-                <Switch
-                    checked={watch('send_respondent_email')}
-                    onCheckedChange={(checked: boolean) =>
-                        setValue('send_respondent_email', checked)
-                    }
-                />
+                {/* Share Campaign Analytics */}
+                <div className="flex items-center justify-between gap-2 px-2 py-2">
+                    <div className="flex items-center gap-2">
+                        <label className="block text-sm font-semibold text-neutral-700">
+                            Share Campaign Analytics with Team Members
+                        </label>
+                        <TooltipProvider>
+                            <Tooltip delayDuration={0}>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
+                                        aria-label="Information about sharing campaign analytics"
+                                    >
+                                        <Info className="size-4" weight="regular" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                    <p>
+                                        Allow team members to view campaign performance metrics and
+                                        reports
+                                    </p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    </div>
+                    <Switch
+                        checked={watch('send_respondent_email')}
+                        onCheckedChange={(checked: boolean) =>
+                            setValue('send_respondent_email', checked)
+                        }
+                    />
                 </div>
             </div>
 
             {/* Description */}
             <div>
-                <label className="block text-sm font-semibold text-neutral-700">Campaign Description</label>
+                <label className="block text-sm font-semibold text-neutral-700">
+                    Campaign Description
+                </label>
                 <textarea
                     placeholder="Describe the campaign's goals, target audience, and key messages"
                     rows={3}
@@ -1082,7 +1114,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                     // If it's an ISO string, extract just the date part
                                     const date = new Date(rawValue);
                                     if (!Number.isNaN(date.getTime())) {
-                                        dateValue = date.toISOString().split('T')[0] || date.toISOString().substring(0, 10);
+                                        dateValue =
+                                            date.toISOString().split('T')[0] ||
+                                            date.toISOString().substring(0, 10);
                                     }
                                 }
                             } else if (
@@ -1096,7 +1130,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
                             // Set minimum date to today (date only)
                             const today = new Date();
-                            const minDate = today.toISOString().split('T')[0] || today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
+                            const minDate =
+                                today.toISOString().split('T')[0] ||
+                                today.toISOString().substring(0, 10); // Format: YYYY-MM-DD
 
                             return (
                                 <input
@@ -1143,7 +1179,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                     // If it's an ISO string, extract just the date part
                                     const date = new Date(rawValue);
                                     if (!Number.isNaN(date.getTime())) {
-                                        dateValue = date.toISOString().split('T')[0] || date.toISOString().substring(0, 10);
+                                        dateValue =
+                                            date.toISOString().split('T')[0] ||
+                                            date.toISOString().substring(0, 10);
                                     }
                                 }
                             } else if (
@@ -1164,13 +1202,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                                 const nextDay = new Date(start);
                                 nextDay.setDate(start.getDate() + 1); // Move to the next day
                                 const nextDayIso = nextDay.toISOString();
-                                minEndDate = (nextDayIso.split('T')[0] || nextDayIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
+                                minEndDate = (nextDayIso.split('T')[0] ||
+                                    nextDayIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
                             } else {
                                 // Fallback: today + 1 day
                                 const tomorrow = new Date();
                                 tomorrow.setDate(tomorrow.getDate() + 1);
                                 const tomorrowIso = tomorrow.toISOString();
-                                minEndDate = (tomorrowIso.split('T')[0] || tomorrowIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
+                                minEndDate = (tomorrowIso.split('T')[0] ||
+                                    tomorrowIso.substring(0, 10)) as string; // Format: YYYY-MM-DD
                             }
 
                             return (
@@ -1201,20 +1241,23 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             {/* Status */}
             <div>
                 <div className="flex items-center gap-2">
-                <label className="block text-sm font-semibold text-neutral-700">Status</label>
-                <TooltipProvider>
+                    <label className="block text-sm font-semibold text-neutral-700">Status</label>
+                    <TooltipProvider>
                         <Tooltip delayDuration={0}>
                             <TooltipTrigger asChild>
                                 <button
                                     type="button"
-                                    className="inline-flex items-center justify-center text-neutral-400 hover:text-neutral-600 transition-colors focus:outline-none"
+                                    className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
                                     aria-label="Information about sharing campaign analytics"
                                 >
                                     <Info className="size-4" weight="bold" />
                                 </button>
                             </TooltipTrigger>
-                            <TooltipContent className="max-w-xs bg-neutral-800 text-white text-xs">
-                                <p>To share the campaign link with Learners, please ensure the campaign status is set to Active.</p>
+                            <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                <p>
+                                    To share the campaign link with Learners, please ensure the
+                                    campaign status is set to Active.
+                                </p>
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
@@ -1233,7 +1276,52 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 </div>
             </div>
 
-            {/* JSON Metadata */}
+            {/* Initial Lead Score */}
+            <div>
+                <div className="flex items-center gap-2">
+                    <label className="block text-sm font-semibold text-neutral-700">
+                        Initial Lead Score
+                    </label>
+                    <TooltipProvider>
+                        <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center justify-center text-neutral-400 transition-colors hover:text-neutral-600 focus:outline-none"
+                                    aria-label="Initial lead score info"
+                                >
+                                    <Info className="size-4" weight="bold" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs bg-neutral-800 text-xs text-white">
+                                <p>
+                                    A base score added to every lead captured through this campaign.
+                                    Final score = initial score + calculated score (capped at 100).
+                                </p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
+                <Controller
+                    name="default_initial_score"
+                    control={control}
+                    render={({ field }) => (
+                        <input
+                            type="number"
+                            min={0}
+                            max={50}
+                            value={field.value ?? 20}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            className="mt-2 w-32 rounded-lg border border-neutral-300 px-4 py-2.5 text-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                        />
+                    )}
+                />
+                {errors.default_initial_score && (
+                    <span className="mt-1 block text-sm text-red-500">
+                        {errors.default_initial_score.message as string}
+                    </span>
+                )}
+            </div>
 
             {/* Customize Campaign Form - Custom Fields Card */}
             <CampaignCustomFieldsCard
@@ -1256,15 +1344,15 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
 
             {/* Form Actions */}
             <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-6">
-                <MyButton type="button" onClick={handleFormReset} buttonType="secondary" scale="medium">
-                    Reset
-                </MyButton>
                 <MyButton
-                    type="submit"
-                    disabled={isSaving}
-                    buttonType="primary"
+                    type="button"
+                    onClick={handleFormReset}
+                    buttonType="secondary"
                     scale="medium"
                 >
+                    Reset
+                </MyButton>
+                <MyButton type="submit" disabled={isSaving} buttonType="primary" scale="medium">
                     {primaryButtonLabel}
                 </MyButton>
             </div>

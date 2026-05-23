@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 
 import java.sql.Timestamp;
 
@@ -24,8 +25,10 @@ public class TimelineEventDTO {
         private String actorName;
         private String title;
         private String description;
-        private Object metadata; // Will hold parsed JSON from DB
+        private Object metadata;
         private Boolean isPinned;
         private String studentUserId;
+        /** JOURNEY = lifecycle event, ACTIVITY = manual note/call/meeting */
+        private TimelineCategory category;
         private Timestamp createdAt;
 }

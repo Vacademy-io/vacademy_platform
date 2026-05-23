@@ -9,6 +9,7 @@ import vacademy.io.admin_core_service.features.invoice.entity.InvoicePaymentLogM
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InvoicePaymentLogMappingRepository extends JpaRepository<InvoicePaymentLogMapping, String> {
@@ -23,5 +24,7 @@ public interface InvoicePaymentLogMappingRepository extends JpaRepository<Invoic
     List<PaymentLog> findPaymentLogsByInvoiceId(@Param("invoiceId") String invoiceId);
     
     boolean existsByPaymentLogId(String paymentLogId);
+
+    Optional<InvoicePaymentLogMapping> findFirstByPaymentLogId(String paymentLogId);
 }
 

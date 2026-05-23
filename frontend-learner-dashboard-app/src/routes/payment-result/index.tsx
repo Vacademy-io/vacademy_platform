@@ -15,6 +15,7 @@ const paymentResultSearchSchema = z.object({
   instituteId: z.string().optional(),
   institute_id: z.string().optional(), // snake_case fallback
   status: z.enum(["success", "failed", "cancelled"]).optional(),
+  source: z.string().optional(), // "invoice" skips gateway-specific status polling
 });
 
 export const Route = createFileRoute("/payment-result/")({
@@ -34,12 +35,15 @@ function PaymentResultPage() {
     instituteId: instituteIdParam,
     institute_id: instituteIdSnake,
     status: queryStatus,
+    source,
   } = search;
   // Prefer orderId (payment log ID) from our return URL; order_id may be Cashfree's ID
   const orderId = orderIdParam ?? orderIdSnake ?? "";
   const instituteId = instituteIdParam ?? instituteIdSnake;
   const validInstituteId = isValidInstituteId(instituteId) ? instituteId : undefined;
-  const isCashfreeFlow = !!orderId && !!validInstituteId;
+  // Invoice payments must not use the Cashfree user-plan status endpoint
+  const isInvoicePayment = source === "invoice";
+  const isCashfreeFlow = !!orderId && !!validInstituteId && !isInvoicePayment;
   const hasRedirectedRef = useRef(false);
 
   // Extract status from various backend response shapes (payment_status, status, paymentStatus, nested)

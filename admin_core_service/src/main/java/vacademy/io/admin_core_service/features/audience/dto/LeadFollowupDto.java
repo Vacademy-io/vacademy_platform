@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.audience.dto;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.*;
 import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 
@@ -9,6 +11,7 @@ import java.sql.Timestamp;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class LeadFollowupDto {
 
     private String id;

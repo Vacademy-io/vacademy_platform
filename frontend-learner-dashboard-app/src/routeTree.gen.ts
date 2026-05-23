@@ -77,6 +77,7 @@ import { Route as StudyLibraryLiveClassFeedbackIndexRouteImport } from './routes
 import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/study-library/live-class/embed/index'
 import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes/study-library/live-class/$username/index'
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
+import { Route as PayInvoiceInvoiceIdIndexRouteImport } from './routes/pay/invoice/$invoiceId/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
 import { Route as AssessmentReportsComparisonIndexRouteImport } from './routes/assessment/reports/comparison/index'
@@ -449,6 +450,12 @@ const StudyLibraryCoursesCourseDetailsIndexRoute =
     path: '/study-library/courses/course-details/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const PayInvoiceInvoiceIdIndexRoute =
+  PayInvoiceInvoiceIdIndexRouteImport.update({
+    id: '/pay/invoice/$invoiceId/',
+    path: '/pay/invoice/$invoiceId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const MMediaIdPhoneNumberIndexRoute =
   MMediaIdPhoneNumberIndexRouteImport.update({
     id: '/m/$mediaId/$phoneNumber/',
@@ -603,6 +610,7 @@ export interface FileRoutesByFullPath {
   '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
   '/study-library/live-class/$username': typeof StudyLibraryLiveClassUsernameIndexRoute
   '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
@@ -685,6 +693,7 @@ export interface FileRoutesByTo {
   '/assessment/reports/comparison': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
   '/study-library/live-class/$username': typeof StudyLibraryLiveClassUsernameIndexRoute
   '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
@@ -769,6 +778,7 @@ export interface FileRoutesById {
   '/assessment/reports/comparison/': typeof AssessmentReportsComparisonIndexRoute
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
+  '/pay/invoice/$invoiceId/': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
   '/study-library/live-class/$username/': typeof StudyLibraryLiveClassUsernameIndexRoute
   '/study-library/live-class/embed/': typeof StudyLibraryLiveClassEmbedIndexRoute
@@ -854,6 +864,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
     | '/m/$mediaId/$phoneNumber'
+    | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
     | '/study-library/live-class/$username'
     | '/study-library/live-class/embed'
@@ -936,6 +947,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/comparison'
     | '/assessment/reports/student-report'
     | '/m/$mediaId/$phoneNumber'
+    | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
     | '/study-library/live-class/$username'
     | '/study-library/live-class/embed'
@@ -1019,6 +1031,7 @@ export interface FileRouteTypes {
     | '/assessment/reports/comparison/'
     | '/assessment/reports/student-report/'
     | '/m/$mediaId/$phoneNumber/'
+    | '/pay/invoice/$invoiceId/'
     | '/study-library/courses/course-details/'
     | '/study-library/live-class/$username/'
     | '/study-library/live-class/embed/'
@@ -1102,6 +1115,7 @@ export interface RootRouteChildren {
   AssessmentReportsComparisonIndexRoute: typeof AssessmentReportsComparisonIndexRoute
   AssessmentReportsStudentReportIndexRoute: typeof AssessmentReportsStudentReportIndexRoute
   MMediaIdPhoneNumberIndexRoute: typeof MMediaIdPhoneNumberIndexRoute
+  PayInvoiceInvoiceIdIndexRoute: typeof PayInvoiceInvoiceIdIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
   StudyLibraryLiveClassUsernameIndexRoute: typeof StudyLibraryLiveClassUsernameIndexRoute
   StudyLibraryLiveClassEmbedIndexRoute: typeof StudyLibraryLiveClassEmbedIndexRoute
@@ -1593,6 +1607,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pay/invoice/$invoiceId/': {
+      id: '/pay/invoice/$invoiceId/'
+      path: '/pay/invoice/$invoiceId'
+      fullPath: '/pay/invoice/$invoiceId'
+      preLoaderRoute: typeof PayInvoiceInvoiceIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/m/$mediaId/$phoneNumber/': {
       id: '/m/$mediaId/$phoneNumber/'
       path: '/m/$mediaId/$phoneNumber'
@@ -1773,6 +1794,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentReportsStudentReportIndexRoute:
     AssessmentReportsStudentReportIndexRoute,
   MMediaIdPhoneNumberIndexRoute: MMediaIdPhoneNumberIndexRoute,
+  PayInvoiceInvoiceIdIndexRoute: PayInvoiceInvoiceIdIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:
     StudyLibraryCoursesCourseDetailsIndexRoute,
   StudyLibraryLiveClassUsernameIndexRoute:

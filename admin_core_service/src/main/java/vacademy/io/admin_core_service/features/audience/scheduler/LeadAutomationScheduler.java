@@ -6,7 +6,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO;
+import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
 import vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService;
 import vacademy.io.admin_core_service.features.audience.service.LeadTriggerContextBuilder;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
@@ -14,32 +17,49 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerS
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Periodic, EMIT-ONLY scan for lead TAT (turnaround-time) and follow-up SLA breaches.
+ * Periodic, EMIT-ONLY scan for all lead automation triggers — TAT/SLA windows plus
+ * counsellor-scheduled follow-ups. Previously {@code LeadSlaScheduler}; renamed because it
+ * now covers more than just SLA breaches.
  *
- * <p>The backend never sends notifications. This scheduler only detects which leads have entered a
- * configured "before TAT", "TAT overdue", "follow-up due" or "follow-up overdue" window and emits the
- * corresponding workflow trigger via {@link WorkflowTriggerService#handleTriggerEvents}. The institute's
- * workflow (bound in the Automations UI) owns channels, templates, recipients and escalation.</p>
+ * <p>The backend never sends notifications. This scheduler only detects which leads have
+ * crossed a configured boundary and emits the corresponding workflow trigger via
+ * {@link WorkflowTriggerService#handleTriggerEvents}. Bound workflows own channels,
+ * templates, recipients and escalation.</p>
  *
- * <p>Config lives in the {@code lead_sla_config} tables (read via {@link LeadSlaConfigService}). Dedup is
- * DB-backed on {@code audience_response} via an atomic conditional update ({@code claimTatReminderStage}) so
- * each stage fires once per cycle, replica-safe.</p>
+ * <p>It runs two scans on a 30-minute cadence:</p>
+ * <ol>
+ *   <li><b>SLA scan</b> — for each institute, walks {@code findSlaCandidatesForInstitute}
+ *       and emits TAT or follow-up triggers based on time-since-submission /
+ *       time-since-last-counsellor-action against {@code lead_sla_config}. Dedup is
+ *       DB-backed via {@code claimTatReminderStage}.</li>
+ *   <li><b>Counsellor-scheduled follow-up scan</b> — walks {@code lead_followup} rows whose
+ *       {@code schedule_time} has arrived (or is overdue) and emits FOLLOW_UP_DUE /
+ *       FOLLOW_UP_OVERDUE. Dedup is via atomic PENDING→ONGOING→OVERDUE status transitions
+ *       on the row (one-fire guarantee across replicas).</li>
+ * </ol>
  *
- * <p>Cycles: a lead is in the TAT cycle until its assigned counselor first acts (any timeline_event by that
- * counselor), then in the follow-up cycle anchored on the counselor's last action (recurring — each new
- * action restarts it).</p>
+ * <p>Both scans share the same {@link LeadTriggerContextBuilder} so ctx shape (parent
+ * contact, counsellor contact, poolId, dueAt, minutesToBreach) is identical regardless of
+ * which path emitted the event — workflows bound to FOLLOW_UP_DUE fire for either source.
+ * On the user-scheduled path, ctx additionally carries {@code followupId} and
+ * {@code followupContent} so workflows can branch on source if needed.</p>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class LeadSlaScheduler {
+public class LeadAutomationScheduler {
+
+    /** A counsellor-scheduled follow-up is treated as overdue this long after schedule_time. */
+    private static final long FOLLOWUP_OVERDUE_THRESHOLD_MINUTES = 30;
 
     private final AudienceResponseRepository audienceResponseRepository;
+    private final LeadFollowupRepository leadFollowupRepository;
     private final LeadSlaConfigService leadSlaConfigService;
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder ctxBuilder;
@@ -47,7 +67,16 @@ public class LeadSlaScheduler {
     /** 30-minute cadence (server timezone). "Before" reminder windows shorter than the scan
      *  interval may be skipped, so configure before-windows of 30 minutes or more. */
     @Scheduled(cron = "0 */30 * * * ?")
-    public void scanLeadSlas() {
+    public void scan() {
+        scanLeadSlas();
+        scanScheduledFollowups();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // SLA scan — TAT + follow-up SLA windows from lead_sla_config
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void scanLeadSlas() {
         List<String> instituteIds = audienceResponseRepository.findInstituteIdsWithActiveLeads();
         if (instituteIds.isEmpty()) return;
 
@@ -129,6 +158,10 @@ public class LeadSlaScheduler {
         ctxBuilder.put(ctx, "parentName", c.getParentName());
         ctxBuilder.put(ctx, "parentEmail", c.getParentEmail());
         ctxBuilder.put(ctx, "parentMobile", c.getParentMobile());
+        // Same values under cleaner lead-* keys (the lead list's "lead" IS the user).
+        ctxBuilder.put(ctx, "leadName", c.getParentName());
+        ctxBuilder.put(ctx, "leadEmail", c.getParentEmail());
+        ctxBuilder.put(ctx, "leadMobile", c.getParentMobile());
         ctxBuilder.put(ctx, "tatStage", emission.canonicalStage);
         ctxBuilder.put(ctx, "stageLabel", emission.stageLabel);
         if (notifyRoles != null && !notifyRoles.isEmpty()) {
@@ -208,6 +241,80 @@ public class LeadSlaScheduler {
             this.stageLabel = stageLabel;
             this.triggerKey = triggerKey;
             this.dueAt = dueAt;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Counsellor-scheduled follow-up scan — from lead_followup table
+    //
+    // Lifecycle: PENDING → ONGOING (DUE fired) → OVERDUE (OVERDUE fired) → COMPLETED.
+    // The two atomic UPDATEs (claimDueTransition / claimOverdueTransition) act as the
+    // dedup gate, so each row fires its event exactly once even across replicas.
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void scanScheduledFollowups() {
+        Instant now = Instant.now();
+        Timestamp nowTs = Timestamp.from(now);
+        Timestamp overdueAt = Timestamp.from(
+                now.minus(FOLLOWUP_OVERDUE_THRESHOLD_MINUTES, ChronoUnit.MINUTES));
+
+        int dueEmitted = 0;
+        int overdueEmitted = 0;
+
+        for (LeadFollowup fu : leadFollowupRepository.findDueCandidates(nowTs)) {
+            if (leadFollowupRepository.claimDueTransition(fu.getId()) == 1
+                    && emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_DUE.name(),
+                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE)) {
+                dueEmitted++;
+            }
+        }
+
+        for (LeadFollowup fu : leadFollowupRepository.findOverdueCandidates(overdueAt)) {
+            if (leadFollowupRepository.claimOverdueTransition(fu.getId()) == 1
+                    && emitFollowup(fu, WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(),
+                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE)) {
+                overdueEmitted++;
+            }
+        }
+
+        if (dueEmitted > 0 || overdueEmitted > 0) {
+            log.info("[LeadFollowup] Emitted {} due + {} overdue triggers this run",
+                    dueEmitted, overdueEmitted);
+        }
+    }
+
+    private boolean emitFollowup(LeadFollowup fu, String eventName, String stage) {
+        try {
+            AudienceResponse ar = audienceResponseRepository
+                    .findById(fu.getAudienceResponseId()).orElse(null);
+            // The follow-up's creator is its natural counsellor (the user who scheduled it),
+            // so use them for ctx counselor enrichment — without this, forLead receives a
+            // null counselorId and counselorEmail / counselorMobile never land in ctx, so
+            // "Send to counsellor" workflows have no address to send to.
+            String counselorId = fu.getCreatedBy();
+            // forLead enriches parent contact + counsellor email/mobile + poolId from the
+            // linked audience_response, so communication workflows have a recipient out of
+            // the box (matches the SLA scan's ctx shape).
+            Map<String, Object> ctx = ctxBuilder.forLead(ar, fu.getInstituteId(), null, counselorId, null);
+            ctxBuilder.put(ctx, "tatStage", stage);
+            ctxBuilder.put(ctx, "stageLabel", stage);
+            ctxBuilder.put(ctx, "followupId", fu.getId());
+            ctxBuilder.put(ctx, "followupContent", fu.getContent());
+            if (fu.getScheduleTime() != null) {
+                Instant due = fu.getScheduleTime().toInstant();
+                ctxBuilder.put(ctx, "dueAt", due.toString());
+                long minutes = (due.getEpochSecond() - Instant.now().getEpochSecond()) / 60;
+                ctxBuilder.put(ctx, "minutesToBreach", Math.max(0, minutes));
+            }
+            // eventId = followup id so EVENT_BASED idempotency dedups per follow-up row,
+            // not per lead — a lead can have many follow-ups over time.
+            workflowTriggerService.handleTriggerEvents(
+                    eventName, fu.getId(), fu.getInstituteId(), ctx);
+            return true;
+        } catch (Exception ex) {
+            log.warn("[LeadFollowup] Failed to emit {} for followup {}: {}",
+                    eventName, fu.getId(), ex.getMessage());
+            return false;
         }
     }
 }

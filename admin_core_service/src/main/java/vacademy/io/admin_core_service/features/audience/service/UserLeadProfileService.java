@@ -17,10 +17,12 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRepos
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.timeline.repository.TimelineEventRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.sql.Timestamp;
 import java.util.*;
@@ -53,6 +55,7 @@ public class UserLeadProfileService {
     private final TimelineEventRepository timelineEventRepository;
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder leadTriggerContextBuilder;
+    private final AuthService authService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -274,23 +277,94 @@ public class UserLeadProfileService {
     private void enrichWithLeadContact(Map<String, Object> ctx, String userId) {
         if (userId == null || userId.isBlank()) return;
         try {
-            List<AudienceResponse> responses = audienceResponseRepository.findByUserId(userId);
-            if (responses == null || responses.isEmpty()) return;
-            AudienceResponse ar = responses.stream()
-                    .filter(r -> (r.getParentEmail() != null && !r.getParentEmail().isBlank())
-                            || (r.getParentMobile() != null && !r.getParentMobile().isBlank()))
-                    .findFirst()
-                    .orElse(responses.get(0));
-            leadTriggerContextBuilder.put(ctx, "parentName", ar.getParentName());
-            leadTriggerContextBuilder.put(ctx, "parentEmail", ar.getParentEmail());
-            leadTriggerContextBuilder.put(ctx, "parentMobile", ar.getParentMobile());
-            leadTriggerContextBuilder.put(ctx, "audienceId", ar.getAudienceId());
-            leadTriggerContextBuilder.put(ctx, "enquiryId", ar.getEnquiryId());
-            leadTriggerContextBuilder.put(ctx, "studentUserId", ar.getStudentUserId());
+            // user_lead_profile.user_id can be either the parent or the student (it's the auth
+            // user id of whoever the lead is keyed on). audience_response carries them in two
+            // separate columns (user_id = parent, student_user_id = student) — query both so
+            // we resolve the lead's audience whether this user is the parent OR the student.
+            // Without this, student-grain leads silently miss enrichment and the pool-scoped
+            // trigger never matches because ctx['poolId'] isn't set.
+            List<AudienceResponse> responses =
+                    audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+            if (responses == null || responses.isEmpty()) {
+                // No audience response — still try auth-service so {{parentName}} / {{parentEmail}}
+                // resolve to the user's own record (typical for admin-created leads).
+                fallbackParentFromAuthService(ctx, userId);
+                return;
+            }
+            // Merge best-available values across all of the user's responses, so a row with a
+            // null parent_email doesn't shadow a sibling row that has one. This is what makes
+            // {{parentName}} / {{parentEmail}} / {{parentMobile}} resolve in production for
+            // leads whose first audience_response wasn't fully populated.
+            String parentName = null, parentEmail = null, parentMobile = null;
+            String audienceId = null, enquiryId = null, studentUserId = null;
+            for (AudienceResponse r : responses) {
+                if (parentName == null && r.getParentName() != null && !r.getParentName().isBlank())
+                    parentName = r.getParentName();
+                if (parentEmail == null && r.getParentEmail() != null && !r.getParentEmail().isBlank())
+                    parentEmail = r.getParentEmail();
+                if (parentMobile == null && r.getParentMobile() != null && !r.getParentMobile().isBlank())
+                    parentMobile = r.getParentMobile();
+                if (audienceId == null && r.getAudienceId() != null) audienceId = r.getAudienceId();
+                if (enquiryId == null && r.getEnquiryId() != null) enquiryId = r.getEnquiryId();
+                if (studentUserId == null && r.getStudentUserId() != null) studentUserId = r.getStudentUserId();
+            }
+            leadTriggerContextBuilder.put(ctx, "parentName", parentName);
+            leadTriggerContextBuilder.put(ctx, "parentEmail", parentEmail);
+            leadTriggerContextBuilder.put(ctx, "parentMobile", parentMobile);
+            // Cleaner lead-* aliases — for the lead list the lead IS the user, so {{leadName}}
+            // reads more naturally than {{parentName}}. Both keys carry the same value.
+            leadTriggerContextBuilder.put(ctx, "leadName", parentName);
+            leadTriggerContextBuilder.put(ctx, "leadEmail", parentEmail);
+            leadTriggerContextBuilder.put(ctx, "leadMobile", parentMobile);
+            leadTriggerContextBuilder.put(ctx, "audienceId", audienceId);
+            leadTriggerContextBuilder.put(ctx, "enquiryId", enquiryId);
+            leadTriggerContextBuilder.put(ctx, "studentUserId", studentUserId);
             leadTriggerContextBuilder.put(ctx, "poolId",
-                    leadTriggerContextBuilder.resolvePoolId(ar.getAudienceId()));
+                    leadTriggerContextBuilder.resolvePoolId(audienceId));
+
+            // Look up the campaign name from audience so {{campaignName}} substitutes.
+            if (audienceId != null) {
+                try {
+                    audienceRepository.findById(audienceId).ifPresent(a ->
+                            leadTriggerContextBuilder.put(ctx, "campaignName", a.getCampaignName()));
+                } catch (Exception ignored) { /* best-effort */ }
+            }
+
+            // For any parent_* still missing on the audience_response snapshot, try the live
+            // auth-service user record — for admin-created / direct-student leads that's where
+            // the name + email + mobile actually live.
+            if (parentName == null || parentEmail == null || parentMobile == null) {
+                fallbackParentFromAuthService(ctx, userId);
+            }
         } catch (Exception e) {
             log.warn("[LeadTrigger] Failed to enrich lead contact for user {}: {}", userId, e.getMessage());
+        }
+    }
+
+    /**
+     * Resolve the lead user's own name/email/mobile from auth-service and fill any
+     * parent_* fields the audience_response didn't have. Best-effort; the put() helper
+     * is null-safe and won't overwrite values already set.
+     */
+    private void fallbackParentFromAuthService(Map<String, Object> ctx, String userId) {
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+            if (users == null || users.isEmpty()) return;
+            UserDTO u = users.get(0);
+            if (!ctx.containsKey("parentName") && u.getFullName() != null && !u.getFullName().isBlank()) {
+                leadTriggerContextBuilder.put(ctx, "parentName", u.getFullName());
+                leadTriggerContextBuilder.put(ctx, "leadName", u.getFullName());
+            }
+            if (!ctx.containsKey("parentEmail") && u.getEmail() != null && !u.getEmail().isBlank()) {
+                leadTriggerContextBuilder.put(ctx, "parentEmail", u.getEmail());
+                leadTriggerContextBuilder.put(ctx, "leadEmail", u.getEmail());
+            }
+            if (!ctx.containsKey("parentMobile") && u.getMobileNumber() != null && !u.getMobileNumber().isBlank()) {
+                leadTriggerContextBuilder.put(ctx, "parentMobile", u.getMobileNumber());
+                leadTriggerContextBuilder.put(ctx, "leadMobile", u.getMobileNumber());
+            }
+        } catch (Exception e) {
+            log.debug("[LeadTrigger] auth-service fallback failed for user {}: {}", userId, e.getMessage());
         }
     }
 
@@ -563,7 +637,9 @@ public class UserLeadProfileService {
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
         UserLeadProfile saved = userLeadProfileRepository.save(profile);
 
-        // Emit only on an actual assignment (not when clearing the counselor).
+        // Emit workflow trigger only on actual assignment (not on clear).
+        // Journey event logging (COUNSELOR_ASSIGNED) is done by the caller (AudienceController)
+        // to keep TimelineEventService free of circular dependencies.
         if (counselorId != null && !counselorId.isBlank()) {
             Map<String, Object> ctx = leadTriggerContextBuilder.forUser(
                     instituteId, userId, counselorId, counselorName);

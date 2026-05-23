@@ -1,17 +1,18 @@
 /**
  * "Trigger workflow" wizard — opened from a pool card's three-dot menu (pool-scoped) or
  * from Lead Settings (institute-global). Lets an admin bind a lead trigger event to either:
- *   1. Communication — send an Email or WhatsApp to the lead's parent contact, using an
- *      existing template or a freshly-created sample template (with insertable ctx variables).
+ *   1. Communication — send an Email or WhatsApp to the assigned counsellor (default) or
+ *      the lead's own contact, using an existing template or a fresh sample.
  *   2. Paste data to payload — POST the trigger context to an external URL (webhook out).
  *
  * Pool scope is carried the same way every other entity-scoped trigger is: the pool's id goes
  * in the trigger's event_id with event_applied_type = POOL (mirrors PACKAGE_SESSION /
  * LIVE_SESSION / AUDIENCE). Omit poolId ⇒ no event_id ⇒ institute-global.
  *
- * Recipient note: lead trigger context carries the parent's email/mobile (parentEmail /
- * parentMobile) but not the counselor's, so communication here targets the lead's parent.
- * Notifying counselors/roles needs their contact resolved — use the full workflow builder.
+ * Recipient note: ctx carries counsellor contact (counselorEmail / counselorMobile, resolved
+ * via auth-service) and the lead's own contact (leadEmail / leadMobile, sourced from
+ * audience_response or the auth-service user record). The recipient selector maps to the
+ * appropriate ctx field as the SEND_EMAIL / SEND_WHATSAPP recipientField / mobileNumber.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -54,7 +55,7 @@ import { createMessageTemplate } from '@/services/message-template-service';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { getUserId } from '@/utils/userDetails';
 import type { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
-import { SAMPLE_LEAD_TEMPLATES } from './sample-lead-templates';
+import { SAMPLE_TEMPLATES } from '@/routes/workflow/create/-components/sample-email-templates';
 
 const LEAD_STATUS_CHANGED = 'LEAD_STATUS_CHANGED';
 /** Sentinel for the "any status change" option in the status picker. */
@@ -72,7 +73,9 @@ interface TriggerWorkflowDialogProps {
 
 type ActionType = 'communication' | 'payload';
 type Channel = 'EMAIL' | 'WHATSAPP';
-type Recipient = 'counselor' | 'parent';
+// 'lead' targets the lead's own contact (audience_response.parent_* — historical column
+// name; the values are the lead user's name / email / mobile, not a separate parent).
+type Recipient = 'counselor' | 'lead';
 
 const LEAD_EVENTS: { value: string; label: string }[] = [
     { value: 'LEAD_ASSIGNED_TO_COUNSELOR', label: 'Lead assigned to counselor' },
@@ -149,7 +152,7 @@ export function TriggerWorkflowDialog({
     // picker; just create a pre-built template for the chosen event and select it.
     const createSampleTemplateMutation = useMutation({
         mutationFn: async () => {
-            const sample = SAMPLE_LEAD_TEMPLATES[event];
+            const sample = SAMPLE_TEMPLATES[event];
             if (!sample) {
                 throw new Error('No sample template available for this event.');
             }
@@ -214,16 +217,20 @@ export function TriggerWorkflowDialog({
             const templateVars = Object.fromEntries(varKeys.map((k) => [k, k]));
 
             // Resolve which ctx field carries the recipient address. Counsellor uses the
-            // enriched counselorEmail/counselorMobile (LeadTriggerContextBuilder looks these up
-            // from auth-service); parent uses the audience_response snapshot.
-            const emailField = recipient === 'counselor' ? 'counselorEmail' : 'parentEmail';
-            const mobileField = recipient === 'counselor' ? 'counselorMobile' : 'parentMobile';
+            // enriched counselorEmail / counselorMobile (LeadTriggerContextBuilder looks these
+            // up from auth-service). Lead uses leadEmail / leadMobile — the lead's own contact
+            // (sourced from audience_response.parent_* / auth-service; "parent" is a historical
+            // audience_response column name, the value is the lead user's contact).
+            const emailField = recipient === 'counselor' ? 'counselorEmail' : 'leadEmail';
+            const mobileField = recipient === 'counselor' ? 'counselorMobile' : 'leadMobile';
 
             if (channel === 'EMAIL') {
                 // Wrap the whole context into a one-element list so the per-item sender runs
                 // once for this lead; recipientField pulls the chosen address from the ctx
                 // map. When a status gate is set, return an empty list (no send) unless the
-                // new status matches.
+                // new status matches. forEach is REQUIRED by SendEmailNodeHandler — without it
+                // the handler logs "No forEach configuration found in SendEmail node" and
+                // silently skips the send. Same shape the audience confirmation dialog uses.
                 const onExpr = statusGate ? `${statusGate} ? {#ctx} : {}` : '{#ctx}';
                 actionNode = {
                     id: actionId,
@@ -232,6 +239,7 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
+                        forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
                         recipientField: emailField,
                         templateVars,
                         routing: [{ type: 'end' }],
@@ -245,7 +253,8 @@ export function TriggerWorkflowDialog({
                 // WhatsApp resolves the mobile from fixed keys (mobileNumber/mobile/phone/to),
                 // not counselorMobile / parentMobile — so expose the chosen mobile via a
                 // one-element list of a map literal that also carries the template variables.
-                // Status gate empties the list when unmatched.
+                // Status gate empties the list when unmatched. forEach mirrors SEND_EMAIL — the
+                // per-item dispatch needs it to bind {#ctx['item']} for each iteration.
                 const mapEntries = [
                     `mobileNumber: #ctx['${mobileField}']`,
                     ...varKeys.map((k) => `${k}: #ctx['${k}']`),
@@ -260,6 +269,7 @@ export function TriggerWorkflowDialog({
                     config: {
                         templateName: selectedTemplate,
                         on: onExpr,
+                        forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
                         templateVars,
                         routing: [{ type: 'end' }],
                     },
@@ -455,8 +465,8 @@ export function TriggerWorkflowDialog({
                                         <SelectItem value="counselor">
                                             Assigned counsellor (default)
                                         </SelectItem>
-                                        <SelectItem value="parent">
-                                            Lead&apos;s parent contact
+                                        <SelectItem value="lead">
+                                            Lead&apos;s own contact
                                         </SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -467,7 +477,7 @@ export function TriggerWorkflowDialog({
                                     <Label className="text-sm font-medium">
                                         Template <span className="text-danger-500">*</span>
                                     </Label>
-                                    {channel === 'EMAIL' && !!SAMPLE_LEAD_TEMPLATES[event] && (
+                                    {channel === 'EMAIL' && !!SAMPLE_TEMPLATES[event] && (
                                         <button
                                             type="button"
                                             className="flex items-center gap-1 text-xs text-primary-500 hover:text-primary-400 disabled:cursor-not-allowed disabled:opacity-50"

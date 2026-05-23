@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.timeline.entity.TimelineEvent;
+import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 
 import java.util.List;
 
@@ -28,6 +29,12 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
     Page<TimelineEvent> findByStudentUserIdOrderByIsPinnedDescCreatedAtDesc(String studentUserId, Pageable pageable);
 
     /**
+     * Fetch ALL timeline events for a student (both JOURNEY and ACTIVITY), sorted purely
+     * by creation date descending. Used for the unified lead journey view.
+     */
+    Page<TimelineEvent> findByStudentUserIdOrderByCreatedAtDesc(String studentUserId, Pageable pageable);
+
+    /**
      * Fetch timeline events for a specific entity, with pinned first.
      * Used for notes-enhanced timeline view.
      */
@@ -47,6 +54,22 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
     long countByTypeAndTypeIdIn(String type, java.util.List<String> typeIds);
 
     long countByStudentUserId(String studentUserId);
+
+    // ── Journey (category = JOURNEY) ──────────────────────────────────────────
+
+    /**
+     * Paginated lead-journey events for a specific entity, newest first.
+     * Used by GET /timeline/v1/journey to render the lifecycle timeline.
+     */
+    Page<TimelineEvent> findByTypeAndTypeIdAndCategoryOrderByCreatedAtDesc(
+            String type, String typeId, TimelineCategory category, Pageable pageable);
+
+    /**
+     * Paginated lead-journey events for a student across all stages.
+     * Powers the cross-stage journey view on the student side panel.
+     */
+    Page<TimelineEvent> findByStudentUserIdAndCategoryOrderByCreatedAtDesc(
+            String studentUserId, TimelineCategory category, Pageable pageable);
 
     @Query(value = """
             SELECT id, type, type_id, action_type, actor_type, actor_id,

@@ -1,5 +1,4 @@
-import { Plus } from 'lucide-react';
-import { NotePencil } from '@phosphor-icons/react';
+import { Plus, NotePencil } from '@phosphor-icons/react';
 import type { LatestNoteEvent } from '@/hooks/use-latest-notes-batch';
 import { parseHtmlToString } from '@/lib/utils';
 
@@ -31,10 +30,8 @@ const NoteCard = ({ note }: { note: LatestNoteEvent }) => {
                 <NotePencil weight="fill" className="size-3 text-neutral-500" />
                 <span className="truncate text-xs font-medium text-neutral-800">{note.title}</span>
             </div>
-            {desc && (
-                <p className="mt-0.5 line-clamp-2 text-[11px] text-neutral-600">{desc}</p>
-            )}
-            <p className="mt-0.5 text-[10px] text-neutral-400">
+            {desc && <p className="mt-0.5 line-clamp-2 text-xs text-neutral-600">{desc}</p>}
+            <p className="mt-0.5 text-xs text-neutral-400">
                 {formatTimestamp(note.created_at)}
                 {note.actor_name ? ` · by ${note.actor_name}` : ''}
             </p>

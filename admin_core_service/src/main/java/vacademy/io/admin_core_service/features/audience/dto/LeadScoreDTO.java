@@ -21,9 +21,10 @@ import java.sql.Timestamp;
 public class LeadScoreDTO {
 
     private String audienceResponseId;
-    private Integer rawScore;           // 0-100
+    private Integer rawScore;           // 0-100 (manually set or calculated)
     private String tier;                // HOT / WARM / COLD
     private BigDecimal percentileRank;  // 0-100
     private Object scoringFactors;      // Parsed JSON breakdown for UI tooltip
     private Timestamp lastCalculatedAt;
+    private Boolean isManualOverride;
 }

@@ -37,6 +37,9 @@ public class AudienceDTO {
     private String settingJson; // JSON settings for the audience campaign
     private String createdByUserId;
 
+    /** Floor score for new leads in this campaign. Overrides institute-level default. Null = no floor. Range 0-100. */
+    private Integer defaultInitialScore;
+
     // Custom fields for the form
     private List<InstituteCustomFieldDTO> instituteCustomFields;
 }

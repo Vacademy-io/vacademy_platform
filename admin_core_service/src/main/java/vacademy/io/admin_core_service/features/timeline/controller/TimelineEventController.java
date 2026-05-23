@@ -97,4 +97,49 @@ public class TimelineEventController {
                 Page<TimelineEventDTO> response = timelineEventService.getTimelineEventsWithPinnedFirst(type, typeId, pageable);
                 return ResponseEntity.ok(response);
         }
+
+        /**
+         * Get JOURNEY events for a lead — lifecycle milestones only (status changes, submission, score updates).
+         * GET /admin-core-service/timeline/v1/journey?type=AUDIENCE_RESPONSE&typeId=X
+         */
+        @GetMapping("/journey")
+        public ResponseEntity<Page<TimelineEventDTO>> getJourneyEvents(
+                        @RequestParam String type,
+                        @RequestParam String typeId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "50") int size) {
+
+                Pageable pageable = PageRequest.of(page, size);
+                return ResponseEntity.ok(timelineEventService.getJourneyEvents(type, typeId, pageable));
+        }
+
+        /**
+         * Get JOURNEY events for a student across all stages — the full lead lifecycle view.
+         * GET /admin-core-service/timeline/v1/student/{studentUserId}/journey
+         */
+        @GetMapping("/student/{studentUserId}/journey")
+        public ResponseEntity<Page<TimelineEventDTO>> getCrossStageJourney(
+                        @PathVariable String studentUserId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "50") int size) {
+
+                Pageable pageable = PageRequest.of(page, size);
+                return ResponseEntity.ok(timelineEventService.getCrossStageJourney(studentUserId, pageable));
+        }
+
+        /**
+         * Unified timeline: ALL events (JOURNEY + ACTIVITY) for a student, sorted by timestamp DESC.
+         * Powers the lead journey panel that shows submission, score updates, notes, follow-ups,
+         * counselor assignment and status changes in a single chronological stream.
+         * GET /admin-core-service/timeline/v1/student/{studentUserId}/all
+         */
+        @GetMapping("/student/{studentUserId}/all")
+        public ResponseEntity<Page<TimelineEventDTO>> getAllEventsForStudent(
+                        @PathVariable String studentUserId,
+                        @RequestParam(defaultValue = "0") int page,
+                        @RequestParam(defaultValue = "50") int size) {
+
+                Pageable pageable = PageRequest.of(page, size);
+                return ResponseEntity.ok(timelineEventService.getAllEventsForStudent(studentUserId, pageable));
+        }
 }

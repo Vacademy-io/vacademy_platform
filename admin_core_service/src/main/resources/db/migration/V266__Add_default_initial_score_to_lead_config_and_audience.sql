@@ -1,0 +1,1 @@
+ALTER TABLE audience ADD COLUMN IF NOT EXISTS default_initial_score INTEGER DEFAULT 0;

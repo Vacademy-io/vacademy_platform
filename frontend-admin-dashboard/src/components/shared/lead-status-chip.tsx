@@ -11,12 +11,20 @@ interface LeadStatusChipProps {
     status?: string | null;
     statuses: CustomLeadStatus[];
     size?: 'sm' | 'md';
+    /** Hide the leading colour dot (cleaner pill for dense tables). */
+    hideDot?: boolean;
     className?: string;
 }
 
 const normalize = (v: string) => v.trim().toUpperCase().replace(/\s+/g, '_');
 
-export function LeadStatusChip({ status, statuses, size = 'sm', className }: LeadStatusChipProps) {
+export function LeadStatusChip({
+    status,
+    statuses,
+    size = 'sm',
+    hideDot = false,
+    className,
+}: LeadStatusChipProps) {
     if (!status || !status.trim()) return null;
 
     const norm = normalize(status);
@@ -32,7 +40,7 @@ export function LeadStatusChip({ status, statuses, size = 'sm', className }: Lea
         return (
             <span
                 className={cn(
-                    'inline-flex items-center rounded-full bg-neutral-100 font-medium text-neutral-600',
+                    'inline-flex items-center whitespace-nowrap rounded-full bg-neutral-100 font-medium text-neutral-600',
                     isSmall ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
                     className
                 )}
@@ -45,14 +53,16 @@ export function LeadStatusChip({ status, statuses, size = 'sm', className }: Lea
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border font-medium',
+                'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-medium',
                 isSmall ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
                 className
             )}
             // Inline style: status colour is arbitrary user-picked hex with no design-token equivalent.
             style={{ backgroundColor: `${color}14`, color, borderColor: `${color}40` }}
         >
-            <span className="size-1.5 rounded-full" style={{ backgroundColor: color }} />
+            {!hideDot && (
+                <span className="size-1.5 rounded-full" style={{ backgroundColor: color }} />
+            )}
             {label}
         </span>
     );

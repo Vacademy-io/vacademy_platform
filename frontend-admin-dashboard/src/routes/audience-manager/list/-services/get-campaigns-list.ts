@@ -62,6 +62,7 @@ export interface CampaignItem {
     to_notify?: string;
     send_respondent_email?: boolean;
     institute_custom_fields?: any[];
+    default_initial_score?: number;
 }
 
 const fetchCampaignsList = async (payload: CampaignListRequest): Promise<CampaignListResponse> => {

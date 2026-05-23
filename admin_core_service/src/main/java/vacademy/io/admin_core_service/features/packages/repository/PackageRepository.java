@@ -321,7 +321,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.course_setting, ps.id /* 4. Added Grouping by Session ID */
 
             HAVING
-                COALESCE(MAX(lo.total_progress), 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
+                COALESCE(MAX(lo.total_progress), 0) >= COALESCE(CAST((CAST(NULLIF(p.course_setting, '') AS jsonb) -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage') AS numeric), 80)
             """,
 
             countQuery = """
@@ -369,7 +369,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                     )
                                 )
                             GROUP BY ps.id, lo.total_progress, p.course_setting
-                            HAVING COALESCE(lo.total_progress, 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
+                            HAVING COALESCE(lo.total_progress, 0) >= COALESCE(CAST((CAST(NULLIF(p.course_setting, '') AS jsonb) -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage') AS numeric), 80)
                         ) AS count_subquery
                     """,
 
@@ -526,7 +526,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 p.why_learn, p.who_should_learn, p.about_the_course, p.comma_separated_tags,
                 p.course_depth, p.course_html_description, p.package_type, p.created_at,
                 p.course_setting, ps.id
-            HAVING COALESCE(MAX(lo.total_progress), 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
+            HAVING COALESCE(MAX(lo.total_progress), 0) >= COALESCE(CAST((CAST(NULLIF(p.course_setting, '') AS jsonb) -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage') AS numeric), 80)
             """,
 
             countQuery = """
@@ -566,7 +566,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                     LOWER(COALESCE(fspm.name, '')) LIKE LOWER(CONCAT('%', :name, '%'))
                                 )
                             GROUP BY ps.id, lo.total_progress, p.course_setting
-                            HAVING COALESCE(lo.total_progress, 0) >= COALESCE((NULLIF(p.course_setting, '')::jsonb -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage')::numeric, 80)
+                            HAVING COALESCE(lo.total_progress, 0) >= COALESCE(CAST((CAST(NULLIF(p.course_setting, '') AS jsonb) -> 'setting' -> 'COURSE_COMPLETION_SETTING' -> 'data' ->> 'completionThresholdPercentage') AS numeric), 80)
                         ) AS count_sub
                     """, nativeQuery = true)
     Page<PackageDetailProjection> getCompletedLearnerPackageDetail(

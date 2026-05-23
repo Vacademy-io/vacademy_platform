@@ -158,7 +158,7 @@ public class ConstantsSettingDefaultValue {
                             width: 297mm;
                             height: 210mm;
                             background-color: #ffffff;
-                            border: 12px solid #2d89e4;
+                            border: 12px solid {{INSTITUTE_THEME_COLOR}};
                             box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
                             position: relative;
                             padding: 40px;
@@ -318,7 +318,7 @@ public class ConstantsSettingDefaultValue {
                             .certificate-container {
                                 box-shadow: none;
                                 margin: 0;
-                                border: 10px solid #2d89e4;
+                                border: 10px solid {{INSTITUTE_THEME_COLOR}};
                             }
                 
                             .certificate-container::before {

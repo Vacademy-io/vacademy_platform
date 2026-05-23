@@ -34,11 +34,15 @@ import vacademy.io.admin_core_service.features.institute.dto.settings.naming.Nam
 import vacademy.io.admin_core_service.features.institute.enums.CertificateTypeEnum;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.certificate.entity.IssuedCertificate;
+import vacademy.io.admin_core_service.features.certificate.repository.IssuedCertificateRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.media.dto.InMemoryMultipartFile;
 import vacademy.io.common.media.service.FileService;
@@ -57,16 +61,23 @@ public class InstituteSettingService {
     private final MediaService mediaService;
     private final AuthService authService;
     private final InstituteCustomFiledService instituteCustomFiledService;
+    private final IssuedCertificateRepository issuedCertificateRepository;
+
+    // Default minimum completion percentage for issuing a certificate when an
+    // institute has not configured one.
+    private static final int DEFAULT_AUTO_ISSUE_PERCENTAGE = 80;
 
     public InstituteSettingService(InstituteRepository instituteRepository, ObjectMapper objectMapper,
             FileService fileService, MediaService mediaService, AuthService authService,
-            InstituteCustomFiledService instituteCustomFiledService, SettingStrategyFactory settingStrategyFactory) {
+            InstituteCustomFiledService instituteCustomFiledService, SettingStrategyFactory settingStrategyFactory,
+            IssuedCertificateRepository issuedCertificateRepository) {
         this.instituteRepository = instituteRepository;
         this.objectMapper = objectMapper;
         this.mediaService = mediaService;
         this.authService = authService;
         this.instituteCustomFiledService = instituteCustomFiledService;
         this.settingStrategyFactory = settingStrategyFactory;
+        this.issuedCertificateRepository = issuedCertificateRepository;
     }
 
     public void createNewNamingSetting(Institute institute, NameSettingRequest request) {
@@ -83,11 +94,23 @@ public class InstituteSettingService {
         instituteRepository.save(institute);
     }
 
+    @Transactional
     public void updateCertificateSetting(Institute institute, CertificateSettingRequest request) {
         String settingJsonString = settingStrategyFactory.rebuildOldSettingAndGetSettingJsonString(institute, request,
                 SettingKeyEnums.CERTIFICATE_SETTING.name());
         institute.setSetting(settingJsonString);
         instituteRepository.save(institute);
+
+        // Issued certificates are immutable: editing the template must NOT change
+        // a certificate a learner has already been issued. We therefore do NOT
+        // clear learners' cached certificate file ids here. Learners who already
+        // have a certificate (automated_completion_certificate_file_id set) keep
+        // it; only learners not yet issued (null file id) render against this
+        // freshly-saved template the next time they cross the completion
+        // threshold. See getCurrentCertificateTemplate (always returns the
+        // current saved template) and the file-id guard in
+        // InstituteCertificateManager.generateAutomatedCourseCompletionCertificate
+        // (renders once, then serves the cached file thereafter).
     }
 
     public void createDefaultCertificateSetting(Institute institute) {
@@ -329,27 +352,228 @@ public class InstituteSettingService {
         String setting = instituteStudentMapping.get().getInstitute().getSetting();
         if (!StringUtils.hasText(setting))
             return Optional.empty();
+
+        // Server-side threshold gate. The frontend computes percentage_completed
+        // and forwards it on the request; we re-validate against the institute's
+        // configured auto_issue_percentage so the gate isn't bypassable.
+        int autoIssuePercentage = getAutoIssuePercentage(setting, CertificateTypeEnum.COURSE_COMPLETION.name());
+        Integer reported = request != null ? request.getCompletionPercentage() : null;
+        if (reported == null || reported < autoIssuePercentage) {
+            return Optional.empty();
+        }
+
         Map<String, String> placeHoldersValueMapping = extractPlaceholders(setting);
 
         Optional<String> currentHtmlCertificateTemplate = getCurrentCertificateTemplate(setting,
                 CertificateTypeEnum.COURSE_COMPLETION.name());
         return currentHtmlCertificateTemplate.flatMap(s -> createCertificateUrlFromTemplateAndLearnerData(s,
-                instituteStudentMapping.get(), placeHoldersValueMapping, request));
+                instituteStudentMapping.get(), placeHoldersValueMapping, request, setting));
 
+    }
+
+    /**
+     * Builds a human-readable certificate id of the form
+     * {@code XX-NNNN-YYYY} where {@code XX} is the first two alphanumeric
+     * letters of the institute name, {@code NNNN} is a 4-digit random number,
+     * and {@code YYYY} is the current year. Retries on collision using the
+     * audit table as the uniqueness oracle.
+     */
+    /**
+     * Self-heal: ensure an {@link IssuedCertificate} audit row exists for a
+     * (user, packageSession) pair whose certificate has already been generated
+     * and cached on the {@code StudentSessionInstituteGroupMapping}. Older
+     * issuances pre-date the audit table, so they have a {@code file_id} on
+     * the mapping but no row here. The manager calls this on the cached path
+     * to backfill those rows the first time the cert URL is fetched after
+     * deploy. Fresh issuances continue to insert via the normal render path.
+     *
+     * <p>Backfilled rows have {@code template_html_snapshot = null} and
+     * {@code completion_percentage = null} because that data is irrecoverable.
+     * Best-effort: failures are logged and swallowed — never block delivery.
+     */
+    public void backfillIssuedCertificateIfMissing(StudentSessionInstituteGroupMapping mapping,
+                                                   String fileId, String courseName) {
+        try {
+            if (mapping == null || !StringUtils.hasText(fileId)) return;
+            String packageSessionId = mapping.getPackageSession() != null
+                    ? mapping.getPackageSession().getId() : null;
+            if (packageSessionId == null) return;
+            if (issuedCertificateRepository
+                    .findFirstByUserIdAndPackageSessionIdOrderByIssuedAtDesc(
+                            mapping.getUserId(), packageSessionId).isPresent()) {
+                return; // already have an audit row
+            }
+            // Generate once and write to *both* `id` (PK) and `certificate_id`
+            // (self-documenting column) so the two stay 1:1.
+            String backfilledCertId = generateUniqueCertificateId(mapping.getInstitute());
+            IssuedCertificate audit = IssuedCertificate.builder()
+                    .id(backfilledCertId)
+                    .certificateId(backfilledCertId)
+                    .instituteId(mapping.getInstitute() != null ? mapping.getInstitute().getId() : null)
+                    .userId(mapping.getUserId())
+                    .packageSessionId(packageSessionId)
+                    .courseName(courseName)
+                    .completionPercentage(null)
+                    .issuedAt(new Date())
+                    .fileId(fileId)
+                    .templateHtmlSnapshot(null)
+                    .build();
+            issuedCertificateRepository.save(audit);
+            log.info("Backfilled IssuedCertificate row for user {} session {}",
+                    mapping.getUserId(), packageSessionId);
+        } catch (Exception e) {
+            log.error("Failed to backfill IssuedCertificate for user {}: {}",
+                    mapping != null ? mapping.getUserId() : "?", e.getMessage());
+        }
+    }
+
+    private String generateUniqueCertificateId(Institute institute) {
+        String prefix = "XX";
+        if (institute != null && StringUtils.hasText(institute.getInstituteName())) {
+            String letters = institute.getInstituteName().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+            if (letters.length() >= 2) prefix = letters.substring(0, 2);
+            else if (letters.length() == 1) prefix = letters + "X";
+        }
+        int year = Calendar.getInstance().get(Calendar.YEAR);
+        Random random = new Random();
+        // 4 digits gives 10k slots/year/institute; if collisions exhaust retries
+        // we widen to 6 digits as a last resort to guarantee progress.
+        for (int attempt = 0; attempt < 50; attempt++) {
+            int n = random.nextInt(10000);
+            String candidate = String.format("%s-%04d-%d", prefix, n, year);
+            if (!issuedCertificateRepository.existsById(candidate)) {
+                return candidate;
+            }
+        }
+        long n = (long) (Math.random() * 1_000_000L);
+        return String.format("%s-%06d-%d", prefix, n, year);
+    }
+
+    /**
+     * Appends a fixed bottom-right badge displaying the certificate id to the
+     * rendered HTML. Uses {@code position: fixed} so OpenHTML2PDF repeats it on
+     * every page if the certificate spans multiple pages.
+     */
+    private String appendCertificateIdBadge(String html, String certificateId) {
+        String badge = "<div style=\"position:fixed;bottom:8mm;right:10mm;"
+                + "font-family:Arial,sans-serif;font-size:10px;color:#444;"
+                + "background:rgba(255,255,255,0.85);padding:3px 8px;"
+                + "border:1px solid #d0d7de;border-radius:4px;letter-spacing:0.5px;\">"
+                + "Certificate ID: " + certificateId + "</div>";
+        int closing = html.lastIndexOf("</body>");
+        if (closing >= 0) {
+            return html.substring(0, closing) + badge + html.substring(closing);
+        }
+        // No body tag (partial HTML) — just append; convertHtmlToPdf will wrap it.
+        return html + badge;
+    }
+
+    /**
+     * Reads auto_issue_percentage from the certificate setting JSON for the given
+     * key. Falls back to DEFAULT_AUTO_ISSUE_PERCENTAGE if missing or unparseable
+     * — keeps existing institutes that haven't saved this field functioning.
+     */
+    private int getAutoIssuePercentage(String settingJson, String key) {
+        try {
+            JsonNode root = objectMapper.readTree(settingJson);
+            JsonNode certificateSettings = root.path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (certificateSettings.isArray()) {
+                for (JsonNode certificateConfig : certificateSettings) {
+                    if (key.equals(certificateConfig.path("key").asText(null))) {
+                        JsonNode pct = certificateConfig.path("autoIssuePercentage");
+                        if (!pct.isMissingNode() && !pct.isNull() && pct.isInt()) {
+                            return pct.asInt();
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through to default
+        }
+        return DEFAULT_AUTO_ISSUE_PERCENTAGE;
+    }
+
+    /**
+     * Reads aspect_ratio (and optional custom dimensions) from certificate
+     * settings. Returns null when absent so the renderer applies its historical
+     * A4 landscape default.
+     */
+    private float[] getPageSizeMm(String settingJson, String key) {
+        try {
+            JsonNode root = objectMapper.readTree(settingJson);
+            JsonNode certificateSettings = root.path("setting").path("CERTIFICATE_SETTING").path("data").path("data");
+            if (certificateSettings.isArray()) {
+                for (JsonNode certificateConfig : certificateSettings) {
+                    if (key.equals(certificateConfig.path("key").asText(null))) {
+                        String aspect = certificateConfig.path("aspectRatio").asText(null);
+                        if (aspect == null) return null;
+                        switch (aspect) {
+                            case "A4_PORTRAIT":  return new float[]{210f, 297f};
+                            case "A3_LANDSCAPE": return new float[]{420f, 297f};
+                            case "A3_PORTRAIT":  return new float[]{297f, 420f};
+                            case "CUSTOM":
+                                int w = certificateConfig.path("customWidthMm").asInt(297);
+                                int h = certificateConfig.path("customHeightMm").asInt(210);
+                                return new float[]{w, h};
+                            case "A4_LANDSCAPE":
+                            default:             return new float[]{297f, 210f};
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return null;
     }
 
     private Optional<FileDetailsDTO> createCertificateUrlFromTemplateAndLearnerData(
             String template,
             StudentSessionInstituteGroupMapping studentSessionInstituteGroupMapping,
-            Map<String, String> placeHoldersValueMapping, CertificationGenerationRequest request) {
+            Map<String, String> placeHoldersValueMapping, CertificationGenerationRequest request,
+            String settingJson) {
 
         // Your mapping (placeholder key -> actual value)
         Map<String, String> placeHolderMapping = new HashMap<>();
         String studentId = studentSessionInstituteGroupMapping.getUserId();
-        String learnerName = authService.getUsersFromAuthServiceByUserIds(List.of(studentId)).get(0).getFullName();
+        // Pull the full user record once — we need fullName for {{STUDENT_NAME}}
+        // *and* email/mobile for the contact-detail tokens. Guarded so a missing
+        // user (deleted account, auth service hiccup) downgrades to empty
+        // strings rather than NPE-ing through the rest of the render.
+        UserDTO learner = null;
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(studentId));
+            if (users != null && !users.isEmpty()) {
+                learner = users.get(0);
+            }
+        } catch (Exception ignored) {
+            // fall through with learner = null
+        }
+        String learnerName = learner != null ? learner.getFullName() : "";
+        String learnerEmail = learner != null ? learner.getEmail() : "";
+        String learnerMobile = learner != null ? learner.getMobileNumber() : "";
+        String enrollmentNumber =
+                Optional.ofNullable(studentSessionInstituteGroupMapping.getInstituteEnrolledNumber())
+                        .orElse("");
 
         String instituteImageUrl = mediaService
                 .getFileUrlById(studentSessionInstituteGroupMapping.getInstitute().getLogoFileId());
+
+        // Resolve a course/package display name. Prefer the value the frontend
+        // forwarded (already localized); fall back to package metadata.
+        String courseName = request != null && StringUtils.hasText(request.getCourseName())
+                ? request.getCourseName()
+                : Optional.ofNullable(studentSessionInstituteGroupMapping.getPackageSession())
+                        .map(ps -> ps.getPackageEntity())
+                        .map(PackageEntity::getPackageName)
+                        .orElse("");
+
+        // Generate the certificate id up front so it can be embedded in the HTML
+        // *and* persisted to the audit table with the same value. Format is
+        // {INSTITUTE_PREFIX}-{4-DIGIT}-{YEAR} (e.g. "IS-0123-2026"); uniqueness
+        // is enforced by checking the audit table before commit.
+        String certificateId = generateUniqueCertificateId(
+                studentSessionInstituteGroupMapping.getInstitute());
 
         placeHolderMapping.put("1",
                 studentSessionInstituteGroupMapping.getPackageSession().getSession().getSessionName());
@@ -367,21 +591,189 @@ public class InstituteSettingService {
 
         String filledTemplate = template;
 
-        // Replace only placeholders that exist in the template
-        for (Map.Entry<String, String> entry : defaultPlaceHolders.entrySet()) {
-            String placeholder = entry.getValue(); // e.g. {{COURSE_NAME}}
-            String value = placeHolderMapping.get(entry.getKey()); // mapped value
+        // Named placeholders introduced by the new certificate UX. These run
+        // FIRST so the correct values land before the legacy numeric pass —
+        // the legacy map has a historical bug where it points "1" at
+        // {{COURSE_NAME}} but stores the session name there, which mangles
+        // {{COURSE_NAME}} into the session name on every render. Running the
+        // named pass first claims the correct tokens; the legacy pass only
+        // fills in tokens the named pass didn't already consume.
+        Map<String, String> namedPlaceholders = new HashMap<>();
+        namedPlaceholders.put("{{CERTIFICATE_ID}}", certificateId);
+        namedPlaceholders.put("{{COURSE_NAME}}", courseName);
+        namedPlaceholders.put("{{PACKAGE_NAME}}", courseName);
+        namedPlaceholders.put("{{PACKAGE_LEVEL}}",
+                Optional.ofNullable(studentSessionInstituteGroupMapping.getPackageSession())
+                        .map(ps -> ps.getLevel())
+                        .map(l -> l.getLevelName()).orElse(""));
+        namedPlaceholders.put("{{SESSION_NAME}}",
+                Optional.ofNullable(studentSessionInstituteGroupMapping.getPackageSession())
+                        .map(ps -> ps.getSession())
+                        .map(s -> s.getSessionName()).orElse(""));
+        namedPlaceholders.put("{{INSTITUTE_NAME}}",
+                studentSessionInstituteGroupMapping.getInstitute().getInstituteName());
+        namedPlaceholders.put("{{STUDENT_NAME}}", learnerName);
+        namedPlaceholders.put("{{COMPLETION_PERCENTAGE}}",
+                request != null && request.getCompletionPercentage() != null
+                        ? request.getCompletionPercentage().toString()
+                        : "");
+        // `date_of_completion` replaces the legacy `issue_date` field. Both
+        // tokens substitute to the same value (the learner's completion date,
+        // falling back to today) so saved templates from before the rename
+        // continue to render the right value without re-saving.
+        Date completionDate = request != null && request.getCompletionDate() != null
+                ? request.getCompletionDate()
+                : new Date();
+        String completionDateStr = DateUtil.convertDateToString(completionDate);
+        namedPlaceholders.put("{{DATE_OF_COMPLETION}}", completionDateStr);
+        namedPlaceholders.put("{{ISSUE_DATE}}", completionDateStr);
+        // Identity + contact tokens. These were exposed in the visual editor's
+        // chip palette but had no backend substitution, so admins who placed
+        // them saw raw {{TOKEN}} text on the issued PDF. Empty string is the
+        // safe fallback when the value is missing.
+        namedPlaceholders.put("{{USER_ID}}", Optional.ofNullable(studentId).orElse(""));
+        namedPlaceholders.put("{{EMAIL}}", Optional.ofNullable(learnerEmail).orElse(""));
+        namedPlaceholders.put("{{MOBILE_NUMBER}}", Optional.ofNullable(learnerMobile).orElse(""));
+        namedPlaceholders.put("{{ENROLLMENT_NUMBER}}", enrollmentNumber);
+        // Institute logo as a URL is already handled by the legacy numeric
+        // pass via key "5", but place it in the named map too so any template
+        // referencing {{INSTITUTE_LOGO}} renders correctly even when the
+        // legacy pass is short-circuited.
+        namedPlaceholders.put("{{INSTITUTE_LOGO}}",
+                Optional.ofNullable(instituteImageUrl).orElse(""));
+        // Institute theme color, used for borders / accents in the certificate.
+        // Falls back to the historical default border color so older templates
+        // that hardcoded {{INSTITUTE_THEME_COLOR}} still render sanely.
+        // Only prefix # for bare hex codes (3/6/8 hex chars); leave CSS color
+        // names like "purple" alone — "#purple" is invalid CSS.
+        String themeColor = studentSessionInstituteGroupMapping.getInstitute().getInstituteThemeCode();
+        if (themeColor == null || themeColor.isBlank()) {
+            themeColor = "#1e4fa1";
+        } else {
+            String trimmed = themeColor.trim();
+            if (trimmed.matches("^(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")) {
+                themeColor = "#" + trimmed;
+            } else {
+                themeColor = trimmed;
+            }
+        }
+        namedPlaceholders.put("{{INSTITUTE_THEME_COLOR}}", themeColor);
 
+        // Two-pass tolerant substitution. Pass 1 is a regex that allows
+        // whitespace padding and case variations inside the braces (handles
+        // `{{ ISSUE_DATE }}`, `{{issue_date}}`, non-breaking spaces, etc. that
+        // creep in when admins paste templates from Google Docs / Word).
+        // Pass 2 is a plain literal `String.replace` belt-and-suspenders catch
+        // for the canonical `{{TOKEN}}` form — so even if the regex misses an
+        // edge case (e.g., values containing `{{` that confuse subsequent
+        // matches), the exact-match token still gets resolved. Without pass 2,
+        // bugs in pass 1 would silently render tokens as raw text on the
+        // issued PDF.
+        for (Map.Entry<String, String> entry : namedPlaceholders.entrySet()) {
+            if (entry.getValue() == null) continue;
+            String token = entry.getKey();
+            String inner = token.substring(2, token.length() - 2);
+            String pattern = "\\{\\{\\s*" + java.util.regex.Pattern.quote(inner) + "\\s*\\}\\}";
+            try {
+                filledTemplate = java.util.regex.Pattern
+                        .compile(pattern, java.util.regex.Pattern.CASE_INSENSITIVE)
+                        .matcher(filledTemplate)
+                        .replaceAll(java.util.regex.Matcher.quoteReplacement(entry.getValue()));
+            } catch (Exception ignored) {
+                // Regex blew up for some reason — fall through to the literal
+                // pass below.
+            }
+            // Pass 2: literal exact-match replacement. Safe even if pass 1
+            // already replaced everything (contains() returns false then).
+            if (filledTemplate.contains(token)) {
+                filledTemplate = filledTemplate.replace(token, entry.getValue());
+            }
+        }
+
+        // Legacy numeric placeholder pass — runs AFTER the named pass so its
+        // historically-swapped mapping (key "1" points at {{COURSE_NAME}} but
+        // stores the session name) can no longer hijack tokens the named pass
+        // already consumed. Existing templates that rely on the legacy pass
+        // for tokens like {{DATE_OF_COMPLETION}} / {{TODAY_DATE}} / {{LEVEL}}
+        // / {{INSTITUTE_LOGO}} / {{SIGNATURE}} / {{DESIGNATION}} still work
+        // because the named pass doesn't touch those.
+        for (Map.Entry<String, String> entry : defaultPlaceHolders.entrySet()) {
+            String placeholder = entry.getValue();
+            String value = placeHolderMapping.get(entry.getKey());
             if (value != null && filledTemplate.contains(placeholder)) {
                 filledTemplate = filledTemplate.replace(placeholder, value);
             }
         }
 
-        return uploadToAws(convertHtmlToPdf(filledTemplate, "course_certification"),
+        // Critical-token guard: a final unconditional pass over the must-show
+        // tokens. The loops above usually catch everything, but if a saved
+        // template has an unusual variant the loops miss, this guarantees the
+        // learner never sees a raw {{TOKEN}} on the issued PDF. Each line is
+        // a plain `String.replace` so there's no way for it to silently no-op.
+        String safeCertId = certificateId == null ? "" : certificateId;
+        String safeStudent = learnerName == null ? "" : learnerName;
+        String safeCourse = courseName == null ? "" : courseName;
+        String safeInstitute = studentSessionInstituteGroupMapping.getInstitute() != null
+                && studentSessionInstituteGroupMapping.getInstitute().getInstituteName() != null
+                ? studentSessionInstituteGroupMapping.getInstitute().getInstituteName() : "";
+        filledTemplate = filledTemplate.replace("{{CERTIFICATE_ID}}", safeCertId);
+        filledTemplate = filledTemplate.replace("{{STUDENT_NAME}}", safeStudent);
+        filledTemplate = filledTemplate.replace("{{COURSE_NAME}}", safeCourse);
+        filledTemplate = filledTemplate.replace("{{PACKAGE_NAME}}", safeCourse);
+        filledTemplate = filledTemplate.replace("{{INSTITUTE_NAME}}", safeInstitute);
+        String safeDate = completionDateStr == null ? "" : completionDateStr;
+        filledTemplate = filledTemplate.replace("{{DATE_OF_COMPLETION}}", safeDate);
+        filledTemplate = filledTemplate.replace("{{ISSUE_DATE}}", safeDate);
+
+        // Always show the certificate id at the bottom-right of the rendered
+        // page, regardless of whether the admin placed {{CERTIFICATE_ID}} in
+        // the template.
+        filledTemplate = appendCertificateIdBadge(filledTemplate, certificateId);
+
+        // Render the PDF using the institute-configured page size if present.
+        final String renderedHtml = filledTemplate;
+        float[] pageSizeMm = getPageSizeMm(settingJson, CertificateTypeEnum.COURSE_COMPLETION.name());
+        Optional<FileDetailsDTO> uploaded = uploadToAws(convertHtmlToPdf(renderedHtml, "course_certification", pageSizeMm),
                 studentSessionInstituteGroupMapping.getUserId() + "course_certification");
+
+        // Persist the audit row with the rendered HTML snapshot. Failures here
+        // are logged but do not block delivery — the learner still gets the PDF.
+        final Integer auditPercentage = request != null ? request.getCompletionPercentage() : null;
+        uploaded.ifPresent(file -> {
+            try {
+                IssuedCertificate audit = IssuedCertificate.builder()
+                        .id(certificateId)
+                        // Mirror into the self-documenting column. Same value
+                        // as `id` — the substitution loop above uses this same
+                        // `certificateId` for {{CERTIFICATE_ID}} in both Visual
+                        // and HTML editor templates, so reading certificate_id
+                        // here is guaranteed to match what was rendered on the
+                        // PDF the learner downloads.
+                        .certificateId(certificateId)
+                        .instituteId(studentSessionInstituteGroupMapping.getInstitute().getId())
+                        .userId(studentSessionInstituteGroupMapping.getUserId())
+                        .packageSessionId(studentSessionInstituteGroupMapping.getPackageSession() != null
+                                ? studentSessionInstituteGroupMapping.getPackageSession().getId() : null)
+                        .courseName(courseName)
+                        .completionPercentage(auditPercentage)
+                        .issuedAt(new Date())
+                        .fileId(file.getId())
+                        .templateHtmlSnapshot(renderedHtml)
+                        .build();
+                issuedCertificateRepository.save(audit);
+            } catch (Exception e) {
+                log.error("Failed to persist IssuedCertificate audit row: {}", e.getMessage());
+            }
+        });
+
+        return uploaded;
     }
 
     public MultipartFile convertHtmlToPdf(String htmlContent, String fileName) {
+        return convertHtmlToPdf(htmlContent, fileName, null);
+    }
+
+    public MultipartFile convertHtmlToPdf(String htmlContent, String fileName, float[] pageSizeMm) {
         try {
             String htmlWithCss;
 
@@ -453,8 +845,13 @@ public class InstituteSettingService {
             String baseUri = "file:///";
             builder.withHtmlContent(sanitizeToXhtml(processedHtml), baseUri);
 
-            // Enable image rendering with better quality
-            builder.useDefaultPageSize(297f, 210f, PdfRendererBuilder.PageSizeUnits.MM); // A4 landscape as fallback
+            // Apply institute-configured page size if provided; otherwise fall
+            // back to the historical A4 landscape default.
+            if (pageSizeMm != null && pageSizeMm.length == 2) {
+                builder.useDefaultPageSize(pageSizeMm[0], pageSizeMm[1], PdfRendererBuilder.PageSizeUnits.MM);
+            } else {
+                builder.useDefaultPageSize(297f, 210f, PdfRendererBuilder.PageSizeUnits.MM); // A4 landscape as fallback
+            }
 
             // Remove fixed page size to allow dynamic sizing based on content
 
@@ -476,7 +873,15 @@ public class InstituteSettingService {
         Document doc = Jsoup.parse(html);
         doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
         doc.outputSettings().escapeMode(Entities.EscapeMode.xhtml);
-        return doc.html();
+        String xhtml = doc.html();
+        // Jsoup emits <style>/<script> contents verbatim, so a bare '&' inside
+        // e.g. a Google Fonts rule — @import url('...?family=A&family=B&display=swap')
+        // — survives unescaped and breaks OpenHTML2PDF's strict XML parser
+        // ("The reference to entity 'family' must end with the ';' delimiter").
+        // Escape any ampersand that isn't already a valid XML/HTML entity so such
+        // templates (and the bundled default fallback) render instead of throwing.
+        xhtml = xhtml.replaceAll("&(?!(?:amp|lt|gt|quot|apos|#\\d+|#x[0-9a-fA-F]+);)", "&amp;");
+        return xhtml;
     }
 
     private String processImagesForPdf(String html) {
@@ -574,22 +979,26 @@ public class InstituteSettingService {
                     String configKey = certificateConfig.path("key").asText(null);
 
                     if (key.equals(configKey)) {
-                        boolean isDefaultOn = certificateConfig.path("isDefaultCertificateSettingOn").asBoolean(false);
-
-                        if (isDefaultOn) {
-                            String template = certificateConfig.path("currentHtmlCertificateTemplate").asText(null);
-                            return Optional.ofNullable(template);
-                        } else {
-                            return Optional.empty();
+                        // Saving the template implies activation: if the admin
+                        // has persisted a non-empty currentHtmlCertificateTemplate,
+                        // always render it. The legacy isDefaultCertificateSettingOn
+                        // gate is intentionally ignored — its semantics drifted
+                        // from "use default" to "feature enabled" and the
+                        // completion-percentage threshold upstream already gates
+                        // issuance.
+                        String saved = certificateConfig.path("currentHtmlCertificateTemplate").asText(null);
+                        if (StringUtils.hasText(saved)) {
+                            return Optional.of(saved);
                         }
+                        return Optional.ofNullable(ConstantsSettingDefaultValue.getDefaultHtmlForType(key));
                     }
                 }
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.warn("Failed to parse certificate template from institute setting", e);
         }
-        return Optional.empty();
+        return Optional.ofNullable(ConstantsSettingDefaultValue.getDefaultHtmlForType(key));
     }
 
     private static final Map<String, String> DEFAULT_PLACEHOLDERS = Map.of(
@@ -653,6 +1062,12 @@ public class InstituteSettingService {
 
         // Persist changes
         instituteRepository.save(institute);
+
+        // Issued certificates are immutable: do NOT clear learners' cached
+        // certificate file ids when the template changes. Already-issued
+        // learners keep their certificate; only learners not yet issued render
+        // against this newly-saved template on their next view. (Same rationale
+        // as updateCertificateSetting.)
 
         return "Certificate Template Updated Successfully!";
     }

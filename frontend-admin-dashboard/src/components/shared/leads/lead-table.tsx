@@ -293,17 +293,26 @@ export function LeadTable({
             thClass: 'w-28',
             show: showOps,
             interactive: true,
-            render: (vm, profile) =>
-                vm.userId ? (
+            render: (vm, profile) => {
+                if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
+                const explicitTier = profile?.lead_tier;
+                const derivedTier =
+                    !explicitTier && profile?.best_score != null
+                        ? profile.best_score >= 80
+                            ? 'HOT'
+                            : profile.best_score >= 50
+                              ? 'WARM'
+                              : 'COLD'
+                        : undefined;
+                return (
                     <LeadInlineSelect
-                        value={profile?.lead_tier}
+                        value={explicitTier ?? derivedTier}
                         options={LEAD_TIER_OPTIONS}
                         placeholder="Set tier"
                         onChange={(t) => actions.onSetTier?.(vm.userId!, vm.name, t as LeadTier)}
                     />
-                ) : (
-                    <span className="text-sm text-neutral-300">—</span>
-                ),
+                );
+            },
         },
         {
             id: 'reachout',

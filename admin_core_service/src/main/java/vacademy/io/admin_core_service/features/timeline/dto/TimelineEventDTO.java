@@ -8,8 +8,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 
-import java.sql.Timestamp;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,5 +28,6 @@ public class TimelineEventDTO {
         private String studentUserId;
         /** JOURNEY = lifecycle event, ACTIVITY = manual note/call/meeting */
         private TimelineCategory category;
-        private Timestamp createdAt;
+        /** ISO-8601 without timezone offset — raw value from DB (e.g. "2026-05-23T09:03:36.590"). Frontend adds IST offset. */
+        private String createdAt;
 }

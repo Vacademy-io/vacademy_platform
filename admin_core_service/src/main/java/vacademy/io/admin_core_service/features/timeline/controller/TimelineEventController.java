@@ -129,17 +129,18 @@ public class TimelineEventController {
 
         /**
          * Unified timeline: ALL events (JOURNEY + ACTIVITY) for a student, sorted by timestamp DESC.
-         * Powers the lead journey panel that shows submission, score updates, notes, follow-ups,
-         * counselor assignment and status changes in a single chronological stream.
-         * GET /admin-core-service/timeline/v1/student/{studentUserId}/all
+         * Also accepts optional typeIds (e.g. audienceResponseId) to catch legacy events stored
+         * before studentUserId backfill. Uses OR: student_user_id = userId OR type_id IN typeIds.
+         * GET /admin-core-service/timeline/v1/student/{studentUserId}/all?typeIds=id1,id2
          */
         @GetMapping("/student/{studentUserId}/all")
         public ResponseEntity<Page<TimelineEventDTO>> getAllEventsForStudent(
                         @PathVariable String studentUserId,
+                        @RequestParam(required = false) List<String> typeIds,
                         @RequestParam(defaultValue = "0") int page,
                         @RequestParam(defaultValue = "50") int size) {
 
                 Pageable pageable = PageRequest.of(page, size);
-                return ResponseEntity.ok(timelineEventService.getAllEventsForStudent(studentUserId, pageable));
+                return ResponseEntity.ok(timelineEventService.getAllEventsForStudent(studentUserId, typeIds, pageable));
         }
 }

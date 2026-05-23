@@ -115,8 +115,12 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
   /**
    * Combined paginated query: returns payment log IDs from both regular (via user_plan/enroll_invite)
    * and admin-created invoice paths (via invoice_payment_log_mapping).
-   * Admin-invoice logs are excluded when any user_plan-specific filter (userPlanStatuses, sources,
-   * enrollInviteIds, packageSessionIds) is non-null, since those filters don't apply to them.
+   *
+   * PostgreSQL cannot determine the type of a NULL List parameter in "? IS NULL" checks, so we use
+   * typed boolean flags instead: when a filter flag is true the corresponding IN clause is skipped,
+   * and the list param is always a non-null sentinel (e.g. "__none__") so the JDBC binding succeeds.
+   * includeInvoiceLogs is false whenever any user-plan-specific filter is active (those filters don't
+   * apply to invoice-path logs).
    */
   @Query(value = """
       SELECT combined.id FROM (
@@ -127,11 +131,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         WHERE ei.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
-          AND (:paymentStatuses IS NULL OR pl.payment_status IN (:paymentStatuses))
-          AND (:userPlanStatuses IS NULL OR up.status IN (:userPlanStatuses))
-          AND (:sources IS NULL OR up.source IN (:sources))
-          AND (:enrollInviteIds IS NULL OR ei.id IN (:enrollInviteIds))
-          AND (:packageSessionIds IS NULL OR EXISTS (
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
+          AND (:noSourceFilter = true OR up.source IN (:sources))
+          AND (:noEnrollInviteFilter = true OR ei.id IN (:enrollInviteIds))
+          AND (:noPackageSessionFilter = true OR EXISTS (
                 SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
                 WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
                   AND psli.package_session_id IN (:packageSessionIds)))
@@ -148,15 +152,12 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         FROM payment_log pl
         JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
         JOIN invoice i ON iplm.invoice_id = i.id
-        WHERE i.institute_id = :instituteId
+        WHERE :includeInvoiceLogs = true
+          AND i.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
-          AND (:paymentStatuses IS NULL OR pl.payment_status IN (:paymentStatuses))
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
           AND (:userId IS NULL OR i.user_id = :userId)
-          AND :userPlanStatuses IS NULL
-          AND :sources IS NULL
-          AND :enrollInviteIds IS NULL
-          AND :packageSessionIds IS NULL
       ) combined
       ORDER BY combined.created_at DESC
       """,
@@ -169,11 +170,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         WHERE ei.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
-          AND (:paymentStatuses IS NULL OR pl.payment_status IN (:paymentStatuses))
-          AND (:userPlanStatuses IS NULL OR up.status IN (:userPlanStatuses))
-          AND (:sources IS NULL OR up.source IN (:sources))
-          AND (:enrollInviteIds IS NULL OR ei.id IN (:enrollInviteIds))
-          AND (:packageSessionIds IS NULL OR EXISTS (
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
+          AND (:noSourceFilter = true OR up.source IN (:sources))
+          AND (:noEnrollInviteFilter = true OR ei.id IN (:enrollInviteIds))
+          AND (:noPackageSessionFilter = true OR EXISTS (
                 SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
                 WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
                   AND psli.package_session_id IN (:packageSessionIds)))
@@ -190,15 +191,12 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         FROM payment_log pl
         JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
         JOIN invoice i ON iplm.invoice_id = i.id
-        WHERE i.institute_id = :instituteId
+        WHERE :includeInvoiceLogs = true
+          AND i.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
-          AND (:paymentStatuses IS NULL OR pl.payment_status IN (:paymentStatuses))
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
           AND (:userId IS NULL OR i.user_id = :userId)
-          AND :userPlanStatuses IS NULL
-          AND :sources IS NULL
-          AND :enrollInviteIds IS NULL
-          AND :packageSessionIds IS NULL
       ) count_q
       """,
       nativeQuery = true)
@@ -207,11 +205,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("startDate") LocalDateTime startDate,
       @Param("endDate") LocalDateTime endDate,
       @Param("paymentStatuses") List<String> paymentStatuses,
+      @Param("noPaymentStatusFilter") boolean noPaymentStatusFilter,
       @Param("userPlanStatuses") List<String> userPlanStatuses,
+      @Param("noUserPlanStatusFilter") boolean noUserPlanStatusFilter,
       @Param("sources") List<String> sources,
+      @Param("noSourceFilter") boolean noSourceFilter,
       @Param("enrollInviteIds") List<String> enrollInviteIds,
+      @Param("noEnrollInviteFilter") boolean noEnrollInviteFilter,
       @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("noPackageSessionFilter") boolean noPackageSessionFilter,
       @Param("userId") String userId,
+      @Param("includeInvoiceLogs") boolean includeInvoiceLogs,
       Pageable pageable);
 
   /**

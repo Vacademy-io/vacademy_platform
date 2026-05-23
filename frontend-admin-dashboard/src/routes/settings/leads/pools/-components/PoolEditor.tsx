@@ -4,12 +4,14 @@
  *   - Overview    name, description, mode  (only tab visible during create)
  *   - Audiences   add/remove campaigns
  *   - Counselors  add/remove + status + backup
- *   - Order       rotation order editor       (only when mode = ROUND_ROBIN)
+ *   - Order       rotation order editor       (ROUND_ROBIN and TIME_BASED)
  *   - Schedule    weekly shift editor         (only when mode = TIME_BASED)
  *
- * The 4th tab swaps between Order and Schedule based on the pool's mode.
- * MANUAL mode shows neither — there's nothing to configure beyond audiences
- * and counselors.
+ * Order is shown for both rotation modes because the routing engine sorts
+ * candidate counsellors by display_order in both: for ROUND_ROBIN it drives
+ * the rotation itself; for TIME_BASED it tie-breaks when multiple counsellors
+ * are on the same shift block. MANUAL mode shows neither — there's nothing
+ * to configure beyond audiences and counselors.
  */
 
 import { useNavigate } from '@tanstack/react-router';
@@ -51,9 +53,10 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
     //   1. URL search param ?tab=... (e.g. after create, we redirect to ?tab=audiences)
     //   2. fall back to 'overview'
     // During create or when the requested tab is hidden for the current mode, bounce to 'overview'.
+    const orderVisible = isRoundRobin || isTimeBased;
     let landingTab: EditorTab = initialTab ?? 'overview';
     if (isCreating && landingTab !== 'overview') landingTab = 'overview';
-    if (landingTab === 'order' && !isRoundRobin) landingTab = 'overview';
+    if (landingTab === 'order' && !orderVisible) landingTab = 'overview';
     if (landingTab === 'schedule' && !isTimeBased) landingTab = 'overview';
 
     return (
@@ -76,9 +79,9 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
                     <TabsTrigger value="counselors" disabled={isCreating}>
                         Counselors
                     </TabsTrigger>
-                    {/* Dynamic 4th tab: Order for ROUND_ROBIN, Schedule for TIME_BASED,
-                        nothing for MANUAL (no rotation config to set). */}
-                    {!isCreating && isRoundRobin && (
+                    {/* Order tab: ROUND_ROBIN and TIME_BASED. For TIME_BASED it tie-breaks
+                        when multiple counsellors are on the same shift. */}
+                    {!isCreating && orderVisible && (
                         <TabsTrigger value="order">Order</TabsTrigger>
                     )}
                     {!isCreating && isTimeBased && (
@@ -98,7 +101,7 @@ export default function PoolEditor({ poolId, initialTab }: PoolEditorProps) {
                         <TabsContent value="counselors">
                             <CounselorsTab pool={pool} />
                         </TabsContent>
-                        {isRoundRobin && (
+                        {orderVisible && (
                             <TabsContent value="order">
                                 <OrderTab pool={pool} />
                             </TabsContent>

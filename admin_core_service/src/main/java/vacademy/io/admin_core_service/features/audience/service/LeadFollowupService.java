@@ -58,7 +58,8 @@ public class LeadFollowupService {
                 "ADMIN", user.getUserId(), user.getUsername(),
                 "Follow-up scheduled",
                 request.getContent(),
-                Map.of("followupId", saved.getId(), "scheduleTime", String.valueOf(request.getScheduleTime())),
+                Map.of("followupId", saved.getId(), "scheduleTime",
+                        request.getScheduleTime() != null ? request.getScheduleTime().getTime() : null),
                 studentUserId
         );
 

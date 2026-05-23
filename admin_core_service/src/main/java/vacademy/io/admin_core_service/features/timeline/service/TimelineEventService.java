@@ -149,11 +149,19 @@ public class TimelineEventService {
                                 .map(this::mapToDTO);
         }
 
-        /** All events (JOURNEY + ACTIVITY) for a student, sorted purely by createdAt DESC. */
+        /**
+         * All events (JOURNEY + ACTIVITY) for a lead, sorted by createdAt DESC.
+         * Uses an OR query: matches either student_user_id OR type_id in the provided list.
+         * This covers legacy journey events stored before studentUserId backfill
+         * (e.g. LEAD_SUBMITTED events where student_user_id was null but type_id = responseId).
+         */
         @Transactional(readOnly = true)
-        public Page<TimelineEventDTO> getAllEventsForStudent(String studentUserId, Pageable pageable) {
+        public Page<TimelineEventDTO> getAllEventsForStudent(String studentUserId, List<String> typeIds, Pageable pageable) {
+                List<String> effectiveTypeIds = (typeIds != null && !typeIds.isEmpty())
+                                ? typeIds
+                                : List.of("__no_match__");
                 return timelineEventRepository
-                                .findByStudentUserIdOrderByCreatedAtDesc(studentUserId, pageable)
+                                .findAllEventsForLead(studentUserId, effectiveTypeIds, pageable)
                                 .map(this::mapToDTO);
         }
 
@@ -260,7 +268,10 @@ public class TimelineEventService {
                                 .isPinned(event.getIsPinned() != null ? event.getIsPinned() : false)
                                 .studentUserId(event.getStudentUserId())
                                 .category(event.getCategory())
-                                .createdAt(event.getCreatedAt())
+                                .createdAt(event.getCreatedAt() != null
+                                        ? event.getCreatedAt().toLocalDateTime()
+                                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"))
+                                        : null)
                                 .build();
         }
 }

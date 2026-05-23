@@ -1138,7 +1138,9 @@ public class AudienceService {
                     "ADMIN", actorId, actorName,
                     title, null,
                     meta,
-                    response != null ? response.getStudentUserId() : null);
+                    response != null
+                            ? (response.getUserId() != null ? response.getUserId() : response.getStudentUserId())
+                            : null);
         } catch (Exception e) {
             logger.warn("Failed to log MANUAL_SCORE_UPDATE journey event for response={}: {}", responseId,
                     e.getMessage(), e);
@@ -4349,7 +4351,7 @@ public class AudienceService {
                     "Lead captured from "
                             + (savedResponse.getSourceType() != null ? savedResponse.getSourceType() : "UNKNOWN"),
                     metadata,
-                    savedResponse.getStudentUserId());
+                    savedResponse.getUserId() != null ? savedResponse.getUserId() : savedResponse.getStudentUserId());
         } catch (Exception e) {
             logger.warn("Failed to log LEAD_SUBMITTED journey event for response {}: {}",
                     savedResponse.getId(), e.getMessage(), e);

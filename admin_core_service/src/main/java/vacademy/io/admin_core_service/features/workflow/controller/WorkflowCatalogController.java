@@ -296,6 +296,8 @@ public class WorkflowCatalogController {
                 ctxVar("leadName", "Lead name"),
                 ctxVar("leadEmail", "Lead email"),
                 ctxVar("leadMobile", "Lead mobile"),
+                ctxVar("tat", "Configured TAT (human-readable, e.g. '24 hours')"),
+                ctxVar("tatHours", "Configured TAT in hours (raw integer)"),
                 // Same values as lead-* above, kept for backward compat with older templates.
                 ctxVar("parentName", "Parent name (alias of leadName)"),
                 ctxVar("parentEmail", "Parent email (alias of leadEmail)"),

@@ -19,6 +19,7 @@ import {
     COUNSELOR_POOL_BY_ID,
     COUNSELOR_POOL_COUNSELOR,
     COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS,
+    COUNSELOR_POOL_COUNSELOR_MONTHLY_TARGET,
     COUNSELOR_POOL_COUNSELOR_STATUS,
     COUNSELOR_POOL_COUNSELOR_STATUS_MULTI,
     COUNSELOR_POOL_SCHEDULE,
@@ -157,6 +158,20 @@ export interface BulkUpdateMemberStatusRequest {
     reassign_existing_leads?: boolean;
 }
 
+/**
+ * One cell of the audience × counsellor matrix the admin filled in the
+ * "Set monthly targets" dialog. `monthly_target` is null when admin
+ * cleared the cell, otherwise a non-negative integer.
+ */
+export interface MonthlyTargetEntry {
+    audience_id: string;
+    monthly_target: number | null;
+}
+
+export interface UpdateMemberMonthlyTargetsRequest {
+    targets: MonthlyTargetEntry[];
+}
+
 export interface ShiftBlockRequest {
     day_of_week: DayOfWeek;
     /** "HH:mm:ss" — wall-clock in institute timezone. */
@@ -252,6 +267,22 @@ export const bulkUpdateMemberStatus = async (
 ): Promise<void> => {
     await authenticatedAxiosInstance.patch(
         COUNSELOR_POOL_COUNSELOR_STATUS_MULTI(counselorUserId),
+        request
+    );
+};
+
+/**
+ * Set monthly_target per audience for one counsellor in one pool. Each entry
+ * is one cell of the audience × counsellor matrix. Null clears the cell;
+ * non-null must be >= 0 (backend rejects negatives).
+ */
+export const updateMemberMonthlyTargets = async (
+    poolId: string,
+    counselorUserId: string,
+    request: UpdateMemberMonthlyTargetsRequest
+): Promise<void> => {
+    await authenticatedAxiosInstance.patch(
+        COUNSELOR_POOL_COUNSELOR_MONTHLY_TARGET(poolId, counselorUserId),
         request
     );
 };
@@ -393,6 +424,17 @@ export const useUpdateMemberStatus = (poolId: string) => {
     return useMutation({
         mutationFn: (args: { counselorUserId: string; request: UpdateMemberStatusRequest }) =>
             updateMemberStatus(poolId, args.counselorUserId, args.request),
+        onSuccess: () => invalidate(poolId),
+    });
+};
+
+export const useUpdateMemberMonthlyTargets = (poolId: string) => {
+    const invalidate = useInvalidatePool();
+    return useMutation({
+        mutationFn: (args: {
+            counselorUserId: string;
+            request: UpdateMemberMonthlyTargetsRequest;
+        }) => updateMemberMonthlyTargets(poolId, args.counselorUserId, args.request),
         onSuccess: () => invalidate(poolId),
     });
 };

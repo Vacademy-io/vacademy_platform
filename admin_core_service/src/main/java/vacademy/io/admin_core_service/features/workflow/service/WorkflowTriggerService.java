@@ -89,11 +89,13 @@ public class WorkflowTriggerService {
             Object poolIdObj = contextData == null ? null : contextData.get("poolId");
             if (poolIdObj != null && !poolIdObj.toString().isBlank()) {
                 String poolId = poolIdObj.toString();
+                log.info("Looking for POOL triggers: instituteId='{}', poolId='{}', eventType='{}'",
+                        instituteId, poolId, eventName);
                 List<WorkflowTrigger> poolTriggers = workflowTriggerRepository
                         .findSpecificTriggers(instituteId, poolId, eventName, activeStatuses);
+                log.info("Found {} POOL triggers for poolId='{}', event='{}'",
+                        poolTriggers.size(), poolId, eventName);
                 if (!poolTriggers.isEmpty()) {
-                    log.info("Found {} POOL triggers for poolId='{}', event='{}'. Stacking on institute-level matches.",
-                            poolTriggers.size(), poolId, eventName);
                     java.util.Set<String> seen = new java.util.HashSet<>();
                     for (WorkflowTrigger t : triggers) {
                         seen.add(t.getId());
@@ -103,9 +105,13 @@ public class WorkflowTriggerService {
                     for (WorkflowTrigger pt : poolTriggers) {
                         if (seen.add(pt.getId())) {
                             triggers.add(pt);
+                            log.info("Stacking POOL trigger: TriggerId='{}', WorkflowId='{}'",
+                                    pt.getId(), pt.getWorkflow().getId());
                         }
                     }
                 }
+            } else {
+                log.debug("No poolId on ctx — skipping POOL trigger lookup");
             }
 
             log.info("Total {} triggers to execute for event='{}', eventId='{}', instituteId='{}'",

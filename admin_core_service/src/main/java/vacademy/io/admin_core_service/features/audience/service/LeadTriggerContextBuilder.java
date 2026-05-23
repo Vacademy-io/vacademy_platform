@@ -2,7 +2,9 @@ package vacademy.io.admin_core_service.features.audience.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolAudience;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolAudienceRepository;
@@ -35,11 +37,14 @@ public class LeadTriggerContextBuilder {
 
     private final CounselorPoolAudienceRepository poolAudienceRepository;
     private final AuthService authService;
+    private final AudienceRepository audienceRepository;
 
     public LeadTriggerContextBuilder(CounselorPoolAudienceRepository poolAudienceRepository,
-                                     AuthService authService) {
+                                     AuthService authService,
+                                     AudienceRepository audienceRepository) {
         this.poolAudienceRepository = poolAudienceRepository;
         this.authService = authService;
+        this.audienceRepository = audienceRepository;
     }
 
     /**
@@ -96,9 +101,29 @@ public class LeadTriggerContextBuilder {
             put(ctx, "enquiryId", ar.getEnquiryId());
             put(ctx, "audienceId", ar.getAudienceId());
             put(ctx, "poolId", resolvePoolId(ar.getAudienceId()));
+            // `parent_*` are the audience_response column names (historical K-12 naming where
+            // the parent submitted the form). For our lead list the lead IS the user, so we
+            // also expose the same values under cleaner lead-* keys. Both work in templates;
+            // new sample templates use lead-* for clarity.
             put(ctx, "parentName", ar.getParentName());
             put(ctx, "parentEmail", ar.getParentEmail());
             put(ctx, "parentMobile", ar.getParentMobile());
+            put(ctx, "leadName", ar.getParentName());
+            put(ctx, "leadEmail", ar.getParentEmail());
+            put(ctx, "leadMobile", ar.getParentMobile());
+            // If the caller didn't pass a campaignName, look it up from the audience so
+            // {{campaignName}} resolves for every forLead path (not just the SLA scheduler
+            // which already passes it from LeadSlaCandidate).
+            if ((campaignName == null || campaignName.isBlank()) && ar.getAudienceId() != null) {
+                try {
+                    campaignName = audienceRepository.findById(ar.getAudienceId())
+                            .map(Audience::getCampaignName)
+                            .orElse(null);
+                } catch (Exception e) {
+                    log.debug("[LeadTrigger] campaignName lookup failed for audience {}: {}",
+                            ar.getAudienceId(), e.getMessage());
+                }
+            }
         }
         put(ctx, "campaignName", campaignName);
         put(ctx, "counselorId", counselorId);

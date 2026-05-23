@@ -158,6 +158,10 @@ public class LeadAutomationScheduler {
         ctxBuilder.put(ctx, "parentName", c.getParentName());
         ctxBuilder.put(ctx, "parentEmail", c.getParentEmail());
         ctxBuilder.put(ctx, "parentMobile", c.getParentMobile());
+        // Same values under cleaner lead-* keys (the lead list's "lead" IS the user).
+        ctxBuilder.put(ctx, "leadName", c.getParentName());
+        ctxBuilder.put(ctx, "leadEmail", c.getParentEmail());
+        ctxBuilder.put(ctx, "leadMobile", c.getParentMobile());
         ctxBuilder.put(ctx, "tatStage", emission.canonicalStage);
         ctxBuilder.put(ctx, "stageLabel", emission.stageLabel);
         if (notifyRoles != null && !notifyRoles.isEmpty()) {

@@ -1,6 +1,5 @@
-package vacademy.io.auth_service.feature.auth.dto;
+package vacademy.io.auth_service.feature.vimotion.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
@@ -13,8 +12,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-@JsonIgnoreProperties(ignoreUnknown = true)
-public class VimotionRequestOtpRequest {
-    private String phoneNumber;
-    private String inviteCode;
+public class ValidateInviteCodeResponse {
+    private boolean valid;
+    private String kind;
+    private String prefillEmail;
+    private String prefillPhone;
 }

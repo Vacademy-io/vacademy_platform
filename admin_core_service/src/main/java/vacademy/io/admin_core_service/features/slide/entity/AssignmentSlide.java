@@ -6,8 +6,8 @@ import lombok.Setter;
 import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.slide.dto.AssignmentSlideDTO;
 
-import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,10 +31,10 @@ public class AssignmentSlide {
     private RichTextData textData;
 
     @Column(name = "live_date")
-    private Date liveDate;
+    private Instant liveDate;
 
     @Column(name = "end_date")
-    private Date endDate;
+    private Instant endDate;
 
     @Column(name = "re_attempt_count")
     private Integer reAttemptCount;

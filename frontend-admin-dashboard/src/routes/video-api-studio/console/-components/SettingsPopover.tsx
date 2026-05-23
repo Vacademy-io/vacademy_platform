@@ -134,7 +134,9 @@ interface SettingsPopoverProps {
 /**
  * Settings keys whose divergence from {@link DEFAULT_OPTIONS} we surface as the
  * badge count on the ⚙ trigger. We intentionally **exclude**:
- *  - `model` — auto-selected by quality_tier; not a user-driven choice
+ *  - `model` — legacy top-level field, auto-selected by quality_tier (admin)
+ *    or undefined in vimMode. Per-stage overrides are tracked separately
+ *    below via `model_overrides`.
  *  - `voice_id` — undefined by default; gets populated automatically when the
  *    voice list loads, which would inflate the badge for everyone
  *  - `visual_style` — deprecated; kept for historical metadata
@@ -142,7 +144,6 @@ interface SettingsPopoverProps {
  *    shouldn't read as "active"
  *  - `brand_kit_id` — in vimMode, auto-populated to the institute's default
  *    kit by VimBrandKitSelect; not a per-session user choice
- *  - `model_overrides` — admin-only; vim users never see this UI
  *
  * Tracked separately (not in DEFAULT_OPTIONS or computed from helpers):
  *  - `sub_shots_enabled` (optional with implicit default false)
@@ -150,6 +151,8 @@ interface SettingsPopoverProps {
  *    because flipping it on materially changes pipeline + cost)
  *  - `host` (undefined by default; truthy means user opted into avatar/raw)
  *  - `visual_preferences` (use shared helper that ignores `auto`/`null`)
+ *  - `model_overrides` (undefined by default; truthy with non-empty default
+ *    or non-empty per_stage = power-user override worth surfacing)
  *  - `reviewModeEnabled` (lives outside the options object)
  */
 const TRACKED_KEYS = [
@@ -164,6 +167,16 @@ const TRACKED_KEYS = [
     'html_quality',
 ] as const;
 
+/** Returns true when model_overrides carries any actual override (not just an empty shell). */
+function hasActiveModelOverrides(
+    overrides: Omit<GenerateVideoRequest, 'prompt'>['model_overrides']
+): boolean {
+    if (!overrides) return false;
+    if (overrides.default) return true;
+    if (overrides.per_stage && Object.keys(overrides.per_stage).length > 0) return true;
+    return false;
+}
+
 /** Count options that diverge from defaults — surfaced as a badge on the trigger. */
 function computeNonDefaultCount(
     options: Omit<GenerateVideoRequest, 'prompt'>,
@@ -177,6 +190,7 @@ function computeNonDefaultCount(
     if (options.ai_video_enabled) n++;
     if (options.host) n++;
     if (hasActiveVisualPreferences(options.visual_preferences)) n++;
+    if (hasActiveModelOverrides(options.model_overrides)) n++;
     if (reviewModeEnabled) n++;
     return n;
 }
@@ -396,11 +410,14 @@ function SettingsBody({
                     </Select>
                 </Field>
 
-                {/* Top-level Model override is admin-only. Vimotion's positioning
-                    is "AI does the work" — exposing raw LLM IDs (and a second
-                    overlapping override system in the Advanced tab) contradicts
-                    that. In vimMode the matrix defaults applied by quality_tier
-                    are the only model choice the user sees. */}
+                {/* Top-level Model override is admin-only. The Advanced-tab
+                    ModelOverridesPanel is the canonical V200 entry point for
+                    per-stage overrides — it's visible in vimMode too (power
+                    users can reach it via Advanced). This Output-tab dropdown
+                    is the legacy single-model knob; keeping it admin-only
+                    avoids two competing override surfaces on a primary tab.
+                    The auto-select effect in Composer.tsx is also gated on
+                    !vimMode so `options.model` doesn't ship as a ghost field. */}
                 {!vimMode && (
                     <Field
                         icon={<Wand2 className="size-3.5" />}
@@ -1030,14 +1047,23 @@ function SettingsBody({
                     }}
                 />
 
-                {/* Per-stage model overrides are admin-only — see the matching
-                    rationale on the Output-tab Model override block above. */}
-                {!vimMode && (
-                    <ModelOverridesPanel
-                        overrides={options.model_overrides}
-                        onChange={(next) => update('model_overrides', next)}
-                    />
-                )}
+                {/* Per-stage model overrides — visible in Advanced for ALL
+                    modes (admin and vimMode). The Output-tab top-level dropdown
+                    stays admin-only because it duplicates this panel; this
+                    panel is the modern V200 entry point and is already gracefully
+                    tiered (one default dropdown up front, per-stage controls
+                    behind an "advanced" expander). Vimotion power users who
+                    want to swap the per-shot-HTML model find it here. */}
+                <ModelOverridesPanel
+                    overrides={options.model_overrides}
+                    onChange={(next) => update('model_overrides', next)}
+                />
+
+                {/* Top-level `options.model` (legacy single-model knob) is
+                    still suppressed in vimMode — it overlaps with the panel
+                    above and the auto-select effect that populates it is
+                    skipped in vimMode (see Composer.tsx). Power users get
+                    one canonical override surface, not two. */}
 
                 <VisualPreferencesPanel
                     prefs={options.visual_preferences}
@@ -2252,18 +2278,21 @@ export function SettingsPopover(props: SettingsPopoverProps) {
     const [open, setOpen] = useState(false);
     const count = computeNonDefaultCount(props.options, props.reviewModeEnabled);
 
-    // Reset everything (options + reviewMode) back to fresh defaults. Doesn't
-    // touch the prompt or attachments — those are the user's "work". This is
-    // the only escape hatch when the badge count has drifted high and the
-    // user isn't sure what's set; it always wins over localStorage stickiness
-    // because the localStorage save effect picks up the new value next render.
-    // For vimMode, also drop the legacy `model` field — DEFAULT_OPTIONS.model
-    // is `''` and shipping that would undo the P2-12 sunset. `onOptionsChange`
-    // treats a missing `model` as "default model" downstream.
+    // Reset options + reviewMode back to fresh defaults. Doesn't touch the
+    // prompt or attachments — those are the user's "work".
+    //
+    // vimMode caveat: DEFAULT_OPTIONS.model is `''`, but in vimMode we want
+    // the legacy top-level model field to stay absent from the wire payload
+    // (P2-12 sunset). Setting `model: undefined` makes JSON.stringify drop
+    // the key entirely. The two-step cast is needed because GenerateVideoRequest
+    // types `model: string` as required; making it optional would propagate
+    // through every call site — see "P2-12 follow-up" note in the plan file.
     const handleResetToDefaults = () => {
         if (props.vimMode) {
-            const { model: _model, ...rest } = DEFAULT_OPTIONS;
-            props.onOptionsChange(rest as Omit<GenerateVideoRequest, 'prompt'>);
+            props.onOptionsChange({
+                ...DEFAULT_OPTIONS,
+                model: undefined,
+            } as unknown as Omit<GenerateVideoRequest, 'prompt'>);
         } else {
             props.onOptionsChange(DEFAULT_OPTIONS);
         }

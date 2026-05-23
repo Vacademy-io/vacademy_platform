@@ -36,13 +36,20 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+    handleFetchCampaignsList,
+    type CampaignItem,
+} from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import {
     CounselorPoolDTO,
+    type MonthlyTargetEntry,
     PoolMemberDTO,
     useAddCounselorToPool,
     useBulkUpdateMemberStatus,
     useCounselorMemberships,
     useRemoveCounselorFromPool,
+    useUpdateMemberMonthlyTargets,
     useUpdateMemberStatus,
 } from '@/services/counselor-pool';
 
@@ -113,6 +120,13 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
     // Pool IDs the admin has checked for the INACTIVE batch. Seeded with the
     // current pool when the dialog opens; admin can add/remove.
     const [selectedPoolIds, setSelectedPoolIds] = useState<string[]>([]);
+    // Monthly-target dialog state. One row per audience in the pool, with the
+    // current value prefilled. Saving sends one PATCH with the full set.
+    const [targetDialog, setTargetDialog] = useState<{
+        counselorUserId: string;
+        counselorName: string;
+    } | null>(null);
+    const [editedTargets, setEditedTargets] = useState<Map<string, number | null>>(new Map());
 
     const { data: instituteUsers = [], isLoading: usersLoading } = useQuery({
         queryKey: ['institute-counselors'],
@@ -144,6 +158,22 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
     const { mutate: removeCounselor, isPending: removing } = useRemoveCounselorFromPool(pool.id);
     const { mutate: updateStatus, isPending: updatingStatus } = useUpdateMemberStatus(pool.id);
     const { mutate: bulkUpdateStatus, isPending: bulkUpdatingStatus } = useBulkUpdateMemberStatus();
+    const { mutate: saveMonthlyTargets, isPending: savingTargets } =
+        useUpdateMemberMonthlyTargets(pool.id);
+
+    // Resolve audience_id → campaign_name for the target dialog + row summary.
+    // Same pattern as OrderTab — fetches the institute's campaign list once
+    // and looks up the names locally.
+    const instituteId = getCurrentInstituteId() ?? '';
+    const { data: campaignsPage } = useQuery(
+        handleFetchCampaignsList({ institute_id: instituteId, page: 0, size: 500 })
+    );
+    const campaignName = (audienceId: string) => {
+        const c = (campaignsPage?.content ?? []).find(
+            (it: CampaignItem) => it.id === audienceId
+        );
+        return c?.campaign_name ?? `(unknown — ${audienceId.slice(0, 6)}…)`;
+    };
 
     // Fetch memberships only when the INACTIVE dialog is open. Reactivation
     // doesn't need this — it stays per-pool.
@@ -190,6 +220,53 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
         // For inactivation we seed with the current pool; admin can add the
         // counsellor's other ACTIVE pools once the memberships fetch returns.
         setSelectedPoolIds(action === 'INACTIVE' ? [pool.id] : []);
+    };
+
+    const openTargetDialog = (counselorUserId: string) => {
+        const user = userById.get(counselorUserId);
+        const name = user?.full_name ?? counselorUserId;
+        // Prefill from the pool's known member rows for this counsellor.
+        const rows = (pool.members ?? []).filter(
+            (m) => m.counselor_user_id === counselorUserId
+        );
+        const prefill = new Map<string, number | null>();
+        for (const a of pool.audiences ?? []) {
+            const row = rows.find((r) => r.audience_id === a.audience_id);
+            prefill.set(a.audience_id, row?.monthly_target ?? null);
+        }
+        setEditedTargets(prefill);
+        setTargetDialog({ counselorUserId, counselorName: name });
+    };
+
+    const updateTargetEntry = (audienceId: string, raw: string) => {
+        // Empty input clears the target. Anything else parses to a non-negative int;
+        // <input type="number" min=0> already guards UI-side but be tolerant.
+        const next = new Map(editedTargets);
+        if (raw.trim() === '') {
+            next.set(audienceId, null);
+        } else {
+            const parsed = Math.max(0, Math.floor(Number(raw)));
+            next.set(audienceId, Number.isFinite(parsed) ? parsed : null);
+        }
+        setEditedTargets(next);
+    };
+
+    const confirmTargetSave = () => {
+        if (!targetDialog) return;
+        const targets: MonthlyTargetEntry[] = [...editedTargets.entries()].map(
+            ([audience_id, monthly_target]) => ({ audience_id, monthly_target })
+        );
+        saveMonthlyTargets(
+            { counselorUserId: targetDialog.counselorUserId, request: { targets } },
+            {
+                onSuccess: () => {
+                    toast.success('Monthly targets updated');
+                    setTargetDialog(null);
+                },
+                onError: (err) =>
+                    toast.error(extractError(err) ?? 'Failed to update monthly targets'),
+            }
+        );
     };
 
     const togglePoolSelection = (poolId: string) => {
@@ -364,6 +441,9 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                                             <p className="text-xs text-muted-foreground">
                                                 Order: {summarizeOrders(rows)}
                                             </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Targets: {summarizeTargets(rows, campaignName)}
+                                            </p>
                                             {status === 'INACTIVE' && backupName && (
                                                 <p className="text-xs text-amber-700">
                                                     Backup → {backupName}
@@ -371,6 +451,16 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                                             )}
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2">
+                                            <button
+                                                type="button"
+                                                className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                                                disabled={(pool.audiences ?? []).length === 0}
+                                                onClick={() => openTargetDialog(counselorUserId)}
+                                            >
+                                                {rows.some((r) => r.monthly_target != null)
+                                                    ? 'Edit Targets'
+                                                    : 'Set Targets'}
+                                            </button>
                                             <button
                                                 type="button"
                                                 className="text-xs text-blue-600 hover:underline"
@@ -537,6 +627,79 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <Dialog
+                open={!!targetDialog}
+                onOpenChange={(open) => !open && setTargetDialog(null)}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            Set monthly targets — {targetDialog?.counselorName}
+                        </DialogTitle>
+                        <DialogDescription>
+                            One target per campaign. Leave a field blank to clear that
+                            campaign&apos;s target.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3 py-2">
+                        {(pool.audiences ?? []).length === 0 ? (
+                            <p className="text-sm text-muted-foreground">
+                                No campaigns in this pool yet.
+                            </p>
+                        ) : (
+                            (pool.audiences ?? []).map((a) => {
+                                const value = editedTargets.get(a.audience_id);
+                                return (
+                                    <div
+                                        key={a.audience_id}
+                                        className="flex items-center justify-between gap-3"
+                                    >
+                                        <span className="text-sm">
+                                            {campaignName(a.audience_id)}
+                                        </span>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            inputMode="numeric"
+                                            placeholder="e.g. 20"
+                                            className="w-32"
+                                            value={value == null ? '' : String(value)}
+                                            onChange={(e) =>
+                                                updateTargetEntry(
+                                                    a.audience_id,
+                                                    e.target.value
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    <DialogFooter>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            onClick={() => setTargetDialog(null)}
+                            disable={savingTargets}
+                        >
+                            Cancel
+                        </MyButton>
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            onClick={confirmTargetSave}
+                            disable={savingTargets || (pool.audiences ?? []).length === 0}
+                        >
+                            {savingTargets ? 'Saving…' : 'Save Targets'}
+                        </MyButton>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -557,6 +720,22 @@ function summarizeOrders(rows: PoolMemberDTO[]): string {
     return rows
         .map((r) => `#${r.display_order} (${r.audience_id.slice(0, 6)}…)`)
         .join(', ');
+}
+
+/**
+ * One-line per-(audience, counsellor) target summary. Em-dash for unset cells
+ * so the admin can see at a glance which campaigns still need a target.
+ */
+function summarizeTargets(
+    rows: PoolMemberDTO[],
+    campaignName: (audienceId: string) => string
+): string {
+    if (rows.length === 0) return 'not set';
+    const allUnset = rows.every((r) => r.monthly_target == null);
+    if (allUnset) return 'not set';
+    return rows
+        .map((r) => `${campaignName(r.audience_id)} ${r.monthly_target ?? '—'}`)
+        .join(' · ');
 }
 
 function extractError(err: unknown): string | undefined {

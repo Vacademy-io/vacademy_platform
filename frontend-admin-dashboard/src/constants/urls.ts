@@ -59,6 +59,8 @@ export const VIMOTION_REQUEST_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion
 export const VIMOTION_VERIFY_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/verify-signup-otp`;
 export const VIMOTION_SIGNUP = `${BASE_URL}/auth-service/v1/vimotion/signup`;
 export const VIMOTION_LOGIN = `${BASE_URL}/auth-service/v1/vimotion/login`;
+export const VIMOTION_VALIDATE_INVITE_CODE = `${BASE_URL}/auth-service/v1/vimotion/invite-codes/validate`;
+export const VIMOTION_CONFIG = `${BASE_URL}/auth-service/v1/vimotion/config`;
 
 // Vimotion brand kits + studio avatars (admin_core_service, JWT-auth)
 export const VIMOTION_BRAND_KITS = `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits`;
@@ -143,6 +145,8 @@ export const COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS = (counselorUserId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/memberships`;
 export const COUNSELOR_POOL_COUNSELOR_STATUS_MULTI = (counselorUserId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/status-multi`;
+export const COUNSELOR_POOL_COUNSELOR_MONTHLY_TARGET = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}/monthly-target`;
 export const COUNSELOR_POOL_SCHEDULE = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/schedule`;
 

@@ -43,6 +43,23 @@ public interface CounselorPoolMemberRepository extends JpaRepository<CounselorPo
                                            @Param("status") String status,
                                            @Param("backupUserId") String backupUserId);
 
+    /**
+     * Set monthly_target for exactly one (pool, audience, counsellor) cell. A
+     * null target clears the value. No-op (returns 0) if the row doesn't
+     * exist — by design, the UI only ever sends valid combinations and direct
+     * API hits with junk ids are harmless.
+     */
+    @Modifying
+    @Query("UPDATE CounselorPoolMember m " +
+           "   SET m.monthlyTarget = :monthlyTarget " +
+           " WHERE m.poolId = :poolId " +
+           "   AND m.audienceId = :audienceId " +
+           "   AND m.counselorUserId = :counselorUserId")
+    int updateMonthlyTarget(@Param("poolId") String poolId,
+                            @Param("audienceId") String audienceId,
+                            @Param("counselorUserId") String counselorUserId,
+                            @Param("monthlyTarget") Integer monthlyTarget);
+
     boolean existsByPoolIdAndAudienceIdAndCounselorUserId(String poolId, String audienceId, String counselorUserId);
 
     void deleteByPoolId(String poolId);

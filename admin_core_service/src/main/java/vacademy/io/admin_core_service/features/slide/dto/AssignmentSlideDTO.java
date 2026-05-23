@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.common.ai.dto.RichTextDataDTO;
 
-import java.sql.Date;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -22,9 +22,9 @@ public class AssignmentSlideDTO {
 
     private RichTextDataDTO textData;
 
-    private Date liveDate;
+    private Instant liveDate;
 
-    private Date endDate;
+    private Instant endDate;
 
     private Integer reAttemptCount;
 

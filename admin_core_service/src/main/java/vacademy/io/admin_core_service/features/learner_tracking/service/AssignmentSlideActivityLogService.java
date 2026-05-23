@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.AssignmentSlideActivityLogDTO;
@@ -15,8 +16,14 @@ import vacademy.io.admin_core_service.features.learner_tracking.entity.QuestionS
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.AssignmentSlideTrackedRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.QuestionSlideTrackedRepository;
+import vacademy.io.admin_core_service.features.slide.entity.AssignmentSlide;
+import vacademy.io.admin_core_service.features.slide.repository.AssignmentSlideRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -30,8 +37,17 @@ public class AssignmentSlideActivityLogService {
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
+    private final AssignmentSlideRepository assignmentSlideRepository;
     private final vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
     private final vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
+
+    // Last-resort formatter for error toasts when a learner bypasses the
+    // frontend gate (typically only DevTools users see this). Renders in
+    // institute time (IST). Normal UX is the learner-side countdown which
+    // formats in the learner's browser timezone.
+    private static final DateTimeFormatter HUMAN_DATE_TIME =
+            DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a 'IST'")
+                    .withZone(ZoneId.of("Asia/Kolkata"));
 
     public void addAssigmentSlideActivityLog(ActivityLog activityLog,
             List<AssignmentSlideActivityLogDTO> assignmentSlideActivityLogDTOS) {
@@ -47,6 +63,24 @@ public class AssignmentSlideActivityLogService {
     public String addOrUpdateAssignmentSlideSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,
             String chapterId, String moduleId, String subjectId, String packageSessionId, String userId,
             CustomUserDetails user) {
+        // Temporal window enforcement.
+        // - Before live_date: hard block (assignment isn't released yet).
+        // - After end_date: accept the submission but stamp `late_submission`
+        //   on each tracked row so the learner UI / grading dashboard can
+        //   surface a "Late" badge. Soft-warning model per product decision.
+        AssignmentSlide slide = assignmentSlideRepository.findById(slideId)
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
+                        "Assignment slide not found"));
+        Instant now = Instant.now();
+        if (slide.getLiveDate() != null && now.isBefore(slide.getLiveDate())) {
+            throw new VacademyException(HttpStatus.FORBIDDEN,
+                    "Assignment opens on " + HUMAN_DATE_TIME.format(slide.getLiveDate()));
+        }
+        boolean late = slide.getEndDate() != null && now.isAfter(slide.getEndDate());
+        if (late && activityLogDTO.getAssignmentSlides() != null) {
+            activityLogDTO.getAssignmentSlides().forEach(s -> s.setLateSubmission(true));
+        }
+
         ActivityLog activityLog = null;
         if (activityLogDTO.isNewActivity()) {
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);

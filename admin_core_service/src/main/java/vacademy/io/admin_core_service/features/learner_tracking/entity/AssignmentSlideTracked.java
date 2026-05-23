@@ -24,6 +24,9 @@ public class AssignmentSlideTracked {
     @Column(name = "checked_file_id")
     private String checkedFileId;
 
+    @Column(name = "late_submission", nullable = false)
+    private Boolean lateSubmission;
+
     @ManyToOne
     @JoinColumn(name = "activity_id", nullable = false)
     private ActivityLog activityLog;
@@ -38,6 +41,7 @@ public class AssignmentSlideTracked {
         this.id = assignmentSlideActivityLogDTO.getId();
         this.commaSeparatedFileIds = assignmentSlideActivityLogDTO.getCommaSeparatedFileIds();
         this.marks = assignmentSlideActivityLogDTO.getMarks();
+        this.lateSubmission = Boolean.TRUE.equals(assignmentSlideActivityLogDTO.getLateSubmission());
         this.activityLog = activityLog;
     }
 
@@ -49,6 +53,7 @@ public class AssignmentSlideTracked {
         activityLogDTO.setMarks(marks);
         activityLogDTO.setFeedback(feedback);
         activityLogDTO.setCheckedFileId(checkedFileId);
+        activityLogDTO.setLateSubmission(lateSubmission);
         return activityLogDTO;
     }
 

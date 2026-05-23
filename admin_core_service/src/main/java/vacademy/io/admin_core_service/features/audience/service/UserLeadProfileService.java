@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
+import vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository;
@@ -56,6 +57,7 @@ public class UserLeadProfileService {
     private final WorkflowTriggerService workflowTriggerService;
     private final LeadTriggerContextBuilder leadTriggerContextBuilder;
     private final AuthService authService;
+    private final LeadSlaConfigService leadSlaConfigService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -244,6 +246,7 @@ public class UserLeadProfileService {
         leadTriggerContextBuilder.put(ctx, "oldStatus", oldStatus);
         leadTriggerContextBuilder.put(ctx, "newStatus", newStatus);
         enrichWithLeadContact(ctx, profile.getUserId());
+        enrichTatInfo(ctx, profile.getInstituteId());
         safeEmit(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), profile.getUserId(),
                 profile.getInstituteId(), ctx);
     }
@@ -329,6 +332,32 @@ public class UserLeadProfileService {
         } catch (Exception e) {
             log.warn("[LeadTrigger] Failed to enrich lead contact for user {}: {}", userId, e.getMessage());
         }
+    }
+
+    /**
+     * Add {@code tat} (human-readable e.g. "24 hours") and {@code tatHours} (raw int) to ctx
+     * so templates can render copy like "Please reach out before {{tat}}". Falls back to a
+     * generic "the earliest" string when TAT isn't configured for the institute — that way
+     * the template still reads sensibly instead of leaving a literal `tat` placeholder.
+     */
+    private void enrichTatInfo(Map<String, Object> ctx, String instituteId) {
+        String tat = "the earliest";
+        Integer tatHours = null;
+        if (instituteId != null && !instituteId.isBlank()) {
+            try {
+                LeadSlaConfigDTO config = leadSlaConfigService.getSchedulerConfig(instituteId);
+                if (config != null && config.getTatReminder() != null
+                        && config.getTatReminder().getTatHours() != null) {
+                    tatHours = config.getTatReminder().getTatHours();
+                    tat = tatHours == 1 ? "1 hour" : tatHours + " hours";
+                }
+            } catch (Exception e) {
+                log.debug("[LeadTrigger] TAT lookup failed for institute {}: {}",
+                        instituteId, e.getMessage());
+            }
+        }
+        leadTriggerContextBuilder.put(ctx, "tat", tat);
+        if (tatHours != null) leadTriggerContextBuilder.put(ctx, "tatHours", tatHours);
     }
 
     /**
@@ -632,6 +661,7 @@ public class UserLeadProfileService {
             Map<String, Object> ctx = leadTriggerContextBuilder.forUser(
                     instituteId, userId, counselorId, counselorName);
             enrichWithLeadContact(ctx, userId);
+            enrichTatInfo(ctx, instituteId);
             safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId, instituteId, ctx);
         }
         return saved;

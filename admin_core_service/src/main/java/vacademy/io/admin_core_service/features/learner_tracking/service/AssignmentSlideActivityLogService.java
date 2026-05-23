@@ -17,7 +17,9 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Activ
 import vacademy.io.admin_core_service.features.learner_tracking.repository.AssignmentSlideTrackedRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.QuestionSlideTrackedRepository;
 import vacademy.io.admin_core_service.features.slide.entity.AssignmentSlide;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.AssignmentSlideRepository;
+import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -38,6 +40,7 @@ public class AssignmentSlideActivityLogService {
     private final ActivityLogService activityLogService;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
     private final AssignmentSlideRepository assignmentSlideRepository;
+    private final SlideRepository slideRepository;
     private final vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
     private final vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
 
@@ -68,7 +71,13 @@ public class AssignmentSlideActivityLogService {
         // - After end_date: accept the submission but stamp `late_submission`
         //   on each tracked row so the learner UI / grading dashboard can
         //   surface a "Late" badge. Soft-warning model per product decision.
-        AssignmentSlide slide = assignmentSlideRepository.findById(slideId)
+        // `slideId` is the parent Slide table id; the AssignmentSlide row is
+        // referenced via slide.sourceId. (Don't trust DTO.source_id — client
+        // could spoof to point at a different, still-open assignment.)
+        Slide parentSlide = slideRepository.findById(slideId)
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
+                        "Slide not found"));
+        AssignmentSlide slide = assignmentSlideRepository.findById(parentSlide.getSourceId())
                 .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
                         "Assignment slide not found"));
         Instant now = Instant.now();

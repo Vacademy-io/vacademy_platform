@@ -293,9 +293,13 @@ public class WorkflowCatalogController {
                 ctxVar("counselorName", "Counselor name"),
                 ctxVar("counselorEmail", "Counselor email"),
                 ctxVar("counselorMobile", "Counselor mobile"),
-                ctxVar("parentName", "Parent name"),
-                ctxVar("parentEmail", "Parent email"),
-                ctxVar("parentMobile", "Parent mobile")));
+                ctxVar("leadName", "Lead name"),
+                ctxVar("leadEmail", "Lead email"),
+                ctxVar("leadMobile", "Lead mobile"),
+                // Same values as lead-* above, kept for backward compat with older templates.
+                ctxVar("parentName", "Parent name (alias of leadName)"),
+                ctxVar("parentEmail", "Parent email (alias of leadEmail)"),
+                ctxVar("parentMobile", "Parent mobile (alias of leadMobile)")));
 
         // TAT / follow-up reminders add SLA timing keys.
         List<Map<String, String>> sla = new ArrayList<>(base);

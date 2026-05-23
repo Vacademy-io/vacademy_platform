@@ -448,21 +448,21 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
 
   LEAD_ASSIGNED_TO_COUNSELOR: {
     name: 'Lead Assigned — Counsellor Notice',
-    subject: 'New lead assigned: {{parentName}}',
+    subject: 'New lead assigned: {{leadName}}',
     variables: [
       'counselorName',
-      'parentName',
-      'parentMobile',
-      'parentEmail',
+      'leadName',
+      'leadMobile',
+      'leadEmail',
       'campaignName',
     ],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:#1a1a1a">Hi {{counselorName}},</h2>
   <p style="color:#444;line-height:1.6">A new lead has been assigned to you.</p>
   <ul style="color:#444;line-height:1.8">
-    <li><strong>Name:</strong> {{parentName}}</li>
-    <li><strong>Mobile:</strong> {{parentMobile}}</li>
-    <li><strong>Email:</strong> {{parentEmail}}</li>
+    <li><strong>Name:</strong> {{leadName}}</li>
+    <li><strong>Mobile:</strong> {{leadMobile}}</li>
+    <li><strong>Email:</strong> {{leadEmail}}</li>
     <li><strong>Campaign:</strong> {{campaignName}}</li>
   </ul>
   <p style="color:#444;line-height:1.6">Please reach out at the earliest.</p>
@@ -471,11 +471,11 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
 
   LEAD_TAT_REMINDER_BEFORE: {
     name: 'Lead TAT — Reminder',
-    subject: 'Reminder: respond to {{parentName}} within {{minutesToBreach}} minutes',
+    subject: 'Reminder: respond to {{leadName}} within {{minutesToBreach}} minutes',
     variables: [
       'counselorName',
-      'parentName',
-      'parentMobile',
+      'leadName',
+      'leadMobile',
       'campaignName',
       'minutesToBreach',
       'dueAt',
@@ -486,7 +486,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   <p style="color:#444;line-height:1.6">This lead needs a response in
     <strong>{{minutesToBreach}} minutes</strong>:</p>
   <ul style="color:#444;line-height:1.8">
-    <li><strong>{{parentName}}</strong> — {{parentMobile}}</li>
+    <li><strong>{{leadName}}</strong> — {{leadMobile}}</li>
     <li>Campaign: {{campaignName}}</li>
     <li>SLA due at: {{dueAt}}</li>
   </ul>
@@ -495,11 +495,11 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
 
   LEAD_TAT_OVERDUE: {
     name: 'Lead TAT — Overdue',
-    subject: 'Overdue: {{parentName}} has not been contacted',
+    subject: 'Overdue: {{leadName}} has not been contacted',
     variables: [
       'counselorName',
-      'parentName',
-      'parentMobile',
+      'leadName',
+      'leadMobile',
       'campaignName',
       'dueAt',
     ],
@@ -507,7 +507,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   <h2 style="color:#b91c1c">Lead TAT overdue</h2>
   <p style="color:#444;line-height:1.6">Hi {{counselorName}}, the SLA deadline has passed for this lead:</p>
   <ul style="color:#444;line-height:1.8">
-    <li><strong>{{parentName}}</strong> — {{parentMobile}}</li>
+    <li><strong>{{leadName}}</strong> — {{leadMobile}}</li>
     <li>Campaign: {{campaignName}}</li>
     <li>Due at: {{dueAt}}</li>
   </ul>
@@ -517,40 +517,40 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
 
   FOLLOW_UP_DUE: {
     name: 'Follow-up — Due',
-    subject: 'Follow-up due for {{parentName}}',
+    subject: 'Follow-up due for {{leadName}}',
     variables: [
       'counselorName',
-      'parentName',
-      'parentMobile',
+      'leadName',
+      'leadMobile',
       'dueAt',
       'minutesToBreach',
     ],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:#1a1a1a">Follow-up due</h2>
   <p style="color:#444;line-height:1.6">Hi {{counselorName}}, your next follow-up for
-    <strong>{{parentName}}</strong> ({{parentMobile}}) is due in
+    <strong>{{leadName}}</strong> ({{leadMobile}}) is due in
     <strong>{{minutesToBreach}}</strong> minutes (at {{dueAt}}).</p>
 </div>`,
   },
 
   FOLLOW_UP_OVERDUE: {
     name: 'Follow-up — Overdue',
-    subject: 'Follow-up overdue for {{parentName}}',
-    variables: ['counselorName', 'parentName', 'parentMobile', 'dueAt'],
+    subject: 'Follow-up overdue for {{leadName}}',
+    variables: ['counselorName', 'leadName', 'leadMobile', 'dueAt'],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:#b91c1c">Follow-up overdue</h2>
   <p style="color:#444;line-height:1.6">Hi {{counselorName}}, the follow-up for
-    <strong>{{parentName}}</strong> ({{parentMobile}}) is overdue (was due at {{dueAt}}).</p>
+    <strong>{{leadName}}</strong> ({{leadMobile}}) is overdue (was due at {{dueAt}}).</p>
   <p style="color:#444">Please action this lead now.</p>
 </div>`,
   },
 
   LEAD_STATUS_CHANGED: {
     name: 'Lead Status Changed',
-    subject: 'Lead status updated: {{parentName}} → {{newStatus}}',
+    subject: 'Lead status updated: {{leadName}} → {{newStatus}}',
     variables: [
       'counselorName',
-      'parentName',
+      'leadName',
       'oldStatus',
       'newStatus',
       'changeType',
@@ -558,7 +558,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:#1a1a1a">Lead status updated</h2>
   <p style="color:#444;line-height:1.6">Hi {{counselorName}},</p>
-  <p style="color:#444;line-height:1.6">Status for <strong>{{parentName}}</strong>
+  <p style="color:#444;line-height:1.6">Status for <strong>{{leadName}}</strong>
     changed from <strong>{{oldStatus}}</strong> to <strong>{{newStatus}}</strong>
     (<em>{{changeType}}</em>).</p>
 </div>`,

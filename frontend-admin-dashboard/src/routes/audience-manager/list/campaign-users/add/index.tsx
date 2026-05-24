@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, Send } from 'lucide-react';
+import { ArrowLeft, PaperPlaneTilt, Spinner, UsersThree } from '@phosphor-icons/react';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { submitAudienceLead, SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -323,43 +323,63 @@ export function AddResponsePage() {
         }
     };
 
-    const normalizeFieldType = (fieldType: string): string => {
-        const normalized = (fieldType || 'text').toLowerCase();
-        if (normalized === 'tel') return 'phone';
+    // Standard system field keys that always represent a phone number with country code.
+    // Custom user-created fields with fieldType "number" must NOT be coerced into a phone
+    // picker just because their name contains "phone" — only these exact keys are promoted.
+    const SYSTEM_PHONE_KEYS = new Set(['phone_number', 'mobile_number']);
+
+    const normalizeFieldType = (field: CustomFieldConfig): string => {
+        const normalized = (field.fieldType || 'text').toLowerCase();
+        if (normalized === 'phone' || normalized === 'tel') return 'phone';
         if (normalized === 'textfield') return 'text';
+        if (SYSTEM_PHONE_KEYS.has((field.fieldKey || '').toLowerCase())) return 'phone';
         return normalized;
     };
+
+    const audienceTerm = getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList);
+    const audienceName = search.campaignName || `this ${audienceTerm.toLowerCase()}`;
+    const mandatoryCount = customFields.filter((f) => f.isMandatory).length;
 
     return (
         <LayoutContainer>
             <Helmet>
-                <title>{`Add Response - ${search.campaignName || getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}</title>
+                <title>{`Add Response - ${search.campaignName || audienceTerm}`}</title>
                 <meta name="description" content="Add a response on behalf of a respondent." />
             </Helmet>
-            <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
+            <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 py-2">
                 <Button variant="ghost" size="sm" onClick={handleBack} className="w-fit">
                     <ArrowLeft className="mr-2 size-4" />
-                    {`Back to ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} Users`}
+                    {`Back to ${audienceTerm} Users`}
                 </Button>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Add Response</CardTitle>
-                        <CardDescription>
-                            Fill in the details below to submit a response on behalf of a respondent
-                            for{' '}
-                            <span className="font-medium text-neutral-900">
-                                {search.campaignName || 'this campaign'}
-                            </span>
-                            .
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
+                <Card className="overflow-hidden border-neutral-200 shadow-sm">
+                    <div className="border-b border-neutral-200 bg-primary-50/40 px-6 py-5">
+                        <div className="flex items-start gap-3">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-600">
+                                <UsersThree size={20} weight="duotone" />
+                            </div>
+                            <div className="flex flex-1 flex-col gap-1">
+                                <p className="text-caption font-medium uppercase tracking-wide text-primary-600">
+                                    {audienceTerm}
+                                </p>
+                                <h2 className="text-h3 font-semibold text-neutral-900">
+                                    {search.campaignName || audienceTerm}
+                                </h2>
+                                <p className="text-body text-neutral-600">
+                                    Fill in the details below to submit a response on behalf of a
+                                    respondent.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <CardContent className="p-6">
                         {customFields.length === 0 ? (
-                            <div className="py-8 text-center text-neutral-500">
-                                <p>No form fields configured for this campaign.</p>
-                                <p className="mt-2 text-sm">
-                                    Please add custom fields to the campaign first.
+                            <div className="flex flex-col items-center gap-2 py-10 text-center text-neutral-500">
+                                <p className="font-medium text-neutral-700">
+                                    No form fields configured for this {audienceTerm.toLowerCase()}.
+                                </p>
+                                <p className="text-sm">
+                                    Please add custom fields first to start collecting responses.
                                 </p>
                             </div>
                         ) : (
@@ -368,21 +388,33 @@ export function AddResponsePage() {
                                     e.preventDefault();
                                     handleSubmit();
                                 }}
-                                className="space-y-4"
+                                className="flex flex-col gap-5"
                             >
+                                <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+                                    <h3 className="text-subtitle font-semibold text-neutral-900">
+                                        Respondent details
+                                    </h3>
+                                    {mandatoryCount > 0 && (
+                                        <span className="text-caption text-neutral-500">
+                                            <span className="text-danger-600">*</span> Required
+                                            fields
+                                        </span>
+                                    )}
+                                </div>
+
                                 {customFields.map((field) => (
-                                    <div key={field.id} className="space-y-2">
+                                    <div key={field.id} className="flex flex-col gap-2">
                                         <Label
                                             htmlFor={field.id}
-                                            className="flex items-center gap-1"
+                                            className="flex items-center gap-1 text-body font-medium text-neutral-700"
                                         >
                                             {field.fieldName}
                                             {field.isMandatory && (
-                                                <span className="text-red-500">*</span>
+                                                <span className="text-danger-600">*</span>
                                             )}
                                         </Label>
                                         <CustomFieldRenderer
-                                            type={normalizeFieldType(field.fieldType)}
+                                            type={normalizeFieldType(field)}
                                             name={field.fieldName}
                                             value={formValues[field.id] || ''}
                                             onChange={(val) => handleInputChange(field.id, val)}
@@ -394,7 +426,7 @@ export function AddResponsePage() {
                                     </div>
                                 ))}
 
-                                <div className="flex justify-end gap-3 pt-4">
+                                <div className="mt-2 flex flex-col-reverse items-stretch justify-end gap-3 border-t border-neutral-100 pt-5 sm:flex-row sm:items-center">
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -406,12 +438,12 @@ export function AddResponsePage() {
                                     <Button type="submit" disabled={isSubmitting}>
                                         {isSubmitting ? (
                                             <>
-                                                <Loader2 className="mr-2 size-4 animate-spin" />
+                                                <Spinner className="mr-2 size-4 animate-spin" />
                                                 Submitting...
                                             </>
                                         ) : (
                                             <>
-                                                <Send className="mr-2 size-4" />
+                                                <PaperPlaneTilt className="mr-2 size-4" />
                                                 Submit Response
                                             </>
                                         )}
@@ -421,6 +453,11 @@ export function AddResponsePage() {
                         )}
                     </CardContent>
                 </Card>
+
+                <p className="text-center text-caption text-neutral-500">
+                    Responses appear under <span className="font-medium">{audienceName}</span> in
+                    your {audienceTerm} list.
+                </p>
             </div>
         </LayoutContainer>
     );

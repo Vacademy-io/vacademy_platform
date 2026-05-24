@@ -245,10 +245,24 @@ public class RecordingTranscriptionService {
         if (payload == null || payload.getJobId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing jobId");
         }
+        applyTerminalState(payload, "transcription-callback");
+    }
 
+    /**
+     * Apply a terminal-state worker payload (completed/failed) to the extraction
+     * row keyed by jobId. Caller is responsible for authenticating the payload
+     * source — both the public callback endpoint (after token check) and the
+     * watchdog reconciliation job (after polling the worker directly) feed in
+     * here so the row-update path is shared and stays consistent.
+     *
+     * @param origin short label included in logs to distinguish callback vs.
+     *               watchdog updates, e.g. "transcription-callback" or
+     *               "transcription-watchdog".
+     */
+    public void applyTerminalState(TranscriptionCallbackDto payload, String origin) {
         AiContentExtraction row = extractionRepo.findByJobId(payload.getJobId())
                 .orElseThrow(() -> {
-                    log.warn("[transcription-callback] No extraction row for jobId={}", payload.getJobId());
+                    log.warn("[{}] No extraction row for jobId={}", origin, payload.getJobId());
                     return new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown jobId");
                 });
 
@@ -280,8 +294,8 @@ public class RecordingTranscriptionService {
                             row.setEnglishTextContent(resp.getBody());
                         }
                     } catch (Exception e) {
-                        log.warn("[transcription-callback] Could not cache transcript text for jobId={}: {}",
-                                payload.getJobId(), e.getMessage());
+                        log.warn("[{}] Could not cache transcript text for jobId={}: {}",
+                                origin, payload.getJobId(), e.getMessage());
                     }
                 }
             }
@@ -291,13 +305,16 @@ public class RecordingTranscriptionService {
             row.setStatus("FAILED");
             row.setErrorMessage(payload.getError() != null ? payload.getError() : "Worker reported failure");
         } else {
-            // Worker only calls back on terminal states — anything else is a bug.
-            log.warn("[transcription-callback] Unexpected status='{}' for jobId={}", status, payload.getJobId());
+            // Non-terminal — should never reach here from the callback endpoint
+            // (worker only calls on terminal states), and the watchdog filters
+            // these out before calling. Treat as a bug and bail without touching
+            // the row.
+            log.warn("[{}] Unexpected status='{}' for jobId={}", origin, status, payload.getJobId());
             return;
         }
         extractionRepo.save(row);
-        log.info("[transcription-callback] jobId={} → {} (lang={})",
-                payload.getJobId(), row.getStatus(), row.getDetectedLanguage());
+        log.info("[{}] jobId={} → {} (lang={})",
+                origin, payload.getJobId(), row.getStatus(), row.getDetectedLanguage());
     }
 
     // ---------------------------------------------------------------------

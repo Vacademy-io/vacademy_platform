@@ -20,6 +20,19 @@ public interface LeadFollowupRepository extends JpaRepository<LeadFollowup, Stri
 
     List<LeadFollowup> findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(String instituteId);
 
+    /**
+     * Batch fetch of every OPEN scheduled follow-up for the given leads, oldest schedule_time first.
+     * Used by the leads-list to populate the "Follow up at" column with the counsellor-scheduled
+     * callback time (preferred over the SLA-derived fallback). Caller groups by audience_response_id
+     * and keeps the earliest row.
+     */
+    @Query("SELECT lf FROM LeadFollowup lf " +
+           "WHERE lf.audienceResponseId IN :ids " +
+           "  AND lf.isClosed = false " +
+           "  AND lf.scheduleTime IS NOT NULL " +
+           "ORDER BY lf.scheduleTime ASC")
+    List<LeadFollowup> findOpenByAudienceResponseIds(@Param("ids") List<String> ids);
+
     // ─── Scheduler scans (LeadAutomationScheduler.scanScheduledFollowups) ───
 
     /** PENDING follow-ups whose scheduled time has arrived (or is just past). */

@@ -12,6 +12,7 @@ import {
     DownloadSimple,
     PaperPlaneTilt,
     X,
+    Clock,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +58,21 @@ import {
 
 const ALL_VALUE = '__ALL__';
 const ALL_ACTIVE_VALUE = '__ACTIVE__';
+const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage (TAT / follow-up)
+type SlaFilter =
+    | 'TAT_BEFORE'
+    | 'TAT_OVERDUE'
+    | 'FOLLOW_UP_DUE'
+    | 'FOLLOW_UP_OVERDUE'
+    | 'ANY_OVERDUE';
+const SLA_OPTIONS: { value: string; label: string }[] = [
+    { value: ALL_SLA_VALUE, label: 'All SLA states' },
+    { value: 'ANY_OVERDUE', label: 'Any overdue' },
+    { value: 'TAT_OVERDUE', label: 'Reach-out overdue' },
+    { value: 'TAT_BEFORE', label: 'Reach-out due soon' },
+    { value: 'FOLLOW_UP_DUE', label: 'Follow-up due' },
+    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up overdue' },
+];
 const SEARCH_DEBOUNCE_MS = 300;
 const PAGE_SIZE = 20;
 
@@ -111,6 +127,9 @@ const CampaignUsersContent = ({
     const [appliedSearch, setAppliedSearch] = useState('');
     const [tierFilter, setTierFilter] = useState<string>(ALL_VALUE);
     const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_ACTIVE_VALUE);
+    // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
+    // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
+    const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
@@ -121,7 +140,11 @@ const CampaignUsersContent = ({
     // ── Dialog state ─────────────────────────────────────────
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showSendMessage, setShowSendMessage] = useState(false);
-    const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(null);
+    const [noteTarget, setNoteTarget] = useState<{
+        userId: string;
+        userName: string;
+        responseId?: string;
+    } | null>(null);
     const [counsellorTarget, setCounsellorTarget] = useState<{
         userId: string;
         userName: string;
@@ -235,8 +258,9 @@ const CampaignUsersContent = ({
             conversion_status_filter: (leadStatusFilter === ALL_ACTIVE_VALUE
                 ? 'EXCLUDE_CONVERTED'
                 : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL',
+            sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
         };
-    }, [campaignId, page, appliedRange, appliedSearch, tierFilter, leadStatusFilter]);
+    }, [campaignId, page, appliedRange, appliedSearch, tierFilter, leadStatusFilter, slaFilter]);
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
 
@@ -311,6 +335,7 @@ const CampaignUsersContent = ({
                 _tat_overdue: lead.tat_overdue ?? null,
                 _tat_due_soon: lead.tat_due_soon ?? null,
                 _follow_up_overdue: lead.follow_up_overdue ?? null,
+                _first_response_at: lead.first_response_at ?? null,
                 _lead_status: lead.lead_status ?? null,
                 _response_id: lead.response_id ?? null,
                 _response_fields: responseFields,
@@ -335,7 +360,8 @@ const CampaignUsersContent = ({
                 setSelectedStudent(vm.toStudent());
                 setIsSidebarOpen(true);
             },
-            onAddNote: (userId, userName) => setNoteTarget({ userId, userName }),
+            onAddNote: (userId, userName, responseId) =>
+                setNoteTarget({ userId, userName, responseId }),
             onAssignCounsellor: (userId, userName) => setCounsellorTarget({ userId, userName }),
             onSetTier: (userId, _userName, tier) => updateTier.mutate({ userId, tier }),
         }),
@@ -356,6 +382,10 @@ const CampaignUsersContent = ({
         setPage(0);
         setLeadStatusFilter(value);
     };
+    const setSla = (value: string) => {
+        setPage(0);
+        setSlaFilter(value);
+    };
     const handleApplyDate = () => {
         setPage(0);
         setAppliedRange({ from: fromDate, to: toDate });
@@ -366,6 +396,7 @@ const CampaignUsersContent = ({
         setAppliedSearch('');
         setTierFilter(ALL_VALUE);
         setLeadStatusFilter(ALL_ACTIVE_VALUE);
+        setSlaFilter(ALL_SLA_VALUE);
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
@@ -376,7 +407,8 @@ const CampaignUsersContent = ({
         isDateFilterActive ||
         !!appliedSearch ||
         tierFilter !== ALL_VALUE ||
-        leadStatusFilter !== ALL_ACTIVE_VALUE;
+        leadStatusFilter !== ALL_ACTIVE_VALUE ||
+        slaFilter !== ALL_SLA_VALUE;
 
     // Active filter chips
     const chips: { label: string; onRemove: () => void }[] = [];
@@ -396,6 +428,11 @@ const CampaignUsersContent = ({
                 setToDate('');
                 setAppliedRange({ from: '', to: '' });
             },
+        });
+    if (slaFilter !== ALL_SLA_VALUE)
+        chips.push({
+            label: `SLA: ${SLA_OPTIONS.find((o) => o.value === slaFilter)?.label ?? slaFilter}`,
+            onRemove: () => setSla(ALL_SLA_VALUE),
         });
 
     // ── CSV export ───────────────────────────────────────────
@@ -617,6 +654,21 @@ const CampaignUsersContent = ({
                             ))}
                         </SelectContent>
                     </Select>
+                    {showOps && (
+                        <Select value={slaFilter} onValueChange={setSla}>
+                            <SelectTrigger className="h-10 w-44">
+                                <Clock className="mr-1.5 size-4 text-neutral-400" />
+                                <SelectValue placeholder="All SLA states" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {SLA_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                        {o.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
@@ -795,6 +847,7 @@ const CampaignUsersContent = ({
                         onOpenChange={(o) => !o && setNoteTarget(null)}
                         userId={noteTarget.userId}
                         userName={noteTarget.userName}
+                        audienceResponseId={noteTarget.responseId}
                     />
                 )}
                 {counsellorTarget && (

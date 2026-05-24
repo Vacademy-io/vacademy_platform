@@ -174,11 +174,18 @@ public class TranscriptionReconciliationJob {
      * Hard-fail a row whose worker job has disappeared (404/unknown) and which
      * is old enough that we won't see it come back. The user can retry from
      * the UI; the submit path treats FAILED as resubmittable.
+     *
+     * Routes through {@link RecordingTranscriptionService#applyTerminalState} so the
+     * system-alert dispatch fires for this path too — otherwise the user would never
+     * be told their transcript silently died.
      */
     private void markFailedForeverLost(AiContentExtraction row) {
-        row.setStatus("FAILED");
-        row.setErrorMessage("Worker lost job state (process restarted or memory cleared) before callback could fire. Retry from the UI.");
-        extractionRepo.save(row);
+        TranscriptionCallbackDto syntheticFail = TranscriptionCallbackDto.builder()
+                .jobId(row.getJobId())
+                .status("failed")
+                .error("Worker lost job state (process restarted or memory cleared) before callback could fire. Retry from the UI.")
+                .build();
+        transcriptionService.applyTerminalState(syntheticFail, "transcription-watchdog");
         log.warn("[transcription-watchdog] Marked jobId={} FAILED — worker has no record after {}h",
                 row.getJobId(), giveUpAfterHours);
     }

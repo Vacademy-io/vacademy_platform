@@ -63,6 +63,7 @@ public class RecordingTranscriptionService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
     private final FileService fileService;
+    private final vacademy.io.admin_core_service.features.notification_service.service.NotificationService notificationService;
 
     @Value("${ai.service.url:http://localhost:8077}")
     private String aiServiceUrl;
@@ -315,6 +316,88 @@ public class RecordingTranscriptionService {
         extractionRepo.save(row);
         log.info("[{}] jobId={} → {} (lang={})",
                 origin, payload.getJobId(), row.getStatus(), row.getDetectedLanguage());
+
+        // Notify the user who originally submitted the transcribe request. Fire-and-forget:
+        // NotificationService.createSystemAlertAnnouncement already swallows downstream
+        // failures, so a notification-service blip can't fail the row update.
+        dispatchTerminalAlert(row);
+    }
+
+    /**
+     * Post a system-alert announcement (bell-icon notification in the UI) to the user who
+     * triggered the transcription, summarising the terminal state. Looks up
+     * {@code AiContentSource} for institute_id + created_by — created_by is set at submit
+     * time from the CustomUserDetails of the caller.
+     *
+     * No-ops if the source row is missing, has no creator (legacy rows / system-triggered
+     * jobs), or the row's status is non-terminal — the contract is "called once per
+     * terminal transition". Any failure here must not bubble up because the row save
+     * has already succeeded.
+     */
+    private void dispatchTerminalAlert(AiContentExtraction row) {
+        try {
+            String status = row.getStatus();
+            if (!"COMPLETED".equals(status) && !"FAILED".equals(status)) {
+                return;
+            }
+            Optional<AiContentSource> maybeSource = sourceRepo.findById(row.getSourceId());
+            if (maybeSource.isEmpty()) {
+                return;
+            }
+            AiContentSource source = maybeSource.get();
+            String userId = source.getCreatedBy();
+            String instituteId = source.getInstituteId();
+            if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
+                // Legacy rows without a creator, or system-initiated jobs.
+                return;
+            }
+
+            String title;
+            String body;
+            if ("COMPLETED".equals(status)) {
+                title = "Transcript ready";
+                body = "Your recording transcript has been generated and is ready to view.";
+            } else {
+                title = "Transcript failed";
+                String reason = row.getErrorMessage();
+                if (reason == null || reason.isBlank()) {
+                    reason = "Unknown error";
+                }
+                // Truncate to keep the notification body readable; the full error
+                // is still on the row for the UI / support to inspect.
+                if (reason.length() > 240) {
+                    reason = reason.substring(0, 237) + "...";
+                }
+                body = "Transcript generation failed: " + reason
+                        + " You can retry from the Recordings page.";
+            }
+
+            // Explicit settings map matches what CounselorAssignmentService /
+            // DoubtNotificationService pass — keeps every system alert on this
+            // service interchangeable at the recipient end.
+            Map<String, Object> alertSettings = Map.of(
+                    "priority", 2,
+                    "isDismissible", true,
+                    "showBadge", true,
+                    "isActive", true);
+
+            notificationService.createSystemAlertAnnouncement(
+                    instituteId,
+                    java.util.List.of(userId),
+                    title,
+                    body,
+                    "system",            // createdBy
+                    "System",            // createdByName — matches counselor / doubt convention
+                    "ADMIN",             // createdByRole — bypasses approval gate, same as other system alerts
+                    alertSettings);
+
+            log.info("[transcription-alert] Dispatched {} alert for jobId={} → user={}",
+                    status, row.getJobId(), userId);
+        } catch (Exception e) {
+            // Notification dispatch must never fail the business flow.
+            log.warn("[transcription-alert] Failed to dispatch alert for jobId={}: {}",
+                    row.getJobId(), e.getMessage());
+        }
     }
 
     // ---------------------------------------------------------------------

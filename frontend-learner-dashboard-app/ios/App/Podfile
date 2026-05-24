@@ -49,6 +49,14 @@ target 'Shiksha Nation' do
   capacitor_pods
 end
 
+target 'Chanakaya IAS Academy' do
+  capacitor_pods
+end
+
+target 'Edzumo' do
+  capacitor_pods
+end
+
 post_install do |installer|
   assertDeploymentTarget(installer)
 end

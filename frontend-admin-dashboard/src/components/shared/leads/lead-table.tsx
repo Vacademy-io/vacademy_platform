@@ -71,7 +71,13 @@ interface Col {
 
 const relativeTime = (iso?: string | null) => {
     if (!iso) return '';
-    const d = new Date(iso);
+    // Backend serialises every Timestamp as a bare ISO string with NO timezone
+    // marker (the raw DB wall-clock value). The convention here is to treat that
+    // value as UTC and convert to the browser's local timezone for display, so
+    // an IST user sees the right wall-clock for a row stored in UTC.
+    const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(iso);
+    const normalized = hasTimezone ? iso : `${iso.replace(' ', 'T')}Z`;
+    const d = new Date(normalized);
     if (Number.isNaN(d.getTime())) return '';
     if (d.toDateString() === new Date().toDateString()) return `Today at ${format(d, 'h:mm a')}`;
     return formatDistanceToNow(d, { addSuffix: true });
@@ -316,14 +322,22 @@ export function LeadTable({
         },
         {
             id: 'reachout',
-            header: 'Reach out by',
+            header: 'Reach out in',
             thClass: 'min-w-36',
             show: showOps,
-            render: (vm) => <SlaDeadlineCell dueAt={vm.tatDueAt} overdue={vm.tatOverdue} />,
+            render: (vm) => (
+                <SlaDeadlineCell
+                    mode="response"
+                    dueAt={vm.tatDueAt}
+                    overdue={vm.tatOverdue}
+                    respondedAt={vm.firstResponseAt}
+                    baselineAt={vm.submittedIso}
+                />
+            ),
         },
         {
             id: 'followup',
-            header: 'Follow up by',
+            header: 'Follow up at',
             thClass: 'min-w-36',
             show: showOps,
             render: (vm) => (
@@ -389,7 +403,7 @@ export function LeadTable({
                 vm.userId ? (
                     <ActivityCell
                         summary={notesOf(vm)}
-                        onAdd={() => actions.onAddNote?.(vm.userId!, vm.name)}
+                        onAdd={() => actions.onAddNote?.(vm.userId!, vm.name, vm.responseId)}
                     />
                 ) : (
                     <span className="text-sm text-neutral-300">—</span>

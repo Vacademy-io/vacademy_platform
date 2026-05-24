@@ -74,7 +74,9 @@ export function LeadActionsMenu({
                 </DropdownMenuItem>
 
                 {canOps && actions.onAddNote && (
-                    <DropdownMenuItem onClick={() => actions.onAddNote!(userId!, name)}>
+                    <DropdownMenuItem
+                        onClick={() => actions.onAddNote!(userId!, name, vm.responseId)}
+                    >
                         <Plus className="mr-2 size-4" />
                         Add note
                     </DropdownMenuItem>

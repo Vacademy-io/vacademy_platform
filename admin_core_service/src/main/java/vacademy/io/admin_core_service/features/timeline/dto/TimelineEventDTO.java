@@ -8,6 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 
+import java.sql.Timestamp;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -28,6 +30,9 @@ public class TimelineEventDTO {
         private String studentUserId;
         /** JOURNEY = lifecycle event, ACTIVITY = manual note/call/meeting */
         private TimelineCategory category;
-        /** ISO-8601 without timezone offset — raw value from DB (e.g. "2026-05-23T09:03:36.590"). Frontend adds IST offset. */
-        private String createdAt;
+        /** Serialised by Jackson with the timezone offset (e.g. "2026-05-23T03:33:36.590+00:00").
+         *  Frontend parses the offset directly so the same DB row renders the same wall-clock
+         *  time in the lead-name subtitle (driven by the leads endpoint) and the Activity column
+         *  (driven by this endpoint) — they must agree. */
+        private Timestamp createdAt;
 }

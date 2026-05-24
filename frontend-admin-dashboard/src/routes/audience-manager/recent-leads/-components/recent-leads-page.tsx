@@ -12,6 +12,7 @@ import {
     Flame,
     CheckCircle,
     Columns,
+    Clock,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -52,6 +53,21 @@ const ALL_AUDIENCES_VALUE = '__ALL__';
 const ALL_TIERS_VALUE = '__ALL__';
 const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except Converted (default)
 const ALL_STATUSES_VALUE = '__ALL_STATUS__'; // every lead regardless of status
+const ALL_SLA_VALUE = '__ALL_SLA__'; // every lead regardless of SLA stage (TAT / follow-up)
+type SlaFilter =
+    | 'TAT_BEFORE'
+    | 'TAT_OVERDUE'
+    | 'FOLLOW_UP_DUE'
+    | 'FOLLOW_UP_OVERDUE'
+    | 'ANY_OVERDUE';
+const SLA_OPTIONS: { value: string; label: string }[] = [
+    { value: ALL_SLA_VALUE, label: 'All SLA states' },
+    { value: 'ANY_OVERDUE', label: 'Any overdue' },
+    { value: 'TAT_OVERDUE', label: 'Reach-out overdue' },
+    { value: 'TAT_BEFORE', label: 'Reach-out due soon' },
+    { value: 'FOLLOW_UP_DUE', label: 'Follow-up due' },
+    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up overdue' },
+];
 const SEARCH_DEBOUNCE_MS = 500;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 
@@ -134,6 +150,9 @@ const RecentLeadsContent = () => {
     //   ALL_STATUSES_VALUE → every lead regardless of status
     //   <statusKey>        → only leads currently in that custom status
     const [leadStatusFilter, setLeadStatusFilter] = useState<string>(ALL_ACTIVE_VALUE);
+    // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
+    // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
+    const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -146,7 +165,11 @@ const RecentLeadsContent = () => {
     // Table UI state
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
 
-    const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(null);
+    const [noteTarget, setNoteTarget] = useState<{
+        userId: string;
+        userName: string;
+        responseId?: string;
+    } | null>(null);
     const [counsellorTarget, setCounsellorTarget] = useState<{
         userId: string;
         userName: string;
@@ -165,8 +188,8 @@ const RecentLeadsContent = () => {
         if (showOps) {
             cols.push(
                 { id: 'tier', label: 'Tier' },
-                { id: 'reachout', label: 'Reach out by' },
-                { id: 'followup', label: 'Follow up by' },
+                { id: 'reachout', label: 'Reach out in' },
+                { id: 'followup', label: 'Follow up at' },
                 { id: 'owner', label: 'Lead owner' },
                 { id: 'activity', label: 'Activity' }
             );
@@ -209,6 +232,7 @@ const RecentLeadsContent = () => {
             leadStatusFilter,
             leadStatusId,
             conversionFilter,
+            slaFilter,
             page,
             pageSize,
         ],
@@ -222,6 +246,7 @@ const RecentLeadsContent = () => {
                 lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
+                sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                 page,
                 size: pageSize,
             }),
@@ -252,7 +277,8 @@ const RecentLeadsContent = () => {
                 setSelectedStudent(vm.toStudent());
                 setIsSidebarOpen(true);
             },
-            onAddNote: (userId, userName) => setNoteTarget({ userId, userName }),
+            onAddNote: (userId, userName, responseId) =>
+                setNoteTarget({ userId, userName, responseId }),
             onAssignCounsellor: (userId, userName) => setCounsellorTarget({ userId, userName }),
             onSetTier: (userId, _userName, tier) => updateTier.mutate({ userId, tier }),
         }),
@@ -278,6 +304,7 @@ const RecentLeadsContent = () => {
         setAppliedSearch('');
         setTierFilter(ALL_TIERS_VALUE);
         setLeadStatusFilter(ALL_ACTIVE_VALUE);
+        setSlaFilter(ALL_SLA_VALUE);
         setPage(0);
         setAppliedRange({ from: '', to: '' });
     };
@@ -288,6 +315,10 @@ const RecentLeadsContent = () => {
     const setLeadStatus = (value: string) => {
         setPage(0);
         setLeadStatusFilter(value);
+    };
+    const setSla = (value: string) => {
+        setPage(0);
+        setSlaFilter(value);
     };
     const handleApplyDate = () => {
         setPage(0);
@@ -304,7 +335,8 @@ const RecentLeadsContent = () => {
         audienceId !== ALL_AUDIENCES_VALUE ||
         !!appliedSearch ||
         tierFilter !== ALL_TIERS_VALUE ||
-        leadStatusFilter !== ALL_ACTIVE_VALUE;
+        leadStatusFilter !== ALL_ACTIVE_VALUE ||
+        slaFilter !== ALL_SLA_VALUE;
     const moreFiltersActive =
         audienceId !== ALL_AUDIENCES_VALUE || !!appliedRange.from || !!appliedRange.to;
 
@@ -411,6 +443,8 @@ const RecentLeadsContent = () => {
                     lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
                     lead_status_id: leadStatusId,
                     conversion_status_filter: conversionFilter,
+                    sla_filter:
+                        slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                     page: pageNo,
                     size: 200,
                 });
@@ -441,6 +475,11 @@ const RecentLeadsContent = () => {
         chips.push({
             label: `Audience: ${audienceOptions.find((o) => o.id === audienceId)?.name ?? 'Selected'}`,
             onRemove: () => handleAudienceChange(ALL_AUDIENCES_VALUE),
+        });
+    if (slaFilter !== ALL_SLA_VALUE)
+        chips.push({
+            label: `SLA: ${SLA_OPTIONS.find((o) => o.value === slaFilter)?.label ?? slaFilter}`,
+            onRemove: () => setSla(ALL_SLA_VALUE),
         });
     if (appliedRange.from || appliedRange.to)
         chips.push({
@@ -491,6 +530,21 @@ const RecentLeadsContent = () => {
                             ))}
                         </SelectContent>
                     </Select>
+                    {showOps && (
+                        <Select value={slaFilter} onValueChange={setSla}>
+                            <SelectTrigger className="h-10 w-44">
+                                <Clock className="mr-1.5 size-4 text-neutral-400" />
+                                <SelectValue placeholder="All SLA states" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {SLA_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                        {o.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
@@ -700,6 +754,7 @@ const RecentLeadsContent = () => {
                         onOpenChange={(o) => !o && setNoteTarget(null)}
                         userId={noteTarget.userId}
                         userName={noteTarget.userName}
+                        audienceResponseId={noteTarget.responseId}
                     />
                 )}
                 {counsellorTarget && (

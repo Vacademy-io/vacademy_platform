@@ -42,6 +42,10 @@ export interface LeadCardVM {
     followUpOverdue?: boolean | null;
     /** ISO deadline to first reach out (submitted_at + tatHours). */
     tatDueAt?: string | null;
+    /** First counsellor activity timestamp — drives the "Reach out in" cell.
+     *  When set, the cell shows the actual contact time ("✓ Contacted · 2:28 PM");
+     *  when null, the cell shows Pending / Overdue based on tatDueAt. */
+    firstResponseAt?: string | null;
     /** ISO deadline for the next follow-up (last action + followUpSlaHours). */
     followUpDueAt?: string | null;
     /** Maps this lead to the partial StudentTable the side view consumes. */
@@ -51,7 +55,11 @@ export interface LeadCardVM {
 /** Format a raw ISO timestamp the way the leads tables do; '-' on missing/invalid. */
 export const formatSubmitted = (iso: string | undefined | null): string => {
     if (!iso) return '-';
-    const d = new Date(iso);
+    // Backend serialises Timestamps as bare ISO strings without a TZ marker;
+    // treat them as UTC and convert to the browser's local timezone.
+    const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(iso);
+    const normalized = hasTimezone ? iso : `${iso.replace(' ', 'T')}Z`;
+    const d = new Date(normalized);
     return Number.isNaN(d.getTime()) ? iso : format(d, 'MMM d, yyyy h:mm a');
 };
 
@@ -230,6 +238,7 @@ export const recentLeadToVM = (lead: RecentLeadDetail): LeadCardVM => {
         tatDueSoon: lead.tat_due_soon,
         followUpOverdue: lead.follow_up_overdue,
         tatDueAt: lead.tat_due_at,
+        firstResponseAt: lead.first_response_at,
         followUpDueAt: lead.follow_up_due_at,
         toStudent: () => mapRecentLeadToStudent(lead),
     };
@@ -263,6 +272,7 @@ export const campaignRowToVM = (row: CampaignUserTable): LeadCardVM => {
         tatDueSoon: row._tat_due_soon,
         followUpOverdue: row._follow_up_overdue,
         tatDueAt: row._tat_due_at,
+        firstResponseAt: row._first_response_at,
         followUpDueAt: row._follow_up_due_at,
         toStudent: () => mapCampaignRowToStudent(row),
     };

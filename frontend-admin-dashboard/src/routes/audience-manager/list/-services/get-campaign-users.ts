@@ -85,6 +85,13 @@ export interface CampaignLeadsRequest {
     //   'ONLY_CONVERTED'                → only show those leads
     //   'ALL'                           → show every lead regardless of state
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /** Filter by SLA stage (the badge shown in the table). 'ANY_OVERDUE' = TAT_OVERDUE OR FOLLOW_UP_OVERDUE. */
+    sla_filter?:
+        | 'TAT_BEFORE'
+        | 'TAT_OVERDUE'
+        | 'FOLLOW_UP_DUE'
+        | 'FOLLOW_UP_OVERDUE'
+        | 'ANY_OVERDUE';
     page: number;
     size: number;
     sort_by?: string;

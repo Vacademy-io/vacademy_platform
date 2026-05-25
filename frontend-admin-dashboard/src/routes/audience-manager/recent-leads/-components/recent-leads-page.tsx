@@ -38,6 +38,8 @@ import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
 import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
+import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
+import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
@@ -153,6 +155,16 @@ const RecentLeadsContent = () => {
     // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
     // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
     const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
+    // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
+    const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
+    const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
+    const counsellorOptionsQuery = useQuery({
+        queryKey: ['counsellor-options', instituteId],
+        queryFn: fetchCounselors,
+        enabled: !!instituteId,
+        staleTime: 5 * 60 * 1000,
+    });
+    const counsellorOptions = counsellorOptionsQuery.data ?? [];
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -233,6 +245,7 @@ const RecentLeadsContent = () => {
             leadStatusId,
             conversionFilter,
             slaFilter,
+            counsellorFilter,
             page,
             pageSize,
         ],
@@ -247,6 +260,8 @@ const RecentLeadsContent = () => {
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
                 sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                assigned_counselor_id:
+                    counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
                 page,
                 size: pageSize,
             }),
@@ -305,8 +320,13 @@ const RecentLeadsContent = () => {
         setTierFilter(ALL_TIERS_VALUE);
         setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setSlaFilter(ALL_SLA_VALUE);
+        setCounsellorFilter(ALL_COUNSELLORS_VALUE);
         setPage(0);
         setAppliedRange({ from: '', to: '' });
+    };
+    const setCounsellor = (value: string) => {
+        setPage(0);
+        setCounsellorFilter(value);
     };
     const setTier = (value: string) => {
         setPage(0);
@@ -336,7 +356,8 @@ const RecentLeadsContent = () => {
         !!appliedSearch ||
         tierFilter !== ALL_TIERS_VALUE ||
         leadStatusFilter !== ALL_ACTIVE_VALUE ||
-        slaFilter !== ALL_SLA_VALUE;
+        slaFilter !== ALL_SLA_VALUE ||
+        counsellorFilter !== ALL_COUNSELLORS_VALUE;
     const moreFiltersActive =
         audienceId !== ALL_AUDIENCES_VALUE || !!appliedRange.from || !!appliedRange.to;
 
@@ -445,6 +466,8 @@ const RecentLeadsContent = () => {
                     conversion_status_filter: conversionFilter,
                     sla_filter:
                         slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                    assigned_counselor_id:
+                        counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
                     page: pageNo,
                     size: 200,
                 });
@@ -481,6 +504,14 @@ const RecentLeadsContent = () => {
             label: `SLA: ${SLA_OPTIONS.find((o) => o.value === slaFilter)?.label ?? slaFilter}`,
             onRemove: () => setSla(ALL_SLA_VALUE),
         });
+    if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
+        const cName =
+            counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected';
+        chips.push({
+            label: `Counsellor: ${cName}`,
+            onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
+        });
+    }
     if (appliedRange.from || appliedRange.to)
         chips.push({
             label: `Date: ${appliedRange.from || '…'} → ${appliedRange.to || '…'}`,
@@ -544,6 +575,15 @@ const RecentLeadsContent = () => {
                                 ))}
                             </SelectContent>
                         </Select>
+                    )}
+                    {showOps && (
+                        <CounsellorFilter
+                            value={counsellorFilter}
+                            onChange={setCounsellor}
+                            allValue={ALL_COUNSELLORS_VALUE}
+                            options={counsellorOptions}
+                            isLoading={counsellorOptionsQuery.isLoading}
+                        />
                     )}
                     <Popover>
                         <PopoverTrigger asChild>

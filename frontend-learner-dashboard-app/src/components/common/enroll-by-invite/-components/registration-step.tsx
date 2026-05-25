@@ -1,13 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { GraduationCap, RotateCcw } from "lucide-react";
 import { FormProvider, UseFormReturn, useWatch } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import ComboboxField from "@/components/design-system/combobox-field";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { MyButton } from "@/components/design-system/button";
-import { Calendar, CreditCard, Globe } from "@phosphor-icons/react";
+import { Calendar, CreditCard, Globe, GraduationCap, ArrowCounterClockwise } from "@phosphor-icons/react";
 import { getDefaultPlanFromPaymentsData, PaymentPlan } from "../-utils/helper";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";
 import { OneTimePlanSection } from "./onetime-plan-section";
@@ -27,7 +26,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "../-utils/country-code-mapping";
-import { getCachedPreferredCountries } from "@/services/domain-routing";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { EMAIL_OTP_VERIFICATION_ENABLED } from "@/constants/feature-flags";
 // Replace heavy country-state-city with lightweight country-region-data
 // import { State, City } from "country-state-city";
@@ -181,16 +180,16 @@ const RegistrationStep = ({
   // Determine the phone country code based on country field value.
   // Falls back to the institute's first configured preferred country (from
   // domain routing) so the phone input defaults match the institute settings.
+  // Uses the same helper as PhoneInputField so both stay in sync.
   const getPhoneCountryCode = (): string => {
-    const preferred = getCachedPreferredCountries();
-    const fallback = preferred[0] ?? "in";
+    const { defaultCountry } = getPreferredPhoneCountries();
     if (countryFieldKey && formValues) {
       const countryField = formValues[countryFieldKey];
       if (countryField && typeof countryField.value === "string") {
-        return getCountryCode(countryField.value, fallback);
+        return getCountryCode(countryField.value, defaultCountry);
       }
     }
-    return fallback;
+    return defaultCountry;
   };
 
   // Memoize state and city options to prevent recalculation on every render
@@ -542,24 +541,15 @@ const RegistrationStep = ({
                   if (renderType === FieldRenderType.PHONE) {
                     const phoneCountryCode = getPhoneCountryCode();
                     return (
-                      <FormField
+                      <PhoneInputField
                         key={key}
-                        control={form.control}
+                        label={capitalise(value.name)}
+                        placeholder="123 456 7890"
                         name={`${key}.value`}
-                        render={() => (
-                          <FormItem>
-                            <FormControl>
-                              <PhoneInputField
-                                label={capitalise(value.name)}
-                                placeholder="123 456 7890"
-                                name={`${key}.value`}
-                                control={form.control}
-                                country={phoneCountryCode}
-                                required={value.is_mandatory}
-                              />
-                            </FormControl>
-                          </FormItem>
-                        )}
+                        control={form.control}
+                        country={phoneCountryCode}
+                        required={value.is_mandatory}
+                        labelClassName="text-subtitle font-normal"
                       />
                     );
                   }
@@ -644,7 +634,7 @@ const RegistrationStep = ({
                   className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
                   onClick={() => form.reset()}
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <ArrowCounterClockwise className="w-4 h-4" />
                   Reset
                 </button>
                 
@@ -655,7 +645,7 @@ const RegistrationStep = ({
                   layoutVariant="default"
                   onClick={handleNextClick}
                   disable={isLoadingOtp || form.formState.isSubmitting}
-                  className="min-w-[140px]"
+                  className="min-w-36"
                 >
                   {isLoadingOtp || form.formState.isSubmitting ? (
                     <>

@@ -59,17 +59,32 @@ export enum FieldRenderType {
  *
  * Prioritises the explicit `fieldType` coming from the API (settings) — if
  * the admin picked "date" in Settings we must render a date picker even if
- * the field name happens to contain "phone". Only when the field type is a
- * generic "text" do we fall back to keyword-based auto-detection (phone/
- * email) for backward compatibility with older fields.
+ * the field name happens to contain "phone". When the field type is generic
+ * ("text", "number", or empty) we fall back to keyword-based auto-detection
+ * so the system phone_number field (saved with fieldType "number") still
+ * renders as an international phone input.
  */
 export const getFieldRenderType = (
   fieldKey: string,
   fieldType: string
 ): FieldRenderType => {
   const normalized = (fieldType || "").toLowerCase().trim();
+  const lowerKey = (fieldKey || "").toLowerCase();
+  const phoneKeywords = ["phone", "mobile", "contact", "telephone", "cell"];
+  const emailKeywords = ["email", "e-mail", "mail"];
+  const isGenericType = normalized === "" || normalized === "text" || normalized === "number";
 
-  // Direct mapping from API field type to render type (takes priority)
+  // Phone/email keyword in fieldKey wins over ambiguous generic types. The admin
+  // UI sometimes saves the system phone field as fieldType "number", but we
+  // always want the international phone input there.
+  if (isGenericType && phoneKeywords.some((k) => lowerKey.includes(k))) {
+    return FieldRenderType.PHONE;
+  }
+  if (isGenericType && emailKeywords.some((k) => lowerKey.includes(k))) {
+    return FieldRenderType.EMAIL;
+  }
+
+  // Direct mapping from API field type to render type
   switch (normalized) {
     case "dropdown":
     case "select":
@@ -95,17 +110,6 @@ export const getFieldRenderType = (
       return FieldRenderType.FILE;
     case "multi_select":
       return FieldRenderType.MULTI_SELECT;
-  }
-
-  // Fallback: auto-detect phone/email from field key for legacy generic-text fields
-  const lowerKey = (fieldKey || "").toLowerCase();
-  const phoneKeywords = ["phone", "mobile", "contact", "telephone", "cell"];
-  if (phoneKeywords.some((keyword) => lowerKey.includes(keyword))) {
-    return FieldRenderType.PHONE;
-  }
-  const emailKeywords = ["email", "e-mail", "mail"];
-  if (emailKeywords.some((keyword) => lowerKey.includes(keyword))) {
-    return FieldRenderType.EMAIL;
   }
 
   return FieldRenderType.TEXT;

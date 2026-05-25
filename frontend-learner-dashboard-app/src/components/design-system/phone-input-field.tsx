@@ -1,7 +1,6 @@
 "use client";
 
 import type React from "react";
-import { useMemo } from "react";
 
 import {
   FormControl,
@@ -26,6 +25,7 @@ interface PhoneInputFieldProps {
   required?: boolean;
   value?: string;
   onChange?: (value: string) => void;
+  labelClassName?: string;
 }
 
 const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
@@ -38,18 +38,14 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
   required = false,
   value,
   onChange,
+  labelClassName,
 }) => {
-  // Read institute-configured preferred countries from domain routing cache.
-  // First entry becomes the default selected country; the full list is used
-  // to order options in the country picker dropdown. An explicit `country`
+  // Read institute-configured preferred countries from domain routing cache on
+  // every render — the cache populates async on app boot, so memoising would
+  // pin the dropdown to whatever was cached at mount. An explicit `country`
   // prop still wins for intentional callers.
-  const { effectiveCountry, preferredCountries } = useMemo(() => {
-    const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
-    return {
-      effectiveCountry: country ?? defaultCountry,
-      preferredCountries,
-    };
-  }, [country]);
+  const { defaultCountry, preferredCountries } = getPreferredPhoneCountries();
+  const effectiveCountry = country ?? defaultCountry;
 
   return (
     <FormField
@@ -57,18 +53,21 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
       name={name}
       render={({ field }) => (
         <FormItem className="!w-full">
-          <FormLabel>
+          <FormLabel className={labelClassName}>
             {label}
             {required && <span className="text-danger-600">*</span>}
           </FormLabel>
           <FormControl>
+            {/* `key` forces a remount when the institute's preferred country
+                becomes available after async domain-routing resolution —
+                react-phone-input-2 reads `country` only on mount. */}
             <PhoneInput
+              key={effectiveCountry}
               {...field}
               country={effectiveCountry}
               enableSearch={true}
               placeholder={placeholder}
               onChange={(val) => {
-                // Ensure the value includes the country code with + prefix
                 const formattedValue = val.startsWith("+") ? val : `+${val}`;
                 field.onChange(formattedValue);
                 if (onChange) onChange(formattedValue);

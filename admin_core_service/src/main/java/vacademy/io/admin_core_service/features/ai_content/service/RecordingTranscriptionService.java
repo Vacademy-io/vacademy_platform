@@ -456,6 +456,15 @@ public class RecordingTranscriptionService {
             AiContentSource s = existing.get();
             s.setSourceUrl(sourceUrl);
             s.setMetadataJson(buildSourceMetadataJson(schedule, recording));
+            // Backfill createdBy when the legacy row was inserted without one
+            // (predates user tracking, or first transcription was triggered by
+            // an automated path). Without this, dispatchTerminalAlert silently
+            // bails because it has no user to notify — see the silent-skip
+            // guard in that method.
+            if ((s.getCreatedBy() == null || s.getCreatedBy().isBlank())
+                    && userId != null && !userId.isBlank()) {
+                s.setCreatedBy(userId);
+            }
             return sourceRepo.save(s);
         }
         AiContentSource fresh = AiContentSource.builder()

@@ -27,12 +27,20 @@ export interface ProductPageInviteMappingResponse {
 
 export interface ProductPageAggregatedField {
     field: {
+        /** InstituteCustomField PK */
         id: string;
-        field_key: string;
-        field_name: string;
-        field_type: string;
-        is_mandatory: boolean;
-        form_order: number;
+        /** CustomFields PK — used as the customFieldId for add/remove API calls */
+        field_id: string;
+        /** CustomFieldDTO serializes camelCase (no @JsonNaming on that class) */
+        custom_field: {
+            id: string;
+            fieldKey: string;
+            fieldName: string;
+            fieldType: string;
+            isMandatory: boolean | null;
+            formOrder: number | null;
+        } | null;
+        is_mandatory: boolean | null;
     };
     enroll_invite_ids: string[];
 }

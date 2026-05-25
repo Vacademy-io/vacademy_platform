@@ -7,6 +7,9 @@ import {
     DELETE_PRODUCT_PAGE,
     CREATE_PRODUCT_PAGE_COUPON,
     DELETE_PRODUCT_PAGE_COUPON,
+    ADD_PRODUCT_PAGE_CUSTOM_FIELD,
+    REMOVE_PRODUCT_PAGE_CUSTOM_FIELD,
+    CREATE_PRODUCT_PAGE_CUSTOM_FIELD,
 } from '@/constants/urls';
 import type {
     ProductPageResponse,
@@ -73,6 +76,44 @@ export const createProductPageCoupon = async (
 export const deleteProductPageCoupon = async (couponCodeId: string): Promise<string> => {
     const response = await authenticatedAxiosInstance.delete<string>(
         DELETE_PRODUCT_PAGE_COUPON(couponCodeId)
+    );
+    return response.data;
+};
+
+export const addCustomFieldToProductPage = async (
+    productPageId: string,
+    customFieldId: string,
+    instituteId: string
+): Promise<ProductPageResponse> => {
+    const response = await authenticatedAxiosInstance.post<ProductPageResponse>(
+        ADD_PRODUCT_PAGE_CUSTOM_FIELD(productPageId),
+        null,
+        { params: { customFieldId, instituteId } }
+    );
+    return response.data;
+};
+
+export const removeCustomFieldFromProductPage = async (
+    productPageId: string,
+    customFieldId: string,
+    instituteId: string
+): Promise<ProductPageResponse> => {
+    const response = await authenticatedAxiosInstance.delete<ProductPageResponse>(
+        REMOVE_PRODUCT_PAGE_CUSTOM_FIELD(productPageId, customFieldId),
+        { params: { instituteId } }
+    );
+    return response.data;
+};
+
+export const createAndLinkCustomField = async (
+    productPageId: string,
+    instituteId: string,
+    data: { field_name: string; field_type: string; is_mandatory: boolean; config?: string }
+): Promise<ProductPageResponse> => {
+    const response = await authenticatedAxiosInstance.post<ProductPageResponse>(
+        CREATE_PRODUCT_PAGE_CUSTOM_FIELD(productPageId),
+        data,
+        { params: { instituteId } }
     );
     return response.data;
 };

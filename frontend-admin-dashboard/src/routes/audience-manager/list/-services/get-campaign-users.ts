@@ -92,6 +92,10 @@ export interface CampaignLeadsRequest {
         | 'FOLLOW_UP_DUE'
         | 'FOLLOW_UP_OVERDUE'
         | 'ANY_OVERDUE';
+    /** Filter leads by the assigned counsellor's userId. Matches against
+     *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
+     *  Omitted = all counsellors (and unassigned leads). */
+    assigned_counselor_id?: string;
     page: number;
     size: number;
     sort_by?: string;
@@ -120,6 +124,8 @@ export const fetchCampaignLeads = async (
                 lead_status_id: payload.lead_status_id,
                 custom_field_filters: payload.custom_field_filters,
                 conversion_status_filter: payload.conversion_status_filter,
+                sla_filter: payload.sla_filter,
+                assigned_counselor_id: payload.assigned_counselor_id,
                 sort_by: payload.sort_by,
                 sort_direction: payload.sort_direction,
                 page: payload.page,
@@ -154,6 +160,8 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             payload.search_query,
             payload.lead_tier,
             payload.conversion_status_filter ?? 'EXCLUDE_CONVERTED',
+            payload.sla_filter ?? '',
+            payload.assigned_counselor_id ?? '',
             // Stable cache key for an order-independent set of dropdown filters.
             payload.custom_field_filters
                 ? payload.custom_field_filters

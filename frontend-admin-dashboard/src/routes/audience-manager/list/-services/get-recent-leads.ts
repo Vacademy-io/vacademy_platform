@@ -79,6 +79,10 @@ export interface RecentLeadsRequest {
         | 'FOLLOW_UP_DUE'
         | 'FOLLOW_UP_OVERDUE'
         | 'ANY_OVERDUE';
+    /** Filter leads by the assigned counsellor's userId. Matches against
+     *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
+     *  Omitted = all counsellors (and unassigned leads). */
+    assigned_counselor_id?: string;
     page: number;
     size: number;
 }

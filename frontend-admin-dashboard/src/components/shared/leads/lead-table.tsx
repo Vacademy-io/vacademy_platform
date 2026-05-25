@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import {
     Envelope,
     Phone,
@@ -79,8 +79,11 @@ const relativeTime = (iso?: string | null) => {
     const normalized = hasTimezone ? iso : `${iso.replace(' ', 'T')}Z`;
     const d = new Date(normalized);
     if (Number.isNaN(d.getTime())) return '';
-    if (d.toDateString() === new Date().toDateString()) return `Today at ${format(d, 'h:mm a')}`;
-    return formatDistanceToNow(d, { addSuffix: true });
+    // Always show an absolute date + clock — never "X hours ago" or "Today at …" —
+    // so the lead-name subtitle / activity timestamp are unambiguous at a glance.
+    // Year suffix only when it differs from today (e.g. "12 Aug 2025, 4:30 PM").
+    const isCurrentYear = d.getFullYear() === new Date().getFullYear();
+    return format(d, isCurrentYear ? 'd MMM, h:mm a' : 'd MMM yyyy, h:mm a');
 };
 
 /** Compact, premium one-line activity cell (latest note + add affordance). */

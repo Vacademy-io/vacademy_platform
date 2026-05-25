@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchCounselors } from '@/routes/settings/leads/pools/-components/schedule/shared';
+import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { toast } from 'sonner';
 import {
     MagnifyingGlass,
@@ -130,6 +132,15 @@ const CampaignUsersContent = ({
     // SLA-state filter — maps to `audience_response.tat_reminder_stage` (and live-derived
     // `submitted_at + tatHours` for TAT buckets). ALL_SLA_VALUE = no filter.
     const [slaFilter, setSlaFilter] = useState<string>(ALL_SLA_VALUE);
+    // Counsellor filter — userId of the assigned counsellor. Empty = all counsellors.
+    const ALL_COUNSELLORS_VALUE = '__ALL_COUNSELLORS__';
+    const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
+    const counsellorOptionsQuery = useQuery({
+        queryKey: ['counsellor-options', 'campaign-users'],
+        queryFn: fetchCounselors,
+        staleTime: 5 * 60 * 1000,
+    });
+    const counsellorOptions = counsellorOptionsQuery.data ?? [];
     const [fromDate, setFromDate] = useState('');
     const [toDate, setToDate] = useState('');
     const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
@@ -259,8 +270,19 @@ const CampaignUsersContent = ({
                 ? 'EXCLUDE_CONVERTED'
                 : 'ALL') as 'EXCLUDE_CONVERTED' | 'ALL',
             sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+            assigned_counselor_id:
+                counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
         };
-    }, [campaignId, page, appliedRange, appliedSearch, tierFilter, leadStatusFilter, slaFilter]);
+    }, [
+        campaignId,
+        page,
+        appliedRange,
+        appliedSearch,
+        tierFilter,
+        leadStatusFilter,
+        slaFilter,
+        counsellorFilter,
+    ]);
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
 
@@ -382,6 +404,10 @@ const CampaignUsersContent = ({
         setPage(0);
         setLeadStatusFilter(value);
     };
+    const setCounsellor = (value: string) => {
+        setPage(0);
+        setCounsellorFilter(value);
+    };
     const setSla = (value: string) => {
         setPage(0);
         setSlaFilter(value);
@@ -397,6 +423,7 @@ const CampaignUsersContent = ({
         setTierFilter(ALL_VALUE);
         setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setSlaFilter(ALL_SLA_VALUE);
+        setCounsellorFilter(ALL_COUNSELLORS_VALUE);
         setFromDate('');
         setToDate('');
         setAppliedRange({ from: '', to: '' });
@@ -408,7 +435,8 @@ const CampaignUsersContent = ({
         !!appliedSearch ||
         tierFilter !== ALL_VALUE ||
         leadStatusFilter !== ALL_ACTIVE_VALUE ||
-        slaFilter !== ALL_SLA_VALUE;
+        slaFilter !== ALL_SLA_VALUE ||
+        counsellorFilter !== ALL_COUNSELLORS_VALUE;
 
     // Active filter chips
     const chips: { label: string; onRemove: () => void }[] = [];
@@ -434,6 +462,14 @@ const CampaignUsersContent = ({
             label: `SLA: ${SLA_OPTIONS.find((o) => o.value === slaFilter)?.label ?? slaFilter}`,
             onRemove: () => setSla(ALL_SLA_VALUE),
         });
+    if (counsellorFilter !== ALL_COUNSELLORS_VALUE) {
+        const cName =
+            counsellorOptions.find((c) => c.id === counsellorFilter)?.full_name ?? 'Selected';
+        chips.push({
+            label: `Counsellor: ${cName}`,
+            onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
+        });
+    }
 
     // ── CSV export ───────────────────────────────────────────
     const handleExport = async () => {
@@ -668,6 +704,15 @@ const CampaignUsersContent = ({
                                 ))}
                             </SelectContent>
                         </Select>
+                    )}
+                    {showOps && (
+                        <CounsellorFilter
+                            value={counsellorFilter}
+                            onChange={setCounsellor}
+                            allValue={ALL_COUNSELLORS_VALUE}
+                            options={counsellorOptions}
+                            isLoading={counsellorOptionsQuery.isLoading}
+                        />
                     )}
                     <Popover>
                         <PopoverTrigger asChild>

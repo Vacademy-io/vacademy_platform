@@ -7,9 +7,10 @@ import { getApproveEnrollmentRequestsData } from '../../../-services/get-enroll-
 
 // Interface to match the actual data structure from bulkActionInfo.selectedStudents
 interface EnrollRequestItem {
-    packageSessionIds: string[]; // or number[] if IDs are numeric
-    userId: string; // or number
-    enrollInviteId: string; // or number
+    packageSessionIds: string[];
+    userId: string;
+    // null for learners added directly (no enroll invite). Backend tolerates null.
+    enrollInviteId: string | null;
 }
 
 export interface EnrollRequestAcceptData {

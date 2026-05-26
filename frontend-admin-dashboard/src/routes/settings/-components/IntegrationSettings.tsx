@@ -236,11 +236,12 @@ function ConnectorEditDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>Edit center details</DialogTitle>
+                    <DialogTitle>Edit default values</DialogTitle>
                     <DialogDescription>
-                        These key/value pairs are merged into every form submission this connector
-                        receives. Use them for per-center constants like center name, schedule
-                        link, or contact phone. Form values always take precedence over defaults.
+                        Key/value pairs stamped onto every lead from this connector. Each key
+                        should match an audience custom field name (otherwise the value is just
+                        carried through as raw form data). Form payload values always take
+                        precedence over defaults.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -258,12 +259,12 @@ function ConnectorEditDialog({
                             <Input
                                 value={row.key}
                                 onChange={(e) => updateRow(idx, { key: e.target.value })}
-                                placeholder="e.g. center name"
+                                placeholder="Audience field name"
                             />
                             <Input
                                 value={row.value}
                                 onChange={(e) => updateRow(idx, { value: e.target.value })}
-                                placeholder="e.g. Baner"
+                                placeholder="Value to stamp"
                             />
                             <button
                                 type="button"
@@ -312,14 +313,17 @@ const VENDOR_LABELS: Record<string, { label: string; color: string; bg: string }
 
 function ConnectorTable({
     connectors,
+    audiences,
     onDelete,
     onEdit,
 }: {
     connectors: ConnectorListItem[];
+    audiences: AudienceOption[];
     onDelete: (id: string) => void;
     onEdit: (connector: ConnectorListItem) => void;
 }) {
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const audienceNameById = new Map(audiences.map((a) => [a.id, a.name]));
 
     if (connectors.length === 0) {
         return (
@@ -346,8 +350,8 @@ function ConnectorTable({
                 <thead className="border-b bg-neutral-50 text-caption text-neutral-500">
                     <tr>
                         <th className="px-4 py-2">Platform</th>
-                        <th className="px-4 py-2">Form / Campaign ID</th>
-                        <th className="px-4 py-2">Audience ID</th>
+                        <th className="px-4 py-2">Form / Campaign</th>
+                        <th className="px-4 py-2">Audience</th>
                         <th className="px-4 py-2">Source</th>
                         <th className="px-4 py-2">Status</th>
                         <th className="px-4 py-2">Webhook</th>
@@ -370,11 +374,52 @@ function ConnectorTable({
                                         {v.label}
                                     </span>
                                 </td>
-                                <td className="max-w-40 truncate px-4 py-2.5 font-mono text-caption">
-                                    {c.platformFormId ?? '-'}
+                                <td className="max-w-xs px-4 py-2.5 text-sm">
+                                    {c.platformFormName ? (
+                                        <>
+                                            <div
+                                                className="truncate font-medium"
+                                                title={c.platformFormName}
+                                            >
+                                                {c.platformFormName}
+                                            </div>
+                                            <div
+                                                className="whitespace-nowrap font-mono text-caption text-neutral-400"
+                                                title={c.platformFormId ?? undefined}
+                                            >
+                                                {c.platformFormId ?? '-'}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <span
+                                            className="whitespace-nowrap font-mono text-caption text-neutral-600"
+                                            title={c.platformFormId ?? undefined}
+                                        >
+                                            {c.platformFormId ?? '-'}
+                                        </span>
+                                    )}
                                 </td>
-                                <td className="max-w-40 truncate px-4 py-2.5 font-mono text-caption">
-                                    {c.audienceId}
+                                <td className="max-w-sm px-4 py-2.5 text-sm">
+                                    {audienceNameById.get(c.audienceId) ? (
+                                        <>
+                                            <div className="truncate font-medium">
+                                                {audienceNameById.get(c.audienceId)}
+                                            </div>
+                                            <div
+                                                className="whitespace-nowrap font-mono text-caption text-neutral-400"
+                                                title={c.audienceId}
+                                            >
+                                                {c.audienceId}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <span
+                                            className="whitespace-nowrap font-mono text-caption text-neutral-500"
+                                            title={c.audienceId}
+                                        >
+                                            {c.audienceId}
+                                        </span>
+                                    )}
                                 </td>
                                 <td className="px-4 py-2.5 text-xs text-neutral-500">
                                     {c.producesSourceType ?? '-'}
@@ -412,7 +457,7 @@ function ConnectorTable({
                                     <button
                                         onClick={() => onEdit(c)}
                                         className="text-neutral-400 hover:text-primary-600"
-                                        title="Edit center details"
+                                        title="Edit default values"
                                     >
                                         <PencilSimple className="size-4" />
                                     </button>
@@ -609,6 +654,7 @@ function AddMetaForm({
             const trimmedField = stampFieldName.trim();
             const trimmedValue = stampValue.trim();
             const hasStamp = !!trimmedField && !!trimmedValue;
+            const selectedForm = forms.find((f) => f.id === formId);
             return saveMetaConnector({
                 vendor: 'META_LEAD_ADS',
                 instituteId,
@@ -616,6 +662,7 @@ function AddMetaForm({
                 sessionKey,
                 selectedPageId,
                 platformFormId: formId,
+                platformFormName: selectedForm?.name,
                 producesSourceType: sourceType,
                 platformPageId: selectedPageId,
                 fieldMappingJson:
@@ -785,7 +832,7 @@ function AddMetaForm({
                             <div className="space-y-1">
                                 <Label className="text-caption">Value</Label>
                                 <Input
-                                    placeholder="e.g. Wakad"
+                                    placeholder="Value to stamp"
                                     value={stampValue}
                                     onChange={(e) => {
                                         setStampValue(e.target.value);
@@ -793,8 +840,9 @@ function AddMetaForm({
                                     }}
                                 />
                                 <p className="text-caption text-muted-foreground">
-                                    Auto-filled from the form name. Stamped onto every lead from
-                                    this connector if a field above is selected.
+                                    Pre-filled with the first token of the form name. Stamped
+                                    onto every lead from this connector if a field is selected
+                                    above.
                                 </p>
                             </div>
                         </div>
@@ -840,6 +888,9 @@ export default function IntegrationSettings() {
 
     const [showAddGoogle, setShowAddGoogle] = useState(false);
     const [showAddMeta, setShowAddMeta] = useState(!!sessionKeyFromUrl);
+
+    // Loaded once for both the connector list (id → name lookup) and AddMetaForm.
+    const { data: audiences = [] } = useAudienceList(instituteId);
 
     useEffect(() => {
         if (oauthError) toast.error(`Meta OAuth failed: ${oauthError}`);
@@ -929,6 +980,7 @@ export default function IntegrationSettings() {
                     ) : (
                         <ConnectorTable
                             connectors={Array.isArray(connectors) ? connectors : []}
+                            audiences={audiences}
                             onDelete={(id) => deleteConnector(id)}
                             onEdit={(c) => setEditingConnector(c)}
                         />

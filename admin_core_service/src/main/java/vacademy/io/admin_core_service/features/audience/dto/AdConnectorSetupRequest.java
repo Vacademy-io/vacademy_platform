@@ -24,6 +24,11 @@ public class AdConnectorSetupRequest {
     /** Platform form ID (Meta: Lead Gen Form ID) */
     private String platformFormId;
 
+    /** Human-readable form name shown in the connector list (e.g.
+     *  "Wakad_leadform_2026"). Captured from the form-selection dropdown so
+     *  the backend can persist it without re-querying Meta. */
+    private String platformFormName;
+
     /** Platform page name for display */
     private String platformPageName;
 

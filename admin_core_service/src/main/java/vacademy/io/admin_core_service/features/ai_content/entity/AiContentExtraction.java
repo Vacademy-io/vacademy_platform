@@ -95,6 +95,22 @@ public class AiContentExtraction {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
+    /**
+     * Cached LLM-generated study notes (Markdown). Populated by
+     * RecordingTranscriptionService.saveStudyNotes() the first time a user
+     * clicks "Generate Lecture Notes" on the recording, then served back on
+     * subsequent dialog opens so we don't pay the LLM cost every time.
+     * Null until the first generation.
+     */
+    @Column(name = "study_notes_markdown", columnDefinition = "TEXT")
+    private String studyNotesMarkdown;
+
+    /** Wall-clock time the cached notes above were produced. Drives the
+     * "Generated 2 days ago" hint in the UI so users can decide whether to
+     * regenerate after the transcript itself was updated. */
+    @Column(name = "study_notes_generated_at")
+    private Date studyNotesGeneratedAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

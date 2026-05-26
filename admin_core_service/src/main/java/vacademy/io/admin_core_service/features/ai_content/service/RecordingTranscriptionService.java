@@ -202,6 +202,53 @@ public class RecordingTranscriptionService {
     // Status (UI polling)
     // ---------------------------------------------------------------------
 
+    /**
+     * Persist LLM-generated study notes for a recording. Called by the
+     * frontend after a successful ai-service `/transcript/generate-notes`
+     * roundtrip — the markdown is cached so the next dialog open can show
+     * the notes immediately without re-paying the LLM cost.
+     *
+     * <p>Idempotent on jobId — re-saving overwrites the previous notes and
+     * advances the generated-at timestamp. (Regeneration is the intended
+     * way to refresh; we don't keep history because the transcript itself
+     * is the source of truth and a regen will re-derive everything.)
+     *
+     * <p>Throws 404 if there's no transcription row yet — the UI shouldn't
+     * be able to reach this state, but defensive.
+     */
+    public TranscriptionStatusDto saveStudyNotes(
+            String scheduleId, String recordingId, String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Markdown is empty — nothing to save");
+        }
+
+        SessionSchedule schedule = scheduleRepo.findById(scheduleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
+        if (findRecording(schedule, recordingId) == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Recording " + recordingId + " not found on schedule " + scheduleId);
+        }
+
+        Optional<AiContentSource> source = sourceRepo
+                .findBySourceTypeAndSourceId(SOURCE_TYPE_BBB_RECORDING, recordingId);
+        if (source.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "No content source for recording — generate the transcript first");
+        }
+        AiContentExtraction row = extractionRepo
+                .findBySourceIdAndExtractionType(source.get().getId(), EXTRACTION_WHISPER_TRANSCRIBE_TRANSLATE)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No transcription extraction row — generate the transcript first"));
+
+        row.setStudyNotesMarkdown(markdown);
+        row.setStudyNotesGeneratedAt(new java.util.Date());
+        row = extractionRepo.save(row);
+        log.info("[study-notes] Saved notes for recording={} ({} chars)",
+                recordingId, markdown.length());
+        return toDto(recordingId, row);
+    }
+
     public TranscriptionStatusDto getStatus(String scheduleId, String recordingId) {
         SessionSchedule schedule = scheduleRepo.findById(scheduleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
@@ -597,6 +644,8 @@ public class RecordingTranscriptionService {
                 .errorMessage(row.getErrorMessage())
                 .createdAt(row.getCreatedAt())
                 .updatedAt(row.getUpdatedAt())
+                .savedNotesMarkdown(row.getStudyNotesMarkdown())
+                .savedNotesGeneratedAt(row.getStudyNotesGeneratedAt())
                 .build();
     }
 }

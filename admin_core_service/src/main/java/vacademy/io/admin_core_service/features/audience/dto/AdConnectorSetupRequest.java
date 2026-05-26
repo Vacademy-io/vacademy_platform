@@ -50,4 +50,10 @@ public class AdConnectorSetupRequest {
 
     /** Google-specific: the static key that will be embedded in the webhook URL */
     private String googleKey;
+
+    /**
+     * Optional JSON object of per-connector default values stamped onto every
+     * lead (e.g. {"Center Name":"Wakad"}). Form values always take precedence.
+     */
+    private String defaultValuesJson;
 }

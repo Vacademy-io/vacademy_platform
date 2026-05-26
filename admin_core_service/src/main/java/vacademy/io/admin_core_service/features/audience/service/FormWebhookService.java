@@ -59,7 +59,10 @@ public class FormWebhookService {
 
     @Autowired
     private AudienceRepository audienceRepository;
-    
+
+    @Autowired
+    private LeadEnricher leadEnricher;
+
     private final Map<String, FormWebhookStrategy> strategyMap = new HashMap<>();
     
     /**
@@ -289,35 +292,8 @@ public class FormWebhookService {
             throw new VacademyException("Webhook payload is empty");
         }
     }
-    /**
-     * Merge default/static values from the connector into the processed form data.
-     * Form data takes precedence — defaults are only added for fields not already present.
-     */
     private void mergeDefaultValues(ProcessedFormDataDTO processedData, String defaultValuesJson) {
-        if (!StringUtils.hasText(defaultValuesJson)) {
-            return;
-        }
-
-        try {
-            Map<String, String> defaults = objectMapper.readValue(
-                    defaultValuesJson,
-                    new TypeReference<Map<String, String>>() {}
-            );
-
-            int mergedCount = 0;
-            for (Map.Entry<String, String> entry : defaults.entrySet()) {
-                if (!processedData.getFormFields().containsKey(entry.getKey())) {
-                    processedData.getFormFields().put(entry.getKey(), entry.getValue());
-                    mergedCount++;
-                }
-            }
-
-            if (mergedCount > 0) {
-                logger.info("Merged {} default values into form data", mergedCount);
-            }
-        } catch (Exception e) {
-            logger.error("Failed to parse default_values_json: {}", defaultValuesJson, e);
-        }
+        leadEnricher.mergeDefaults(processedData.getFormFields(), defaultValuesJson);
     }
 
     private void addAudienceRelatedData(String audienceId, ProcessedFormDataDTO processData){
@@ -327,22 +303,8 @@ public class FormWebhookService {
             return;
         }
         Audience audience=audienceOptional.get();
-        // Only set center name if not already present (e.g., from default_values_json or form payload)
         processData.getFormFields().putIfAbsent("center name",audience.getCampaignName());
-        
-        // Construct full name from first name and last name if they exist
-        String firstName = processData.getFormFields().get("first name");
-        String lastName = processData.getFormFields().get("last name");
-        
-        if (StringUtils.hasText(firstName) && StringUtils.hasText(lastName)) {
-            processData.getFormFields().put("parent name", firstName + " " + lastName);
-            logger.debug("Constructed full name from first and last name: {}", firstName + " " + lastName);
-        } else if (StringUtils.hasText(firstName)) {
-            processData.getFormFields().put("parent name", firstName);
-            logger.debug("Using first name as full name: {}", firstName);
-        } else if (StringUtils.hasText(lastName)) {
-            processData.getFormFields().put("parent name", lastName);
-            logger.debug("Using last name as full name: {}", lastName);
-        }
+
+        leadEnricher.composeFullName(processData.getFormFields());
     }
 }

@@ -325,6 +325,9 @@ public class MetaOAuthController {
         connector.setAudienceId(audienceId);
         connector.setPlatformPageId(request.getSelectedPageId());
         connector.setPlatformFormId(request.getPlatformFormId());
+        if (request.getPlatformFormName() != null) {
+            connector.setPlatformFormName(request.getPlatformFormName());
+        }
         connector.setRoutingRulesJson(request.getRoutingRulesJson());
         connector.setFieldMappingJson(request.getFieldMappingJson());
         if (request.getDefaultValuesJson() != null) {
@@ -491,6 +494,65 @@ public class MetaOAuthController {
         FormWebhookConnector saved = connectorRepository.save(connector);
         log.info("Updated connector id={} vendor={}", saved.getId(), saved.getVendor());
         return ResponseEntity.ok(ConnectorListItemDTO.from(saved));
+    }
+
+    // ── One-time backfill: platform_form_name on legacy connectors ───────────
+
+    /**
+     * Calls Meta Graph API for every active Meta connector whose
+     * {@code platform_form_name} is null/blank and persists the returned name.
+     * Idempotent — running it again only touches rows that are still missing.
+     * Token decryption + Graph API calls happen synchronously; admins
+     * typically have a handful of connectors so this is fine.
+     *
+     * Returns a summary so the admin sees what changed without tailing logs.
+     */
+    @PostMapping("/connectors/backfill-form-names")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> backfillFormNames() {
+        List<FormWebhookConnector> connectors = connectorRepository
+                .findMissingPlatformFormName("META_LEAD_ADS");
+
+        int updated = 0;
+        int skipped = 0;
+        List<String> skippedReasons = new ArrayList<>();
+
+        for (FormWebhookConnector c : connectors) {
+            String formId = c.getPlatformFormId();
+            String tokenEnc = c.getOauthAccessTokenEnc();
+            if (formId == null || tokenEnc == null) {
+                skipped++;
+                skippedReasons.add(c.getId() + " (missing form_id or token)");
+                continue;
+            }
+            String pageToken;
+            try {
+                pageToken = tokenEncryptionService.decrypt(tokenEnc);
+            } catch (Exception e) {
+                skipped++;
+                skippedReasons.add(c.getId() + " (decrypt failed: " + e.getMessage() + ")");
+                continue;
+            }
+            String name = metaStrategy.fetchFormName(formId, pageToken);
+            if (name == null) {
+                skipped++;
+                skippedReasons.add(c.getId() + " (Meta API returned no name)");
+                continue;
+            }
+            c.setPlatformFormName(name);
+            connectorRepository.save(c);
+            updated++;
+            log.info("Backfilled platform_form_name for connector {} → {}", c.getId(), name);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("scanned", connectors.size());
+        result.put("updated", updated);
+        result.put("skipped", skipped);
+        result.put("skipped_reasons", skippedReasons);
+        log.info("Form-name backfill complete: scanned={}, updated={}, skipped={}",
+                connectors.size(), updated, skipped);
+        return ResponseEntity.ok(result);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

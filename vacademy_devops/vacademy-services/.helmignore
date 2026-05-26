@@ -21,3 +21,6 @@
 .idea/
 *.tmproj
 .vscode/
+
+# Never package generated secrets into the chart
+values.secret.yaml

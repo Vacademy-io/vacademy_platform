@@ -1,0 +1,81 @@
+name: Publish Frontend Images (admin + learner) to ECR
+
+# Builds the two frontend container images and pushes them to public ECR for use
+# by the standalone Helm chart (vacademy_devops/vacademy-services). Images are
+# GENERIC — the backend URL is injected at container runtime via BACKEND_BASE_URL
+# (see each app's docker-entrypoint.sh + src/config/baseUrl.ts), so one image
+# serves any client domain. Cloud prod frontends still deploy via Cloudflare.
+#
+# Trigger:
+#   - push a tag like v1.18.0  -> images tagged :v1.18.0 and :latest
+#   - manual run (workflow_dispatch) with an explicit tag input
+#
+# Use the release tag (never :latest) when deploying clients, for determinism:
+#   sudo ./update.sh v1.18.0
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g. v1.18.0)"
+        required: true
+
+env:
+  ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: admin
+            context: frontend-admin-dashboard
+            repository: frontend-admin-dashboard/frontend-admin-dashboard-repo
+          - name: learner
+            context: frontend-learner-dashboard-app
+            repository: frontend-learner-dashboard-app/frontend-learner-dashboard-repo
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Ensure ECR Public repository exists
+        run: |
+          aws ecr-public create-repository --region us-east-1 \
+            --repository-name "${{ matrix.repository }}" >/dev/null 2>&1 || true
+
+      - name: Build, tag, and push ${{ matrix.name }} image
+        working-directory: ./${{ matrix.context }}
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+          IMAGE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          docker build -t "$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" -t "$ECR_REGISTRY/$REPOSITORY:latest" .
+          docker push "$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$REPOSITORY:latest"
+          echo "Pushed $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"

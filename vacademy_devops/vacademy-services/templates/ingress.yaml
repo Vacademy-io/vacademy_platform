@@ -1,3 +1,95 @@
+{{- if .Values.standalone.enabled }}
+{{- if not .Values.standalone.domain }}
+  {{- fail "standalone.domain is required when standalone.enabled=true (used for admin.<domain> / app.<domain>). Set it in values.secret.yaml or via the installer." -}}
+{{- end }}
+{{- /* Standalone: two subdomains (admin.<domain> + app.<domain>), each serving
+       its SPA at root with the API path-prefixes routed on the same host so the
+       frontend is same-origin with the backend. Only enabled services get a path. */ -}}
+{{- $d := .Values.standalone.domain }}
+{{- $svcPaths := list
+  (dict "path" "/auth-service" "svc" "auth-service" "key" "auth_service")
+  (dict "path" "/admin-core-service" "svc" "admin-core-service" "key" "admin_core_service")
+  (dict "path" "/assessment-service" "svc" "assessment-service" "key" "assessment_service")
+  (dict "path" "/community-service" "svc" "community-service" "key" "community_service")
+  (dict "path" "/media-service" "svc" "media-service" "key" "media_service")
+  (dict "path" "/notification-service" "svc" "notification-service" "key" "notification_service")
+  (dict "path" "/ai-service" "svc" "ai-service" "key" "ai_service") }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vacademy-standalone-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    {{- if .Values.certManager.enabled }}
+    cert-manager.io/cluster-issuer: vacademy-letsencrypt
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - admin.{{ $d }}
+        - app.{{ $d }}
+      secretName: vacademy-standalone-tls
+  rules:
+    - host: admin.{{ $d }}
+      http:
+        paths:
+{{- range $p := $svcPaths }}
+{{- if (index $.Values.services $p.key).enabled }}
+          - path: {{ $p.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $p.svc }}
+                port:
+                  number: {{ (index $.Values.services $p.key).port }}
+{{- end }}
+{{- end }}
+{{- if .Values.services.auth_service.enabled }}
+          - path: /login/oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: {{ .Values.services.auth_service.port }}
+{{- end }}
+{{- if .Values.frontends.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-frontend
+                port:
+                  number: 80
+{{- end }}
+    - host: app.{{ $d }}
+      http:
+        paths:
+{{- range $p := $svcPaths }}
+{{- if (index $.Values.services $p.key).enabled }}
+          - path: {{ $p.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $p.svc }}
+                port:
+                  number: {{ (index $.Values.services $p.key).port }}
+{{- end }}
+{{- end }}
+{{- if .Values.frontends.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: learner-frontend
+                port:
+                  number: 80
+{{- end }}
+{{- else }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -97,3 +189,4 @@ spec:
                 name: media-service
                 port:
                   number: {{ .Values.services.media_service.port }}
+{{- end }}

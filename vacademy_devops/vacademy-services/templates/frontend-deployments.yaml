@@ -1,0 +1,105 @@
+{{- /*
+  Admin + learner frontends as static nginx (each serves its SPA at root on :80).
+  Exposed via two subdomains (admin.<domain> / app.<domain>) in the ingress, so
+  each is same-origin with the API path-prefixes routed on the same host.
+
+  Same-origin backend wiring is injected at RUNTIME (see the runtime-config shim;
+  Vite VITE_* vars are build-time and can't be set here). BACKEND_BASE_URL env is
+  the subdomain's own origin so the SPA calls /auth-service on itself.
+*/ -}}
+{{- if .Values.frontends.enabled }}
+{{- $domain := .Values.standalone.domain }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-frontend
+  namespace: default
+  labels:
+    app: admin-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-frontend
+  template:
+    metadata:
+      labels:
+        app: admin-frontend
+    spec:
+      containers:
+        - name: admin-frontend
+          image: {{ .Values.frontends.admin.image.repository }}:{{ .Values.frontends.admin.image.tag }}
+          imagePullPolicy: {{ .Values.frontends.imagePullPolicy | default "Always" }}
+          ports:
+            - containerPort: 80
+          env:
+            - name: BACKEND_BASE_URL
+              value: {{ printf "https://admin.%s" $domain | quote }}
+          resources:
+            requests: { cpu: "20m", memory: "64Mi" }
+            limits: { cpu: "200m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-frontend
+  namespace: default
+spec:
+  selector:
+    app: admin-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: learner-frontend
+  namespace: default
+  labels:
+    app: learner-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: learner-frontend
+  template:
+    metadata:
+      labels:
+        app: learner-frontend
+    spec:
+      containers:
+        - name: learner-frontend
+          image: {{ .Values.frontends.learner.image.repository }}:{{ .Values.frontends.learner.image.tag }}
+          imagePullPolicy: {{ .Values.frontends.imagePullPolicy | default "Always" }}
+          ports:
+            - containerPort: 80
+          env:
+            - name: BACKEND_BASE_URL
+              value: {{ printf "https://app.%s" $domain | quote }}
+          resources:
+            requests: { cpu: "20m", memory: "64Mi" }
+            limits: { cpu: "200m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: learner-frontend
+  namespace: default
+spec:
+  selector:
+    app: learner-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+{{- end }}

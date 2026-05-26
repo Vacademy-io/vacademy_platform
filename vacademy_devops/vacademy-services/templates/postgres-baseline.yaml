@@ -1,0 +1,20 @@
+{{- /*
+  One ConfigMap per baseline dump (baseline/<service>.sql), each well under the
+  1 MiB ConfigMap limit. Mounted into the baseline-load Job. Only rendered for a
+  standalone deploy with the bundled DB and baseline loading enabled.
+*/ -}}
+{{- if and .Values.standalone.enabled .Values.postgres.bundled .Values.postgres.loadBaseline }}
+{{- range $path, $_ := .Files.Glob "baseline/*.sql" }}
+{{- $name := base $path | trimSuffix ".sql" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baseline-{{ $name | replace "_" "-" }}
+  namespace: default
+  labels:
+    app: postgres-baseline
+data:
+{{ ($.Files.Glob $path).AsConfig | indent 2 }}
+{{- end }}
+{{- end }}

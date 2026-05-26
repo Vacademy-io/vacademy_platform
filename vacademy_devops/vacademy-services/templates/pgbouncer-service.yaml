@@ -1,3 +1,4 @@
+{{- if .Values.pgbouncer.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -14,3 +15,4 @@ spec:
       name: pgbouncer
   selector:
     app: pgbouncer
+{{- end }}

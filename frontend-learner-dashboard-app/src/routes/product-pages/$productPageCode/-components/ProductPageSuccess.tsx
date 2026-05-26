@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { CheckCircle2, BookOpen, ArrowRight } from 'lucide-react';
+import { CheckCircle, BookOpen, ArrowRight } from '@phosphor-icons/react';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import type { ProductPageData } from '../-types/product-page-types';
 
@@ -8,8 +8,17 @@ interface ProductPageSuccessProps {
     pageData: ProductPageData;
 }
 
+// Origins allowed to receive the PAYMENT_SUCCESS postMessage when this page is
+// embedded in an iframe. Sending to a targetOrigin (not '*') prevents leaking
+// the event to unintended embedders.
+const PAYMENT_SUCCESS_TARGET_ORIGINS = [
+    'https://shikshanation.com',
+    'https://www.shikshanation.com',
+    'http://localhost:3000',
+];
+
 export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
-    const { selectedPsOptionIds } = useProductPageStore();
+    const { selectedPsOptionIds, utmParams } = useProductPageStore();
 
     const enrolledCount = selectedPsOptionIds.length;
     const currency = pageData.currency || pageData.mappings[0]?.payment_plan?.currency || '';
@@ -20,13 +29,30 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, []);
+
+        if (window.parent && window.parent !== window) {
+            const payload = {
+                type: 'PAYMENT_SUCCESS',
+                event: 'payment_success',
+                status: 'success',
+                utm: utmParams,
+            };
+            PAYMENT_SUCCESS_TARGET_ORIGINS.forEach((origin) => {
+                try {
+                    window.parent.postMessage(payload, origin);
+                } catch {
+                    // Ignore — postMessage to a non-matching origin is a no-op,
+                    // and we don't want a single bad origin to block the others.
+                }
+            });
+        }
+    }, [utmParams]);
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-12">
             {/* Success icon */}
             <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-green-100">
-                <CheckCircle2 className="size-10 text-green-600" />
+                <CheckCircle className="size-10 text-green-600" weight="fill" />
             </div>
 
             <h1 className="text-2xl font-bold text-gray-900">You're enrolled!</h1>
@@ -42,7 +68,7 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
                         key={m.ps_invite_payment_option_id}
                         className="flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm"
                     >
-                        <CheckCircle2 className="size-4 shrink-0 text-green-500" />
+                        <CheckCircle className="size-4 shrink-0 text-green-500" weight="fill" />
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-gray-900">
                                 {m.payment_plan?.name || 'Course'}

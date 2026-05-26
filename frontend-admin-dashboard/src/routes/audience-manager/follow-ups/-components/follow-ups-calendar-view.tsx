@@ -97,7 +97,9 @@ export function FollowUpsCalendarView({
 
     const byDay = useMemo(() => groupByDay(vms), [vms]);
     const selectedKey = format(selectedDate, 'yyyy-MM-dd');
-    const dayVms = byDay.get(selectedKey) ?? [];
+    // Stabilise the reference so the useMemo below doesn't re-run every render
+    // when the key is missing (default `[]` would be a new array each time).
+    const dayVms = useMemo(() => byDay.get(selectedKey) ?? [], [byDay, selectedKey]);
     const dayCounts = useMemo(() => dayBucketCounts(dayVms), [dayVms]);
 
     // Agenda fallback only needs days IN this month that have events.
@@ -105,8 +107,7 @@ export function FollowUpsCalendarView({
         () =>
             days.filter(
                 (d) =>
-                    isSameMonth(d, month) &&
-                    (byDay.get(format(d, 'yyyy-MM-dd'))?.length ?? 0) > 0
+                    isSameMonth(d, month) && (byDay.get(format(d, 'yyyy-MM-dd'))?.length ?? 0) > 0
             ),
         [days, byDay, month]
     );
@@ -164,7 +165,7 @@ export function FollowUpsCalendarView({
                             {DAY_LABELS.map((d) => (
                                 <div
                                     key={d}
-                                    className="bg-muted px-2 py-2 text-caption text-muted-foreground"
+                                    className="bg-muted p-2 text-caption text-muted-foreground"
                                 >
                                     {d}
                                 </div>
@@ -177,10 +178,7 @@ export function FollowUpsCalendarView({
                                 const inMonth = isSameMonth(day, month);
                                 const isSelected = isSameDay(day, selectedDate);
                                 const todayCell = isToday(day);
-                                const overflow = Math.max(
-                                    0,
-                                    cellVms.length - MAX_PILLS_PER_DAY
-                                );
+                                const overflow = Math.max(0, cellVms.length - MAX_PILLS_PER_DAY);
                                 return (
                                     <button
                                         key={day.toISOString()}

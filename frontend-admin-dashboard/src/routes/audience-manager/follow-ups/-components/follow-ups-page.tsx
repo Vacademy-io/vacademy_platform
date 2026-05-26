@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
 import { CalendarBlank, ListBullets } from '@phosphor-icons/react';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -37,6 +36,7 @@ import {
     type FollowUpBucket,
 } from './follow-up-buckets';
 import { FollowUpsCalendarView } from './follow-ups-calendar-view';
+import { useFollowUpsViewState } from './use-follow-ups-view-state';
 
 /**
  * Follow-ups — at-a-glance task list of leads needing counsellor action.
@@ -83,20 +83,18 @@ const FollowUpsContent = () => {
     const { setSelectedStudent } = useStudentSidebar();
     const queryClient = useQueryClient();
 
-    // ── URL-driven view state (List | Calendar + selected month/date + counsellor) ────────────
-    // Keep all sub-view state on the URL so deep-links restore the same view.
-    const search = useSearch({ from: '/audience-manager/follow-ups/' });
-    const navigate = useNavigate({ from: '/audience-manager/follow-ups/' });
-    const view: 'list' | 'calendar' = search.view ?? 'list';
-    const monthStr = search.month ?? format(new Date(), 'yyyy-MM');
-    const selectedDateStr = search.date ?? format(new Date(), 'yyyy-MM-dd');
-
-    const setView = (v: 'list' | 'calendar') =>
-        navigate({ search: (prev) => ({ ...prev, view: v === 'list' ? undefined : v }) });
-    const setMonthStr = (m: string) =>
-        navigate({ search: (prev) => ({ ...prev, month: m }) });
-    const setSelectedDateStr = (d: string) =>
-        navigate({ search: (prev) => ({ ...prev, date: d }) });
+    // URL-driven view state (List | Calendar + month / day / counsellor).
+    // Extracted into a hook to keep this component's cyclomatic complexity low.
+    const {
+        view,
+        setView,
+        monthStr,
+        setMonthStr,
+        selectedDateStr,
+        setSelectedDateStr,
+        counsellorFilter,
+        setCounsellorFilter,
+    } = useFollowUpsViewState(ALL_COUNSELLORS_VALUE);
 
     // ── Role detection ───────────────────────────────────────────────────────
     // ADMIN sees the whole team + a counsellor filter; anyone else (counsellor,
@@ -109,15 +107,6 @@ const FollowUpsContent = () => {
     const currentUserId = useMemo(() => getUserId() ?? '', []);
 
     const [bucket, setBucket] = useState<FollowUpBucket>('today');
-    // Admin-only: counsellor drill-in (URL-driven). Counsellors are locked server-side.
-    const counsellorFilter = search.counsellor ?? ALL_COUNSELLORS_VALUE;
-    const setCounsellorFilter = (v: string) =>
-        navigate({
-            search: (prev) => ({
-                ...prev,
-                counsellor: v === ALL_COUNSELLORS_VALUE ? undefined : v,
-            }),
-        });
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -210,6 +199,59 @@ const FollowUpsContent = () => {
 
     const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['follow-ups'] });
 
+    // Pre-compute the view body so the JSX below is a single expression instead
+    // of a nested ternary (which CodeFactor / SonarJS flag as complexity).
+    let viewBody: ReactNode;
+    if (view === 'calendar') {
+        viewBody = (
+            <FollowUpsCalendarView
+                vms={pendingVms}
+                monthStr={monthStr}
+                onMonthChange={setMonthStr}
+                selectedDateStr={selectedDateStr}
+                onSelectDate={setSelectedDateStr}
+                isLoading={isLoading}
+                error={error}
+                profiles={leadProfiles}
+                notes={notesByUserId}
+                statuses={leadStatusCatalog}
+                showOps={showOps}
+                showScore={showScore}
+                actions={actions}
+                onStatusUpdated={handleStatusUpdated}
+                hiddenColumns={HIDDEN_COLUMNS}
+            />
+        );
+    } else if (error) {
+        viewBody = (
+            <LeadEmptyState
+                title="Couldn't load follow-ups"
+                description="Something went wrong fetching follow-ups. Try again."
+            />
+        );
+    } else {
+        viewBody = (
+            <LeadTable
+                vms={sortedVms}
+                profiles={leadProfiles}
+                notes={notesByUserId}
+                statuses={leadStatusCatalog}
+                showOps={showOps}
+                showScore={showScore}
+                isLoading={isLoading}
+                actions={actions}
+                onStatusUpdated={handleStatusUpdated}
+                hiddenColumns={HIDDEN_COLUMNS}
+                emptyState={
+                    <LeadEmptyState
+                        title={emptyTitle(isAdmin, bucket, counts)}
+                        description={emptyDescription(isAdmin, bucket, counts)}
+                    />
+                }
+            />
+        );
+    }
+
     // Subline copy (counts-aware so a counsellor sees workload immediately).
     const sublineRole = isAdmin ? 'Team has' : 'You have';
     const sublineNoun = counts.today === 1 ? 'task' : 'tasks';
@@ -283,51 +325,7 @@ const FollowUpsContent = () => {
                 open={isSidebarOpen}
                 onOpenChange={setIsSidebarOpen}
             >
-                <div className="min-w-0 flex-1">
-                    {view === 'calendar' ? (
-                        <FollowUpsCalendarView
-                            vms={pendingVms}
-                            monthStr={monthStr}
-                            onMonthChange={setMonthStr}
-                            selectedDateStr={selectedDateStr}
-                            onSelectDate={setSelectedDateStr}
-                            isLoading={isLoading}
-                            error={error}
-                            profiles={leadProfiles}
-                            notes={notesByUserId}
-                            statuses={leadStatusCatalog}
-                            showOps={showOps}
-                            showScore={showScore}
-                            actions={actions}
-                            onStatusUpdated={handleStatusUpdated}
-                            hiddenColumns={HIDDEN_COLUMNS}
-                        />
-                    ) : error ? (
-                        <LeadEmptyState
-                            title="Couldn't load follow-ups"
-                            description="Something went wrong fetching follow-ups. Try again."
-                        />
-                    ) : (
-                        <LeadTable
-                            vms={sortedVms}
-                            profiles={leadProfiles}
-                            notes={notesByUserId}
-                            statuses={leadStatusCatalog}
-                            showOps={showOps}
-                            showScore={showScore}
-                            isLoading={isLoading}
-                            actions={actions}
-                            onStatusUpdated={handleStatusUpdated}
-                            hiddenColumns={HIDDEN_COLUMNS}
-                            emptyState={
-                                <LeadEmptyState
-                                    title={emptyTitle(isAdmin, bucket, counts)}
-                                    description={emptyDescription(isAdmin, bucket, counts)}
-                                />
-                            }
-                        />
-                    )}
-                </div>
+                <div className="min-w-0 flex-1">{viewBody}</div>
                 <StudentSidebar
                     selectedTab="overview"
                     examType="EXAM"

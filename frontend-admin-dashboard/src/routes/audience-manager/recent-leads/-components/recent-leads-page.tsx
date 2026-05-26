@@ -128,6 +128,21 @@ const csvSafe = (val: unknown) => {
     return str;
 };
 
+/**
+ * Single SLA-filter option content. Pulled out of the inline JSX so the
+ * RecentLeadsContent function stays under CodeFactor's complexity threshold.
+ * When `helper` is set, render the two-line label + subtitle pattern.
+ */
+const SlaOptionLabel = ({ label, helper }: { label: string; helper?: string }) => {
+    if (!helper) return <>{label}</>;
+    return (
+        <div className="flex flex-col">
+            <span>{label}</span>
+            <span className="text-caption text-muted-foreground">{helper}</span>
+        </div>
+    );
+};
+
 export const RecentLeadsPage = () => {
     const { setNavHeading } = useNavHeadingStore();
     useEffect(() => {
@@ -613,16 +628,7 @@ const RecentLeadsContent = () => {
                             <SelectContent>
                                 {SLA_OPTIONS.map((o) => (
                                     <SelectItem key={o.value} value={o.value}>
-                                        {o.helper ? (
-                                            <div className="flex flex-col">
-                                                <span>{o.label}</span>
-                                                <span className="text-caption text-muted-foreground">
-                                                    {o.helper}
-                                                </span>
-                                            </div>
-                                        ) : (
-                                            o.label
-                                        )}
+                                        <SlaOptionLabel label={o.label} helper={o.helper} />
                                     </SelectItem>
                                 ))}
                             </SelectContent>

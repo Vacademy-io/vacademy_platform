@@ -9,6 +9,7 @@ read these as notes, not parse them.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -50,6 +51,13 @@ _GEMINI_TEXT_ENDPOINT = (
 # fallback so a single provider outage doesn't take the endpoint down.
 _OPENROUTER_MODEL = "google/gemini-2.5-flash"
 
+# Placeholder the LLM emits on a line after each visual-concept H2 section
+# (see the prompt rule #10). Format: `<!--IMG: search query-->`. Captured
+# group is trimmed before being handed to Serper. Cap below limits Serper
+# calls per notes document — anything beyond 5 just clutters the page.
+_IMG_PLACEHOLDER_RE = re.compile(r"<!--\s*IMG\s*:\s*(.+?)\s*-->", re.IGNORECASE)
+_MAX_IMAGES_PER_NOTES = 5
+
 
 _LANG_NAMES = {
     "en": "English",
@@ -74,29 +82,72 @@ def _build_prompt(transcript: str, title_hint: Optional[str], target_language: s
         else "Pick a concise top-level title that summarises the lecture.\n"
     )
     return (
-        f"Convert the following lecture transcript into well-structured "
-        f"study notes in {lang_name}. Write the notes in clean Markdown "
-        "with these rules:\n"
-        "1. Start with a single H1 (`# Title`) line.\n"
-        "2. Use H2 (`##`) for major sections, H3 (`###`) for sub-topics.\n"
-        "3. Prefer concise bullet points (`-`) over long paragraphs.\n"
-        "4. Use **bold** for key terms the first time they appear.\n"
-        "5. Use fenced code blocks (```) for any code snippets, "
-        "formulas, or commands mentioned.\n"
-        "6. Add a `> Key takeaway:` blockquote at the end of each major section.\n"
-        "7. Keep markdown clean — no stray HTML, no horizontal rules, "
-        "no tables unless they genuinely clarify a comparison.\n"
-        "8. Skip filler ('um', 'so', 'right'), false starts, and audio glitches "
-        "from the transcript.\n"
-        "9. Do not invent facts that aren't in the transcript. If the "
-        "transcript is too short or noisy to produce real notes, output a "
-        "short Markdown paragraph explaining that politely.\n\n"
+        f"You are an expert study-notes editor. Convert the following "
+        f"lecture transcript into rich, well-structured study notes in "
+        f"{lang_name} that a student can revise from. Write clean Markdown "
+        "following these rules strictly:\n\n"
+        "STRUCTURE\n"
+        "1. Start with a single H1 (`# Title`) line — a concise topic "
+        "title (NOT 'Study Notes' or the recording id).\n"
+        "2. Use H2 (`##`) for each major topic / concept covered in the "
+        "lecture. Aim for 3–7 H2 sections depending on lecture length.\n"
+        "3. Use H3 (`###`) for sub-topics within a section.\n"
+        "4. End each H2 section with a `> Key takeaway:` blockquote — a "
+        "one-line summary a student can re-read just before an exam.\n\n"
+        "VOICE & CONTENT\n"
+        "5. Prefer tight bullet points (`-`) over long paragraphs. Each "
+        "bullet should hold ONE idea, ~12–25 words.\n"
+        "6. Bold every key term on first appearance with `**term**` "
+        "(e.g. `**hypotonic solution**`).\n"
+        "7. When the transcript explicitly *defines* something, format "
+        "it as `**Term**: definition` on its own bullet.\n"
+        "8. When the transcript gives an *example*, format it as "
+        "`*Example*: …` on its own bullet.\n"
+        "9. Skip filler ('um', 'so', 'right'), repetition, false starts, "
+        "and audio glitches. Compress redundant explanations.\n"
+        "10. Do not invent facts. If the transcript is too short or noisy "
+        "to produce real notes, output a short Markdown paragraph saying "
+        "so politely.\n\n"
+        "COMPARISONS — USE TABLES\n"
+        "11. When the lecture compares 2+ items along the same axes "
+        "(e.g. hypertonic vs hypotonic vs isotonic; mitosis vs meiosis; "
+        "DNA vs RNA), output a Markdown table:\n"
+        "    | Feature | Item A | Item B | Item C |\n"
+        "    | --- | --- | --- | --- |\n"
+        "    | Property 1 | … | … | … |\n"
+        "    Tables make comparisons scannable — use them whenever 2+ "
+        "items share a structure. Don't force tables when only one "
+        "concept is being explained.\n\n"
+        "FORMULAS & CODE\n"
+        "12. Use fenced code blocks (```) only for actual code, "
+        "equations, or step-by-step procedures. Don't wrap regular "
+        "definitions in code blocks.\n\n"
+        "IMAGES\n"
+        "13. For each H2 section that has a CONCRETE visual concept "
+        "(diagram, anatomy, process, equipment, historical figure, "
+        "location, chart), add ONE image placeholder on a line of its "
+        "own immediately after the H2 heading, in the exact format:\n"
+        "    <!--IMG: short English search query-->\n"
+        "    Pick queries that would return clear educational "
+        "illustrations (e.g. `photosynthesis diagram`, `chloroplast "
+        "structure`, `Newton's third law`, `mitosis stages`). ALWAYS "
+        "write the query in English even when the notes are in another "
+        "language. Skip the placeholder for purely conceptual sections "
+        "(Q&A recap, homework, history of who-coined-the-term, etc.) — "
+        "max one image per section, no images in introductions or "
+        "closing summaries.\n\n"
+        "CLEANLINESS\n"
+        "14. No stray HTML, no horizontal rules, no triple-backtick "
+        "wrapper around the whole document.\n"
+        "15. Maintain consistent terminology — pick one variant of each "
+        "term and stick with it (e.g. always 'hypertonic' not "
+        "alternating 'hyper-tonic' / 'hypertonic').\n\n"
         f"{title_line}\n"
         "--- TRANSCRIPT ---\n"
         f"{transcript}\n"
         "--- END TRANSCRIPT ---\n\n"
-        "Respond with the Markdown only — no preamble, no triple-backtick "
-        "wrapper around the whole document."
+        "Respond with the Markdown only — no preamble, no commentary, "
+        "no triple-backtick wrapper around the whole document."
     )
 
 
@@ -169,6 +220,88 @@ async def _call_gemini_direct(prompt: str, api_key: str) -> str:
     if not markdown.strip():
         raise RuntimeError(f"Gemini returned empty payload: {str(data)[:300]}")
     return markdown
+
+
+def _enrich_with_images(markdown: str) -> str:
+    """Replace every `<!--IMG:query-->` placeholder the LLM emitted with a
+    real markdown image referencing a Serper search hit.
+
+    Best-effort: when Serper isn't configured (settings.serper_api_keys empty)
+    OR the search returns no results, the placeholder is silently dropped so
+    the notes still render cleanly. Falling back to "image missing" UX is
+    always better than surfacing the broken placeholder to the user.
+
+    Capped at {_MAX_IMAGES_PER_NOTES} images per document — that's enough for
+    a typical 60-90min lecture without making the PDF download huge.
+
+    Lazy-imports the Serper client because it lives under the ai-video-gen
+    namespace (the codebase keeps it there to avoid polluting top-level
+    services). Skipping all the way through when no key is configured means
+    we never pay even the import cost in unrelated environments.
+    """
+    settings = get_settings()
+    serper_keys: str = (getattr(settings, "serper_api_keys", "") or "").strip()
+    if not serper_keys:
+        # Strip placeholders so they don't leak into the rendered markdown.
+        return _IMG_PLACEHOLDER_RE.sub("", markdown)
+
+    matches = list(_IMG_PLACEHOLDER_RE.finditer(markdown))
+    if not matches:
+        return markdown
+
+    # Lazy import — see docstring.
+    try:
+        # `ai-video-gen-main` is a directory with a hyphen, so it's not a
+        # regular python package. The pipeline brings it in via sys.path
+        # manipulation. Repeat the same pattern here, scoped to this call.
+        import sys
+        from pathlib import Path
+        avg_path = str(Path(__file__).resolve().parents[1] / "ai-video-gen-main")
+        if avg_path not in sys.path:
+            sys.path.insert(0, avg_path)
+        from serper_service import SerperService  # type: ignore
+    except Exception as e:
+        logger.warning("[transcript-notes] could not load SerperService: %s", e)
+        return _IMG_PLACEHOLDER_RE.sub("", markdown)
+
+    svc = SerperService(serper_keys)
+
+    # Build replacements in one pass keyed by original-match-text so we don't
+    # call Serper twice for the same query if the LLM happened to repeat it.
+    replacements: dict[str, str] = {}
+    used = 0
+    for m in matches:
+        if used >= _MAX_IMAGES_PER_NOTES:
+            break
+        original = m.group(0)
+        if original in replacements:
+            continue
+        query = m.group(1).strip()
+        if not query:
+            replacements[original] = ""
+            continue
+        try:
+            img = svc.best_image(query, orientation="landscape")
+        except Exception as e:
+            logger.warning("[transcript-notes] Serper search failed for %r: %s", query, e)
+            img = None
+        if img and img.get("url"):
+            # Markdown image. Alt text doubles as a caption-ish line for PDFs
+            # rendered without image-loading (e.g. text-only fallback).
+            alt = query.replace("]", "").replace("[", "")
+            replacements[original] = f"![{alt}]({img['url']})"
+            used += 1
+        else:
+            replacements[original] = ""
+
+    # Replace each unique placeholder once. We do the substitution by re-running
+    # the regex with a function so we leave any *extra* placeholders (past the
+    # cap, or duplicates) cleanly stripped.
+    def _sub(m: re.Match) -> str:
+        original = m.group(0)
+        return replacements.get(original, "")
+
+    return _IMG_PLACEHOLDER_RE.sub(_sub, markdown)
 
 
 def _strip_outer_markdown_fence(text: str) -> str:
@@ -244,7 +377,13 @@ async def generate_notes(body: GenerateNotesRequest) -> GenerateNotesResponse:
             detail="All LLM providers failed - " + "; ".join(failures),
         )
 
+    cleaned_markdown = _strip_outer_markdown_fence(markdown)
+    # Best-effort image enrichment: replaces <!--IMG:query--> placeholders the
+    # LLM emitted with real Serper hits. Silently strips placeholders when
+    # Serper isn't configured so the notes still render cleanly.
+    enriched_markdown = _enrich_with_images(cleaned_markdown)
+
     return GenerateNotesResponse(
-        markdown=_strip_outer_markdown_fence(markdown),
+        markdown=enriched_markdown,
         model=used_model or _OPENROUTER_MODEL,
     )

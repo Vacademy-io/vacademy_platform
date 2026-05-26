@@ -494,6 +494,11 @@ export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
 
+// Persist LLM-generated study notes (Markdown) so the next dialog open
+// can show them without re-running the LLM. POST body: { markdown: string }.
+export const RECORDING_STUDY_NOTES = (scheduleId: string, recordingId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/study-notes`;
+
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
 

@@ -73,6 +73,22 @@ public class RecordingAiController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Persist LLM-generated study notes for a recording. The frontend POSTs
+     * the markdown returned from ai-service's /transcript/generate-notes so
+     * the next dialog open can show the cached notes immediately instead of
+     * re-running the LLM.
+     */
+    @PostMapping("/schedule/{scheduleId}/recording/{recordingId}/study-notes")
+    public ResponseEntity<TranscriptionStatusDto> saveStudyNotes(
+            @PathVariable String scheduleId,
+            @PathVariable String recordingId,
+            @RequestBody Map<String, String> body) {
+        String markdown = body == null ? null : body.get("markdown");
+        return ResponseEntity.ok(
+                transcriptionService.saveStudyNotes(scheduleId, recordingId, markdown));
+    }
+
     // -----------------------------------------------------------------------
     // Layer 3 — Assessment generation
     // -----------------------------------------------------------------------

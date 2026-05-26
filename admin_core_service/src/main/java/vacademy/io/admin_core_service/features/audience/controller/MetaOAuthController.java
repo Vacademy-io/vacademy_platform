@@ -327,6 +327,9 @@ public class MetaOAuthController {
         connector.setPlatformFormId(request.getPlatformFormId());
         connector.setRoutingRulesJson(request.getRoutingRulesJson());
         connector.setFieldMappingJson(request.getFieldMappingJson());
+        if (request.getDefaultValuesJson() != null) {
+            connector.setDefaultValuesJson(request.getDefaultValuesJson());
+        }
         connector.setProducesSourceType(request.getProducesSourceType() != null
                 ? request.getProducesSourceType() : "FACEBOOK_ADS");
         connector.setConnectionStatus("ACTIVE");

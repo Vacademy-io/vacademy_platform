@@ -30,6 +30,11 @@ export interface AdConnectorSetupRequest {
     sessionKey?: string;
     selectedPageId?: string;
     googleKey?: string;
+    /**
+     * Stringified JSON object of per-connector defaults stamped onto every
+     * lead (e.g. '{"Center Name":"Wakad"}'). Form values always win.
+     */
+    defaultValuesJson?: string;
 }
 
 export interface ConnectorSaveResult {

@@ -3,15 +3,32 @@ import { useStudentSidebar } from '../../../../-context/selected-student-sidebar
 import { InitiateReportDialog } from './InitiateReportDialog';
 import { getStudentReports, getStudentReport } from '@/services/student-analysis';
 import { StudentReport, StudentReportData } from '@/types/student-analysis';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, FileText, Clock } from 'lucide-react';
+import {
+    FileText,
+    Clock,
+    ArrowRight,
+    CaretLeft,
+    CaretRight,
+    CheckCircle,
+    XCircle,
+    Spinner,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { StudentReportDetailsDialog } from './StudentReportDetailsDialog';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    ProfileSectionCard,
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileActionBar,
+    ProfileHeroStat,
+} from '../profile-ui';
+import { cn } from '@/lib/utils';
 
 export const StudentReports = () => {
     const { selectedStudent } = useStudentSidebar();
@@ -19,6 +36,7 @@ export const StudentReports = () => {
     const [page, setPage] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState(false);
     const [selectedReport, setSelectedReport] = useState<StudentReportData | null>(null);
     const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -47,6 +65,7 @@ export const StudentReports = () => {
     const fetchReports = async () => {
         if (!selectedStudent?.user_id) return;
         setLoading(true);
+        setFetchError(false);
         try {
             const response = await getStudentReports(
                 selectedStudent.user_id,
@@ -84,6 +103,7 @@ export const StudentReports = () => {
             }
         } catch (error) {
             console.error('Failed to fetch reports:', error);
+            setFetchError(true);
         } finally {
             setLoading(false);
         }
@@ -166,103 +186,166 @@ export const StudentReports = () => {
         }
     };
 
+    const reportLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+
+    const processingCount = reports.filter((r) => r.status === 'PROCESSING').length + pendingProcesses.length;
+    const completedCount = reports.filter((r) => r.status === 'COMPLETED').length;
+    const failedCount = reports.filter((r) => r.status === 'FAILED').length;
+
+    // Groups: Processing first (most actionable), then Completed, then Failed
+    const GROUP_ORDER = ['PROCESSING', 'COMPLETED', 'FAILED'] as const;
+    const groupedReports = GROUP_ORDER.map((status) => ({
+        status,
+        items: reports.filter((r) => r.status === status),
+    })).filter((g) => g.items.length > 0);
+
     return (
-        <div className="flex h-full flex-col gap-6 p-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-neutral-900">
-                        {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Reports
-                    </h2>
-                </div>
+        <div className="flex flex-col gap-3 text-neutral-600">
+            {/* Primary action bar */}
+            <ProfileActionBar className="justify-between">
+                <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                    {reportLabel} Reports
+                </span>
                 <div className="flex gap-2">
-                    {pendingProcesses.length > 0 ? (
-                        <MyButton onClick={handleCheckStatus} disabled={statusCheckLoading}>
+                    {pendingProcesses.length > 0 && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={handleCheckStatus}
+                            disabled={statusCheckLoading}
+                        >
+                            <Clock className="size-3.5" />
                             {statusCheckLoading ? 'Checking...' : 'Check Status'}
                         </MyButton>
-                    ) : (
-                        <InitiateReportDialog
-                            onSuccess={() => {
-                                fetchReports();
-                                checkPendingProcesses();
-                            }}
-                        />
                     )}
+                    <InitiateReportDialog
+                        onSuccess={() => {
+                            fetchReports();
+                            checkPendingProcesses();
+                        }}
+                    />
                 </div>
-            </div>
+            </ProfileActionBar>
 
+            {/* Hero stat tiles — visible once data is loaded and there are reports */}
+            {!loading && !fetchError && reports.length > 0 && (
+                <div className="flex gap-2">
+                    <ProfileHeroStat
+                        label="Processing"
+                        value={processingCount}
+                        tone={processingCount > 0 ? 'warning' : 'neutral'}
+                        icon={Spinner as PhosphorIcon}
+                    />
+                    <ProfileHeroStat
+                        label="Completed"
+                        value={completedCount}
+                        tone={completedCount > 0 ? 'success' : 'neutral'}
+                        icon={CheckCircle as PhosphorIcon}
+                    />
+                    <ProfileHeroStat
+                        label="Failed"
+                        value={failedCount}
+                        tone={failedCount > 0 ? 'danger' : 'neutral'}
+                        icon={XCircle as PhosphorIcon}
+                    />
+                </div>
+            )}
+
+            {/* Loading state */}
             {loading ? (
-                <div className="flex h-64 items-center justify-center">
-                    <div className="size-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-                </div>
+                <ProfileSkeleton blocks={3} />
+            ) : fetchError ? (
+                /* Error state */
+                <ProfileError
+                    title="Couldn't load reports"
+                    hint="Something went wrong while fetching reports. Please try again."
+                    onRetry={fetchReports}
+                />
             ) : reports.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 p-12 text-center">
-                    <div className="mb-4 rounded-full bg-white p-4 shadow-sm">
-                        <FileText className="size-8 text-neutral-400" />
-                    </div>
-                    <h3 className="mb-1 text-lg font-semibold text-neutral-900">
-                        No reports found
-                    </h3>
-                    <p className="mb-6 text-sm text-neutral-500">
-                        Generate a new report to analyze student performance.
-                    </p>
-                    <InitiateReportDialog onSuccess={fetchReports} />
-                </div>
+                /* Empty state */
+                <ProfileEmpty
+                    icon={FileText as PhosphorIcon}
+                    title="No reports yet"
+                    hint="Generate a new report to analyze learner performance."
+                    action={<InitiateReportDialog onSuccess={fetchReports} />}
+                />
             ) : (
+                /* Report cards grouped by status */
                 <div className="flex flex-col gap-4">
-                    {reports.map((report) => (
-                        <Card
-                            key={report.process_id}
-                            className="group relative overflow-hidden transition-all hover:shadow-md"
-                        >
-                            <CardHeader className="py-2">
-                                <CardTitle className="mt-4 text-base font-semibold">
-                                    {format(new Date(report.start_date_iso), 'MMM d')} -{' '}
-                                    {format(new Date(report.end_date_iso), 'MMM d, yyyy')}
-                                </CardTitle>
-                                <CardDescription className="flex items-center gap-1.5 text-xs">
-                                    <Clock className="size-3.5" />
-                                    Created {format(new Date(report.created_at), 'MMM d, yyyy')}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-3">
-                                    {report.status === 'COMPLETED' && report.report && (
-                                        <MyButton
-                                            buttonType="secondary"
-                                            onClick={() => handleViewDetails(report.report!)}
+                    {groupedReports.map(({ status, items }) => (
+                        <div key={status} className="flex flex-col gap-2">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                                {status === 'PROCESSING' ? 'Processing' : status === 'COMPLETED' ? 'Completed' : 'Failed'}
+                            </span>
+                            {items.map((report) => (
+                                <ProfileSectionCard
+                                    key={report.process_id}
+                                    icon={FileText as PhosphorIcon}
+                                    heading={`${format(new Date(report.start_date_iso), 'MMM d')} – ${format(new Date(report.end_date_iso), 'MMM d, yyyy')}`}
+                                    action={
+                                        report.status === 'COMPLETED' && report.report ? (
+                                            <MyButton
+                                                buttonType="secondary"
+                                                scale="small"
+                                                onClick={() => handleViewDetails(report.report!)}
+                                            >
+                                                View
+                                                <ArrowRight className="size-3.5" />
+                                            </MyButton>
+                                        ) : undefined
+                                    }
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <Clock className="size-3.5 text-neutral-400" />
+                                        <span className="text-xs text-neutral-500">
+                                            Created {format(new Date(report.created_at), 'MMM d, yyyy')}
+                                        </span>
+                                        <span
+                                            className={cn(
+                                                'ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
+                                                report.status === 'COMPLETED'
+                                                    ? 'bg-success-50 text-success-700 ring-success-200'
+                                                    : report.status === 'FAILED'
+                                                      ? 'bg-danger-50 text-danger-700 ring-danger-200'
+                                                      : 'bg-warning-50 text-warning-700 ring-warning-200'
+                                            )}
                                         >
-                                            View Details
-                                            <ChevronRight className="size-4" />
-                                        </MyButton>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                            {report.status === 'COMPLETED'
+                                                ? 'Completed'
+                                                : report.status === 'FAILED'
+                                                  ? 'Failed'
+                                                  : 'Processing'}
+                                        </span>
+                                    </div>
+                                </ProfileSectionCard>
+                            ))}
+                        </div>
                     ))}
                 </div>
             )}
 
+            {/* Pagination */}
             {totalPages > 1 && (
-                <div className="mt-auto flex items-center justify-center gap-2 py-4">
-                    <Button
-                        variant="outline"
-                        size="icon"
+                <div className="mt-1 flex items-center justify-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
                         onClick={() => handlePageChange(page - 1)}
                         disabled={page === 0}
                     >
-                        <ChevronLeft className="size-4" />
-                    </Button>
-                    <span className="text-sm font-medium text-neutral-600">
-                        Page {page + 1} of {totalPages}
+                        <CaretLeft className="size-3.5" />
+                    </MyButton>
+                    <span className="text-xs font-medium text-neutral-600">
+                        {page + 1} / {totalPages}
                     </span>
-                    <Button
-                        variant="outline"
-                        size="icon"
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
                         onClick={() => handlePageChange(page + 1)}
                         disabled={page === totalPages - 1}
                     >
-                        <ChevronRight className="size-4" />
-                    </Button>
+                        <CaretRight className="size-3.5" />
+                    </MyButton>
                 </div>
             )}
 

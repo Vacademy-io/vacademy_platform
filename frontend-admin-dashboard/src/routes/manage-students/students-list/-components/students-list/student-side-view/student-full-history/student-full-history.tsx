@@ -1,9 +1,139 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { handleFetchStudentTimeline } from '@/routes/admissions/-services/timeline-services';
-import { TimelineEventItem } from '@/routes/admissions/enquiries/-components/enquiry-side-view/timeline-panel';
-import { Button } from '@/components/ui/button';
-import { ClipboardText } from '@phosphor-icons/react';
+import type { TimelineEvent } from '@/routes/admissions/-services/timeline-services';
+import { cn } from '@/lib/utils';
+import {
+    ClipboardText,
+    ClockCounterClockwise,
+    NotePencil,
+    ArrowsClockwise,
+    User,
+    ArrowRight,
+    Phone,
+    EnvelopeSimple,
+    CurrencyCircleDollar,
+    CalendarCheck,
+    GitMerge,
+    Buildings,
+    BookOpen,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
+import {
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileHero,
+    ProfileTimeline,
+    type ProfileTimelineItem,
+} from '../profile-ui';
+import type { Tone } from '../profile-ui';
+import { format, isToday, isYesterday, isThisWeek } from 'date-fns';
+
+// ── Category definitions ──────────────────────────────────────────────────────
+
+type Category = 'all' | 'admission' | 'enrollment' | 'payment' | 'learning' | 'communication';
+
+const FILTER_CHIPS: { id: Category; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'admission', label: 'Admission' },
+    { id: 'enrollment', label: 'Enrollment' },
+    { id: 'payment', label: 'Payment' },
+    { id: 'learning', label: 'Learning' },
+    { id: 'communication', label: 'Communication' },
+];
+
+// Map action_type → category
+const CATEGORY_MAP: Record<string, Category> = {
+    APPLICATION_SUBMITTED: 'admission',
+    APPLICATION_TRANSITIONED: 'admission',
+    COUNSELOR_ASSIGNED: 'admission',
+    STATUS_CHANGE: 'enrollment',
+    PAYMENT_SUCCESS: 'payment',
+    EMAIL_SENT: 'communication',
+    PHONE_CALL: 'communication',
+    NOTE: 'communication',
+    NOTE_ADDED: 'communication',
+    CALL_LOG: 'communication',
+    FOLLOW_UP: 'communication',
+    MEETING: 'communication',
+    DUPLICATE_MERGED: 'enrollment',
+    CAMPUS_VISIT: 'admission',
+};
+
+const getCategoryForEvent = (event: TimelineEvent): Category => {
+    const mapped = CATEGORY_MAP[event.action_type];
+    if (mapped) return mapped;
+    const upper = event.action_type.toUpperCase();
+    if (upper.includes('PAYMENT') || upper.includes('INVOICE')) return 'payment';
+    if (upper.includes('COURSE') || upper.includes('LESSON') || upper.includes('PROGRESS')) return 'learning';
+    if (upper.includes('EMAIL') || upper.includes('SMS') || upper.includes('WHATSAPP')) return 'communication';
+    if (upper.includes('ENROLL') || upper.includes('MEMBER')) return 'enrollment';
+    if (upper.includes('ADMIT') || upper.includes('APPLY') || upper.includes('APPLICATION')) return 'admission';
+    return 'enrollment';
+};
+
+// ── Icon + tone per action_type ───────────────────────────────────────────────
+
+type EventStyle = { icon: PhosphorIcon; tone: Tone };
+
+const EVENT_STYLE_MAP: Record<string, EventStyle> = {
+    NOTE:                    { icon: NotePencil,           tone: 'primary' },
+    NOTE_ADDED:              { icon: NotePencil,           tone: 'primary' },
+    CALL_LOG:                { icon: Phone,                tone: 'info' },
+    FOLLOW_UP:               { icon: CalendarCheck,        tone: 'warning' },
+    MEETING:                 { icon: Buildings,            tone: 'warning' },
+    STATUS_CHANGE:           { icon: ArrowsClockwise,      tone: 'warning' },
+    COUNSELOR_ASSIGNED:      { icon: User,                 tone: 'primary' },
+    APPLICATION_SUBMITTED:   { icon: ClipboardText,        tone: 'success' },
+    APPLICATION_TRANSITIONED:{ icon: ArrowRight,           tone: 'info' },
+    PHONE_CALL:              { icon: Phone,                tone: 'info' },
+    EMAIL_SENT:              { icon: EnvelopeSimple,       tone: 'primary' },
+    PAYMENT_SUCCESS:         { icon: CurrencyCircleDollar, tone: 'success' },
+    CAMPUS_VISIT:            { icon: Buildings,            tone: 'neutral' },
+    DUPLICATE_MERGED:        { icon: GitMerge,             tone: 'neutral' },
+};
+const FALLBACK_STYLE: EventStyle = { icon: BookOpen, tone: 'neutral' };
+
+const getEventStyle = (actionType: string): EventStyle =>
+    EVENT_STYLE_MAP[actionType] ?? FALLBACK_STYLE;
+
+// ── Date bucket helpers ───────────────────────────────────────────────────────
+
+type Bucket = 'Today' | 'Yesterday' | 'This week' | 'Earlier';
+
+const getBucket = (dateStr: string): Bucket => {
+    try {
+        const d = new Date(dateStr);
+        if (isToday(d)) return 'Today';
+        if (isYesterday(d)) return 'Yesterday';
+        if (isThisWeek(d, { weekStartsOn: 1 })) return 'This week';
+    } catch {
+        // fall through
+    }
+    return 'Earlier';
+};
+
+const BUCKET_ORDER: Bucket[] = ['Today', 'Yesterday', 'This week', 'Earlier'];
+
+// ── Date range formatting ─────────────────────────────────────────────────────
+
+const formatDateRange = (events: TimelineEvent[]): string => {
+    if (!events.length) return '';
+    const dates = events
+        .map((e) => {
+            try { return new Date(e.created_at).getTime(); } catch { return NaN; }
+        })
+        .filter((t) => !isNaN(t));
+    if (!dates.length) return '';
+    const earliest = new Date(Math.min(...dates));
+    const latest   = new Date(Math.max(...dates));
+    if (earliest.getTime() === latest.getTime()) return format(earliest, 'd MMM yyyy');
+    return `${format(earliest, 'd MMM yyyy')} – ${format(latest, 'd MMM yyyy')}`;
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 interface StudentFullHistoryProps {
     studentUserId: string;
@@ -11,88 +141,151 @@ interface StudentFullHistoryProps {
 
 export const StudentFullHistory = ({ studentUserId }: StudentFullHistoryProps) => {
     const [page, setPage] = useState(0);
+    const [activeFilter, setActiveFilter] = useState<Category>('all');
     const pageSize = 20;
 
-    const { data, isLoading, error } = useQuery(
+    const { data, isLoading, error, refetch } = useQuery(
         handleFetchStudentTimeline(studentUserId, page, pageSize)
     );
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center py-8">
-                <div className="flex items-center gap-2 text-sm text-neutral-500">
-                    <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                    Loading history…
-                </div>
-            </div>
-        );
-    }
+    // Client-side filter (all data already fetched per page)
+    const filteredEvents = useMemo(() => {
+        if (!data?.content) return [];
+        if (activeFilter === 'all') return data.content;
+        return data.content.filter((e) => getCategoryForEvent(e) === activeFilter);
+    }, [data, activeFilter]);
+
+    // Group filtered events into date buckets
+    const groupedByBucket = useMemo(() => {
+        const groups: Record<Bucket, ProfileTimelineItem[]> = {
+            Today: [], Yesterday: [], 'This week': [], Earlier: [],
+        };
+        for (const event of filteredEvents) {
+            const bucket = getBucket(event.created_at);
+            const { icon, tone } = getEventStyle(event.action_type);
+            let metaStr = '';
+            try { metaStr = format(new Date(event.created_at), 'd MMM, h:mm a'); } catch { /* noop */ }
+            groups[bucket].push({
+                id: event.id,
+                icon,
+                tone,
+                title: event.title || event.action_type.replace(/_/g, ' '),
+                meta: metaStr || undefined,
+                body: event.actor_name ? `by ${event.actor_name}` : undefined,
+            });
+        }
+        return groups;
+    }, [filteredEvents]);
+
+    // ── States ────────────────────────────────────────────────────────────────
+
+    if (isLoading) return <ProfileSkeleton blocks={4} />;
 
     if (error) {
         return (
-            <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-600">
-                Failed to load activity history.
-            </div>
+            <ProfileError
+                title="Couldn't load activity history"
+                hint="Something went wrong while fetching the timeline. Please try again."
+                onRetry={() => refetch()}
+            />
         );
     }
 
     if (!data || data.content.length === 0) {
         return (
-            <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-8 text-center">
-                <ClipboardText weight="fill" className="size-8 text-neutral-400" />
-                <p className="text-sm font-medium text-neutral-500">No history yet</p>
-                <p className="text-xs text-neutral-400">
-                    Events from all stages will appear here
-                </p>
-            </div>
+            <ProfileEmpty
+                icon={ClipboardText}
+                title="No history yet"
+                hint="Events from all stages will appear here"
+            />
         );
     }
 
+    const totalCount = data.totalElements ?? data.content.length;
+    const dateRange  = formatDateRange(data.content);
+
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-                <div className="h-3.5 w-1 rounded-full bg-primary-500" />
-                <h4 className="text-sm font-semibold text-neutral-700">Full History</h4>
-                {data.totalElements !== undefined && (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500">
-                        {data.totalElements}
-                    </span>
-                )}
-            </div>
+        <div className="flex flex-col gap-3">
+            {/* Hero */}
+            <ProfileHero
+                eyebrow="LEARNER HISTORY"
+                title={`${totalCount} event${totalCount !== 1 ? 's' : ''}`}
+                subtitle={dateRange || undefined}
+                icon={ClockCounterClockwise}
+                tone="primary"
+            />
 
-            <div className="rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
-                {data.content.map((event) => (
-                    <TimelineEventItem key={event.id} event={event} />
+            {/* Filter chips */}
+            <div className="flex flex-wrap gap-2">
+                {FILTER_CHIPS.map((chip) => (
+                    <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => setActiveFilter(chip.id)}
+                        className={cn(
+                            'rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                            activeFilter === chip.id
+                                ? 'border-primary-500 bg-primary-500 text-white'
+                                : 'border-neutral-200 bg-white text-neutral-600 hover:border-primary-300 hover:text-primary-600'
+                        )}
+                    >
+                        {chip.label}
+                    </button>
                 ))}
-
-                {data.totalPages > 1 && (
-                    <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3">
-                        <span className="text-[11px] text-neutral-400">
-                            Page {page + 1} of {data.totalPages}
-                        </span>
-                        <div className="flex gap-1.5">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[11px]"
-                                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                                disabled={page === 0}
-                            >
-                                Previous
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[11px]"
-                                onClick={() => setPage((p) => Math.min(data.totalPages - 1, p + 1))}
-                                disabled={page >= data.totalPages - 1}
-                            >
-                                Next
-                            </Button>
-                        </div>
-                    </div>
-                )}
             </div>
+
+            {/* Timeline grouped by date bucket */}
+            {filteredEvents.length === 0 ? (
+                <ProfileEmpty
+                    icon={ClipboardText}
+                    title="No events match this filter"
+                    hint="Try selecting a different category above"
+                />
+            ) : (
+                <div className="flex flex-col gap-4">
+                    {BUCKET_ORDER.map((bucket) => {
+                        const items = groupedByBucket[bucket];
+                        if (!items.length) return null;
+                        return (
+                            <div key={bucket} className="flex flex-col gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                                    {bucket}
+                                </span>
+                                <div className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                                    <ProfileTimeline items={items} />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Pagination */}
+            {data.totalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
+                    <span className="text-xs text-neutral-400">
+                        Page {page + 1} of {data.totalPages}
+                    </span>
+                    <div className="flex gap-1.5">
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                        >
+                            Previous
+                        </MyButton>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => setPage((p) => Math.min(data.totalPages - 1, p + 1))}
+                            disabled={page >= data.totalPages - 1}
+                        >
+                            Next
+                        </MyButton>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

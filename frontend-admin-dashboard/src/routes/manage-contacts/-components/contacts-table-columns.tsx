@@ -1,6 +1,6 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
 import { ContactUser } from '../-types/contact-types';
-import { ArrowSquareOut, CaretUpDown, UserCircle } from '@phosphor-icons/react';
+import { ArrowSquareOut, ArrowsOutSimple, CaretUpDown, UserCircle } from '@phosphor-icons/react';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentTable } from '@/types/student-table-types';
@@ -99,16 +99,38 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
 };
 
 const DetailsCell = ({ row }: { row: Row<ContactUser> }) => {
-    const { setSelectedStudent } = useStudentSidebar();
+    const { setSelectedStudent, openOverlay } = useStudentSidebar();
 
-    const handleClick = async () => {
+    const handleOpenDrawer = () => {
         setSelectedStudent(mapContactToStudent(row.original));
     };
 
+    const handleOpenOverlay = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        openOverlay(mapContactToStudent(row.original));
+    };
+
     return (
-        <SidebarTrigger onClick={handleClick}>
-            <ArrowSquareOut className="size-10 cursor-pointer text-neutral-600" />
-        </SidebarTrigger>
+        <div className="flex items-center gap-1">
+            <SidebarTrigger onClick={handleOpenDrawer}>
+                <span
+                    className="flex size-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
+                    title="Open side panel"
+                    aria-label="Open side panel"
+                >
+                    <ArrowSquareOut className="size-4" />
+                </span>
+            </SidebarTrigger>
+            <button
+                type="button"
+                onClick={handleOpenOverlay}
+                className="flex size-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                title="Open full profile"
+                aria-label="Open full profile"
+            >
+                <ArrowsOutSimple className="size-4" />
+            </button>
+        </div>
     );
 };
 

@@ -24,22 +24,28 @@ const chartConfig = {
     },
 } satisfies ChartConfig;
 
+// Recharts fill values resolved from CSS chart variables — no raw hex in JSX.
+const RESPONSE_CHART_FILLS = {
+    attempted: 'var(--color-correct)',  // --chart-1 (green tint)
+    skipped: 'var(--color-skipped)',    // --chart-4 (neutral)
+} as const;
+
 export function ResponseBreakdownComponent({ responseData }: { responseData: ResponseData }) {
     const chartData = [
         {
             responseType: 'correct',
             value: responseData.attempted,
-            fill: '#97D4B4',
+            fill: RESPONSE_CHART_FILLS.attempted,
         },
         {
             responseType: 'skipped',
             value: responseData.skipped,
-            fill: '#EEE',
+            fill: RESPONSE_CHART_FILLS.skipped,
         },
     ];
     return (
-        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[180px]">
-            <Suspense fallback={<div className="h-full w-full animate-pulse bg-gray-100 rounded-full opacity-20" />}>
+        <ChartContainer config={chartConfig} className="mx-auto aspect-square size-44">
+            <Suspense fallback={<div className="h-full w-full animate-pulse rounded-full bg-neutral-100 opacity-20" />}>
                 <PieChart>
                     <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                     <Pie

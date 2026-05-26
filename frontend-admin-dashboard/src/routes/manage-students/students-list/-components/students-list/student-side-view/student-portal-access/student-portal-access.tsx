@@ -2,9 +2,10 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useState, useEffect } from 'react';
-import { Key, Copy, Check, Shield, MonitorPlay, Envelope } from '@phosphor-icons/react';
+import { Key, Shield, MonitorPlay, Envelope, Eye, EyeSlash, Copy, Check } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
+import { cn } from '@/lib/utils';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { useStudentCredentails } from '@/services/student-list-section/getStudentCredentails';
 import { useDialogStore } from '@/routes/manage-students/students-list/-hooks/useDialogStore';
@@ -21,12 +22,19 @@ import { isUserAdmin } from '@/utils/userDetails';
 import { getLearnerPortalAccess, sendResetPasswordEmail } from '@/services/learner-portal-access';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { BatchPicker } from '../BatchPicker';
+import {
+    ProfileHero,
+    ProfileActionBar,
+    ProfileSkeleton,
+    ProfileEmpty,
+} from '../profile-ui';
 
 export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
     const { openIndividualShareCredentialsDialog } = useDialogStore();
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
     const [copiedField, setCopiedField] = useState<string>('');
+    const [showPassword, setShowPassword] = useState(false);
     const [learnerSettings, setLearnerSettings] = useState<LearnerManagementSettings | null>(null);
 
     const userId = isSubmissionTab ? selectedStudent?.id : selectedStudent?.user_id;
@@ -68,11 +76,12 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         fetchLearnerSettings();
     }, []);
 
-    const handleCopy = async (text: string, fieldName: string) => {
+    const handleCopy = async (text: string, fieldName: string, isSecret?: boolean) => {
         try {
             await navigator.clipboard.writeText(text);
             setCopiedField(fieldName);
-            toast.success(`${fieldName} copied to clipboard!`);
+            // Never echo secret values (e.g. passwords) in the toast.
+            toast.success(isSecret ? 'Copied to clipboard' : `${fieldName} copied to clipboard`);
             setTimeout(() => setCopiedField(''), 2000);
         } catch (error) {
             toast.error(`Failed to copy ${fieldName}`);
@@ -155,8 +164,110 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         }
     };
 
+    // Loading state — credentials query in flight
+    if (isCredentialsLoading && learnerSettings?.allowViewPassword) {
+        return <ProfileSkeleton blocks={2} />;
+    }
+
+    // No settings enabled at all
+    const nothingEnabled =
+        !learnerSettings?.allowViewPassword &&
+        !learnerSettings?.allowPortalAccess &&
+        !learnerSettings?.allowSendResetPasswordMail;
+
+    if (nothingEnabled) {
+        return (
+            <ProfileEmpty
+                icon={Shield}
+                title="No portal access features enabled"
+                hint="Contact admin to enable portal access settings."
+            />
+        );
+    }
+
+    const hasPassword = password && password !== 'password not found';
+    const passwordDisplay = showPassword
+        ? password
+        : hasPassword
+          ? '••••••••'
+          : password;
+
+    // Password row — rendered inside the hero children slot
+    const passwordRow = learnerSettings?.allowViewPassword ? (
+        <div className="mt-3 border-t border-neutral-100 pt-3">
+            {/* Username copy row */}
+            <div className="group flex items-center justify-between gap-3 py-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                    Username
+                </span>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-neutral-900">
+                        {selectedStudent?.username || 'N/A'}
+                    </span>
+                    {selectedStudent?.username && (
+                        <button
+                            type="button"
+                            onClick={() => handleCopy(selectedStudent.username!, 'Username')}
+                            aria-label="Copy username"
+                            className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                        >
+                            {copiedField === 'Username' ? (
+                                <Check className="size-3.5 text-success-600" />
+                            ) : (
+                                <Copy className="size-3.5" />
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Password row — show/hide toggle alongside the copy button */}
+            <div className="group flex items-center justify-between gap-3 py-1.5">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                    Password
+                </span>
+                <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-sm tracking-wider text-neutral-900">
+                        {passwordDisplay}
+                    </span>
+                    {/* Show / hide toggle */}
+                    {hasPassword && (
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword((v) => !v)}
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                        >
+                            {showPassword ? (
+                                <EyeSlash className="size-3.5" />
+                            ) : (
+                                <Eye className="size-3.5" />
+                            )}
+                        </button>
+                    )}
+                    {/* Copy button — generic toast, never echoes the secret */}
+                    {hasPassword && (
+                        <button
+                            type="button"
+                            onClick={() => handleCopy(password, 'Password', true)}
+                            aria-label="Copy password"
+                            className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                        >
+                            {copiedField === 'Password' ? (
+                                <Check className="size-3.5 text-success-600" />
+                            ) : (
+                                <Copy className="size-3.5" />
+                            )}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    ) : null;
+
     return (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-3">
+            {/* Batch selector first — admin knows which portal context is active */}
             <BatchPicker
                 packageSessionIds={enrollmentPsIds}
                 value={selectedPsId}
@@ -164,19 +275,44 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                 label="Open portal for"
             />
 
-            {/* Account Credentials Section */}
-            {learnerSettings?.allowViewPassword && (
-                <div className="group rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-primary-50/30 p-3 transition-all duration-200 hover:scale-[1.01] hover:border-primary-200/50 hover:shadow-md">
-                    <div className="mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className="rounded-md bg-gradient-to-br from-primary-50 to-primary-100 p-1 transition-transform duration-200 group-hover:scale-105">
-                                <Key className="size-3.5 text-primary-600" />
-                            </div>
-                            <h3 className="group-hover:text-primary-700 text-xs font-semibold text-neutral-700 transition-colors duration-200">
-                                Account Credentials
-                            </h3>
-                        </div>
+            {/* Hero: credentials card — this IS the tab's job */}
+            <ProfileHero
+                eyebrow="LEARNER PORTAL"
+                title={
+                    <span
+                        className={cn(
+                            'break-all',
+                            !selectedStudent?.username && 'text-neutral-400'
+                        )}
+                    >
+                        {selectedStudent?.username || 'No username'}
+                    </span>
+                }
+                subtitle="Use these credentials to sign in"
+                icon={Key}
+                tone="primary"
+                action={
+                    learnerSettings?.allowPortalAccess ? (
+                        <MyButton
+                            type="button"
+                            buttonType="primary"
+                            scale="small"
+                            disable={false}
+                            onAsyncClick={handleAccessPortal}
+                        >
+                            <MonitorPlay className="size-3.5" />
+                            Open Portal
+                        </MyButton>
+                    ) : undefined
+                }
+            >
+                {passwordRow}
+            </ProfileHero>
 
+            {/* Action bar: secondary actions below the hero */}
+            {(learnerSettings?.allowViewPassword || learnerSettings?.allowSendResetPasswordMail) && (
+                <ProfileActionBar>
+                    {learnerSettings?.allowViewPassword && (
                         <MyButton
                             type="button"
                             buttonType="secondary"
@@ -187,151 +323,25 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                                     openIndividualShareCredentialsDialog(selectedStudent);
                                 }
                             }}
-                            className="h-auto min-h-0 cursor-pointer px-2 py-1 text-[10px]"
-                            style={{ pointerEvents: 'auto', zIndex: 10 }}
                         >
-                            <Shield className="mr-1 size-2.5" />
-                            Share
+                            <Shield className="size-3.5" />
+                            Share credentials
                         </MyButton>
-                    </div>
-
-                    <div className="space-y-1">
-                        {/* Username */}
-                        <div className="flex items-start gap-2 rounded-md px-1.5 py-1">
-                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                            <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                <span className="font-medium text-neutral-600">Username: </span>
-                                <span className="group/value relative inline-flex items-center text-neutral-800">
-                                    <span>{selectedStudent?.username || 'N/A'}</span>
-                                    {selectedStudent?.username && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                selectedStudent.username &&
-                                                    handleCopy(
-                                                        selectedStudent.username,
-                                                        'Username'
-                                                    );
-                                            }}
-                                            className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                            style={{ pointerEvents: 'auto' }}
-                                        >
-                                            {copiedField === 'Username' ? (
-                                                <Check className="size-3 text-green-600" />
-                                            ) : (
-                                                <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                            )}
-                                        </button>
-                                    )}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Password */}
-                        <div className="flex items-start gap-2 rounded-md px-1.5 py-1">
-                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                            <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                <span className="font-medium text-neutral-600">Password: </span>
-                                <span className="group/value relative inline-flex items-center text-neutral-800">
-                                    <span>{password}</span>
-                                    {password && password !== 'password not found' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleCopy(password, 'Password')}
-                                            className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                            style={{ pointerEvents: 'auto' }}
-                                        >
-                                            {copiedField === 'Password' ? (
-                                                <Check className="size-3 text-green-600" />
-                                            ) : (
-                                                <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                            )}
-                                        </button>
-                                    )}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Action Buttons Section */}
-            <div className="space-y-2">
-                {learnerSettings?.allowPortalAccess && (
-                    <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-blue-50/30 p-3 transition-all duration-200 hover:border-blue-200/50 hover:shadow-md">
-                        <div className="mb-2 flex items-center gap-2">
-                            <div className="rounded-md bg-gradient-to-br from-blue-50 to-blue-100 p-1.5">
-                                <MonitorPlay className="size-4 text-blue-600" />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="text-xs font-medium text-neutral-700">
-                                    Learner Portal
-                                </h4>
-                                <p className="text-[10px] text-neutral-500">
-                                    Access learner portal directly
-                                </p>
-                            </div>
-                        </div>
-                        <MyButton
-                            type="button"
-                            buttonType="primary"
-                            scale="small"
-                            disable={false}
-                            onClick={handleAccessPortal}
-                            className="w-full cursor-pointer text-xs"
-                            style={{ pointerEvents: 'auto', zIndex: 10 }}
-                        >
-                            <MonitorPlay className="mr-1.5 size-3.5" />
-                            Access Learner Portal
-                        </MyButton>
-                    </div>
-                )}
-
-                {learnerSettings?.allowSendResetPasswordMail && (
-                    <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-green-50/30 p-3 transition-all duration-200 hover:border-green-200/50 hover:shadow-md">
-                        <div className="mb-2 flex items-center gap-2">
-                            <div className="rounded-md bg-gradient-to-br from-green-50 to-green-100 p-1.5">
-                                <Envelope className="size-4 text-green-600" />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="text-xs font-medium text-neutral-700">
-                                    Reset Password
-                                </h4>
-                                <p className="text-[10px] text-neutral-500">
-                                    Send password reset email
-                                </p>
-                            </div>
-                        </div>
+                    )}
+                    {learnerSettings?.allowSendResetPasswordMail && (
                         <MyButton
                             type="button"
                             buttonType="secondary"
                             scale="small"
                             disable={false}
-                            onClick={handleSendResetPassword}
-                            className="w-full cursor-pointer border-green-200 text-xs text-green-700 hover:border-green-300 hover:bg-green-50"
-                            style={{ pointerEvents: 'auto', zIndex: 10 }}
+                            onAsyncClick={handleSendResetPassword}
                         >
-                            <Envelope className="mr-1.5 size-3.5" />
-                            Send Reset Password Email
+                            <Envelope className="size-3.5" />
+                            Send reset email
                         </MyButton>
-                    </div>
-                )}
-            </div>
-
-            {/* Info when no settings enabled */}
-            {!learnerSettings?.allowViewPassword &&
-                !learnerSettings?.allowPortalAccess &&
-                !learnerSettings?.allowSendResetPasswordMail && (
-                    <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-12">
-                        <Shield className="mb-2 size-8 text-neutral-400" />
-                        <p className="text-sm text-neutral-500">
-                            No portal access features enabled
-                        </p>
-                        <p className="text-xs text-neutral-400">
-                            Contact admin to enable portal access settings
-                        </p>
-                    </div>
-                )}
+                    )}
+                </ProfileActionBar>
+            )}
         </div>
     );
 };

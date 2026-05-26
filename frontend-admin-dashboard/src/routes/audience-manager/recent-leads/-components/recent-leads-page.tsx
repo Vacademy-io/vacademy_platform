@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -96,6 +97,7 @@ const toDateInputValue = (d: Date) => {
 // Date filter is a preset day-range select (no custom calendar) so a counsellor
 // can switch windows in one click. "ALL" disables the submitted-date filter.
 const ALL_DATE_VALUE = 'ALL';
+const CUSTOM_DATE_VALUE = 'CUSTOM';
 const DEFAULT_RANGE_DAYS = '30';
 const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
     { value: '1', label: 'Last 24 hours' },
@@ -103,6 +105,7 @@ const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
     { value: '15', label: 'Last 15 days' },
     { value: '30', label: 'Last 30 days' },
     { value: ALL_DATE_VALUE, label: 'All time' },
+    { value: CUSTOM_DATE_VALUE, label: 'Custom range' },
 ];
 const rangeForPreset = (preset: string): { from: string; to: string } => {
     if (preset === ALL_DATE_VALUE) return { from: '', to: '' };
@@ -146,7 +149,17 @@ const RecentLeadsContent = () => {
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(20);
     const [rangeDays, setRangeDays] = useState<string>(DEFAULT_RANGE_DAYS);
-    const appliedRange = useMemo(() => rangeForPreset(rangeDays), [rangeDays]);
+    // Custom-range state (only used when rangeDays === CUSTOM_DATE_VALUE).
+    const [customFrom, setCustomFrom] = useState('');
+    const [customTo, setCustomTo] = useState('');
+    const [customOpen, setCustomOpen] = useState(false);
+    const appliedRange = useMemo(
+        () =>
+            rangeDays === CUSTOM_DATE_VALUE
+                ? { from: customFrom, to: customTo }
+                : rangeForPreset(rangeDays),
+        [rangeDays, customFrom, customTo]
+    );
     const [audienceId, setAudienceId] = useState<string>(ALL_AUDIENCES_VALUE);
 
     const [searchInput, setSearchInput] = useState('');
@@ -336,11 +349,23 @@ const RecentLeadsContent = () => {
         setSlaFilter(ALL_SLA_VALUE);
         setCounsellorFilter(ALL_COUNSELLORS_VALUE);
         setRangeDays(DEFAULT_RANGE_DAYS);
+        setCustomFrom('');
+        setCustomTo('');
         setPage(0);
     };
     const setDateRange = (value: string) => {
         setPage(0);
         setRangeDays(value);
+        if (value === CUSTOM_DATE_VALUE) {
+            // Seed the custom inputs with the last 30 days so a counsellor can
+            // tweak from a sensible starting point instead of empty fields.
+            if (!customFrom && !customTo) {
+                const seed = rangeForPreset(DEFAULT_RANGE_DAYS);
+                setCustomFrom(seed.from);
+                setCustomTo(seed.to);
+            }
+            setCustomOpen(true);
+        }
     };
     const setCounsellor = (value: string) => {
         setPage(0);
@@ -523,8 +548,21 @@ const RecentLeadsContent = () => {
         });
     }
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
-        const label = DATE_RANGE_OPTIONS.find((o) => o.value === rangeDays)?.label ?? 'Date range';
-        chips.push({ label, onRemove: () => setRangeDays(DEFAULT_RANGE_DAYS) });
+        let label: string;
+        if (rangeDays === CUSTOM_DATE_VALUE) {
+            label =
+                customFrom && customTo ? `Date: ${customFrom} → ${customTo}` : 'Date: custom range';
+        } else {
+            label = DATE_RANGE_OPTIONS.find((o) => o.value === rangeDays)?.label ?? 'Date range';
+        }
+        chips.push({
+            label,
+            onRemove: () => {
+                setRangeDays(DEFAULT_RANGE_DAYS);
+                setCustomFrom('');
+                setCustomTo('');
+            },
+        });
     }
 
     return (
@@ -626,6 +664,47 @@ const RecentLeadsContent = () => {
                             ))}
                         </SelectContent>
                     </Select>
+                    {rangeDays === CUSTOM_DATE_VALUE && (
+                        <Popover open={customOpen} onOpenChange={setCustomOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-10">
+                                    <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
+                                    {customFrom && customTo
+                                        ? `${customFrom} → ${customTo}`
+                                        : 'Set dates'}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-72 space-y-3">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-neutral-600">From</Label>
+                                        <Input
+                                            type="date"
+                                            value={customFrom}
+                                            onChange={(e) => setCustomFrom(e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-neutral-600">To</Label>
+                                        <Input
+                                            type="date"
+                                            value={customTo}
+                                            onChange={(e) => setCustomTo(e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                </div>
+                                <Button
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() => setCustomOpen(false)}
+                                >
+                                    Done
+                                </Button>
+                            </PopoverContent>
+                        </Popover>
+                    )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">

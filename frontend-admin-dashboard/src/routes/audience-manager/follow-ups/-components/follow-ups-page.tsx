@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
+import { CalendarBlank, ListBullets } from '@phosphor-icons/react';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getCurrentInstituteId, getUserRoleForInstitute } from '@/lib/auth/instituteUtils';
@@ -33,6 +36,7 @@ import {
     isPendingFollowUp,
     type FollowUpBucket,
 } from './follow-up-buckets';
+import { FollowUpsCalendarView } from './follow-ups-calendar-view';
 
 /**
  * Follow-ups — at-a-glance task list of leads needing counsellor action.
@@ -79,6 +83,21 @@ const FollowUpsContent = () => {
     const { setSelectedStudent } = useStudentSidebar();
     const queryClient = useQueryClient();
 
+    // ── URL-driven view state (List | Calendar + selected month/date + counsellor) ────────────
+    // Keep all sub-view state on the URL so deep-links restore the same view.
+    const search = useSearch({ from: '/audience-manager/follow-ups/' });
+    const navigate = useNavigate({ from: '/audience-manager/follow-ups/' });
+    const view: 'list' | 'calendar' = search.view ?? 'list';
+    const monthStr = search.month ?? format(new Date(), 'yyyy-MM');
+    const selectedDateStr = search.date ?? format(new Date(), 'yyyy-MM-dd');
+
+    const setView = (v: 'list' | 'calendar') =>
+        navigate({ search: (prev) => ({ ...prev, view: v === 'list' ? undefined : v }) });
+    const setMonthStr = (m: string) =>
+        navigate({ search: (prev) => ({ ...prev, month: m }) });
+    const setSelectedDateStr = (d: string) =>
+        navigate({ search: (prev) => ({ ...prev, date: d }) });
+
     // ── Role detection ───────────────────────────────────────────────────────
     // ADMIN sees the whole team + a counsellor filter; anyone else (counsellor,
     // teacher, …) is locked to their own follow-ups.
@@ -90,8 +109,15 @@ const FollowUpsContent = () => {
     const currentUserId = useMemo(() => getUserId() ?? '', []);
 
     const [bucket, setBucket] = useState<FollowUpBucket>('today');
-    // Admin-only: counsellor drill-in. Counsellors are locked server-side.
-    const [counsellorFilter, setCounsellorFilter] = useState<string>(ALL_COUNSELLORS_VALUE);
+    // Admin-only: counsellor drill-in (URL-driven). Counsellors are locked server-side.
+    const counsellorFilter = search.counsellor ?? ALL_COUNSELLORS_VALUE;
+    const setCounsellorFilter = (v: string) =>
+        navigate({
+            search: (prev) => ({
+                ...prev,
+                counsellor: v === ALL_COUNSELLORS_VALUE ? undefined : v,
+            }),
+        });
 
     const leadSettings = useLeadSettings();
     const showOps = !leadSettings.isLoading && leadSettings.enabled;
@@ -151,11 +177,14 @@ const FollowUpsContent = () => {
         [bucketVms]
     );
 
-    // Profiles + notes for the visible bucket.
-    const userIds = useMemo(
-        () => sortedVms.map((vm) => vm.userId ?? '').filter((id): id is string => !!id),
-        [sortedVms]
-    );
+    // Profiles + notes for the visible vms. On the calendar view the user can
+    // jump to any day, so we need profiles/notes for ALL pending VMs (not just
+    // the current bucket's sorted slice) — otherwise selecting a day outside
+    // the active bucket would render without profile/notes data.
+    const userIds = useMemo(() => {
+        const source = view === 'calendar' ? pendingVms : sortedVms;
+        return source.map((vm) => vm.userId ?? '').filter((id): id is string => !!id);
+    }, [view, pendingVms, sortedVms]);
     const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps);
     const { notesByUserId } = useLatestNotesBatch(userIds, showOps);
 
@@ -221,13 +250,33 @@ const FollowUpsContent = () => {
             {/* Bucket cards — the dominant element */}
             <FollowUpStatTiles counts={counts} active={bucket} onChange={setBucket} />
 
-            {/* Showing N {bucket} */}
-            <div className="flex items-center justify-end gap-1 text-sm text-neutral-500">
-                Showing <span className="font-semibold text-neutral-700">{sortedVms.length}</span>{' '}
-                {bucket === 'all' ? 'follow-ups' : `${bucketLabel(bucket)} follow-ups`}
-            </div>
+            {/* View toggle: List | Calendar */}
+            <Tabs
+                value={view}
+                onValueChange={(v) => setView(v === 'calendar' ? 'calendar' : 'list')}
+            >
+                <TabsList>
+                    <TabsTrigger value="list" className="gap-1.5">
+                        <ListBullets className="size-4" />
+                        List
+                    </TabsTrigger>
+                    <TabsTrigger value="calendar" className="gap-1.5">
+                        <CalendarBlank className="size-4" />
+                        Calendar
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
 
-            {/* Table */}
+            {/* Showing N {bucket} — list view only */}
+            {view === 'list' && (
+                <div className="flex items-center justify-end gap-1 text-body text-muted-foreground">
+                    Showing{' '}
+                    <span className="font-semibold text-card-foreground">{sortedVms.length}</span>{' '}
+                    {bucket === 'all' ? 'follow-ups' : `${bucketLabel(bucket)} follow-ups`}
+                </div>
+            )}
+
+            {/* View body — calendar or list */}
             <SidebarProvider
                 style={{ ['--sidebar-width' as string]: '565px' }}
                 defaultOpen={false}
@@ -235,7 +284,25 @@ const FollowUpsContent = () => {
                 onOpenChange={setIsSidebarOpen}
             >
                 <div className="min-w-0 flex-1">
-                    {error ? (
+                    {view === 'calendar' ? (
+                        <FollowUpsCalendarView
+                            vms={pendingVms}
+                            monthStr={monthStr}
+                            onMonthChange={setMonthStr}
+                            selectedDateStr={selectedDateStr}
+                            onSelectDate={setSelectedDateStr}
+                            isLoading={isLoading}
+                            error={error}
+                            profiles={leadProfiles}
+                            notes={notesByUserId}
+                            statuses={leadStatusCatalog}
+                            showOps={showOps}
+                            showScore={showScore}
+                            actions={actions}
+                            onStatusUpdated={handleStatusUpdated}
+                            hiddenColumns={HIDDEN_COLUMNS}
+                        />
+                    ) : error ? (
                         <LeadEmptyState
                             title="Couldn't load follow-ups"
                             description="Something went wrong fetching follow-ups. Try again."

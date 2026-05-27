@@ -98,10 +98,15 @@ const Students = ({
                 `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=100`,
                 { search_name: '', package_session_ids: [packageSessionId], payment_option_ids: [], sort_columns: {}, tags: [] }
             );
-            return (response.data?.content || []).map((inv: { id: string; name: string }) => ({
-                id: inv.id,
-                label: inv.name || inv.id,
-            }));
+            return (response.data?.content || [])
+                .filter((inv: { tag?: string | null }) => {
+                    const tag = (inv.tag ?? '').trim().toUpperCase();
+                    return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+                })
+                .map((inv: { id: string; name: string }) => ({
+                    id: inv.id,
+                    label: inv.name || inv.id,
+                }));
         },
         enabled: !!packageSessionId && !!instituteId,
         staleTime: 1000 * 60 * 5,

@@ -89,7 +89,12 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                     tags: null,
                 }
             );
-            setInvites(response.data?.content || []);
+            setInvites(
+                (response.data?.content || []).filter((inv: EnrollInviteProjection) => {
+                    const tag = (inv.tag ?? '').trim().toUpperCase();
+                    return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+                })
+            );
         } catch {
             setInvites([]);
         } finally {

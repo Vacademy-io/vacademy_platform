@@ -21,6 +21,9 @@ module.exports = {
             },
         },
         extend: {
+            zIndex: {
+                'popover-above-modal': '1200',
+            },
             fontFamily: {
                 sans: ['Open Sans', 'sans-serif'],
             },

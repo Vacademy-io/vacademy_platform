@@ -6,6 +6,8 @@
        its SPA at root with the API path-prefixes routed on the same host so the
        frontend is same-origin with the backend. Only enabled services get a path. */ -}}
 {{- $d := .Values.standalone.domain }}
+{{- $adminHost := .Values.standalone.adminHost | default (printf "admin.%s" $d) }}
+{{- $appHost := .Values.standalone.appHost | default (printf "app.%s" $d) }}
 {{- $svcPaths := list
   (dict "path" "/auth-service" "svc" "auth-service" "key" "auth_service")
   (dict "path" "/admin-core-service" "svc" "admin-core-service" "key" "admin_core_service")
@@ -30,11 +32,11 @@ spec:
   ingressClassName: {{ .Values.ingress.className }}
   tls:
     - hosts:
-        - admin.{{ $d }}
-        - app.{{ $d }}
+        - {{ $adminHost }}
+        - {{ $appHost }}
       secretName: vacademy-standalone-tls
   rules:
-    - host: admin.{{ $d }}
+    - host: {{ $adminHost }}
       http:
         paths:
 {{- range $p := $svcPaths }}
@@ -66,7 +68,7 @@ spec:
                 port:
                   number: 80
 {{- end }}
-    - host: app.{{ $d }}
+    - host: {{ $appHost }}
       http:
         paths:
 {{- range $p := $svcPaths }}

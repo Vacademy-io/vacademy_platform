@@ -48,6 +48,20 @@ else
 fi
 until kubectl get nodes >/dev/null 2>&1; do c_info "waiting for k3s API..."; sleep 3; done
 
+# CoreDNS: forward to public resolvers. k3s CoreDNS forwards to the node's
+# /etc/resolv.conf, which negative-caches NXDOMAIN during the window before the
+# client's DNS records exist — that blocks cert-manager's HTTP-01 self-check and
+# stalls TLS issuance. Pointing at public resolvers avoids the stale cache.
+if kubectl -n kube-system get cm coredns >/dev/null 2>&1 \
+   && kubectl -n kube-system get cm coredns -o jsonpath='{.data.Corefile}' | grep -q 'forward . /etc/resolv.conf'; then
+  c_info "Pointing CoreDNS at public resolvers (1.1.1.1 / 8.8.8.8)..."
+  kubectl -n kube-system get cm coredns -o yaml > /tmp/coredns.yaml
+  sed -i 's#forward \. /etc/resolv.conf#forward . 1.1.1.1 8.8.8.8#' /tmp/coredns.yaml
+  kubectl apply -f /tmp/coredns.yaml >/dev/null
+  kubectl -n kube-system rollout restart deploy/coredns >/dev/null 2>&1 || true
+  c_ok "CoreDNS updated."
+fi
+
 # --- 3. Helm -----------------------------------------------------------------
 if ! command -v helm >/dev/null 2>&1; then
   c_info "Installing Helm..."
@@ -96,11 +110,13 @@ else
   OPENROUTER=""
   if [ "$EN_AI" = true ]; then OPENROUTER=$(ask "  OpenRouter API key (ai-service)"); fi
 
-  # Auto-generated, install-specific secrets
+  # Auto-generated, install-specific secrets.
+  # NOTE: jwtSecretKey is intentionally NOT randomized — the Java services hardcode
+  # it (JwtService.java) and ignore the env, so it must stay the chart default
+  # (=the hardcoded value) or ai-service can't validate tokens.
   DB_PASS=$(openssl rand -hex 24)
-  JWT_KEY=$(openssl rand -hex 32)
   APP_PASS=$(openssl rand -hex 16)
-  AI_CLIENT_SECRET=$(openssl rand -hex 16)
+  INTERNAL_CLIENT_SECRET=$(openssl rand -hex 24)
 
   c_info "Writing $SECRET_FILE ..."
   cat > "$SECRET_FILE" <<YAML
@@ -124,7 +140,8 @@ env:
 secrets:
   dbPassword: "$DB_PASS"
   appPassword: "$APP_PASS"
-  jwtSecretKey: "$JWT_KEY"
+  # jwtSecretKey omitted on purpose -> uses the chart default (the value Java hardcodes).
+  internalClientSecret: "$INTERNAL_CLIENT_SECRET"
   s3:
     accessKey: "$S3_KEY"
     accessSecret: "$S3_SECRET"
@@ -132,7 +149,6 @@ secrets:
     openrouter: "$OPENROUTER"
   ai:
     clientName: ai_service
-    clientSecret: "$AI_CLIENT_SECRET"
   # Fill these if you enabled notification (email/OTP) or want OAuth login:
   ses: { mailUsername: "", mailPassword: "" }
   sqs: { accessKey: "", secretKey: "" }

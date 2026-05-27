@@ -1,0 +1,84 @@
+name: Deploy to Stage Server (standalone k3s)
+
+# Deploys the standalone chart to the single-node stage server (Hetzner k3s) over
+# SSH. Pick the BRANCH (whose chart/config + image tags to use) and the IMAGE TAG
+# (which pre-built images to run). Building a branch's images is a separate concern
+# — run the per-service build workflows (or push to main) to produce the tag first,
+# then deploy it here.
+#
+# Requires repo Actions secrets:
+#   STAGE_SSH_KEY  - private key authorized as root on the stage server
+#   STAGE_HOST     - stage server IP/host (e.g. 188.245.114.166)
+# The server must already be bootstrapped once via vacademy_devops/install.sh
+# (k3s + cert-manager + values.secret.yaml present at /root/vacademy-services).
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch whose chart/config to deploy"
+        required: true
+        default: main
+      image_tag:
+        description: "Image tag to run (must already be pushed to ECR; 'latest' = current main)"
+        required: true
+        default: latest
+      optional_services:
+        description: "Optional services to enable (comma-sep: assessment,ai,notification,community)"
+        required: false
+        default: "assessment,ai,notification,community"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Set up SSH to the stage server
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.STAGE_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.STAGE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync chart to server (preserving values.secret.yaml)
+        run: |
+          # Ship the branch's chart; the server keeps its existing values.secret.yaml
+          tar czf - -C vacademy_devops vacademy-services \
+            | ssh -i ~/.ssh/id_ed25519 root@${{ secrets.STAGE_HOST }} \
+              'tar xzf - -C /root/ && echo "chart synced"'
+
+      - name: Helm upgrade on stage
+        run: |
+          TAG='${{ github.event.inputs.image_tag }}'
+          OPT='${{ github.event.inputs.optional_services }}'
+          # Build --set flags: pin every image to TAG, toggle optional services
+          SETS="--set frontends.admin.image.tag=$TAG --set frontends.learner.image.tag=$TAG"
+          for s in auth_service admin_core_service media_service assessment_service community_service notification_service ai_service; do
+            SETS="$SETS --set services.$s.image.tag=$TAG"
+          done
+          # default optional services to disabled, then enable the chosen ones
+          for s in assessment_service ai_service notification_service community_service; do
+            SETS="$SETS --set services.$s.enabled=false"
+          done
+          IFS=',' read -ra CHOSEN <<< "$OPT"
+          for c in "${CHOSEN[@]}"; do
+            c=$(echo "$c" | tr -d ' ')
+            [ -n "$c" ] && SETS="$SETS --set services.${c}_service.enabled=true"
+          done
+          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.STAGE_HOST }} bash -s <<EOF
+            set -e
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml PATH=\$PATH:/usr/local/bin
+            cd /root/vacademy-services
+            [ -f values.secret.yaml ] || { echo "ERROR: values.secret.yaml missing — run install.sh first"; exit 1; }
+            helm upgrade --install vac . \
+              -f values.yaml -f values-standalone.yaml -f values.secret.yaml \
+              $SETS --wait --timeout 20m
+            kubectl get pods
+          EOF
+
+      - name: Summary
+        run: echo "Deployed branch '${{ github.event.inputs.branch }}' (images :${{ github.event.inputs.image_tag }}) to stage."

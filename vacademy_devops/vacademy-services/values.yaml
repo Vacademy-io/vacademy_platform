@@ -79,8 +79,12 @@ environment:
 standalone:
   enabled: false
   # The single domain the client points at this box (frontends + API, same origin).
-  # Required when standalone.enabled=true.
+  # Required when standalone.enabled=true. Used to derive admin.<domain>/app.<domain>
+  # unless adminHost/appHost are set explicitly below.
   domain: ""
+  # Explicit per-frontend hostnames (override the admin.<domain>/app.<domain> default).
+  adminHost: ""   # e.g. admin-stage.vacademy.io
+  appHost: ""     # e.g. app-stage.vacademy.io
 
 # ---------------------------------------------------------------------------
 # Bundled PostgreSQL (used for standalone; cloud prod uses managed DB via pgbouncer)
@@ -192,7 +196,17 @@ env:
 secrets:
   dbPassword: ""
   appPassword: ""                 # APP_PASSWORD
-  jwtSecretKey: ""                # shared across this install's services
+  # JWT secret. IMPORTANT: the Java services HARDCODE this in JwtService.java
+  # (static final) and ignore the env var; only ai-service (Python) reads
+  # JWT_SECRET_KEY. So it MUST equal the Java hardcoded value or ai-service can't
+  # validate tokens auth-service signs. Do NOT randomize until the Java code is
+  # changed to read it from config.
+  jwtSecretKey: "357638792F423F4428472B4B6250655368566D597133743677397A2443264629"
+  # Shared internal client secret used for BOTH the client_secret_key rows (seeded
+  # into every service DB) AND ai-service's CLIENT_SECRET env. Java services read
+  # their client secret from the DB; ai-service reads it from env — these must
+  # match. Installer generates a unique value per install.
+  internalClientSecret: ""
   oauth:
     googleClientId: ""
     googleClientSecret: ""

@@ -15,6 +15,12 @@ from ..db import get_engine
 
 logger = logging.getLogger(__name__)
 
+# Schema note: the `editor_media_asset` table is created by admin_core_service
+# Flyway (V306__Create_editor_media_asset_table.sql). admin_core_service is the
+# single source of truth for this shared database's schema — the same place
+# ai_gen_video (V65) and ai_reels (V245) are defined. ai_service does not
+# create tables itself.
+
 
 def _is_connection_error(exc: Exception) -> bool:
     if isinstance(exc, (OperationalError, PendingRollbackError)):

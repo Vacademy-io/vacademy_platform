@@ -1,11 +1,11 @@
 -- Migration: Create editor_media_asset table for the AI video editor's
 --            saved media library (media picker).
 -- Description: Per-institute reusable image/video assets — uploaded, AI-
---              generated, or stock (Pexels/Pixabay) re-hosted to our S3.
---              Auto-populated on insert via the editor media picker so the
---              Library tab surfaces recently-used media.
--- Date: 2026-05-26
--- Depends on: ai_gen_video (Base / pgcrypto extension)
+--              generated, or stock (Pexels/Pixabay) re-hosted to S3.
+--              Owned/consumed by ai_service (shares this database); created
+--              here because admin_core_service Flyway is the single source of
+--              truth for the schema (see ai_gen_video V65, ai_reels V245).
+-- Date: 2026-05-27
 
 BEGIN;
 
@@ -34,8 +34,8 @@ CREATE TABLE IF NOT EXISTS editor_media_asset (
     tags                JSONB NOT NULL DEFAULT '[]'::jsonb,
     metadata            JSONB NOT NULL DEFAULT '{}'::jsonb,
 
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT editor_media_asset_kind_chk   CHECK (kind IN ('image', 'video')),
     CONSTRAINT editor_media_asset_source_chk CHECK (source IN ('upload', 'pexels', 'pixabay', 'ai'))
@@ -46,6 +46,6 @@ CREATE INDEX IF NOT EXISTS idx_ema_institute_kind_created
     ON editor_media_asset (institute_id, kind, created_at DESC);
 
 COMMENT ON TABLE editor_media_asset IS
-    'Per-institute saved media library for the AI video editor media picker.';
+    'Per-institute saved media library for the AI video editor media picker (ai_service).';
 
 COMMIT;

@@ -266,7 +266,8 @@ public class ProductPageEnrollmentService {
                 && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
                 && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
 
-        if (isRazorpay && !isRazorpayPhase2) {
+        // Free payment options (amount = 0) must never reach a payment gateway
+        if (isRazorpay && !isRazorpayPhase2 && finalTotal > 0.0) {
             // Phase 1: create Razorpay order + payment log (PAYMENT_PENDING) — do NOT
             // enroll yet
             PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
@@ -296,7 +297,10 @@ public class ProductPageEnrollmentService {
                     .build();
         }
 
-        // ── Razorpay Phase 2: verify signature + enroll ───────────────────────
+        // ── Razorpay Phase 2 / gateway-specific payment handling ─────────────
+        boolean isManualVendor = "MANUAL".equalsIgnoreCase(payReq.getVendor());
+        // True when payment is already confirmed synchronously (no webhook needed)
+        boolean isGatewayPaidSync = false;
         String parentPaymentLogId;
         if (isRazorpayPhase2) {
             verifyRazorpaySignature(payReq, request.getInstituteId(), firstInvite);
@@ -315,8 +319,27 @@ public class ProductPageEnrollmentService {
                             + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
             log.info("Razorpay Phase 2: payment verified, paymentLogId={}", parentPaymentLogId);
 
+        } else if (finalTotal <= 0.0) {
+            // Free enrollment: bypass gateway entirely, create a PAID log directly
+            parentPaymentLogId = paymentLogService.createPaymentLog(
+                    user.getId(), 0.0, "MANUAL", null,
+                    StringUtils.hasText(payReq.getCurrency()) ? payReq.getCurrency() : "INR",
+                    null, null);
+            paymentLogService.updatePaymentLog(parentPaymentLogId, "ACTIVE", PaymentStatusEnum.PAID.name(), "{}");
+            payReq.setOrderId(parentPaymentLogId);
+            isGatewayPaidSync = true;
+            log.info("Free enrollment: gateway bypassed, created PAID log={}", parentPaymentLogId);
+        } else if (isManualVendor) {
+            // MANUAL payment: no online gateway; admin will confirm payment offline
+            parentPaymentLogId = paymentLogService.createPaymentLog(
+                    user.getId(), finalTotal, "MANUAL", null,
+                    StringUtils.hasText(payReq.getCurrency()) ? payReq.getCurrency() : "INR",
+                    null, null);
+            paymentLogService.updatePaymentLog(parentPaymentLogId, "ACTIVE", PaymentStatusEnum.PAYMENT_PENDING.name(), "{}");
+            payReq.setOrderId(parentPaymentLogId);
+            log.info("MANUAL payment: gateway bypassed, PENDING log={}", parentPaymentLogId);
         } else {
-            // Non-Razorpay (FREE, Cashfree redirect, etc.): single-call flow
+            // Online paid gateway (Cashfree/PhonePe redirect, Stripe, Eway, etc.)
             PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
                     payReq, request.getInstituteId(), user, null);
             parentPaymentLogId = payReq.getOrderId();
@@ -328,6 +351,11 @@ public class ProductPageEnrollmentService {
                 Object urlObj = gatewayResponse.getResponseData().get("paymentUrl");
                 if (urlObj instanceof String)
                     paymentUrl = (String) urlObj;
+                // Detect synchronous PAID (Stripe charge_automatically, Eway, etc.)
+                Object statusObj = gatewayResponse.getResponseData().get("paymentStatus");
+                if (PaymentStatusEnum.PAID.name().equals(statusObj)) {
+                    isGatewayPaidSync = true;
+                }
             }
             if (paymentUrl != null) {
                 // Redirect-based gateway (Cashfree/PhonePe): create UserPlan + SSIGM entries
@@ -466,8 +494,8 @@ public class ProductPageEnrollmentService {
             if (parentPaymentLogId != null) {
                 extraData.put("PARENT_PAYMENT_LOG_ID", parentPaymentLogId);
             }
-            if (isRazorpayPhase2) {
-                // Signal that payment is already collected — downstream can mark PAID
+            if (isRazorpayPhase2 || isGatewayPaidSync) {
+                // Payment already confirmed — activate enrollment immediately
                 extraData.put("FORCE_PAID_STATUS", true);
             }
 
@@ -489,19 +517,14 @@ public class ProductPageEnrollmentService {
             createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(), -(int) Math.round(discountAmount));
         }
 
-        // Send credentials + trigger workflows for confirmed enrollments.
-        // For Razorpay Phase 2 payment is already captured; for free (finalTotal==0)
-        // enroll is immediate.
-        // Redirect-based gateways (Cashfree) return early above, so the webhook handles
-        // their notifications.
-        boolean sendCredentialsNow = isRazorpayPhase2 || finalTotal == 0.0;
+        boolean sendCredentialsNow = isRazorpayPhase2 || isGatewayPaidSync;
         triggerPostEnrollmentActions(user, request.getInstituteId(), selectedMappings, enrolledSessionIds,
                 sendCredentialsNow);
 
         return ProductPageEnrollResponse.builder()
                 .paymentLogId(parentPaymentLogId)
                 .userId(user.getId())
-                .status(isRazorpayPhase2 ? PaymentStatusEnum.PAID.name() : "INITIATED")
+                .status(isRazorpayPhase2 || isGatewayPaidSync ? PaymentStatusEnum.PAID.name() : "INITIATED")
                 .enrolledPackageSessionIds(enrolledSessionIds)
                 .message("Enrollment successful")
                 .build();

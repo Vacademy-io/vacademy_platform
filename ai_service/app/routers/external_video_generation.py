@@ -361,6 +361,12 @@ async def generate_video_external(
                         # transaction open across the multi-minute render, which
                         # Postgres then killed (idle-in-transaction timeout).
                         repository=AiVideoRepository(),
+                        # Session-less repo: every get/update opens its own
+                        # short-lived, pre-pinged session and closes it. Sharing
+                        # the long-lived `bg_session` here caused reads to leave a
+                        # transaction open across the multi-minute render, which
+                        # Postgres then killed (idle-in-transaction timeout).
+                        repository=AiVideoRepository(),
                         s3_service=S3Service()
                     )
                     async for event in bg_svc.generate_till_stage(
@@ -676,6 +682,9 @@ async def resume_video_external(
                         # Session-less repo — see note in _run_generation. Avoids
                         # idle-in-transaction kills across the long resume render.
                         repository=AiVideoRepository(),
+                        # Session-less repo — see note in _run_generation. Avoids
+                        # idle-in-transaction kills across the long resume render.
+                        repository=AiVideoRepository(),
                         s3_service=S3Service(),
                     )
                     # Retrieve the original record to get prompt + settings
@@ -841,6 +850,9 @@ async def retry_video_external(
         try:
             with make_db_session() as bg_session:
                 bg_svc = VideoGenerationService(
+                    # Session-less repo — see note in _run_generation. Avoids
+                    # idle-in-transaction kills across the long retry render.
+                    repository=AiVideoRepository(),
                     # Session-less repo — see note in _run_generation. Avoids
                     # idle-in-transaction kills across the long retry render.
                     repository=AiVideoRepository(),
@@ -1450,7 +1462,8 @@ async def build_sentence_clips_external(
         video_gen_root=service.video_gen_root,
     )
     try:
-        result = svc.build_for_video(video_id)
+        # Off the event loop — does blocking S3 I/O + audio slicing.
+        result = await asyncio.to_thread(svc.build_for_video, video_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -1558,7 +1571,11 @@ async def regenerate_sentence_external(
     overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
 
     try:
-        result = svc.regenerate_sentence(
+        # Off the event loop — same reason as /shot/regenerate: the pipeline's
+        # Sarvam TTS uses asyncio.run() and would silently fall back to a
+        # different voice if run on the FastAPI loop.
+        result = await asyncio.to_thread(
+            svc.regenerate_sentence,
             video_id=payload.video_id,
             sentence_id=payload.sentence_id,
             new_text=payload.new_text,
@@ -1695,7 +1712,14 @@ async def regenerate_shot_external(
     overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
 
     try:
-        result = svc.regenerate_shot(
+        # Run the blocking TTS+splice off the event loop. Critical: the pipeline's
+        # Sarvam TTS calls asyncio.run() internally, which raises ("cannot be
+        # called from a running event loop") if executed on the FastAPI loop —
+        # caught by Sarvam's try/except → silent fallback to a DIFFERENT (Edge)
+        # voice. Generation avoids this by running the pipeline in a thread pool;
+        # regen must do the same so the re-narrated voice matches the original.
+        result = await asyncio.to_thread(
+            svc.regenerate_shot,
             video_id=payload.video_id,
             shot_idx=payload.shot_idx,
             new_text=payload.new_text,
@@ -1778,7 +1802,8 @@ async def rebuild_master_external(
         video_gen_root=service.video_gen_root,
     )
     try:
-        result = svc.rebuild_master_from_shots(payload.video_id)
+        # Off the event loop — runs ffmpeg concat + S3 I/O.
+        result = await asyncio.to_thread(svc.rebuild_master_from_shots, payload.video_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -1841,7 +1866,9 @@ async def silence_sentence_external(
         video_gen_root=service.video_gen_root,
     )
     try:
-        result = svc.silence_sentence(
+        # Off the event loop — the splice makes a blocking render-server call.
+        result = await asyncio.to_thread(
+            svc.silence_sentence,
             video_id=payload.video_id,
             sentence_id=payload.sentence_id,
             crossfade_ms=payload.crossfade_ms,
@@ -1921,7 +1948,9 @@ async def silence_shot_external(
         video_gen_root=service.video_gen_root,
     )
     try:
-        result = svc.silence_shot(
+        # Off the event loop — the splice makes a blocking render-server call.
+        result = await asyncio.to_thread(
+            svc.silence_shot,
             video_id=payload.video_id,
             shot_idx=payload.shot_idx,
             crossfade_ms=payload.crossfade_ms,
@@ -2060,7 +2089,9 @@ async def insert_shot_external(
     html_model = _resolve_html_model(db, quality_tier)
 
     try:
-        result = svc.insert_shot(
+        # Off the event loop — runs LLM/HTML generation + S3 I/O.
+        result = await asyncio.to_thread(
+            svc.insert_shot,
             video_id=payload.video_id,
             gap_start=payload.gap_start,
             gap_end=payload.gap_end,

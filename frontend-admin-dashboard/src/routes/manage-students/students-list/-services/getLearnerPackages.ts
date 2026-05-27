@@ -28,6 +28,13 @@ export interface PackageDetailDTO {
     package_type: string;
     is_parent?: boolean;
     parent_id?: string | null;
+    // Viewing learner's ssigm.status for this package_session. Only populated on
+    // per-user endpoints (/search-by-user-id). Null on catalogue listings.
+    enrollment_status?: 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | 'INVITED' | null;
+    // ssigm fields surfaced for the sidebar's per-user view. ISO date strings.
+    enrolled_date?: string | null;
+    expiry_date?: string | null;
+    enrollment_status_updated_at?: string | null;
 }
 
 export interface LearnerPackagesResponse {

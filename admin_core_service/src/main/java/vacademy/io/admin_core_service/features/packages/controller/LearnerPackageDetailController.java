@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailDTO;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
 import vacademy.io.admin_core_service.features.packages.service.LearnerPackageService;
@@ -11,6 +12,8 @@ import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
 import vacademy.io.admin_core_service.config.cache.CacheScope;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/learner-packages/v1")
@@ -42,6 +45,14 @@ public class LearnerPackageDetailController {
             @RequestParam("userId") String userId,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int page,
             @RequestParam(defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int size) {
+        // Admin view: include INACTIVE enrollments by default so deactivated
+        // courses still surface (tagged with enrollment_status). Only the learner-
+        // facing /search endpoint keeps the ACTIVE-only default.
+        if (filterDTO.getStatus() == null || filterDTO.getStatus().isEmpty()) {
+            filterDTO.setStatus(List.of(
+                    LearnerSessionStatusEnum.ACTIVE.name(),
+                    LearnerSessionStatusEnum.INACTIVE.name()));
+        }
         Page<PackageDetailDTO> result = learnerPackageService.getLearnerPackageDetail(filterDTO, userId, instituteId,
                 page, size);
         return ResponseEntity.ok(result);

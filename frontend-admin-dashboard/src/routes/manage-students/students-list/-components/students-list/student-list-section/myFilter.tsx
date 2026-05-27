@@ -118,6 +118,7 @@ export const Filters = ({
         if (onFilterChange) {
             onFilterChange(updatedValue);
         }
+
     };
 
     const handleClearFilters = () => {
@@ -142,6 +143,7 @@ export const Filters = ({
                 handleClearFilters={handleClearFilters}
                 onSearchChange={filterId === 'batch' ? setSearchTerm : undefined}
                 shouldFilter={filterId !== 'batch'}
+                closeOnSelect
                 onOpenChange={(open) => {
                     setIsOpen(open);
                     if (!open) {

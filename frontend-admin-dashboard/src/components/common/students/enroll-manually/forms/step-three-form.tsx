@@ -28,6 +28,7 @@ interface InviteItem {
     id: string;
     name: string;
     invite_code: string;
+    tag?: string | null;
     payment_option_id?: string;
     package_session_ids?: string[];
 }
@@ -69,7 +70,12 @@ export const StepThreeForm = ({
         enabled: !!instituteId,
     });
 
-    const inviteList: InviteItem[] = inviteListData?.content || [];
+    const inviteList: InviteItem[] = (inviteListData?.content || []).filter(
+        (inv: InviteItem) => {
+            const tag = (inv.tag ?? '').trim().toUpperCase();
+            return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+        }
+    );
 
     // Prepare default form values
     const prepareDefaultValues = (): StepThreeData => {

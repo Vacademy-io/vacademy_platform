@@ -146,7 +146,8 @@ async function scheduleNarration(
     ctx: AudioContext,
     gen: number,
     url: string,
-    playheadStart: number
+    playheadStart: number,
+    narrationStart: number
 ) {
     try {
         const buffer = await decodeForContext(ctx, url);
@@ -154,7 +155,13 @@ async function scheduleNarration(
         const scheduled = scheduleBuffer({
             ctx,
             buffer,
-            timelineStart: 0,
+            // The master narration MP3 has NO leading intro silence — its t=0
+            // sits at master-timeline `audio_start_at` (the intro duration).
+            // The render server compensates via ffmpeg `adelay` and the player
+            // delays the <audio> element; the editor must do the same or
+            // narration plays `audio_start_at` seconds too early when an intro
+            // exists.
+            timelineStart: narrationStart,
             playheadStart,
             volume: 1,
             fadeIn: 0,
@@ -250,6 +257,52 @@ async function schedulePerEntryAudio(
     }
 }
 
+/**
+ * Schedule per-entry sound-effect cues (Sound Planner output). Each cue carries
+ * `absolute_time` — the global master-clock second, already offset by any intro
+ * by the backend — and a one-shot `url`. We reuse `scheduleBuffer` with
+ * `timelineStart = absolute_time` so a future cue fires sample-accurately on the
+ * AudioContext clock; cues whose start is before the playhead are skipped
+ * (forward-only one-shot, matching the read-only player's seek semantics).
+ *
+ * No sidechain ducking here — the read-only player dips narration −4 dB during
+ * cues, but the editor keeps preview simple: SFX layer on top at their own
+ * volume. (Decode is shared via the audio-decode cache.)
+ */
+async function scheduleSoundCues(
+    ctx: AudioContext,
+    gen: number,
+    entries: Entry[],
+    playheadStart: number
+) {
+    for (const e of entries) {
+        const cues = e.sound_cues;
+        if (!cues || cues.length === 0) continue;
+        const entryStart = e.inTime ?? e.start ?? 0;
+        for (const cue of cues) {
+            if (!cue.url) continue;
+            const absT = cue.absolute_time ?? entryStart + (cue.t ?? 0);
+            if (absT < playheadStart - 0.05) continue; // already past — don't replay
+            try {
+                const buffer = await decodeForContext(ctx, cue.url);
+                if (isStale(ctx, gen)) return;
+                const scheduled = scheduleBuffer({
+                    ctx,
+                    buffer,
+                    timelineStart: absT,
+                    playheadStart,
+                    volume: Math.max(0, Math.min(1, cue.volume ?? 1)),
+                    fadeIn: 0,
+                    fadeOut: 0,
+                });
+                if (scheduled) sources.push(scheduled);
+            } catch {
+                /* ignore individual cue failures (CORS / unreachable) */
+            }
+        }
+    }
+}
+
 export async function play() {
     const state = useVideoEditorStore.getState();
     const ctx = ensureCtx();
@@ -286,11 +339,16 @@ export async function play() {
     // clips drive playback; otherwise the master plays and per-entry narration
     // clips are skipped (only intrinsic/legacy per-entry audio layers).
     const ownAudio = entriesOwnAudio(state.entries, state.meta.entries_own_audio);
+    const narrationStart = state.meta.audio_start_at ?? 0;
     const promises: Promise<void>[] = [];
     if (state.audioUrl && !ownAudio)
-        promises.push(scheduleNarration(ctx, gen, state.audioUrl, startAt));
+        promises.push(scheduleNarration(ctx, gen, state.audioUrl, startAt, narrationStart));
     for (const track of state.audioTracks) promises.push(scheduleTrack(ctx, gen, track, startAt));
     promises.push(schedulePerEntryAudio(ctx, gen, state.entries, startAt, ownAudio));
+    // Sound-effect cues (Sound Planner). Each cue carries an absolute master-
+    // clock time; the editor previously never played them (only the read-only
+    // player's useSoundScheduler did), so SFX were silent in the editor.
+    promises.push(scheduleSoundCues(ctx, gen, state.entries, startAt));
     await Promise.all(promises);
 }
 

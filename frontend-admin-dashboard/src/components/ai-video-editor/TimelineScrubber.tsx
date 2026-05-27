@@ -629,10 +629,19 @@ export function TimelineScrubber() {
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    // Audio waveform peaks (computed once per audioUrl)
-    const { peaks: waveformPeaks, loading: waveformLoading } = useAudioWaveform(
-        navigationMode === 'time_driven' ? audioUrl : undefined
-    );
+    // Audio waveform peaks (computed once per audioUrl). `waveformDuration` is
+    // the master narration MP3's natural length — used to position + size the
+    // waveform so it lines up with the shot regions when an intro/outro exists
+    // (the MP3 covers [audio_start_at .. audio_start_at + duration], NOT the
+    // full timeline).
+    const {
+        peaks: waveformPeaks,
+        loading: waveformLoading,
+        duration: waveformDuration,
+    } = useAudioWaveform(navigationMode === 'time_driven' ? audioUrl : undefined);
+    // Where the master narration starts on the timeline (intro offset). The MP3
+    // has no leading silence, so its t=0 sits here.
+    const audioStartAt = meta.audio_start_at ?? 0;
 
     // Per-sentence audio clips. Only renderable in time-driven mode (the
     // waveform itself is too — sentences are an audio concept and we
@@ -1464,7 +1473,23 @@ export function TimelineScrubber() {
                                 style={{ top: RULER_H, height: WAVEFORM_H }}
                             >
                                 {waveformPeaks.length > 0 ? (
-                                    <WaveformBars peaks={waveformPeaks} height={WAVEFORM_H} />
+                                    // Position the bars at the narration window
+                                    // [audio_start_at .. +duration] instead of
+                                    // stretching them across the whole timeline,
+                                    // so the waveform aligns with the shot regions
+                                    // and cue markers when an intro/outro exists.
+                                    <div
+                                        className="absolute inset-y-0"
+                                        style={{
+                                            left: timeToPercent(audioStartAt),
+                                            width: waveformDuration
+                                                ? timeToPercent(waveformDuration)
+                                                : undefined,
+                                            right: waveformDuration ? undefined : 0,
+                                        }}
+                                    >
+                                        <WaveformBars peaks={waveformPeaks} height={WAVEFORM_H} />
+                                    </div>
                                 ) : (
                                     /* Loading shimmer */
                                     <div className="flex h-full items-center px-2">

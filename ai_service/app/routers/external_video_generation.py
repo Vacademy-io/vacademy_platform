@@ -355,7 +355,12 @@ async def generate_video_external(
             try:
                 with make_db_session() as bg_session:
                     bg_svc = VideoGenerationService(
-                        repository=AiVideoRepository(session=bg_session),
+                        # Session-less repo: every get/update opens its own
+                        # short-lived, pre-pinged session and closes it. Sharing
+                        # the long-lived `bg_session` here caused reads to leave a
+                        # transaction open across the multi-minute render, which
+                        # Postgres then killed (idle-in-transaction timeout).
+                        repository=AiVideoRepository(),
                         s3_service=S3Service()
                     )
                     async for event in bg_svc.generate_till_stage(
@@ -668,7 +673,9 @@ async def resume_video_external(
             try:
                 with make_db_session() as bg_session:
                     bg_svc = VideoGenerationService(
-                        repository=AiVideoRepository(session=bg_session),
+                        # Session-less repo — see note in _run_generation. Avoids
+                        # idle-in-transaction kills across the long resume render.
+                        repository=AiVideoRepository(),
                         s3_service=S3Service(),
                     )
                     # Retrieve the original record to get prompt + settings
@@ -834,7 +841,9 @@ async def retry_video_external(
         try:
             with make_db_session() as bg_session:
                 bg_svc = VideoGenerationService(
-                    repository=AiVideoRepository(session=bg_session),
+                    # Session-less repo — see note in _run_generation. Avoids
+                    # idle-in-transaction kills across the long retry render.
+                    repository=AiVideoRepository(),
                     s3_service=S3Service(),
                 )
                 rec = bg_svc.repository.get_by_video_id(vid)
@@ -1707,6 +1716,75 @@ async def regenerate_shot_external(
         new_global_duration=result.new_global_duration,
         timeline_url=result.timeline_url,
     )
+
+
+class RebuildMasterRequest(BaseModel):
+    video_id: str
+
+
+class RebuildMasterResponse(BaseModel):
+    video_id: str
+    new_global_audio_url: str
+    total_duration: float
+    shot_count: int
+    word_count: int
+    timeline_url: str
+
+
+@router.post(
+    "/shot/rebuild-master",
+    response_model=RebuildMasterResponse,
+    summary="RECOVERY — rebuild master narration + words + timeline from per-shot clips (External, v3)",
+)
+async def rebuild_master_external(
+    payload: RebuildMasterRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RebuildMasterResponse:
+    """
+    Recover a video whose master narration / timeline was corrupted — e.g. a
+    bad shot regen that left a near-empty master MP3 and drove every shot /
+    entry / word timestamp negative (collapsing `total_duration`).
+
+    Re-concatenates the surviving per-shot clips referenced in `meta.shots[]`
+    (regenerated clips in `shot_clips/`, originals in `per_shot_tts/`, silent
+    gaps for skipped shots) into a fresh master + `words.json`, then recomputes
+    every shot / entry / `total_duration` offset from the real per-shot
+    durations. Edits are preserved because each shot's `audio_url` already
+    points at the correct clip. Idempotent — derives everything from S3
+    artifacts; the corrupted master is left as an orphaned version.
+
+    Errors:
+      - 400 — video / meta.shots[] missing.
+      - 500 — concat (ffmpeg) / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    # render_service isn't used by the rebuild (concat runs locally via ffmpeg),
+    # but SentenceClipService requires one; pass a (possibly unconfigured) instance.
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url or "",
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    try:
+        result = svc.rebuild_master_from_shots(payload.video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to rebuild master: {exc}")
+
+    return RebuildMasterResponse(**result)
 
 
 class SilenceSentenceRequest(BaseModel):

@@ -23411,13 +23411,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 # path and on resume from disk).
                 _ent_match = _entry_by_shot_idx.get(shot_idx)
                 if _ent_match is not None:
+                    # inTime/exitTime are ALREADY absolute — the entry was built
+                    # with `original + content_starts_at` (intro offset baked in).
+                    # So DON'T re-add `_offset` to start_time below; doing so
+                    # double-counts the intro and pushes shot regions in the
+                    # editor `intro_duration` to the right of their content.
                     _start_t = float(_ent_match.get("inTime") or 0.0)
                     _end_t = float(_ent_match.get("exitTime") or 0.0)
                     if _end_t < _start_t:
                         _end_t = _start_t  # defensive
+                    _start_is_absolute = True
                 else:
+                    # Plan start/end are CONTENT-relative (pre-reconcile, pre-
+                    # offset) → `_offset` lifts them onto the absolute timeline.
                     _start_t = float(s.get("start_time") or 0.0)
                     _end_t = float(s.get("end_time") or 0.0)
+                    _start_is_absolute = False
                 _dur = max(0.0, _end_t - _start_t)
                 _narration = s.get("narration_text") or s.get("narration_excerpt") or ""
                 # B-5 — also prefer the S3 URL map for audio_url when the plan
@@ -23451,7 +23460,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "audio_duration_s": float(s.get("audio_duration_s") or _dur),
                     "audio_skipped": _audio_skipped,
                     "audio_policy": _audio_policy,
-                    "start_time": round(_start_t + _offset, 3),
+                    "start_time": round(_start_t + (0.0 if _start_is_absolute else _offset), 3),
                     "duration": round(_dur, 3),
                     "intent_role": s.get("intent_role") or "",
                     "narration_brief": s.get("narration_brief") or "",

@@ -2342,7 +2342,15 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     },
 
     loadCaptionWords: async () => {
-        const { wordsUrl } = get();
+        const { wordsUrl, meta } = get();
+        // narration.words.json times are MP3-relative (t=0 at narration start),
+        // but the editor's whole clock is the master timeline. When an intro
+        // exists the narration starts at `audio_start_at`, so we lift every word
+        // onto the master clock here (the render server does the equivalent via
+        // `audio_delay`; the read-only player instead subtracts audio_start_at
+        // from its clock). Doing it once at load keeps the timeline caption
+        // pills AND the live karaoke overlay aligned with everything else.
+        const audioStartAt = meta.audio_start_at ?? 0;
         if (!wordsUrl) {
             set({ captionWords: [], captionPhrases: [] });
             return;
@@ -2373,8 +2381,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 )
                 .map((w) => ({
                     word: String(w.word),
-                    start: Number(w.start),
-                    end: Number(w.end),
+                    start: Number(w.start) + audioStartAt,
+                    end: Number(w.end) + audioStartAt,
                 }));
             set({ captionWords: validWords, captionPhrases: buildPhrases(validWords) });
         } catch (err) {

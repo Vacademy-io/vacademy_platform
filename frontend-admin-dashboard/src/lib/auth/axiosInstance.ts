@@ -1,6 +1,8 @@
 import { TokenKey } from '@/constants/auth/tokens';
 import axios from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { getInstituteId } from '@/constants/helper';
+import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 import {
     getTokenFromCookie,
     isTokenExpired,
@@ -10,6 +12,22 @@ import {
 } from './sessionUtility';
 
 const authenticatedAxiosInstance = axios.create();
+
+// A 401 from the AI service does NOT mean the user's session is dead. The AI
+// service (FastAPI) validates JWTs with its own secret, so an auth-service
+// issued token can be rejected there with {"detail":"Could not validate
+// credentials"} while the rest of the app is perfectly authenticated. Calling
+// removeCookiesAndLogout() in that case clears the session cookies mid-session,
+// which then makes every other in-flight authenticated request fail and the
+// navbar's useSuspenseQuery calls throw into the root error boundary
+// ("Something went wrong"). Skip the global logout for such 401s — and let any
+// caller opt out explicitly via `config.skipAuthLogout`.
+const shouldSkipAuthLogout = (config?: InternalAxiosRequestConfig): boolean => {
+    if (!config) return false;
+    if ((config as { skipAuthLogout?: boolean }).skipAuthLogout) return true;
+    const url = config.url ?? '';
+    return url.includes('/ai-service') || url.startsWith(AI_SERVICE_BASE_URL);
+};
 
 // Debug function that can be called from browser console
 const debugAuthStatus = () => {
@@ -132,6 +150,15 @@ authenticatedAxiosInstance.interceptors.response.use(
 
         // Handle 401 Unauthorized
         if (response?.status === 401) {
+            // A 401 from the AI service (separate auth) must not log the user
+            // out of the whole app — reject so the local caller can handle it.
+            if (shouldSkipAuthLogout(error.config)) {
+                console.warn(
+                    '[Axios Response] 401 from a separately-authenticated endpoint — NOT logging out:',
+                    error.config?.url
+                );
+                return Promise.reject(error);
+            }
             console.error('[Axios Response] 401 Unauthorized - Token is invalid');
             console.error('[Axios Response] Response data:', response.data);
             removeCookiesAndLogout();

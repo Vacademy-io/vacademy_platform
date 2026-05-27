@@ -1,14 +1,18 @@
 name: Deploy to Stage Server (standalone k3s)
 
 # Deploys the standalone chart to the single-node stage server (Hetzner k3s) over
-# SSH. Pick the BRANCH (whose chart/config + image tags to use) and the IMAGE TAG
-# (which pre-built images to run). Building a branch's images is a separate concern
-# — run the per-service build workflows (or push to main) to produce the tag first,
-# then deploy it here.
+# SSH. Pick the BRANCH (whose chart/config to use) and the IMAGE TAG to run.
+#
+# Frontend images ARE built here (from the selected branch) as the first job —
+# they exist only for stage/standalone, so they're rebuilt on-demand per deploy
+# (uncheck "rebuild_frontends" if only the backend changed). BACKEND service
+# images are NOT built here — produce them first via the per-service build
+# workflows (or a push to main) so the chosen IMAGE TAG already exists in ECR.
 #
 # Requires these Actions secrets (REPO or ORG — same ${{ secrets.* }} namespace):
-#   STAGE_SSH_KEY  - private key authorized as root on the stage server
-#   STAGE_HOST     - stage server IP/host (e.g. 188.245.114.166)
+#   STAGE_SSH_KEY        - private key authorized as root on the stage server
+#   STAGE_HOST           - stage server IP/host (e.g. 188.245.114.166)
+#   AWS_ACCESS_KEY / AWS_SECRET_ACCESS_KEY - push FE images to public ECR
 # If set at the ORG level, the secret's "Repository access" must include this
 # repo (All repositories, or Selected repositories -> vacademy_platform), else
 # ${{ secrets.* }} resolves to empty and the SSH steps fail.
@@ -30,9 +34,66 @@ on:
         description: "Optional services to enable (comma-sep: assessment,ai,notification,community)"
         required: false
         default: "assessment,ai,notification,community"
+      rebuild_frontends:
+        description: "Rebuild the FE images from this branch before deploying (uncheck if only backend changed)"
+        type: boolean
+        required: false
+        default: true
 
 jobs:
+  # Build the two frontend images FROM THE SELECTED BRANCH and push them to ECR
+  # (tag = image_tag, plus :latest). The standalone FE images exist only for
+  # stage/clients (cloud prod uses Cloudflare), so they're built on-demand here
+  # as part of a manual stage deploy rather than on every main push. Backend
+  # service images are built separately via the per-service build workflows.
+  build-frontends:
+    if: ${{ github.event.inputs.rebuild_frontends != 'false' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: admin
+            context: frontend-admin-dashboard
+            repository: frontend-admin-dashboard/frontend-admin-dashboard-repo
+          - name: learner
+            context: frontend-learner-dashboard-app
+            repository: frontend-learner-dashboard-app/frontend-learner-dashboard-repo
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build and push ${{ matrix.name }} frontend
+        working-directory: ./${{ matrix.context }}
+        env:
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          REPOSITORY: ${{ matrix.repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          docker build -t "$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" -t "$ECR_REGISTRY/$REPOSITORY:latest" .
+          docker push "$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$REPOSITORY:latest"
+          echo "Pushed $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG (+ :latest)"
+
   deploy:
+    needs: build-frontends
+    # Run after the FE build succeeds, OR when it was skipped (rebuild_frontends=false).
+    # Skips if the FE build failed, so we never deploy on a broken frontend image.
+    if: ${{ always() && (needs.build-frontends.result == 'success' || needs.build-frontends.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout selected branch

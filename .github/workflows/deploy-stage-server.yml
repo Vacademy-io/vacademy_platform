@@ -1,7 +1,6 @@
 name: Deploy to Stage Server (standalone k3s)
 
 # Deploys the standalone chart to the single-node stage server (Hetzner k3s) over
-<<<<<<< HEAD
 # SSH. Pick the BRANCH (whose chart/config to use) and the IMAGE TAG to run.
 #
 # Frontend images ARE built here (from the selected branch) as the first job —
@@ -14,16 +13,6 @@ name: Deploy to Stage Server (standalone k3s)
 #   STAGE_SSH_KEY        - private key authorized as root on the stage server
 #   STAGE_HOST           - stage server IP/host (e.g. 188.245.114.166)
 #   AWS_ACCESS_KEY / AWS_SECRET_ACCESS_KEY - push FE images to public ECR
-=======
-# SSH. Pick the BRANCH (whose chart/config + image tags to use) and the IMAGE TAG
-# (which pre-built images to run). Building a branch's images is a separate concern
-# — run the per-service build workflows (or push to main) to produce the tag first,
-# then deploy it here.
-#
-# Requires these Actions secrets (REPO or ORG — same ${{ secrets.* }} namespace):
-#   STAGE_SSH_KEY  - private key authorized as root on the stage server
-#   STAGE_HOST     - stage server IP/host (e.g. 188.245.114.166)
->>>>>>> origin/main
 # If set at the ORG level, the secret's "Repository access" must include this
 # repo (All repositories, or Selected repositories -> vacademy_platform), else
 # ${{ secrets.* }} resolves to empty and the SSH steps fail.
@@ -45,7 +34,6 @@ on:
         description: "Optional services to enable (comma-sep: assessment,ai,notification,community)"
         required: false
         default: "assessment,ai,notification,community"
-<<<<<<< HEAD
       rebuild_frontends:
         description: "Rebuild the FE images from this branch before deploying (uncheck if only backend changed)"
         type: boolean
@@ -106,11 +94,6 @@ jobs:
     # Run after the FE build succeeds, OR when it was skipped (rebuild_frontends=false).
     # Skips if the FE build failed, so we never deploy on a broken frontend image.
     if: ${{ always() && (needs.build-frontends.result == 'success' || needs.build-frontends.result == 'skipped') }}
-=======
-
-jobs:
-  deploy:
->>>>>>> origin/main
     runs-on: ubuntu-latest
     steps:
       - name: Checkout selected branch
@@ -124,7 +107,6 @@ jobs:
           printf '%s\n' "${{ secrets.STAGE_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.STAGE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
-<<<<<<< HEAD
           # Keepalives: the helm upgrade + rollout-status waits can sit silent for
           # minutes (e.g. a slow admin-core roll), and an idle SSH session gets
           # dropped ("client_loop: send disconnect: Broken pipe") — which fails the
@@ -137,8 +119,6 @@ jobs:
             TCPKeepAlive yes
           CFG
           chmod 600 ~/.ssh/config
-=======
->>>>>>> origin/main
 
       - name: Sync chart to server (preserving values.secret.yaml)
         run: |
@@ -173,7 +153,6 @@ jobs:
             helm upgrade --install vac . \
               -f values.yaml -f values-standalone.yaml -f values.secret.yaml \
               $SETS --wait --timeout 20m
-<<<<<<< HEAD
             # ':latest' is a moving tag: a same-tag helm upgrade yields an
             # identical pod spec, so Kubernetes does NOT recreate pods and the
             # freshly-pushed image is never pulled. Force a rollout so every
@@ -185,8 +164,6 @@ jobs:
             for d in auth-service admin-core-service media-service assessment-service community-service notification-service ai-service admin-frontend learner-frontend; do
               kubectl get deploy "\$d" >/dev/null 2>&1 && kubectl rollout status deploy "\$d" --timeout=300s || true
             done
-=======
->>>>>>> origin/main
             kubectl get pods
           EOF
 

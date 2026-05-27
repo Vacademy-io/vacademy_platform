@@ -103,22 +103,53 @@ class AiVideoRepository:
     
     def get_by_video_id(self, video_id: str) -> Optional[AiGenVideo]:
         """Get video record by video_id."""
+        def _do_get(session: Session) -> Optional[AiGenVideo]:
+            stmt = select(AiGenVideo).where(AiGenVideo.video_id == video_id)
+            return session.execute(stmt).scalar_one_or_none()
+
         session = self._get_session()
         try:
-            stmt = select(AiGenVideo).where(AiGenVideo.video_id == video_id)
-            result = session.execute(stmt)
-            return result.scalar_one_or_none()
+            return _do_get(session)
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            # An injected request session can be killed mid-transaction by the
+            # server's idle-in-transaction timeout after a long-running task;
+            # retry the read once on a fresh engine session.
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do_get(fresh)
+                finally:
+                    fresh.close()
+            raise e
         finally:
             if not self.session:
                 session.close()
-    
+
     def get_by_id(self, id: str) -> Optional[AiGenVideo]:
         """Get video record by primary key id."""
+        def _do_get(session: Session) -> Optional[AiGenVideo]:
+            stmt = select(AiGenVideo).where(AiGenVideo.id == id)
+            return session.execute(stmt).scalar_one_or_none()
+
         session = self._get_session()
         try:
-            stmt = select(AiGenVideo).where(AiGenVideo.id == id)
-            result = session.execute(stmt)
-            return result.scalar_one_or_none()
+            return _do_get(session)
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            if self.session and _is_connection_error(e):
+                fresh = self._get_fresh_session()
+                try:
+                    return _do_get(fresh)
+                finally:
+                    fresh.close()
+            raise e
         finally:
             if not self.session:
                 session.close()

@@ -504,6 +504,16 @@ class SentenceClipService:
             old_duration = float(target.get("duration") or 0.0)
             old_end = old_start + old_duration
 
+            # `start_time` is MASTER-timeline (offset by any branding intro).
+            # The master narration.mp3 + words.json are MP3-relative (no leading
+            # intro silence), so the audio/word splice positions must be rebased
+            # into MP3 coordinates. The ripple + entry-ref below intentionally
+            # stay in MASTER coordinates (they edit the timeline). With no intro
+            # `audio_start_at == 0` and these equal old_start/old_end.
+            audio_start_at = self._audio_start_at(timeline)
+            splice_start = max(0.0, old_start - audio_start_at)
+            splice_end = max(splice_start, old_end - audio_start_at)
+
             # 1. TTS the new text → local MP3 + word timestamps.
             voice = self._resolve_voice(record, voice_overrides)
             tts_result = self._synthesize_sentence(
@@ -522,12 +532,13 @@ class SentenceClipService:
 
             # 3. Splice into the master narration.mp3 (render worker does the
             # ffmpeg+crossfade work — same primitive as sentence regen).
+            # MP3-relative positions (rebased above), not master start/end.
             new_audio_key = self._versioned_audio_key(video_id, version_tag)
             splice = self.render_service.splice_audio(
                 base_audio_url=s3_urls["audio"],
                 new_clip_url=new_clip_url,
-                replace_start=old_start,
-                replace_end=old_end,
+                replace_start=splice_start,
+                replace_end=splice_end,
                 output_key=new_audio_key,
                 crossfade_ms=crossfade_ms,
                 head_pad_ms=head_pad_ms,
@@ -537,6 +548,28 @@ class SentenceClipService:
             duration_delta = float(splice.get("duration_delta") or 0.0)
             if not new_global_url:
                 raise RuntimeError(f"splice_audio returned no output_url: {splice}")
+
+            # SANITY GUARD — abort BEFORE rippling/persisting if the splice
+            # returned an implausible result. Replacing a `old_duration`s shot
+            # with a `new_clip`s clip should change the master by ≈
+            # (new_clip − old_duration); the crossfade/head-pad shift this by at
+            # most ~0.1s. A wildly different delta means the render splice
+            # mangled the file (a real incident produced a 621-byte / 0.288s
+            # master and a duration_delta of −59s, which then drove every shot,
+            # entry and word timestamp negative and destroyed the timeline).
+            # Raising here leaves the timeline + words.json + audio pointer
+            # untouched — the spliced MP3 is orphaned under a versioned key.
+            _new_clip_dur = float(tts_result.duration or 0.0)
+            _expected_delta = _new_clip_dur - old_duration
+            if abs(duration_delta - _expected_delta) > 1.0 or new_global_duration <= _new_clip_dur - 1.0:
+                raise RuntimeError(
+                    f"splice_audio returned an implausible result for shot "
+                    f"{shot_idx}: new_duration={new_global_duration:.3f}s, "
+                    f"duration_delta={duration_delta:.3f}s (expected ≈"
+                    f"{_expected_delta:.3f}s for a {_new_clip_dur:.3f}s clip "
+                    f"replacing a {old_duration:.3f}s shot). The render splice "
+                    f"likely failed — aborting without modifying the timeline."
+                )
 
             # 4. Patch the target shot + ripple downstream shots and entries.
             #
@@ -580,10 +613,11 @@ class SentenceClipService:
                 try:
                     self._splice_global_words(
                         words_s3_url=words_url,
-                        old_start=old_start,
-                        old_end=old_end,
+                        # MP3-relative — the words.json carries no intro offset.
+                        old_start=splice_start,
+                        old_end=splice_end,
                         new_sentence_words=updated_target.get("words") or [],
-                        sentence_start_time=float(updated_target.get("start_time") or old_start),
+                        sentence_start_time=splice_start,
                         duration_delta=duration_delta,
                         tmp_path=tmp / "words.out.json",
                     )
@@ -648,6 +682,29 @@ class SentenceClipService:
             return []
         shots = meta.get("shots")
         return shots if isinstance(shots, list) else []
+
+    @staticmethod
+    def _audio_start_at(timeline: Dict[str, Any]) -> float:
+        """Master-clock time at which the narration.mp3 begins (the branding
+        intro duration).
+
+        The master narration.mp3 and narration.words.json carry NO leading
+        intro silence — their t=0 maps to master time `audio_start_at`. So any
+        position used to splice the MP3 / patch the words stream must be rebased
+        from master time into MP3 time by subtracting this. `meta.shots[]`
+        `start_time` is MASTER (already intro-offset), unlike legacy
+        `meta.sentences[]` `start_time`, which is already MP3-relative — that's
+        why the sentence path needs no rebasing but the shot path does.
+
+        Returns 0.0 when there's no intro (the common case).
+        """
+        meta = timeline.get("meta")
+        if not isinstance(meta, dict):
+            return 0.0
+        try:
+            return max(0.0, float(meta.get("audio_start_at") or 0.0))
+        except (TypeError, ValueError):
+            return 0.0
 
     @staticmethod
     def _patch_shot(
@@ -973,13 +1030,21 @@ class SentenceClipService:
             old_duration = float(target.get("duration") or 0.0)
             old_end = old_start + old_duration
 
+            # `start_time` is MASTER-timeline (offset by any branding intro);
+            # the master MP3 + words.json are MP3-relative (no leading intro
+            # silence). Rebase the silence/word positions into MP3 coordinates.
+            # No-intro videos: audio_start_at == 0 (these equal old_start/end).
+            audio_start_at = self._audio_start_at(timeline)
+            splice_start = max(0.0, old_start - audio_start_at)
+            splice_end = max(splice_start, old_end - audio_start_at)
+
             # 1. Splice silence into the master MP3 (duration-preserving).
             version_tag = _version_tag()
             new_audio_key = self._versioned_audio_key(video_id, version_tag)
             silence = self.render_service.silence_audio_range(
                 base_audio_url=s3_urls["audio"],
-                silence_start=old_start,
-                silence_end=old_end,
+                silence_start=splice_start,
+                silence_end=splice_end,
                 output_key=new_audio_key,
                 crossfade_ms=crossfade_ms,
                 head_pad_ms=head_pad_ms,
@@ -989,6 +1054,21 @@ class SentenceClipService:
             duration_delta = float(silence.get("duration_delta") or 0.0)
             if not new_global_url:
                 raise RuntimeError(f"silence_audio_range returned no output_url: {silence}")
+
+            # SANITY GUARD — silencing is duration-preserving, so the master
+            # length must barely change (delta ≈ 0). A large delta means the
+            # render op mangled the file; abort BEFORE rippling/persisting so a
+            # bad splice can't drive every timestamp negative (see the matching
+            # guard + incident note in regenerate_shot).
+            if abs(duration_delta) > 1.0 or new_global_duration <= old_duration:
+                raise RuntimeError(
+                    f"silence_audio_range returned an implausible result for "
+                    f"shot {shot_idx}: new_duration={new_global_duration:.3f}s, "
+                    f"duration_delta={duration_delta:.3f}s (expected ≈0 for a "
+                    f"duration-preserving silence over a {old_duration:.3f}s "
+                    f"shot). The render op likely failed — aborting without "
+                    f"modifying the timeline."
+                )
 
             # 2. Mark the shot silenced (slot preserved, no ripple). Empty text
             # + audio_url + audio_skipped is the signal the FE uses to render
@@ -1010,10 +1090,11 @@ class SentenceClipService:
                 try:
                     self._splice_global_words(
                         words_s3_url=words_url,
-                        old_start=old_start,
-                        old_end=old_end,
+                        # MP3-relative — the words.json carries no intro offset.
+                        old_start=splice_start,
+                        old_end=splice_end,
                         new_sentence_words=[],
-                        sentence_start_time=old_start,
+                        sentence_start_time=splice_start,
                         duration_delta=duration_delta,  # ~0
                         tmp_path=tmp / "words.out.json",
                     )
@@ -1048,6 +1129,193 @@ class SentenceClipService:
             new_global_duration=new_global_duration,
             timeline_url=timeline_url,
         )
+
+    # ------------------------------------------------------------------ #
+    # RECOVERY — rebuild a corrupted master from surviving per-shot clips #
+    # ------------------------------------------------------------------ #
+    def rebuild_master_from_shots(self, video_id: str) -> Dict[str, Any]:
+        """Recover a video whose master narration / timeline was corrupted by a
+        bad splice (e.g. negative timestamps, collapsed ``total_duration``).
+
+        Re-concatenates the per-shot audio clips referenced in ``meta.shots[]``
+        into a fresh master MP3 + ``words.json``, then recomputes every shot /
+        entry / ``total_duration`` offset from the real per-shot durations. The
+        edits survive because each shot's ``audio_url`` already points at the
+        right clip:
+
+          - regenerated shots → ``shot_clips/…`` (their words ride in
+            ``shots[].words``);
+          - original shots    → ``per_shot_tts/shot_NNN.mp3`` (+ ``_raw.json``);
+          - skipped / intrinsic shots → a silent gap of the shot's duration.
+
+        Reuses the pipeline's tested ``_concat_master_narration`` (hard ffmpeg
+        concat + provider-aware word stitching) so the result matches a normal
+        generation. Derives everything from S3 artifacts, so it's idempotent;
+        the corrupted master is left as an orphaned version.
+
+        Returns a summary dict. Raises ValueError when the video / shots are
+        missing; RuntimeError on concat / S3 failure.
+        """
+        record = self.repository.get_by_video_id(video_id)
+        if record is None:
+            raise ValueError(f"video {video_id} not found")
+        s3_urls = dict(record.s3_urls or {})
+        if not s3_urls.get("audio") or not s3_urls.get("timeline"):
+            raise ValueError("video is missing audio/timeline S3 URLs; cannot rebuild")
+
+        with tempfile.TemporaryDirectory(prefix=f"rebuild-{video_id}-") as tmpdir:
+            tmp = Path(tmpdir)
+
+            timeline = self._download_json(s3_urls["timeline"], tmp / "timeline.json")
+            shots = self._extract_shots(timeline)
+            if not shots:
+                raise ValueError("this video has no meta.shots[] — nothing to rebuild from")
+
+            meta = timeline.get("meta") if isinstance(timeline.get("meta"), dict) else {}
+            audio_start_at = self._audio_start_at(timeline)
+            outro_duration = 0.0
+            try:
+                outro_duration = max(0.0, float(meta.get("outro_duration") or 0.0))
+            except (TypeError, ValueError):
+                outro_duration = 0.0
+
+            # ── 1. Build the ordered per-shot inputs the concat expects ────────
+            ordered = sorted(shots, key=lambda s: int(s.get("shot_idx") or 0))
+            per_shot_outputs: List[Dict[str, Any]] = []
+            for s in ordered:
+                shot_idx = int(s.get("shot_idx") or 0)
+                intended = float(s.get("duration") or s.get("audio_duration_s") or 0.0)
+                audio_url = s.get("audio_url")
+                is_skipped = (
+                    bool(s.get("audio_skipped"))
+                    or (s.get("audio_policy") or "narration_only") == "intrinsic_only"
+                    or not audio_url
+                )
+                if is_skipped:
+                    per_shot_outputs.append({
+                        "shot_idx": shot_idx, "skipped": True,
+                        "intended_duration_s": intended, "reason": "skipped_or_intrinsic",
+                    })
+                    continue
+                mp3_path = tmp / f"shot_{shot_idx:03d}.mp3"
+                if not self.s3_service.download_file(str(audio_url), mp3_path):
+                    raise RuntimeError(f"failed to download shot {shot_idx} clip: {audio_url}")
+                # Word source: regen shots carry clip-relative words in
+                # shots[].words (a plain [{word,start,end}] list — the concat's
+                # _read_per_shot_words handles that as the "Google" shape).
+                # Original shots reference a provider-raw _raw.json on S3.
+                raw_json_path: Optional[Path] = None
+                shot_words = s.get("words")
+                if isinstance(shot_words, list) and shot_words:
+                    raw_json_path = tmp / f"shot_{shot_idx:03d}_raw.json"
+                    raw_json_path.write_text(json.dumps(shot_words), encoding="utf-8")
+                elif s.get("audio_words_url"):
+                    cand = tmp / f"shot_{shot_idx:03d}_raw.json"
+                    if self.s3_service.download_file(str(s.get("audio_words_url")), cand):
+                        raw_json_path = cand
+                per_shot_outputs.append({
+                    "shot_idx": shot_idx,
+                    "mp3_path": str(mp3_path),
+                    "raw_json_path": str(raw_json_path) if raw_json_path else None,
+                    "skipped": False,
+                    "intended_duration_s": intended,
+                })
+
+            # ── 2. Concat via the pipeline's tested primitive ──────────────────
+            # `_concat_master_narration` only touches `self._coerce_shot_index`
+            # (static) + `self._read_per_shot_words` (classmethod), so a bare
+            # instance via __new__ avoids the heavy pipeline __init__.
+            import sys as _sys
+            aigen = str(self.video_gen_root)
+            if aigen not in _sys.path:
+                _sys.path.insert(0, aigen)
+            from automation_pipeline import VideoGenerationPipeline  # type: ignore
+            pipe = VideoGenerationPipeline.__new__(VideoGenerationPipeline)
+            concat = pipe._concat_master_narration(
+                per_shot_outputs,
+                run_dir=tmp,
+                output_audio_path=tmp / "narration.mp3",
+                output_raw_json=tmp / "narration_raw.json",
+            )
+            content_dur = float(concat.get("total_duration_s") or 0.0)
+            # Guard: never overwrite a (corrupt) video with an even-worse empty
+            # rebuild. A multi-shot video must concat to more than a fraction of
+            # a second; clip downloads already raise on failure, so this only
+            # trips on a deeper ffmpeg/decoding problem.
+            if content_dur <= 0.5:
+                raise RuntimeError(
+                    f"rebuild produced an implausibly short master "
+                    f"({content_dur:.3f}s) from {len(per_shot_outputs)} shots — "
+                    f"aborting without overwriting the timeline."
+                )
+            shot_offsets = {int(o.get("shot_idx")): o for o in (concat.get("shot_offsets") or [])}
+            master_raw = json.loads(Path(concat["raw_json_path"]).read_text(encoding="utf-8"))
+            word_entries = master_raw.get("word_entries") or []
+
+            # ── 3. Recompute every offset from the real per-shot durations ─────
+            total_duration = round(audio_start_at + content_dur + outro_duration, 3)
+            for s in shots:
+                off = shot_offsets.get(int(s.get("shot_idx") or 0))
+                if not off:
+                    continue
+                s["start_time"] = round(audio_start_at + float(off.get("start_s") or 0.0), 3)
+                s["duration"] = round(float(off.get("dur_s") or 0.0), 3)
+            shot_by_idx = {int(s.get("shot_idx") or 0): s for s in shots}
+            for e in timeline.get("entries", []):
+                eid = str(e.get("id") or "")
+                if eid == "branding-watermark":
+                    e["inTime"], e["exitTime"] = 0.0, total_duration
+                elif eid == "branding-intro":
+                    e["inTime"], e["exitTime"] = 0.0, round(audio_start_at, 3)
+                elif eid == "branding-outro":
+                    e["inTime"], e["exitTime"] = round(total_duration - outro_duration, 3), total_duration
+                elif eid.startswith("shot-"):
+                    try:
+                        sh = shot_by_idx.get(int(eid.split("-", 1)[1]))
+                    except (ValueError, IndexError):
+                        sh = None
+                    if sh is not None:
+                        st = float(sh.get("start_time") or 0.0)
+                        e["inTime"] = round(st, 3)
+                        e["exitTime"] = round(st + float(sh.get("duration") or 0.0), 3)
+                # other (overlay) entries are left untouched.
+            if isinstance(meta, dict):
+                meta["total_duration"] = total_duration
+                meta["content_ends_at"] = round(audio_start_at + content_dur, 3)
+
+            # ── 4. Upload fresh master MP3, words.json, timeline; repoint record ─
+            version_tag = _version_tag()
+            new_audio_key = self._versioned_audio_key(video_id, version_tag)
+            new_audio_url = self.s3_service.upload_file(
+                file_path=Path(concat["audio_path"]),
+                s3_key=new_audio_key,
+                content_type="audio/mpeg",
+            )
+            words_url = s3_urls.get("words")
+            if words_url:
+                words_key = self._extract_s3_key(words_url)
+                if words_key:
+                    words_out = tmp / "narration.words.json"
+                    words_out.write_text(json.dumps(word_entries, ensure_ascii=False), encoding="utf-8")
+                    self.s3_service.upload_file(
+                        file_path=words_out, s3_key=words_key, content_type="application/json",
+                    )
+            timeline_url = self._upload_timeline_json(
+                timeline=timeline,
+                timeline_s3_url=s3_urls["timeline"],
+                video_id=video_id,
+                tmp_path=tmp / "timeline.out.json",
+            )
+            self.repository.update_files(video_id=video_id, s3_urls={"audio": new_audio_url})
+
+        return {
+            "video_id": video_id,
+            "new_global_audio_url": new_audio_url,
+            "total_duration": total_duration,
+            "shot_count": len(shots),
+            "word_count": len(word_entries),
+            "timeline_url": timeline_url,
+        }
 
     def insert_shot(
         self,

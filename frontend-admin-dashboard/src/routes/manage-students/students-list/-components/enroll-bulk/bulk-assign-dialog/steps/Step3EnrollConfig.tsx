@@ -8,17 +8,21 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
 import { CpoEnrollmentConfigPanel } from '../../components/CpoEnrollmentConfigPanel';
 import { useResolvedInviteDetails } from '../../../../-hooks/useResolvedInviteDetails';
-import { BookOpen } from '@phosphor-icons/react';
+import { BookOpen, Lightning } from '@phosphor-icons/react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { CalendarIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { getActiveWorkflowsQuery } from '@/services/workflow-service';
 import {
     getTerminology,
     getTerminologyPlural,
@@ -28,6 +32,7 @@ import {
     RoleTerms,
     SystemTerms,
 } from '@/routes/settings/-components/NamingSettings';
+import { useCourseSettings } from '@/hooks/useCourseSettings';
 
 interface Props {
     instituteId: string;
@@ -141,6 +146,10 @@ export const Step3EnrollConfig = ({
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
 
+    const { enrollmentNotifications } = useCourseSettings();
+    const showNotifyLearners = enrollmentNotifications?.showNotifyLearners ?? true;
+    const showSendCredentials = enrollmentNotifications?.showSendCredentials ?? true;
+
     const updateSession = (packageSessionId: string, patch: Partial<SelectedPackageSession>) => {
         onSelectedPackageSessionsChange(
             selectedPackageSessions.map((ps) =>
@@ -176,43 +185,47 @@ export const Step3EnrollConfig = ({
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
                 <h3 className="mb-3 text-sm font-semibold text-neutral-700">Global Options</h3>
                 <div className="flex flex-col gap-4">
-                    {/* Notify learners */}
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <Label className="text-sm font-medium text-neutral-700">
-                                Notify {learnersTerm}
-                            </Label>
-                            <p className="text-xs text-neutral-400">
-                                Send enrollment confirmation emails to newly enrolled{' '}
-                                {learnersTerm.toLowerCase()}
-                            </p>
+                    {/* Notify learners — visibility controlled by Course Settings */}
+                    {showNotifyLearners && (
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <Label className="text-sm font-medium text-neutral-700">
+                                    Notify {learnersTerm}
+                                </Label>
+                                <p className="text-xs text-neutral-400">
+                                    Send enrollment confirmation emails to newly enrolled{' '}
+                                    {learnersTerm.toLowerCase()}
+                                </p>
+                            </div>
+                            <Switch
+                                checked={options.notifyLearners}
+                                onCheckedChange={(v) =>
+                                    onOptionsChange({ ...options, notifyLearners: v })
+                                }
+                            />
                         </div>
-                        <Switch
-                            checked={options.notifyLearners}
-                            onCheckedChange={(v) =>
-                                onOptionsChange({ ...options, notifyLearners: v })
-                            }
-                        />
-                    </div>
+                    )}
 
-                    {/* Send credentials */}
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <Label className="text-sm font-medium text-neutral-700">
-                                Send Credentials
-                            </Label>
-                            <p className="text-xs text-neutral-400">
-                                Send registration email with login credentials to new{' '}
-                                {learnersTerm.toLowerCase()}
-                            </p>
+                    {/* Send credentials — visibility controlled by Course Settings */}
+                    {showSendCredentials && (
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <Label className="text-sm font-medium text-neutral-700">
+                                    Send Credentials
+                                </Label>
+                                <p className="text-xs text-neutral-400">
+                                    Send registration email with login credentials to new{' '}
+                                    {learnersTerm.toLowerCase()}
+                                </p>
+                            </div>
+                            <Switch
+                                checked={options.sendCredentials}
+                                onCheckedChange={(v) =>
+                                    onOptionsChange({ ...options, sendCredentials: v })
+                                }
+                            />
                         </div>
-                        <Switch
-                            checked={options.sendCredentials}
-                            onCheckedChange={(v) =>
-                                onOptionsChange({ ...options, sendCredentials: v })
-                            }
-                        />
-                    </div>
+                    )}
 
                     {/* Duplicate handling */}
                     <div>
@@ -322,6 +335,181 @@ export const Step3EnrollConfig = ({
                     </div>
                 </div>
             </div>
+
+            <LinkedWorkflowsSection
+                instituteId={instituteId}
+                selectedPackageSessions={selectedPackageSessions}
+            />
+        </div>
+    );
+};
+
+/**
+ * Trigger events scoped to a course/batch (event_applied_type=PACKAGE_SESSION).
+ * A workflow is "linked to a course" when its trigger fires on one of these events
+ * and either event_id matches the packageSessionId (specific) or event_id is null
+ * (institute-global — runs for every batch enrollment in the institute).
+ *
+ * Kept in sync with WorkflowTriggerEvent.java and the PACKAGE_SESSION group in
+ * EventAppliedType.java on the backend.
+ */
+const PACKAGE_SESSION_TRIGGER_EVENTS = new Set<string>([
+    'LEARNER_BATCH_ENROLLMENT',
+    'GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL',
+    'SEND_LEARNER_CREDENTIALS',
+    'SUB_ORG_MEMBER_ENROLLMENT',
+    'SUB_ORG_MEMBER_TERMINATION',
+    'LEARNER_RE_ENROLLMENT',
+]);
+
+interface LinkedWorkflowsSectionProps {
+    instituteId: string;
+    selectedPackageSessions: SelectedPackageSession[];
+}
+
+/**
+ * Shows which automation workflows will fire when these enrollments happen.
+ *
+ *   - Per-course block: workflows whose trigger.event_id matches that packageSessionId.
+ *   - Global block (rendered once): institute-wide workflows (event_id IS NULL) that
+ *     fire on every batch enrollment — listed in a single line as the user requested,
+ *     since they apply identically to every selected course.
+ */
+const LinkedWorkflowsSection = ({
+    instituteId,
+    selectedPackageSessions,
+}: LinkedWorkflowsSectionProps) => {
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+
+    const { data: workflows = [], isLoading } = useQuery({
+        ...getActiveWorkflowsQuery(instituteId),
+        enabled: !!instituteId && selectedPackageSessions.length > 0,
+    });
+
+    const { perCourse, globalWorkflows } = useMemo(() => {
+        const packageScoped = workflows.filter((w) => {
+            const t = w.trigger;
+            return (
+                t?.trigger_event_name != null &&
+                PACKAGE_SESSION_TRIGGER_EVENTS.has(t.trigger_event_name)
+            );
+        });
+
+        const globals = packageScoped.filter((w) => w.trigger?.event_id == null);
+
+        const byCourse = new Map<
+            string,
+            { course: SelectedPackageSession; workflows: typeof workflows }
+        >();
+        for (const ps of selectedPackageSessions) {
+            const specific = packageScoped.filter(
+                (w) => w.trigger?.event_id === ps.packageSessionId
+            );
+            byCourse.set(ps.packageSessionId, { course: ps, workflows: specific });
+        }
+
+        return { perCourse: byCourse, globalWorkflows: globals };
+    }, [workflows, selectedPackageSessions]);
+
+    if (selectedPackageSessions.length === 0) return null;
+
+    const totalSpecific = Array.from(perCourse.values()).reduce(
+        (n, entry) => n + entry.workflows.length,
+        0
+    );
+    const hasAny = totalSpecific > 0 || globalWorkflows.length > 0;
+
+    return (
+        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-2">
+                <Lightning size={16} weight="duotone" className="text-primary-500" />
+                <h3 className="text-sm font-semibold text-neutral-700">
+                    Workflows that will fire on enrollment
+                </h3>
+            </div>
+
+            {isLoading && (
+                <p className="text-xs text-neutral-400">Loading linked workflows…</p>
+            )}
+
+            {!isLoading && !hasAny && (
+                <p className="text-xs text-neutral-400">
+                    No automation workflows are linked to the selected{' '}
+                    {courseTerm.toLowerCase()}s.
+                </p>
+            )}
+
+            {!isLoading && hasAny && (
+                <div className="flex flex-col gap-3">
+                    {globalWorkflows.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-50 px-3 py-2">
+                            <Badge
+                                variant="outline"
+                                className="border-neutral-200 bg-white text-caption font-medium text-neutral-600"
+                            >
+                                Global
+                            </Badge>
+                            <span className="text-xs text-neutral-500">
+                                Fires on every batch enrollment:
+                            </span>
+                            <span className="text-xs font-medium text-neutral-700">
+                                {globalWorkflows.map((w) => w.name).join(', ')}
+                            </span>
+                        </div>
+                    )}
+
+                    {selectedPackageSessions.map((ps) => {
+                        const entry = perCourse.get(ps.packageSessionId);
+                        const list = entry?.workflows ?? [];
+                        return (
+                            <div
+                                key={ps.packageSessionId}
+                                className="rounded-md border border-neutral-100 px-3 py-2"
+                            >
+                                <div className="mb-1 flex items-center gap-2">
+                                    <BookOpen
+                                        size={14}
+                                        weight="duotone"
+                                        className="text-primary-500"
+                                    />
+                                    <span className="text-xs font-semibold text-neutral-800">
+                                        {ps.courseName}
+                                    </span>
+                                    <span className="text-caption text-neutral-400">
+                                        {ps.levelName}
+                                    </span>
+                                </div>
+                                {list.length === 0 ? (
+                                    <p className="text-caption text-neutral-400">
+                                        No course-specific workflows linked.
+                                    </p>
+                                ) : (
+                                    <ul className="flex flex-col gap-1 pl-1">
+                                        {list.map((w) => (
+                                            <li
+                                                key={w.id}
+                                                className="flex items-center gap-2 text-xs text-neutral-700"
+                                            >
+                                                <Lightning
+                                                    size={12}
+                                                    weight="fill"
+                                                    className="text-primary-500"
+                                                />
+                                                <span className="font-medium">{w.name}</span>
+                                                {w.trigger?.trigger_event_name && (
+                                                    <span className="font-mono text-caption text-neutral-400">
+                                                        {w.trigger.trigger_event_name}
+                                                    </span>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };

@@ -9,6 +9,8 @@
 */ -}}
 {{- if .Values.frontends.enabled }}
 {{- $domain := .Values.standalone.domain }}
+{{- $adminHost := .Values.standalone.adminHost | default (printf "admin.%s" $domain) }}
+{{- $appHost := .Values.standalone.appHost | default (printf "app.%s" $domain) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +36,7 @@ spec:
             - containerPort: 80
           env:
             - name: BACKEND_BASE_URL
-              value: {{ printf "https://admin.%s" $domain | quote }}
+              value: {{ printf "https://%s" $adminHost | quote }}
           resources:
             requests: { cpu: "20m", memory: "64Mi" }
             limits: { cpu: "200m", memory: "256Mi" }
@@ -81,7 +83,7 @@ spec:
             - containerPort: 80
           env:
             - name: BACKEND_BASE_URL
-              value: {{ printf "https://app.%s" $domain | quote }}
+              value: {{ printf "https://%s" $appHost | quote }}
           resources:
             requests: { cpu: "20m", memory: "64Mi" }
             limits: { cpu: "200m", memory: "256Mi" }

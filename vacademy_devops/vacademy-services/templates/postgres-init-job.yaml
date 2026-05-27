@@ -33,6 +33,11 @@ spec:
                 secretKeyRef:
                   name: vacademy-secrets
                   key: DB_PASSWORD
+            - name: INTERNAL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vacademy-secrets
+                  key: INTERNAL_CLIENT_SECRET
           command: ["sh", "-c"]
           args:
             - |
@@ -54,6 +59,25 @@ spec:
                 fi
               done
               echo "baseline load complete"
+
+              # --- Seed reference data NOT present in schema-only baselines ---
+              # (seed-data migrations like V9__Create_super_admin_user don't replay,
+              #  because Flyway sees them as already-applied in the baseline). Idempotent.
+              echo "seeding roles..."
+              psql -h postgres -U "$PGUSER" -v ON_ERROR_STOP=1 -d auth_service -c "
+                INSERT INTO roles (id, role_name, created_at, updated_at)
+                SELECT gen_random_uuid()::text, rn, now(), now()
+                FROM (VALUES ('ADMIN'),('TEACHER'),('EVALUATOR'),('STUDENT'),('COURSE_CREATOR'),('ASSESSMENT_CREATOR')) AS t(rn)
+                ON CONFLICT (role_name) DO NOTHING;"
+              echo "seeding client_secret_key (inter-service HMAC) into all service DBs..."
+              for db in auth_service admin_core_service assessment_service media_service notification_service; do
+                psql -h postgres -U "$PGUSER" -v ON_ERROR_STOP=1 -d "$db" -c "
+                  INSERT INTO client_secret_key (client_name, secret_key, created_at, updated_at)
+                  SELECT cn, '$INTERNAL_CLIENT_SECRET', now(), now()
+                  FROM (VALUES ('auth_service'),('admin_core_service'),('assessment_service'),('media_service'),('notification_service'),('community_service'),('ai_service')) AS t(cn)
+                  ON CONFLICT (client_name) DO UPDATE SET secret_key=EXCLUDED.secret_key, updated_at=now();"
+              done
+              echo "seed complete"
           volumeMounts:
             - name: baselines
               mountPath: /baseline

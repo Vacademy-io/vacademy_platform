@@ -2,7 +2,8 @@ package vacademy.io.common.meeting.enums;
 
 public enum MeetingProvider {
     ZOHO_MEETING,
-    BBB_MEETING;
+    BBB_MEETING,
+    ZOOM_MEETING;
 
     public static MeetingProvider fromString(String name) {
         if (name == null || name.isBlank()) {
@@ -14,6 +15,8 @@ public enum MeetingProvider {
                 return ZOHO_MEETING;
             if (clean.equals("BBB"))
                 return BBB_MEETING;
+            if (clean.equals("ZOOM"))
+                return ZOOM_MEETING;
             return MeetingProvider.valueOf(clean);
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Unsupported meeting provider: " + name);

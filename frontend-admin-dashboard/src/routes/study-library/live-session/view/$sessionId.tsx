@@ -185,6 +185,22 @@ function ViewLiveSession() {
 
     const isBbbSession = sessionData?.schedule?.link_type === StreamingPlatform.BBB
         || sessionData?.schedule?.link_type === 'BBB_MEETING';
+    const isZoomSession = sessionData?.schedule?.link_type === StreamingPlatform.ZOOM
+        || sessionData?.schedule?.link_type === 'zoom';
+
+    /**
+     * For Zoom: navigate to the in-app host embed route which mounts the Zoom
+     * Web Meeting SDK with role=1 + ZAK token, so the admin starts the meeting
+     * inside our dashboard rather than being bounced to Zoom's hosted
+     * start_url page. The backend signature endpoint handles ZAK lookup.
+     */
+    const handleZoomStartAsHost = useCallback((scheduleId: string) => {
+        navigate({
+            to: '/study-library/live-session/host/$scheduleId',
+            params: { scheduleId },
+            search: { sessionId },
+        });
+    }, [navigate, sessionId]);
 
     const handleJoinAsHost = useCallback(async (scheduleId: string, recreate = false) => {
         try {
@@ -306,7 +322,12 @@ function ViewLiveSession() {
                 defaultClassName: schedule.default_class_name,
                 learner_button_config: schedule.learner_button_config,
                 recordings,
-            });
+                // Per-schedule Zoom data so the UI can render "Start as Host" for
+                // each Zoom schedule independently (admin opens host_url straight
+                // into the meeting with no name/passcode prompts).
+                linkType: (schedule as any).linkType ?? (schedule as any).link_type ?? null,
+                providerHostUrl: (schedule as any).providerHostUrl ?? (schedule as any).provider_host_url ?? null,
+            } as any);
         });
 
         // Convert to array and sort by date
@@ -757,6 +778,39 @@ function ViewLiveSession() {
                                                 ))}
                                             </div>
                                         )}
+
+                                        {isZoomSession && !isRecurring && groupedSchedules.length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                    <MonitorPlay className="size-3.5 text-primary" />
+                                                    Zoom Meeting
+                                                </div>
+                                                {groupedSchedules.flatMap(day => day.sessions).map((session) => (
+                                                    <div key={session.id} className="flex items-center justify-between rounded-md border bg-muted/20 p-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-2 text-sm">
+                                                                <Timer className="size-4 text-primary" />
+                                                                <span className="font-medium">{session.time}</span>
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {session.duration} mins
+                                                            </span>
+                                                            {session.status === 'live' && (
+                                                                <Badge variant="default" className="bg-green-500 text-white text-xs">
+                                                                    Live
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleZoomStartAsHost(session.id)}
+                                                            className="text-xs font-medium text-primary hover:underline"
+                                                        >
+                                                            Start as Host →
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </CardContent>
@@ -1026,6 +1080,30 @@ function ViewLiveSession() {
                                                                 <Download className="size-3" />
                                                                 Download
                                                             </a>
+                                                            {rec.passcode && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        navigator.clipboard
+                                                                            .writeText(rec.passcode!)
+                                                                            .then(() =>
+                                                                                toast.success(
+                                                                                    'Passcode copied'
+                                                                                )
+                                                                            )
+                                                                            .catch(() =>
+                                                                                toast.error(
+                                                                                    'Could not copy'
+                                                                                )
+                                                                            );
+                                                                    }}
+                                                                    title={`Recording passcode: ${rec.passcode}. Click to copy in case Zoom prompts.`}
+                                                                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                                                                >
+                                                                    <Copy className="size-3" />
+                                                                    Passcode
+                                                                </button>
+                                                            )}
                                                         </>
                                                     )}
                                                     <RecordingYoutubeAction
@@ -1256,6 +1334,13 @@ function ViewLiveSession() {
                                                                                         {isBbbSession ? (
                                                                                             <button
                                                                                                 onClick={() => handleJoinAsHost(session.id)}
+                                                                                                className="text-xs font-medium text-primary hover:underline"
+                                                                                            >
+                                                                                                Start as Host →
+                                                                                            </button>
+                                                                                        ) : ((session as any).linkType === 'zoom' || (session as any).linkType === 'ZOOM_MEETING') ? (
+                                                                                            <button
+                                                                                                onClick={() => handleZoomStartAsHost(session.id)}
                                                                                                 className="text-xs font-medium text-primary hover:underline"
                                                                                             >
                                                                                                 Start as Host →

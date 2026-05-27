@@ -19,7 +19,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getBackgroundScoreFileId();
         String getSessionStreamingServiceType();
         String getScheduleId();
-        java.sql.Date getMeetingDate();
+        java.util.Date getMeetingDate();
         java.sql.Time getStartTime();
         java.sql.Time getLastEntryTime();
         String getRecurrenceType();
@@ -34,6 +34,11 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getDefaultClassLink();
         String getDefaultClassName();
         String getLinkType();
+        // Zoom (and any future provider) meeting id. Lets the learner UI decide
+        // "join early" eligibility — once the meeting has been provisioned the
+        // learner can join any time before the session window closes, even
+        // ahead of the scheduled start.
+        String getProviderMeetingId();
     }
 
     public interface ScheduledSessionProjection {
@@ -41,7 +46,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getSessionId();
         String getTitle();
         String getSubject();
-        java.sql.Date getMeetingDate();
+        // See LiveSessionListProjection#getMeetingDate for why LocalDate.
+        java.time.LocalDate getMeetingDate();
         java.sql.Time getStartTime();
         java.sql.Time getLastEntryTime();
         String getCustomMeetingLink();
@@ -318,7 +324,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.learner_button_config AS learnerButtonConfig,
             ss.default_class_link AS defaultClassLink,
             ss.default_class_name AS defaultClassName,
-            COALESCE(ss.link_type, s.link_type) AS linkType
+            COALESCE(ss.link_type, s.link_type) AS linkType,
+            ss.provider_meeting_id AS providerMeetingId
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         JOIN live_session_participants lsp ON lsp.session_id = s.id

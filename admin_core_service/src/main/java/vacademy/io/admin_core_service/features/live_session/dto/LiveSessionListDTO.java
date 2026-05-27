@@ -6,8 +6,9 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.sql.Time;
-import java.sql.Date;
+import java.util.Date;
 import java.util.List;
 
 @Data
@@ -38,6 +39,7 @@ public class LiveSessionListDTO {
     private String defaultClassLink;
     private String defaultClassName;
     private String linkType;
+    private String providerMeetingId;
     private List<PackageSessionInfo> packageSessionDetails;
 
     public LiveSessionListDTO(String sessionId, Integer waitingRoomTime, String thumbnailFileId,

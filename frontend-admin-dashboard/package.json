@@ -160,6 +160,7 @@
         "@yoopta/table": "^4.9.4",
         "@yoopta/toolbar": "^4.9.4",
         "@yoopta/video": "^4.9.4",
+        "@zoom/meetingsdk": "^3.0.0",
         "assemblyai": "^4.13.2",
         "axios": "^1.7.4",
         "blob-stream": "^0.1.3",

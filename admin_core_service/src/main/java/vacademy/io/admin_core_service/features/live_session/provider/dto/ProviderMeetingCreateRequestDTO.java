@@ -34,4 +34,8 @@ public class ProviderMeetingCreateRequestDTO {
     private String provider;
     /** BBB-specific meeting config (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
     private Map<String, Object> bbbConfig;
+    /** Which institute_zoom_account to create this meeting under (Zoom only). */
+    private String zoomAccountId;
+    /** Zoom-specific meeting settings (waitingRoom, muteUponEntry, autoRecording, joinBeforeHost, approvalType). */
+    private Map<String, Object> zoomConfig;
 }

@@ -143,6 +143,10 @@ export interface CreateProviderMeetingParams {
     durationMinutes: number;
     timezone: string;
     provider: string;
+    /** Zoom only — which institute_zoom_account to create the meeting under. */
+    zoomAccountId?: string;
+    /** Zoom only — meeting settings (waitingRoom, muteUponEntry, joinBeforeHost, autoRecording). */
+    zoomConfig?: Record<string, unknown>;
 }
 
 export const createProviderMeeting = async (data: CreateProviderMeetingParams) => {

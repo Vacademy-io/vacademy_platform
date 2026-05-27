@@ -595,6 +595,76 @@ export default function ScheduleStep2() {
                 }
             }
 
+            // Handle Zoom meeting creation — only when an account was selected in
+            // step 1 (integration enabled). Without an account the admin pasted a
+            // defaultLink instead, so there's nothing to create. Mirrors the Zoho
+            // block above; skipped in bulk for the same reason.
+            if (
+                !isBulkFlow &&
+                step1Data?.sessionPlatform === StreamingPlatform.ZOOM &&
+                (step1Data as any)?.zoomAccountId &&
+                instituteDetails?.id
+            ) {
+                try {
+                    const sessionDetailsPayload = await getSessionBySessionId(sessionId);
+                    const schedules = sessionDetailsPayload?.schedule?.added_schedules || [];
+                    const s = step1Data as any;
+                    const altHostsRaw = (s?.zoomAlternativeHosts ?? '').trim();
+                    const zoomConfig = {
+                        // Entry / security
+                        waitingRoom: s?.zoomWaitingRoom ?? true,
+                        joinBeforeHost: s?.zoomJoinBeforeHost ?? false,
+                        meetingAuthentication: s?.zoomMeetingAuthentication ?? false,
+                        approvalType: Number(s?.zoomApprovalType ?? 2),
+                        alternativeHosts: altHostsRaw
+                            ? altHostsRaw
+                                  .split(',')
+                                  .map((e: string) => e.trim())
+                                  .filter(Boolean)
+                            : undefined,
+                        // Audio / Video
+                        muteUponEntry: s?.zoomMuteUponEntry ?? true,
+                        hostVideo: s?.zoomHostVideo ?? false,
+                        participantVideo: s?.zoomParticipantVideo ?? false,
+                        audio: s?.zoomAudio ?? 'both',
+                        // In-meeting
+                        autoRecording: s?.zoomAutoRecording ?? 'cloud',
+                        breakoutRoom: s?.zoomBreakoutRoom ?? false,
+                        focusMode: s?.zoomFocusMode ?? false,
+                        allowMultipleDevices: s?.zoomAllowMultipleDevices ?? false,
+                        watermark: s?.zoomWatermark ?? false,
+                    };
+
+                    for (const schedule of schedules) {
+                        try {
+                            const durationMinutes = Number(schedule.duration) ||
+                                (Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes));
+
+                            const sessionStartDate = schedule.meetingDate || schedule.meeting_date || (step1Data as any)?.startDate || new Date().toISOString().split('T')[0];
+                            const formattedStartTime = formatZohoStartTime(sessionStartDate, schedule.startTime || schedule.start_time);
+
+                            await createProviderMeeting({
+                                instituteId: instituteDetails.id,
+                                sessionId: sessionId,
+                                scheduleId: schedule.id,
+                                topic: step1Data.title || sessionDetailsPayload?.schedule?.title || 'Live Class',
+                                agenda: step1Data.description || 'Live Subject Class',
+                                startTime: formattedStartTime,
+                                durationMinutes: durationMinutes > 0 ? durationMinutes : 30,
+                                timezone: step1Data.timeZone || sessionDetailsPayload?.schedule?.timezone || 'Asia/Kolkata',
+                                provider: 'ZOOM_MEETING',
+                                zoomAccountId: (step1Data as any).zoomAccountId,
+                                zoomConfig,
+                            });
+                        } catch (err) {
+                            console.error(`Error creating Zoom meeting for schedule ${schedule.id}:`, err);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error fetching session details to create Zoom meeting:', err);
+                }
+            }
+
             await queryClient.invalidateQueries({ queryKey: ['liveSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['upcomingSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['pastSessions'] });

@@ -1,6 +1,13 @@
 import { BACKEND_BASE_URL } from "../config/baseUrl";
 
 export const BASE_URL = BACKEND_BASE_URL;
+
+// LOCAL TESTING: admin-core-service running locally on port 8072.
+// Points the live-session + Zoom integration APIs at the local backend while
+// testing the new Zoom functionality. Override via VITE_LOCAL_ADMIN_CORE_BASE.
+// NOTE: revert these endpoints to ${BASE_URL} before shipping.
+export const LOCAL_ADMIN_CORE_BASE =
+  import.meta.env.VITE_LOCAL_ADMIN_CORE_BASE || "http://localhost:8072";
 export const BASE_URL_LEARNER_DASHBOARD =
   import.meta.env.VITE_LEARNER_DASHBOARD_URL || "https://learner.vacademy.io";
 export const BASE_URL_TEACHER_DASHBOARD =
@@ -113,7 +120,13 @@ export const GET_USERID_URL = `${BASE_URL}/admin-core-service/institute/open_lea
 export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/learner/v1/daily-time-spent`;
 
 // Live session — Zoho Meeting integration
-export const ZOHO_PARTICIPANT_JOIN_LINK = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/participant-join-link`;
+export const ZOHO_PARTICIPANT_JOIN_LINK = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/participant-join-link`;
+
+// Live session — Zoom Meeting SDK signature (embedded join)
+export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/zoom-sdk-signature`;
+
+// Live session — Zoom native join payload (deep link + web fallback for Capacitor)
+export const ZOOM_JOIN_PAYLOAD_ENDPOINT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/zoom-join-payload`;
 
 // Live session
 export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;
@@ -122,15 +135,15 @@ export const REQUEST_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/request-generic
 export const VERIFY_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp`;
 export const VERIFY_WHATSAPP_OTP_LOGIN = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp-login`;
 export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
-export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
-export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
-export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
-export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
-export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${BASE_URL}/admin-core-service/live-session/check-email-registration`;
-export const LIVE_SESSION_REGISTER_GUEST_USER = `${BASE_URL}/admin-core-service/live-session/register-guest-user`;
-export const LIVE_SESSION_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/mark-attendance`;
-export const LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/mark-guest-attendance`;
-export const LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID = `${BASE_URL}/admin-core-service/live-session/get-earliest-schedule-id`;
+export const LIVE_SESSION_GET_REGISTRATION_DATA = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/get-registration-data`;
+export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/learner/live-and-upcoming`;
+export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/by-schedule-id`;
+export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
+export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/check-email-registration`;
+export const LIVE_SESSION_REGISTER_GUEST_USER = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/register-guest-user`;
+export const LIVE_SESSION_MARK_ATTENDANCE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/mark-attendance`;
+export const LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/mark-guest-attendance`;
+export const LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/get-earliest-schedule-id`;
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
@@ -166,8 +179,8 @@ export const FEEDBACK_URL = `${BASE_URL}/admin-core-service/rating`;
 export const SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/add-or-update-quiz-slide-activity-log`;
 export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
 export const CODING_SUBMISSIONS = `${BASE_URL}/admin-core-service/coding/submissions`;
-export const LIVE_SESSION_ATTENDANCE_REPORT_BY_BATCH = `${BASE_URL}/admin-core-service/live-session-report/by-batch-session`;
-export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${BASE_URL}/admin-core-service/live-session-report/student-report`;
+export const LIVE_SESSION_ATTENDANCE_REPORT_BY_BATCH = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/by-batch-session`;
+export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/student-report`;
 export const LEARNER_FULL_ATTENDANCE_REPORT = `${BASE_URL}/admin-core-service/learner/reports/attendance`;
 
 export const GET_BATCH_LIST = `${BASE_URL}/admin-core-service/batch/v1/batches-by-session`;

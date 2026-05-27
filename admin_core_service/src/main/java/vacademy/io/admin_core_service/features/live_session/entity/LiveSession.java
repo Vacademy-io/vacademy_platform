@@ -34,7 +34,8 @@ import java.util.Date;
         @ColumnResult(name = "learnerButtonConfig", type = String.class),
         @ColumnResult(name = "defaultClassLink", type = String.class),
         @ColumnResult(name = "defaultClassName", type = String.class),
-        @ColumnResult(name = "linkType", type = String.class)
+        @ColumnResult(name = "linkType", type = String.class),
+        @ColumnResult(name = "providerMeetingId", type = String.class)
 }))
 public class LiveSession {
 

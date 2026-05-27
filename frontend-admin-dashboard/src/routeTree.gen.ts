@@ -152,6 +152,7 @@ import { Route as AiCenterAiToolsVsmartAudioIndexRouteImport } from "./routes/ai
 import { Route as AdmissionsNewEnquiryAudienceIdIndexRouteImport } from "./routes/admissions/new-enquiry/$audienceId/index"
 import { Route as AdmissionsApplicationNewIndexRouteImport } from "./routes/admissions/application/new/index"
 import { Route as StudyLibraryLiveSessionViewSessionIdRouteImport } from "./routes/study-library/live-session/view/$sessionId"
+import { Route as StudyLibraryLiveSessionHostScheduleIdRouteImport } from "./routes/study-library/live-session/host/$scheduleId"
 import { Route as ManagePagesProductPagesEditorProductPageIdRouteImport } from "./routes/manage-pages/product-pages/editor/$productPageId"
 import { Route as StudyLibraryLiveSessionScheduleStep2IndexRouteImport } from "./routes/study-library/live-session/schedule/step2/index"
 import { Route as StudyLibraryLiveSessionScheduleStep1IndexRouteImport } from "./routes/study-library/live-session/schedule/step1/index"
@@ -1292,6 +1293,12 @@ const StudyLibraryLiveSessionViewSessionIdRoute =
     path: "/study-library/live-session/view/$sessionId",
     getParentRoute: () => rootRouteImport,
   } as any)
+const StudyLibraryLiveSessionHostScheduleIdRoute =
+  StudyLibraryLiveSessionHostScheduleIdRouteImport.update({
+    id: "/study-library/live-session/host/$scheduleId",
+    path: "/study-library/live-session/host/$scheduleId",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ManagePagesProductPagesEditorProductPageIdRoute =
   ManagePagesProductPagesEditorProductPageIdRouteImport.update({
     id: "/manage-pages/product-pages/editor/$productPageId",
@@ -1603,6 +1610,7 @@ export interface FileRoutesByFullPath {
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
+  "/study-library/live-session/host/$scheduleId": typeof StudyLibraryLiveSessionHostScheduleIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId/": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -1770,6 +1778,7 @@ export interface FileRoutesByTo {
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
+  "/study-library/live-session/host/$scheduleId": typeof StudyLibraryLiveSessionHostScheduleIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -1939,6 +1948,7 @@ export interface FileRoutesById {
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
   "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
+  "/study-library/live-session/host/$scheduleId": typeof StudyLibraryLiveSessionHostScheduleIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId/": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -2109,6 +2119,7 @@ export interface FileRouteTypes {
     | "/workflow/create/"
     | "/workflow/list/"
     | "/manage-pages/product-pages/editor/$productPageId"
+    | "/study-library/live-session/host/$scheduleId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
     | "/admissions/new-enquiry/$audienceId/"
@@ -2276,6 +2287,7 @@ export interface FileRouteTypes {
     | "/workflow/create"
     | "/workflow/list"
     | "/manage-pages/product-pages/editor/$productPageId"
+    | "/study-library/live-session/host/$scheduleId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new"
     | "/admissions/new-enquiry/$audienceId"
@@ -2444,6 +2456,7 @@ export interface FileRouteTypes {
     | "/workflow/create/"
     | "/workflow/list/"
     | "/manage-pages/product-pages/editor/$productPageId"
+    | "/study-library/live-session/host/$scheduleId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
     | "/admissions/new-enquiry/$audienceId/"
@@ -2612,6 +2625,7 @@ export interface RootRouteChildren {
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
   ManagePagesProductPagesEditorProductPageIdRoute: typeof ManagePagesProductPagesEditorProductPageIdRoute
+  StudyLibraryLiveSessionHostScheduleIdRoute: typeof StudyLibraryLiveSessionHostScheduleIdRoute
   StudyLibraryLiveSessionViewSessionIdRoute: typeof StudyLibraryLiveSessionViewSessionIdRoute
   AdmissionsApplicationNewIndexRoute: typeof AdmissionsApplicationNewIndexRoute
   AdmissionsNewEnquiryAudienceIdIndexRoute: typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -3678,6 +3692,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryLiveSessionViewSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/study-library/live-session/host/$scheduleId": {
+      id: "/study-library/live-session/host/$scheduleId"
+      path: "/study-library/live-session/host/$scheduleId"
+      fullPath: "/study-library/live-session/host/$scheduleId"
+      preLoaderRoute: typeof StudyLibraryLiveSessionHostScheduleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/manage-pages/product-pages/editor/$productPageId": {
       id: "/manage-pages/product-pages/editor/$productPageId"
       path: "/manage-pages/product-pages/editor/$productPageId"
@@ -3973,6 +3994,8 @@ const rootRouteChildren: RootRouteChildren = {
   WorkflowListIndexRoute: WorkflowListIndexRoute,
   ManagePagesProductPagesEditorProductPageIdRoute:
     ManagePagesProductPagesEditorProductPageIdRoute,
+  StudyLibraryLiveSessionHostScheduleIdRoute:
+    StudyLibraryLiveSessionHostScheduleIdRoute,
   StudyLibraryLiveSessionViewSessionIdRoute:
     StudyLibraryLiveSessionViewSessionIdRoute,
   AdmissionsApplicationNewIndexRoute: AdmissionsApplicationNewIndexRoute,

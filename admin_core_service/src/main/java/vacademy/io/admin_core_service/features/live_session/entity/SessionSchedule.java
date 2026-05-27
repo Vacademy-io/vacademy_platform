@@ -86,5 +86,27 @@ public class SessionSchedule {
     @Column(name = "bbb_server_id")
     private String bbbServerId;
 
+    /**
+     * Reference to {@code institute_live_session_provider_mapping.id} — the
+     * provider-account row this meeting was created under. Pinned at create
+     * time so join/recording/attendance ops resolve the right credentials
+     * without re-deriving them. Generic across providers (Zoom today, others
+     * later); mirrors the role {@link #bbbServerId} plays for BBB.
+     */
+    @Column(name = "provider_account_id")
+    private String providerAccountId;
+
+    /**
+     * Plain meeting passcode from the provider. Needed by embedded SDKs
+     * (Zoom Web SDK {@code client.join({password})}) that can't reuse the
+     * encrypted pwd token embedded in the join URL.
+     */
+    @Column(name = "provider_passcode")
+    private String providerPasscode;
+
+    // Per-recording expiry / storage state lives inside provider_recordings_json
+    // (see MeetingRecordingDTO.expiresAt + fileId), not as schedule-level
+    // columns — same pattern BBB uses for recording metadata.
+
     // Getters, Setters, etc.
 }

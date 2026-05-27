@@ -240,6 +240,8 @@ public class LiveSessionProviderService {
                 .sessionId(request.getSessionId())
                 .scheduleId(request.getScheduleId())
                 .bbbConfig(request.getBbbConfig())
+                .zoomAccountId(request.getZoomAccountId())
+                .zoomConfig(request.getZoomConfig())
                 .build();
 
         CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
@@ -260,6 +262,20 @@ public class LiveSessionProviderService {
                 if (response.getRawResponse() != null
                         && response.getRawResponse().containsKey("bbbServerId")) {
                     schedule.setBbbServerId((String) response.getRawResponse().get("bbbServerId"));
+                }
+
+                // Pin the meeting to the provider-account row it was created under so
+                // join/recording/attendance ops resolve the right credentials later.
+                // Generic across providers — providers signal this by putting
+                // "providerAccountId" into the response's rawResponse map.
+                if (response.getRawResponse() != null
+                        && response.getRawResponse().containsKey("providerAccountId")) {
+                    schedule.setProviderAccountId((String) response.getRawResponse().get("providerAccountId"));
+                    // Persist the plain passcode so the embedded SDK can join seamlessly.
+                    Object passcode = response.getRawResponse().get("passcode");
+                    if (passcode != null) {
+                        schedule.setProviderPasscode(passcode.toString());
+                    }
                 }
 
                 scheduleRepository.save(schedule);
@@ -624,12 +640,21 @@ public class LiveSessionProviderService {
         }
     }
 
-    /** Enriches recordings that have a fileId but missing URL. */
+    /**
+     * Enriches recordings for display. Keeps any recording that either has an S3
+     * fileId (BBB) or already carries a provider playback/download URL (Zoom cloud);
+     * drops only empty entries. For fileId-backed recordings missing a URL, resolves
+     * the S3 public URL.
+     */
     private List<MeetingRecordingDTO> enrichUrls(List<MeetingRecordingDTO> recordings) {
         return recordings.stream()
-                .filter(r -> r.getFileId() != null && !r.getFileId().isBlank())
+                .filter(r -> (r.getFileId() != null && !r.getFileId().isBlank())
+                        || (r.getPlaybackUrl() != null && !r.getPlaybackUrl().isBlank())
+                        || (r.getDownloadUrl() != null && !r.getDownloadUrl().isBlank()))
                 .map(r -> {
-                    if (r.getDownloadUrl() == null || r.getDownloadUrl().isBlank()) {
+                    boolean hasUrl = (r.getDownloadUrl() != null && !r.getDownloadUrl().isBlank())
+                            || (r.getPlaybackUrl() != null && !r.getPlaybackUrl().isBlank());
+                    if (!hasUrl && r.getFileId() != null && !r.getFileId().isBlank()) {
                         try {
                             String url = mediaService.getFilePublicUrlByIdWithoutExpiry(r.getFileId());
                             r.setDownloadUrl(url);

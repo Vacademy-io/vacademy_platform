@@ -31,4 +31,17 @@ public class MeetingRecordingDTO {
     private String youtubeVideoId;
     /** Resolved YouTube watch URL (https://www.youtube.com/watch?v=...) for convenience */
     private String youtubeVideoUrl;
+    /**
+     * ISO-8601 timestamp when the provider will auto-delete this recording
+     * (e.g. Zoom's default 30-day cloud retention). Null when the provider has
+     * no expiry (BBB-hosted) or once the recording is mirrored to our S3
+     * (fileId set). Drives "expires in N days" warnings in the admin UI.
+     */
+    private String expiresAt;
+    /**
+     * Recording-level passcode. For Zoom, cloud recordings have their own passcode
+     * (not the meeting passcode) and Zoom prompts for it on play_url. Shown in the
+     * admin UI as a fallback when the embedded ?pwd= parameter is rejected.
+     */
+    private String passcode;
 }

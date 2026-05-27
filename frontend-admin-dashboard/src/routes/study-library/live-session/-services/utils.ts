@@ -168,6 +168,8 @@ export interface MeetingRecording {
     providerMeetingId?: string;
     fileId?: string;
     type?: string;
+    /** Zoom cloud-recording passcode shown as a fallback when the embedded ?pwd= is rejected. */
+    passcode?: string;
     /** Set by the YouTube upload worker once the recording has been published. */
     youtubeVideoId?: string;
     youtubeVideoUrl?: string;

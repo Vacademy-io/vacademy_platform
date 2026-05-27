@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.provider;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
 import vacademy.io.admin_core_service.features.live_session.provider.manager.ZohoMeetingManager;
+import vacademy.io.admin_core_service.features.live_session.provider.manager.ZoomMeetingManager;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
@@ -19,10 +20,11 @@ public class LiveSessionProviderFactory {
 
     private final Map<MeetingProvider, LiveSessionProviderStrategy> strategies;
 
-    public LiveSessionProviderFactory(ZohoMeetingManager zoho, BbbMeetingManager bbb) {
+    public LiveSessionProviderFactory(ZohoMeetingManager zoho, BbbMeetingManager bbb, ZoomMeetingManager zoom) {
         this.strategies = Map.of(
                 MeetingProvider.ZOHO_MEETING, zoho,
-                MeetingProvider.BBB_MEETING, bbb);
+                MeetingProvider.BBB_MEETING, bbb,
+                MeetingProvider.ZOOM_MEETING, zoom);
     }
 
     public LiveSessionProviderStrategy getStrategy(MeetingProvider provider) {

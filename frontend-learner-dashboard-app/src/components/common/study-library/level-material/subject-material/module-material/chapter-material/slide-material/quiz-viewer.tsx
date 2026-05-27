@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle } from "@phosphor-icons/react";
 import QuizTimer from "./QuizTimer";
 import QuizTimeWarning from "./QuizTimeWarning";
 import { MyInput } from "@/components/design-system/input";
@@ -781,13 +781,13 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
               angle: x < 0.5 ? 60 : 120,
               spread: 55,
               origin: { x, y: 0.6 },
-              colors: ["#22C55E", "#3B82F6", "#A78BFA", "#F59E0B"],
+              colors: ["#22C55E", "#3B82F6", "#A78BFA", "#F59E0B"], // design-lint-ignore: confetti animation colors
             });
 
             // Main waves
-            shoot({ colors: ["#00C2FF", "#3B82F6", "#22C55E", "#F59E0B"], shapes: ["square", "circle"], scalar: 1.1 });
-            setTimeout(() => shoot({ colors: ["#A78BFA", "#EC4899", "#F43F5E", "#10B981"], scalar: 1.25 }), 250);
-            setTimeout(() => shoot({ colors: ["#FBBF24", "#34D399", "#60A5FA", "#F472B6"], scalar: 1.2 }), 600);
+            shoot({ colors: ["#00C2FF", "#3B82F6", "#22C55E", "#F59E0B"], shapes: ["square", "circle"], scalar: 1.1 }); // design-lint-ignore: confetti animation colors
+            setTimeout(() => shoot({ colors: ["#A78BFA", "#EC4899", "#F43F5E", "#10B981"], scalar: 1.25 }), 250); // design-lint-ignore: confetti animation colors
+            setTimeout(() => shoot({ colors: ["#FBBF24", "#34D399", "#60A5FA", "#F472B6"], scalar: 1.2 }), 600); // design-lint-ignore: confetti animation colors
 
             // Side streamers
             setTimeout(() => sideBurst(0.15), 150);
@@ -961,7 +961,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
               value={currentAnswer || ""}
               onChange={(e) => handleTextInput(e.target.value)}
               placeholder="Type your answer..."
-              className="min-h-[150px] sm:min-h-[200px] text-sm w-full border-primary-100 focus:border-primary-500 focus:ring-primary-500"
+              className="min-h-reg-150 sm:min-h-reg-200 text-sm w-full border-primary-100 focus:border-primary-500 focus:ring-primary-500"
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
               onPaste={(e) => e.preventDefault()}
@@ -1073,7 +1073,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   };
 
   return (
-    <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
+    <div className="w-full min-h-screen-80 bg-white rounded-xl shadow-lg p-4 sm:p-8">
       {/* Timer warning overlay */}
       {showWarning && <QuizTimeWarning onDismiss={() => setShowWarning(false)} />}
 
@@ -1152,7 +1152,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           scale="medium"
           disable={current === 0}
           onClick={handlePrev}
-          className="flex items-center justify-center min-w-[120px] space-x-2"
+          className="flex items-center justify-center min-w-reg-120 space-x-2"
         >
           <span>←</span>
           <span>Previous</span>
@@ -1175,7 +1175,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           scale="medium"
           disable={!isAnswered() || isSubmitting}
           onClick={handleNext}
-          className="flex items-center justify-center min-w-[120px] space-x-2"
+          className="flex items-center justify-center min-w-reg-120 space-x-2"
         >
           <span>{isSubmitting ? "Submitting..." : current === total - 1 ? "Finish" : "Next"}</span>
           {current !== total - 1 && !isSubmitting && <span>→</span>}

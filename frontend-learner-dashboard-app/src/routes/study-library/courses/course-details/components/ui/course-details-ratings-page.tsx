@@ -599,7 +599,7 @@ export function CourseDetailsRatingsComponent({
                                                 key={stars}
                                                 className="flex items-center gap-2 sm:gap-3 group/bar"
                                             >
-                                                <div className="flex items-center space-x-1 text-xs font-medium text-gray-700 min-w-[50px]">
+                                                <div className="flex items-center space-x-1 text-xs font-medium text-gray-700 min-w-12">
                                                     <Star
                                                         size={12}
                                                         className="text-yellow-500"
@@ -613,7 +613,7 @@ export function CourseDetailsRatingsComponent({
                                                         className="h-1.5 bg-gray-200 rounded-full overflow-hidden group-hover/bar:h-2 transition-all duration-300"
                                                     />
                                                 </div>
-                                                <span className="text-xs font-bold text-gray-900 min-w-[40px] text-right">
+                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-right">
                                                     {percent}%
                                                 </span>
                                             </div>

@@ -26,16 +26,7 @@ import {
   useDeleteUserApiKeys,
   useGetTokenUsage,
 } from "@/services/ai-settings-api";
-import {
-  Eye,
-  EyeOff,
-  Key,
-  Trash2,
-  Save,
-  AlertCircle,
-  CheckCircle2,
-  DollarSign,
-} from "lucide-react";
+import { Eye, EyeSlash, Key, Trash, FloppyDisk, WarningCircle, CheckCircle, CurrencyDollar } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
@@ -197,7 +188,7 @@ function APIKeyManagement() {
         {apiKeyData &&
           (apiKeyData.has_openai_key || apiKeyData.has_gemini_key) && (
             <Alert>
-              <CheckCircle2 className="h-4 w-4" />
+              <CheckCircle className="h-4 w-4" />
               <AlertDescription>
                 Active keys: {apiKeyData.has_openai_key && "OpenRouter"}{" "}
                 {apiKeyData.has_openai_key && apiKeyData.has_gemini_key && "& "}{" "}
@@ -233,7 +224,7 @@ function APIKeyManagement() {
                 onClick={() => setShowOpenAIKey(!showOpenAIKey)}
               >
                 {showOpenAIKey ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeSlash className="h-4 w-4" />
                 ) : (
                   <Eye className="h-4 w-4" />
                 )}
@@ -275,7 +266,7 @@ function APIKeyManagement() {
                 onClick={() => setShowGeminiKey(!showGeminiKey)}
               >
                 {showGeminiKey ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeSlash className="h-4 w-4" />
                 ) : (
                   <Eye className="h-4 w-4" />
                 )}
@@ -317,7 +308,7 @@ function APIKeyManagement() {
 
         {/* Security Warning */}
         <Alert>
-          <AlertCircle className="h-4 w-4" />
+          <WarningCircle className="h-4 w-4" />
           <AlertDescription>
             Your API keys are securely encrypted and stored. They are never
             visible after saving and cannot be retrieved - only replaced or
@@ -332,7 +323,7 @@ function APIKeyManagement() {
             disabled={saveApiKeys.isPending}
             className="flex-1"
           >
-            <Save className="h-4 w-4 mr-2" />
+            <FloppyDisk className="h-4 w-4 mr-2" />
             {saveApiKeys.isPending ? "Saving..." : "Save Keys"}
           </Button>
           {apiKeyData &&
@@ -342,7 +333,7 @@ function APIKeyManagement() {
                 onClick={handleDelete}
                 disabled={deleteApiKeys.isPending}
               >
-                <Trash2 className="h-4 w-4 mr-2" />
+                <Trash className="h-4 w-4 mr-2" />
                 Delete All Keys
               </Button>
             )}
@@ -374,7 +365,7 @@ function TokenUsage() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <DollarSign className="h-5 w-5" />
+          <CurrencyDollar className="h-5 w-5" />
           Token Usage & Costs
         </CardTitle>
         <CardDescription>
@@ -447,7 +438,7 @@ function TokenUsage() {
           <div className="space-y-3">
             <Label>Recent Activity</Label>
             <div className="border rounded-lg overflow-hidden">
-              <div className="max-h-[400px] overflow-y-auto">
+              <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted sticky top-0">
                     <tr>
@@ -486,7 +477,7 @@ function TokenUsage() {
           </div>
         ) : (
           <Alert>
-            <AlertCircle className="h-4 w-4" />
+            <WarningCircle className="h-4 w-4" />
             <AlertDescription>
               No usage records found for the selected date range.
             </AlertDescription>

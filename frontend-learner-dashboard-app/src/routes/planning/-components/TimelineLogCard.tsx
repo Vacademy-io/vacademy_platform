@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Eye } from "lucide-react";
+import { Eye } from "@phosphor-icons/react";
 import type { PlanningLog } from "../-types/types";
 import {
   formatIntervalType,

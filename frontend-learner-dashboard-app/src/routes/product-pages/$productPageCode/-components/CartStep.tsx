@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { validateCoupon } from '../-services/product-page-service';
 import { pushCartViewed, pushCouponApplied } from '@/components/common/enroll-by-invite/-utils/gtm';
-import { Tag, X, ArrowLeft, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
 import type { ProductPageData, ProductPageSettings, PageJson } from '../-types/product-page-types';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -11,7 +11,7 @@ function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
     try { return JSON.parse(jsonStr) as T; } catch { return fallback; }
 }
 
-const EMPTY_PAGE_JSON: PageJson = { globalSettings: { primaryColor: '#4F46E5', logoFileId: '' }, components: [] };
+const EMPTY_PAGE_JSON: PageJson = { globalSettings: { primaryColor: '#4F46E5', logoFileId: '' }, components: [] }; // design-lint-ignore: page-builder default color
 
 interface CartStepProps {
     pageData: ProductPageData;
@@ -21,7 +21,7 @@ interface CartStepProps {
     onNext: () => void;
 }
 
-export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: CartStepProps) => {
+export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: CartStepProps) => { // design-lint-ignore: page-builder default color
     const {
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, finalPrice, toggleSelection, setSelection, utmParams,
@@ -106,7 +106,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                         {/* Header */}
                         <div className="flex items-center gap-4 px-6 py-5">
                             <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-green-100">
-                                <CheckCircle2 className="size-6 text-green-600" />
+                                <CheckCircle className="size-6 text-green-600" />
                             </div>
                             <div>
                                 <h1 className="text-xl font-bold text-gray-900">Order Summary</h1>
@@ -207,7 +207,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                             {couponSuccess ? (
                                 <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2">
                                     <div className="flex items-center gap-2">
-                                        <CheckCircle2 className="size-4 text-green-600" />
+                                        <CheckCircle className="size-4 text-green-600" />
                                         <span className="font-mono text-sm font-semibold text-green-800">{couponCode}</span>
                                         <span className="text-sm text-green-700">
                                             — {currencySymbol}{discountAmount.toLocaleString()} off
@@ -235,7 +235,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                                         onClick={() => couponMutation.mutate()}
                                         className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 disabled:opacity-50"
                                     >
-                                        {couponMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : 'Apply'}
+                                        {couponMutation.isPending ? <SpinnerGap className="size-4 animate-spin" /> : 'Apply'}
                                     </button>
                                 </div>
                             )}

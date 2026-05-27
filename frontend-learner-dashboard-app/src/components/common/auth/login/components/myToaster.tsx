@@ -8,7 +8,7 @@ import {
     ToastTitle,
     ToastViewport,
 } from "@/components/ui/toast";
-import { MdErrorOutline } from "react-icons/md";
+import { WarningCircle } from "@phosphor-icons/react";
 import { toast } from "@/hooks/use-toast";
 
 export function CustomToaster() {
@@ -23,7 +23,7 @@ export function CustomToaster() {
                             {title && (
                                 <ToastTitle className="flex items-center gap-2 text-danger-600">
                                     <div>{title}</div>
-                                    <MdErrorOutline className="h-5 w-5" />
+                                    <WarningCircle className="h-5 w-5" />
                                 </ToastTitle>
                             )}
                             {description && (

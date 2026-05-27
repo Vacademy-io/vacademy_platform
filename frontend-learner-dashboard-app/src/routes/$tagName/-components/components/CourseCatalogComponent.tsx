@@ -6,16 +6,16 @@ import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import {
-  Filter,
-  ChevronDown,
-  ChevronUp,
-  Search,
-  SortAsc,
+  Funnel,
+  CaretDown,
+  CaretUp,
+  MagnifyingGlass,
+  SortAscending,
   ShoppingCart,
   Plus,
   Minus,
   BookOpen,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { toTitleCase } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
@@ -127,8 +127,8 @@ const CourseImageWithState: React.FC<CourseImageProps> = ({
   if (loadingImage && !courseImageUrl) {
     return (
       <div className="aspect-video">
-        <div className="w-full h-full bg-[hsl(var(--catalogue-bg-muted))] animate-pulse rounded-md flex items-center justify-center">
-          <div className="text-[hsl(var(--catalogue-text-muted))] text-xs">
+        <div className="w-full h-full bg-catalogue-bg-muted animate-pulse rounded-md flex items-center justify-center">
+          <div className="text-catalogue-text-muted text-xs">
             Loading...
           </div>
         </div>
@@ -253,12 +253,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           {isExpanded ? (
             <>
               Show Less
-              <ChevronUp size={12} />
+              <CaretUp size={12} />
             </>
           ) : (
             <>
               Show More
-              <ChevronDown size={12} />
+              <CaretDown size={12} />
             </>
           )}
         </button>
@@ -308,11 +308,11 @@ const CartControls: React.FC<{
 
   if (cartItem && showQuantitySelector) {
     return (
-      <div className="flex items-center gap-1 border border-[hsl(var(--catalogue-border))] rounded-md px-1 py-0.5 bg-white">
+      <div className="flex items-center gap-1 border border-catalogue-border rounded-md px-1 py-0.5 bg-white">
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 p-0 hover:bg-[hsl(var(--catalogue-interactive-hover))]"
+          className="h-6 w-6 p-0 hover:bg-catalogue-interactive-hover"
           onClick={(e) => {
             e.stopPropagation();
             if (cartItem && course.enrollInviteId) {
@@ -327,7 +327,7 @@ const CartControls: React.FC<{
         >
           <Minus className="h-3 w-3" />
         </Button>
-        <span className="min-w-[24px] text-center font-medium text-[hsl(var(--catalogue-text-primary))] text-xs">
+        <span className="min-w-6 text-center font-medium text-catalogue-text-primary text-xs">
           {cartItem.quantity}
         </span>
         <Button
@@ -1125,12 +1125,12 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
       <div className="py-6 w-full">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="animate-pulse">
-            <div className="h-6 bg-[hsl(var(--catalogue-bg-muted))] rounded w-1/4 mb-6"></div>
+            <div className="h-6 bg-catalogue-bg-muted rounded w-1/4 mb-6"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
                 <div
                   key={i}
-                  className="bg-[hsl(var(--catalogue-bg-muted))] rounded-lg h-56"
+                  className="bg-catalogue-bg-muted rounded-lg h-56"
                 ></div>
               ))}
             </div>
@@ -1143,10 +1143,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   return (
     <div
       ref={scrollRef}
-      className="py-6 bg-[hsl(var(--catalogue-bg-subtle))] w-full"
+      className="py-6 bg-catalogue-bg-subtle w-full"
     >
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <h2 className="text-xl sm:text-2xl font-bold text-[hsl(var(--catalogue-text-primary))] mb-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-catalogue-text-primary mb-4">
           {title}
         </h2>
 
@@ -1156,21 +1156,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           {shouldRenderFiltersPanel && (
             <div className="w-full lg:w-64 lg:flex-shrink-0 order-1">
               <div className="lg:sticky lg:top-20">
-                <div className="bg-white p-3 sm:p-4 rounded-lg border border-[hsl(var(--catalogue-border-subtle))]">
+                <div className="bg-white p-3 sm:p-4 rounded-lg border border-catalogue-border-subtle">
                   {/* Mobile Header */}
                   <div className="lg:hidden mb-3">
                     <button
                       onClick={() =>
                         setIsMobileFilterExpanded(!isMobileFilterExpanded)
                       }
-                      className="w-full flex items-center justify-between p-2 bg-[hsl(var(--catalogue-bg-subtle))] rounded-md hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
+                      className="w-full flex items-center justify-between p-2 bg-catalogue-bg-subtle rounded-md hover:bg-catalogue-interactive-hover transition-colors"
                     >
                       <div className="flex items-center gap-2">
-                        <Filter
+                        <Funnel
                           size={16}
-                          className="text-[hsl(var(--catalogue-text-secondary))]"
+                          className="text-catalogue-text-secondary"
                         />
-                        <span className="text-sm font-medium text-[hsl(var(--catalogue-text-primary))]">
+                        <span className="text-sm font-medium text-catalogue-text-primary">
                           Filters
                         </span>
                         {hasActiveFilters && (
@@ -1179,9 +1179,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           </span>
                         )}
                       </div>
-                      <ChevronDown
+                      <CaretDown
                         size={14}
-                        className={`text-[hsl(var(--catalogue-text-muted))] transition-transform ${isMobileFilterExpanded ? "rotate-180" : ""}`}
+                        className={`text-catalogue-text-muted transition-transform ${isMobileFilterExpanded ? "rotate-180" : ""}`}
                       />
                     </button>
                   </div>
@@ -1199,14 +1199,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         <Button
                           onClick={clearAllFilters}
                           disabled={!hasActiveFilters}
-                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                          className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
                           Clear All
                         </Button>
                         <Button
                           onClick={onApplyFilters}
                           disabled={!hasActiveFilters}
-                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                          className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
                           Apply
                         </Button>
@@ -1222,14 +1222,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                         <Button
                           onClick={clearAllFilters}
                           disabled={!hasActiveFilters}
-                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                          className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
                           Clear All
                         </Button>
                         <Button
                           onClick={onApplyFilters}
                           disabled={!hasActiveFilters}
-                          className="px-2 py-1 h-fit transition text-xs mt-[1px]"
+                          className="px-2 py-1 h-fit transition text-xs mt-px"
                         >
                           Apply
                         </Button>
@@ -1351,7 +1351,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 {/* Search */}
                 <div className="flex-1">
                   <div className="relative">
-                    <Search
+                    <MagnifyingGlass
                       className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
                       size={20}
                     />
@@ -1368,7 +1368,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 {/* Sort */}
                 <div className="sm:w-48">
                   <div className="relative">
-                    <SortAsc
+                    <SortAscending
                       className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
                       size={20}
                     />
@@ -1560,7 +1560,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
         >
           <ShoppingCart className="h-5 w-5" />
           {getItemCount() > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center text-[10px]">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center text-caption">
               {getItemCount()}
             </span>
           )}

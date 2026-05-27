@@ -2,7 +2,7 @@ import React, { useState, useEffect ,useMemo} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { Play } from "lucide-react";
+import { Play } from "@phosphor-icons/react";
 
 interface MediaItem {
   type: "image" | "video";
@@ -533,7 +533,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     return (
       <section className="w-full relative" style={{ width: '100%', overflow: 'hidden' }}>
         <div 
-          className="relative overflow-hidden h-[300px] sm:h-[500px]"
+          className="relative overflow-hidden h-72 sm:h-blob-lg"
           style={{
             width: "100%",
             position: 'relative',
@@ -555,7 +555,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                     minWidth: `calc(100% / ${slides.length})`,
                     maxWidth: `calc(100% / ${slides.length})`,
                     flexBasis: `calc(100% / ${slides.length})`,
-                    backgroundColor: '#1f2937',
+                    backgroundColor: '#1f2937', // design-lint-ignore: page-builder default color
                     position: 'relative'
                   }}
                 >
@@ -624,7 +624,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                         }}
                         className="px-4 py-2 sm:px-8 sm:py-4 text-sm sm:text-lg font-semibold text-white rounded-md hover:opacity-90 transition-opacity shadow-lg cursor-pointer"
                         style={{
-                          backgroundColor: slide.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"),
+                          backgroundColor: slide.button.backgroundColor || (domainRouting.instituteThemeCode ? `hsl(var(--primary))` : "#2563eb"), // design-lint-ignore: page-builder default color
                           zIndex: 20,
                           position: 'relative'
                         }}
@@ -696,17 +696,17 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
   
   return (
     <section
-      className={`w-full py-6 sm:py-8 ${roundedEdges ? "rounded-lg" : ""} bg-[hsl(var(--catalogue-bg-subtle))]`}
+      className={`w-full py-6 sm:py-8 ${roundedEdges ? "rounded-lg" : ""} bg-catalogue-bg-subtle`}
     >
       <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Header */}
         {headerText && (
           <div className="text-center mb-6">
-            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-[hsl(var(--catalogue-text-primary))] mb-2">
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-catalogue-text-primary mb-2">
               {headerText}
             </h2>
             {description && (
-              <p className="text-sm text-[hsl(var(--catalogue-text-secondary))] max-w-2xl mx-auto">
+              <p className="text-sm text-catalogue-text-secondary max-w-2xl mx-auto">
                 {description}
               </p>
             )}
@@ -734,7 +734,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
               <>
                 <button
                   onClick={prevSlide}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white border border-[hsl(var(--catalogue-border))] text-[hsl(var(--catalogue-text-secondary))] p-1.5 rounded-full hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white border border-catalogue-border text-catalogue-text-secondary p-1.5 rounded-full hover:bg-catalogue-interactive-hover transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -742,7 +742,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                 </button>
                 <button
                   onClick={nextSlide}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white border border-[hsl(var(--catalogue-border))] text-[hsl(var(--catalogue-text-secondary))] p-1.5 rounded-full hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white border border-catalogue-border text-catalogue-text-secondary p-1.5 rounded-full hover:bg-catalogue-interactive-hover transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -761,7 +761,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                     className={`w-2 h-2 rounded-full transition-all ${
                       index === currentIndex
                         ? "bg-primary-500 w-4"
-                        : "bg-[hsl(var(--catalogue-border))]"
+                        : "bg-catalogue-border"
                     }`}
                   />
                 ))}

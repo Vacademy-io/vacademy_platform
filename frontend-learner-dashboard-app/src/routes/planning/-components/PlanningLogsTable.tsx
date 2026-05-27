@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Eye } from "lucide-react";
+import { Eye } from "@phosphor-icons/react";
 import type { PlanningLog } from "../-types/types";
 import {
   formatIntervalType,

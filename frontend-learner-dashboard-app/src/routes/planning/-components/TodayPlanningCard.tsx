@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, BookOpen } from "lucide-react";
+import { Calendar, Clock, BookOpen } from "@phosphor-icons/react";
 import type { PlanningLog } from "../-types/types";
 import { formatDistanceToNow } from "date-fns";
 import { ReadOnlyQuillViewer } from "@/components/quill/ReadOnlyQuillViewer";

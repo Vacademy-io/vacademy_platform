@@ -32,8 +32,8 @@ export const CertificateCompletionBanner = ({
                 "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20",
                 "[.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30 [.ui-vibrant_&]:shadow-sm",
                 // Play Styles — solid green hero with soft layered shadow
-                "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:border-transparent [.ui-play_&]:text-white [.ui-play_&]:rounded-2xl [.ui-play_&]:font-extrabold",
-                "[.ui-play_&]:shadow-[0_1px_2px_rgba(70,163,2,0.22),0_16px_32px_-12px_rgba(88,204,2,0.45)]"
+                "[.ui-play_&]:bg-play-success [.ui-play_&]:border-transparent [.ui-play_&]:text-white [.ui-play_&]:rounded-2xl [.ui-play_&]:font-extrabold",
+                "[.ui-play_&]:shadow-play-glow-success-lg"
             )}>
                 <div className="flex items-center gap-4">
                     {/* Left Side - Certificate Icon and Content */}
@@ -44,7 +44,7 @@ export const CertificateCompletionBanner = ({
                             // Vibrant Styles - Flat Icon
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-emerald-600 [.ui-vibrant_&]:shadow-md",
                             // Play Styles — white icon disc with soft shadow
-                            "[.ui-play_&]:bg-white [.ui-play_&]:text-[#58cc02] [.ui-play_&]:shadow-[0_2px_8px_rgba(0,0,0,0.12)] [.ui-play_&]:rounded-xl"
+                            "[.ui-play_&]:bg-white [.ui-play_&]:text-play-success [.ui-play_&]:shadow-play-soft [.ui-play_&]:rounded-xl"
                         )}>
                             <GraduationCap size={20} className="text-white" />
                         </div>

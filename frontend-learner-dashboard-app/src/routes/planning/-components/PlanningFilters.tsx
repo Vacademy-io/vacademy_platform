@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X } from "lucide-react";
+import { X } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import { useEffect, useState } from "react";
 import type { ListPlanningLogsRequest, IntervalType } from "../-types/types";

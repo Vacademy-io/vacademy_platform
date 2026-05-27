@@ -4,7 +4,7 @@ import SearchAndSortBar from "./SearchAndSortBar.tsx";
 import CourseCard from "./CourseCards.tsx";
 import Pagination from "./Pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
-import { Search } from "lucide-react";
+import { MagnifyingGlass } from "@phosphor-icons/react";
 import { cn, toTitleCase } from "@/lib/utils";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
@@ -285,11 +285,11 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             <div className="relative">
                                 {/* Illustrated icon stack */}
                                 <div className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto mb-5">
-                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-200 rotate-6 [.ui-play_&]:bg-[#58cc02]/30" aria-hidden="true" />
+                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-200 rotate-6 [.ui-play_&]:bg-play-success/30" aria-hidden="true" />
                                     <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white to-primary-50 -rotate-3 border border-primary-100 flex items-center justify-center shadow-sm">
-                                        <Search
+                                        <MagnifyingGlass
                                             size={36}
-                                            className="text-primary-500 [.ui-play_&]:text-[#58cc02]"
+                                            className="text-primary-500 [.ui-play_&]:text-play-success"
                                             strokeWidth={2.25}
                                         />
                                     </div>
@@ -315,7 +315,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                     ) : (
                         <div className="space-y-3 sm:space-y-4">
                             {/* Compact Results Summary */}
-                            <div className="text-[11px] sm:text-xs text-muted-foreground mb-1">
+                            <div className="text-caption sm:text-xs text-muted-foreground mb-1">
                                 {courseData.totalElements}{" "}
                                 {getTerminology(
                                     ContentTerms.Course,

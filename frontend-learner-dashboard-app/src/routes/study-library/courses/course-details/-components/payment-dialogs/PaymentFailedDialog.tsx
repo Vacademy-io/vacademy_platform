@@ -1,7 +1,7 @@
 import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { XCircle } from "lucide-react";
+import { XCircle } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 
 interface PaymentFailedDialogProps {
@@ -47,9 +47,9 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
           <DialogPrimitive.Title className="sr-only">Payment Failed</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">

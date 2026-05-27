@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Filter, X } from "lucide-react";
+import { Funnel, X } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import { useEffect, useState } from "react";
 import type { ListPlanningLogsRequest, IntervalType } from "../-types/types";
@@ -117,7 +117,7 @@ export default function FiltersDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="relative">
-          <Filter className="mr-2 size-4" />
+          <Funnel className="mr-2 size-4" />
           Filters
           {hasActiveFilters && (
             <span className="ml-2 flex size-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">

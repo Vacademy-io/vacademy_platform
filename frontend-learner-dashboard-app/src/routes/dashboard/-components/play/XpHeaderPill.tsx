@@ -11,8 +11,8 @@ export const XpHeaderPill: React.FC = () => {
     <div
       className="flex items-center gap-2 rounded-full px-4 py-2"
       style={{
-        backgroundColor: "#FFB800",
-        boxShadow: "0 3px 0 #CC9300",
+        backgroundColor: "var(--play-xp-bg)",
+        boxShadow: "0 3px 0 var(--play-xp-shadow)",
       }}
     >
       <Star weight="fill" size={18} className="text-white" />

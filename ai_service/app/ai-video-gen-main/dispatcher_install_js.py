@@ -414,6 +414,28 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                           return out;
                       };
                       originalCode = _unwrapReadyListener(originalCode);
+                      // ── Navigation / document-wipe neutralization ──
+                      // A headless render must NEVER navigate away or wipe the
+                      // document: either destroys the JS execution context the
+                      // scrub-renderer drives via page.evaluate() on EVERY frame,
+                      // which aborts the whole multi-minute render ("Execution
+                      // context was destroyed, most likely because of a navigation").
+                      // LLM shot scripts occasionally do this by accident. Route the
+                      // offending calls to the inert __sd_* stand-ins defined in the
+                      // scoped IIFE below. page.route() can't catch these — they're
+                      // in-page JS (location assignment / document.write), not network
+                      // requests.
+                      originalCode = originalCode.split('window.location').join('__sd_loc');
+                      originalCode = originalCode.split('document.location').join('__sd_loc');
+                      originalCode = originalCode.split('window.open').join('__sd_open');
+                      originalCode = originalCode.split('document.writeln').join('__sd_docWrite');
+                      originalCode = originalCode.split('document.write').join('__sd_docWrite');
+                      // Bare `location.href = ...` / `location.reload()` / `location.assign(...)`
+                      // — rewritten only when `location` is a standalone identifier
+                      // (NOT el.location, geolocation, relocation, etc.). The boundary
+                      // class excludes a preceding word-char or dot; the trailing class
+                      // requires a `.` or `=` so plain string mentions are left alone.
+                      originalCode = originalCode.replace(/(^|[^\\w.$])location(\\s*[.=])/g, '$1__sd_loc$2');
                       // String.raw — NOT a plain template literal. Inside this block
                       // we embed regex literals (`/circle\(\s*0.../`, `/scale\((0...)/`)
                       // and JS escape-character literals that MUST keep their backslashes
@@ -440,6 +462,21 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             const __sd_getElementById = (id) => scope.querySelector('#' + CSS.escape(id));
                             const __sd_querySelector = (sel) => scope.querySelector(sel);
                             const __sd_querySelectorAll = (sel) => scope.querySelectorAll(sel);
+
+                            // ── Navigation / document-wipe stand-ins ──
+                            // Targets of the source rewrites above (window.location,
+                            // document.location, window.open, document.write(ln), bare
+                            // location). Reads degrade to '' ; assignments and calls are
+                            // swallowed. Any stray ReferenceError from an edge-case
+                            // rewrite (e.g. window.opener) is caught by the try/catch that
+                            // wraps the shot script below, so the shot still recovers.
+                            const __sd_navNoop = function () { return null; };
+                            const __sd_loc = new Proxy(
+                                { assign: __sd_navNoop, replace: __sd_navNoop, reload: __sd_navNoop, toString: function () { return ''; } },
+                                { get: function (o, k) { return (k in o) ? o[k] : ''; }, set: function () { return true; } }
+                            );
+                            const __sd_open = __sd_navNoop;
+                            const __sd_docWrite = __sd_navNoop;
 
 
                             // Proxy global helpers to use scoped resolution

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, Clock } from "@phosphor-icons/react";
-import { ChevronRight, Video } from "lucide-react";
+import { CaretRight, VideoCamera } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
 import {
@@ -150,7 +150,7 @@ export function UpcomingLiveClassesWidget({
               "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:rounded-xl"
             )}
           >
-            <Video size={18} />
+            <VideoCamera size={18} />
           </div>
           <div>
             <CardTitle className="text-base font-semibold">
@@ -167,7 +167,7 @@ export function UpcomingLiveClassesWidget({
           className="text-xs"
           onClick={() => navigate({ to: "/study-library/live-class" })}
         >
-          View All <ChevronRight size={14} className="ml-1" />
+          View All <CaretRight size={14} className="ml-1" />
         </Button>
       </CardHeader>
 
@@ -180,7 +180,7 @@ export function UpcomingLiveClassesWidget({
           >
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-400 shrink-0">
-                <Video size={16} />
+                <VideoCamera size={16} />
               </div>
               <div className="min-w-0">
                 <h4 className="font-medium text-sm truncate">

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { useUnifiedRegistration } from "@/components/common/auth/signup/hooks/use-unified-registration";
-import { FcGoogle } from "react-icons/fc";
+import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: brand logo, no phosphor equivalent
 
 interface GoogleSignupProviderProps {
   instituteId: string;

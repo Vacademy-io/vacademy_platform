@@ -7,7 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import axios from "axios";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Shield, RefreshCw } from "lucide-react";
+import { Shield, ArrowsClockwise } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -376,7 +376,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
           transition={{ duration: 0.3 }}
           className="flex flex-col items-center space-y-4"
         >
-          <RefreshCw className="w-8 h-8 animate-spin text-gray-600" />
+          <ArrowsClockwise className="w-8 h-8 animate-spin text-gray-600" />
           <p className="text-sm text-gray-600">Finding user details...</p>
         </motion.div>
       ) : step === "username" ? (
@@ -421,7 +421,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
               >
                 {getUserDetailsMutation.isPending ? (
                   <div className="flex items-center space-x-2">
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <ArrowsClockwise className="w-4 h-4 animate-spin" />
                     <span>Finding User...</span>
                   </div>
                 ) : (
@@ -481,7 +481,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
             >
               {isVerifyingOtp ? (
                 <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  <ArrowsClockwise className="w-4 h-4 mr-2 animate-spin" />
                   Verifying...
                 </>
               ) : (

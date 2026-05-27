@@ -1083,13 +1083,7 @@ export const CourseDetailsPage = () => {
           if (res.status === 200 && !alreadyCelebrated) {
             // Enhanced multi-burst confetti (professional feel)
             try {
-              const colors = [
-                "#0ea5e9",
-                "#22c55e",
-                "#f59e0b",
-                "#ef4444",
-                "#8b5cf6",
-              ];
+              const colors = ["#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"]; // design-lint-ignore: confetti effect palette
               const defaults = {
                 colors,
                 origin: { y: 0.6 },

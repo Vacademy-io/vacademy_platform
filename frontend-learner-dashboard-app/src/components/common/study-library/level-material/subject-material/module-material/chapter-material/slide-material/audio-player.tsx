@@ -11,14 +11,14 @@ import {
     Pause,
     SkipBack,
     SkipForward,
-    Volume2,
-    VolumeX,
+    SpeakerHigh,
+    SpeakerSlash,
     FileText,
-    Loader2,
-    Music2,
-    ChevronDown,
-    ChevronUp,
-} from "lucide-react";
+    SpinnerGap,
+    MusicNotes,
+    CaretDown,
+    CaretUp,
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
@@ -291,7 +291,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
             <div className="flex flex-col items-center justify-center p-12 h-full">
                 <Card className="w-full max-w-2xl">
                     <CardContent className="flex flex-col items-center justify-center py-16">
-                        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+                        <SpinnerGap className="h-10 w-10 animate-spin text-primary mb-4" />
                         <p className="text-muted-foreground font-medium">Loading Audio...</p>
                     </CardContent>
                 </Card>
@@ -305,7 +305,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                 <Card className="w-full max-w-2xl">
                     <CardContent className="flex flex-col items-center justify-center py-16">
                         <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-                            <VolumeX className="h-7 w-7 text-destructive" />
+                            <SpeakerSlash className="h-7 w-7 text-destructive" />
                         </div>
                         <p className="text-destructive font-medium">{error || "Audio source unavailable"}</p>
                         <Button 
@@ -339,7 +339,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center">
                                         <div className="h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
-                                            <Music2 className="h-12 w-12 text-primary/60" />
+                                            <MusicNotes className="h-12 w-12 text-primary/60" />
                                         </div>
                                     </div>
                                 )}
@@ -433,7 +433,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                 </Select>
 
                                 {/* Volume Control */}
-                                <div className="flex items-center gap-2 flex-1 max-w-[180px]">
+                                <div className="flex items-center gap-2 flex-1 max-w-reg-180">
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -441,9 +441,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                         onClick={toggleMute}
                                     >
                                         {volume === 0 ? (
-                                            <VolumeX className="h-4 w-4" />
+                                            <SpeakerSlash className="h-4 w-4" />
                                         ) : (
-                                            <Volume2 className="h-4 w-4" />
+                                            <SpeakerHigh className="h-4 w-4" />
                                         )}
                                     </Button>
                                     <Slider
@@ -466,9 +466,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                         <FileText className="h-4 w-4" />
                                         <span className="hidden sm:inline">Transcript</span>
                                         {showTranscript ? (
-                                            <ChevronUp className="h-3 w-3" />
+                                            <CaretUp className="h-3 w-3" />
                                         ) : (
-                                            <ChevronDown className="h-3 w-3" />
+                                            <CaretDown className="h-3 w-3" />
                                         )}
                                     </Button>
                                 )}

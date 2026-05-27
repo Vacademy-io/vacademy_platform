@@ -1,14 +1,15 @@
-import { AlertCircle } from 'lucide-react';
+import { ErrorState } from "@/components/design-system/states";
 
 interface Props {
     message?: string;
+    onRetry?: () => void;
 }
 
-export function InlineErrorState({ message = 'Something went wrong' }: Props) {
-    return (
-        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{message}</span>
-        </div>
-    );
+/**
+ * Backwards-compatible wrapper. Delegates to the canonical design-system
+ * ErrorState (inline variant) so existing imports keep working while using
+ * design tokens + Phosphor icons.
+ */
+export function InlineErrorState({ message = "Something went wrong", onRetry }: Props) {
+    return <ErrorState variant="inline" message={message} onRetry={onRetry} />;
 }

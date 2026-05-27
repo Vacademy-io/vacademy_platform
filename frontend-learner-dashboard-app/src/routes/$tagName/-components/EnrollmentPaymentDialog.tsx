@@ -7,12 +7,12 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { SiStripe } from "react-icons/si";
-import { Lock } from "lucide-react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand logo (no Phosphor equivalent)
+import { Lock } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
@@ -462,8 +462,8 @@ export const EnrollmentPaymentDialog: React.FC<
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
           <button
             className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
@@ -475,7 +475,7 @@ export const EnrollmentPaymentDialog: React.FC<
           {isInitializing ? (
             <div className="text-center space-y-6">
               <div className="flex justify-center">
-                <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+                <SpinnerGap className="w-12 h-12 text-blue-500 animate-spin" />
               </div>
               <h2 className="text-xl font-semibold text-gray-700">
                 Loading...
@@ -628,7 +628,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         >
                           {isLoadingOtp ? (
                             <>
-                              <Loader2
+                              <SpinnerGap
                                 size={16}
                                 className="animate-spin mr-2"
                               />
@@ -671,7 +671,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           >
                             {isLoadingOtp ? (
                               <>
-                                <Loader2
+                                <SpinnerGap
                                   size={16}
                                   className="animate-spin mr-2"
                                 />
@@ -693,7 +693,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           >
                             {isVerifyingOtp ? (
                               <>
-                                <Loader2
+                                <SpinnerGap
                                   size={16}
                                   className="animate-spin mr-2"
                                 />
@@ -954,7 +954,7 @@ export const EnrollmentPaymentDialog: React.FC<
                   >
                     {loading ? (
                       <>
-                        <Loader2 size={18} className="animate-spin mr-2" />
+                        <SpinnerGap size={18} className="animate-spin mr-2" />
                         Loading...
                       </>
                     ) : (selectedPaymentPlan?.actual_price === 0 || (availablePaymentPlans.length > 0 && availablePaymentPlans.every(p => p.actual_price === 0))) ? (
@@ -1166,7 +1166,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
   if (cashfreeInitLoading || !cashfreeSessionData) {
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-4">
-        <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+        <SpinnerGap className="w-10 h-10 text-blue-500 animate-spin" />
         <p className="text-sm text-gray-600">Preparing payment...</p>
       </div>
     );
@@ -1833,20 +1833,20 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     <div className="space-y-4">
       {/* Card Element Container - Only show for paid courses */}
       {amount > 0 && vendor === "STRIPE" && (
-        <div className="min-h-[48px] border border-gray-300 rounded-md p-3 bg-white">
+        <div className="min-h-12 border border-gray-300 rounded-md p-3 bg-white">
           <CardElement
             options={{
               style: {
                 base: {
                   fontSize: "16px",
-                  color: "#374151",
+                  color: "#374151", // design-lint-ignore: page-builder default color
                   fontFamily: "system-ui, -apple-system, sans-serif",
                   "::placeholder": {
-                    color: "#9CA3AF",
+                    color: "#9CA3AF", // design-lint-ignore: page-builder default color
                   },
                 },
                 invalid: {
-                  color: "#DC2626",
+                  color: "#DC2626", // design-lint-ignore: page-builder default color
                 },
               },
             }}
@@ -1925,7 +1925,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         >
           {isProcessing ? (
             <>
-              <Loader2 size={18} className="animate-spin" />
+              <SpinnerGap size={18} className="animate-spin" />
               {amount === 0 ? "Enrolling..." : "Processing..."}
             </>
           ) : (

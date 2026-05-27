@@ -1,6 +1,6 @@
 import { useRef, useCallback, useMemo, useState, useEffect, Fragment } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Plus } from 'lucide-react';
+import { Plus, ZoomIn, ZoomOut } from 'lucide-react';
 import {
     useVideoEditorStore,
     MIN_SHOT_DURATION,
@@ -14,16 +14,25 @@ import {
     assignChannelGroups,
     getEntryColor,
     computeTotalDuration,
+    trackColor,
     ChannelGroup,
 } from './utils/track-layout';
 import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
-import { pauseIfPlaying } from './playback/playback-engine';
+import { apiUpdateAudioTrack } from './utils/audio-track-api';
+import { pauseIfPlaying, getIsPlaying } from './playback/playback-engine';
+import { toast } from 'sonner';
 import { SentenceEditPopover } from './SentenceEditPopover';
 import { ShotEditPopover } from './ShotEditPopover';
 import { SoundCueRemovePopover } from './SoundCueRemovePopover';
 import { AddShotPopover } from './AddShotPopover';
-import type { Entry, SentenceClip, ShotClip, SoundCue } from '@/components/ai-video-player/types';
+import type {
+    AudioTrack,
+    Entry,
+    SentenceClip,
+    ShotClip,
+    SoundCue,
+} from '@/components/ai-video-player/types';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
@@ -33,6 +42,7 @@ const CAPTION_TRACK_H = 22; // captions phrase row (shown only when captions ena
 const CHANNEL_SEP_H = 13; // coloured channel header separating each channel section
 const TRACK_H = 22; // height of each track row inside a channel
 const LABEL_W = 48; // fixed-width left label column (px)
+const AUDIO_LANE_H = 30; // height of each audio-track lane row (bottom of timeline)
 
 // ── Move-drag hit zones ─────────────────────────────────────────────────────
 // Edge handles get an 8 px click target on each side. The body grab needs at
@@ -176,9 +186,11 @@ function StatusTimeReadout({
 interface WaveformProps {
     peaks: number[];
     height: number;
+    /** Per-lane tint (audio tracks). Defaults to the narration indigo. */
+    color?: string;
 }
 
-function WaveformBars({ peaks, height }: WaveformProps) {
+function WaveformBars({ peaks, height, color }: WaveformProps) {
     const mid = height / 2;
     const barW = 1; // px per bar — will be sized via viewBox scaling
     const totalW = peaks.length * barW;
@@ -201,10 +213,125 @@ function WaveformBars({ peaks, height }: WaveformProps) {
         <svg
             viewBox={`0 0 ${totalW} ${height}`}
             preserveAspectRatio="none"
-            className="size-full text-indigo-400 opacity-50"
+            className={color ? 'size-full opacity-70' : 'size-full text-indigo-400 opacity-50'}
+            style={color ? { color } : undefined}
         >
             {bars}
         </svg>
+    );
+}
+
+// ── Audio-track lane ──────────────────────────────────────────────────────
+
+interface AudioLanePreview {
+    delay: number;
+    fadeIn: number;
+    fadeOut: number;
+}
+
+/**
+ * One audio-track row rendered on the timeline. Decodes its own waveform
+ * (cache-shared), positions the clip by `delay`, and exposes body-drag (move →
+ * delay) plus edge-drag (fade in/out). Position/width come from the parent's
+ * `timeToPercent` so the lane zooms/scrolls with the rest of the timeline.
+ */
+function AudioLane({
+    track,
+    color,
+    top,
+    timeToPercent,
+    preview,
+    onStartDrag,
+}: {
+    track: AudioTrack;
+    color: string;
+    top: number;
+    timeToPercent: (t: number) => string;
+    preview: AudioLanePreview | null;
+    onStartDrag: (
+        track: AudioTrack,
+        kind: 'move' | 'fadeIn' | 'fadeOut',
+        clipDuration: number,
+        e: React.MouseEvent
+    ) => void;
+}) {
+    const { peaks, loading, duration } = useAudioWaveform(track.url);
+    // Fall back to a short placeholder width when the clip won't decode
+    // (CORS / unreachable) so the lane is still visible and draggable.
+    const clipDuration = duration ?? 2;
+    const delay = preview?.delay ?? track.delay ?? 0;
+    const fadeIn = preview?.fadeIn ?? track.fadeIn ?? 0;
+    const fadeOut = preview?.fadeOut ?? track.fadeOut ?? 0;
+
+    return (
+        <div
+            className="absolute inset-x-0"
+            style={{ top, height: AUDIO_LANE_H }}
+            data-audio-lane={track.id}
+        >
+            <div
+                className="absolute overflow-hidden rounded"
+                style={{
+                    left: timeToPercent(delay),
+                    width: timeToPercent(clipDuration),
+                    top: 3,
+                    bottom: 3,
+                    background: `${color}1a`,
+                    border: `1px solid ${color}66`,
+                    cursor: 'grab',
+                }}
+                onMouseDown={(e) => onStartDrag(track, 'move', clipDuration, e)}
+                title={`${track.label} · starts at ${delay.toFixed(1)}s`}
+            >
+                {loading ? (
+                    <div className="size-full animate-pulse" style={{ background: `${color}14` }} />
+                ) : peaks.length > 0 ? (
+                    <WaveformBars peaks={peaks} height={AUDIO_LANE_H - 6} color={color} />
+                ) : (
+                    <div className="flex size-full items-center px-1">
+                        <span className="truncate text-[9px]" style={{ color }}>
+                            {track.label}
+                        </span>
+                    </div>
+                )}
+
+                {/* Fade-in ramp (visual) */}
+                {fadeIn > 0 && clipDuration > 0 && (
+                    <div
+                        className="pointer-events-none absolute inset-y-0 left-0"
+                        style={{
+                            width: `${Math.min(100, (fadeIn / clipDuration) * 100)}%`,
+                            background: `linear-gradient(to right, ${color}40, transparent)`,
+                        }}
+                    />
+                )}
+                {/* Fade-out ramp (visual) */}
+                {fadeOut > 0 && clipDuration > 0 && (
+                    <div
+                        className="pointer-events-none absolute inset-y-0 right-0"
+                        style={{
+                            width: `${Math.min(100, (fadeOut / clipDuration) * 100)}%`,
+                            background: `linear-gradient(to left, ${color}40, transparent)`,
+                        }}
+                    />
+                )}
+
+                {/* Left edge → fade in */}
+                <div
+                    className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize"
+                    style={{ background: `${color}80` }}
+                    onMouseDown={(e) => onStartDrag(track, 'fadeIn', clipDuration, e)}
+                    title="Drag to set fade-in"
+                />
+                {/* Right edge → fade out */}
+                <div
+                    className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize"
+                    style={{ background: `${color}80` }}
+                    onMouseDown={(e) => onStartDrag(track, 'fadeOut', clipDuration, e)}
+                    title="Drag to set fade-out"
+                />
+            </div>
+        </div>
     );
 }
 
@@ -294,6 +421,13 @@ export function TimelineScrubber() {
         moveEntries,
         captionPhrases,
         captionEnabled,
+        timelineZoom,
+        setTimelineZoom,
+        zoomTimelineBy,
+        audioTracks,
+        updateAudioTrack,
+        videoId,
+        apiKey,
     } = useVideoEditorStore(
         useShallow((s) => ({
             entries: s.entries,
@@ -306,6 +440,13 @@ export function TimelineScrubber() {
             moveEntries: s.moveEntries,
             captionPhrases: s.captionPhrases,
             captionEnabled: s.captionSettings.enabled,
+            timelineZoom: s.timelineZoom,
+            setTimelineZoom: s.setTimelineZoom,
+            zoomTimelineBy: s.zoomTimelineBy,
+            audioTracks: s.audioTracks,
+            updateAudioTrack: s.updateAudioTrack,
+            videoId: s.videoId,
+            apiKey: s.apiKey,
         }))
     );
     // currentTime is intentionally NOT a parent-level subscription — playhead
@@ -313,7 +454,22 @@ export function TimelineScrubber() {
     // don't re-render the entire timeline SVG.
 
     const barRef = useRef<HTMLDivElement>(null);
+    // Outer scroll viewport. `barRef` is the inner (zoomable) content element
+    // whose width is `contentWidth`; pointer math reads barRef's rect, which
+    // getBoundingClientRect() already scroll-corrects, so no scrollLeft math.
+    const viewportRef = useRef<HTMLDivElement>(null);
+    const [viewportW, setViewportW] = useState(0);
     const isDragging = useRef(false);
+
+    useEffect(() => {
+        const el = viewportRef.current;
+        if (!el) return;
+        const update = () => setViewportW(el.clientWidth);
+        update();
+        const ro = new ResizeObserver(update);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     // Active edge-resize operation — drives the floating tooltip + live preview.
     const [resizeDrag, setResizeDrag] = useState<{
@@ -344,6 +500,12 @@ export function TimelineScrubber() {
     // Active mode for body-drag in the timeline. Local component state — the
     // mode is purely a UI affordance and never persists across reload.
     const [mode, setMode] = useState<MoveMode>('move');
+
+    // Live preview of an audio-lane drag (move → delay, or fade in/out). Keyed
+    // by track id; null when no audio drag is in flight.
+    const [audioDrag, setAudioDrag] = useState<({ trackId: string } & AudioLanePreview) | null>(
+        null
+    );
 
     // Currently-edited sentence (popover open). Anchor coordinates are
     // captured in VIEWPORT space at click time so the portal-rendered
@@ -528,8 +690,11 @@ export function TimelineScrubber() {
         [channelGroups, hasWaveform, hasCaptions]
     );
 
-    // Total height of the track area
-    const totalH = useMemo(() => {
+    // Total height of the track area. Audio-track lanes (if any) sit at the
+    // very bottom, below the channel sections.
+    const audioLanesHeight =
+        navigationMode === 'time_driven' ? audioTracks.length * AUDIO_LANE_H : 0;
+    const baseTrackAreaH = useMemo(() => {
         const channelsH = channelGroups.reduce(
             (acc, g) => acc + CHANNEL_SEP_H + g.trackCount * TRACK_H,
             0
@@ -541,6 +706,79 @@ export function TimelineScrubber() {
             Math.max(channelsH, TRACK_H + CHANNEL_SEP_H)
         );
     }, [channelGroups, hasWaveform, hasCaptions]);
+    const totalH = baseTrackAreaH + audioLanesHeight;
+    // Y where the audio-lane stack begins (== bottom of the channel block).
+    const audioLanesTop = baseTrackAreaH;
+
+    // ── Horizontal zoom geometry ───────────────────────────────────────────
+    // "Keep percent, widen the inner container": timeToPercent stays a percent
+    // of the inner content element (width = contentWidth), so every position
+    // and all pointer math (which reads barRef's rect) scale with zoom for
+    // free. `timelineZoom === null` → fit-to-width (contentWidth == viewportW),
+    // identical to the pre-zoom behaviour.
+    const fitPxPerSec = totalDuration > 0 && viewportW > 0 ? viewportW / totalDuration : 0;
+    const pxPerSec = timelineZoom ?? fitPxPerSec;
+    const contentWidth = Math.max(viewportW, totalDuration > 0 ? totalDuration * pxPerSec : 0);
+    const contentWidthPx = contentWidth > 0 ? contentWidth : undefined;
+    // When the content overflows (zoomed in), the horizontal scrollbar needs
+    // its own space so it doesn't clip the bottom audio lane / entry. macOS
+    // overlay scrollbars take no space, but Windows/Linux do — reserve a small
+    // gutter only while overflowing so the fit-to-width layout is unchanged.
+    const scrollbarGutter = contentWidth > viewportW + 1 ? 12 : 0;
+
+    // Auto-scroll the viewport to keep the playhead visible while playing.
+    // Imperative (no re-render); only acts during playback so manual
+    // scrubbing/scrolling isn't fought. Mirrors the playhead's subscription.
+    useEffect(() => {
+        if (contentWidth <= 0 || totalDuration <= 0) return;
+        const apply = (t: number) => {
+            const vp = viewportRef.current;
+            if (!vp || !getIsPlaying()) return;
+            const x = clamp(t / totalDuration, 0, 1) * contentWidth;
+            const margin = 80;
+            const left = vp.scrollLeft;
+            const right = left + vp.clientWidth;
+            if (x < left + margin) {
+                vp.scrollLeft = Math.max(0, x - margin);
+            } else if (x > right - margin) {
+                vp.scrollLeft = Math.min(
+                    Math.max(0, contentWidth - vp.clientWidth),
+                    x - vp.clientWidth + margin
+                );
+            }
+        };
+        return useVideoEditorStore.subscribe((s, prev) => {
+            if (s.currentTime !== prev.currentTime) apply(s.currentTime);
+        });
+    }, [contentWidth, totalDuration]);
+
+    // Ctrl/Cmd + wheel = zoom anchored on the cursor's time; plain wheel keeps
+    // native horizontal scroll. Non-passive listener so we can preventDefault.
+    useEffect(() => {
+        const vp = viewportRef.current;
+        if (!vp) return;
+        const onWheel = (e: WheelEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            e.preventDefault();
+            const rect = barRef.current?.getBoundingClientRect();
+            const tUnder =
+                rect && contentWidth > 0 && totalDuration > 0
+                    ? ((e.clientX - rect.left) / contentWidth) * totalDuration
+                    : 0;
+            const cursorOffsetInViewport = e.clientX - vp.getBoundingClientRect().left;
+            zoomTimelineBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, fitPxPerSec || 1);
+            // Re-anchor the cursor's time after the content re-measures.
+            requestAnimationFrame(() => {
+                const vp2 = viewportRef.current;
+                const rect2 = barRef.current?.getBoundingClientRect();
+                if (!vp2 || !rect2 || totalDuration <= 0) return;
+                const newX = (tUnder / totalDuration) * rect2.width;
+                vp2.scrollLeft = Math.max(0, newX - cursorOffsetInViewport);
+            });
+        };
+        vp.addEventListener('wheel', onWheel, { passive: false });
+        return () => vp.removeEventListener('wheel', onWheel);
+    }, [contentWidth, totalDuration, fitPxPerSec, zoomTimelineBy]);
 
     // ── Mouse / touch scrub ────────────────────────────────────────────────
 
@@ -586,6 +824,82 @@ export function TimelineScrubber() {
             window.addEventListener('touchend', onUp);
         },
         [seek, xToTime]
+    );
+
+    // ── Audio-lane drag (move → delay, edges → fade in/out) ─────────────────
+
+    const startAudioLaneDrag = useCallback(
+        (
+            track: AudioTrack,
+            kind: 'move' | 'fadeIn' | 'fadeOut',
+            clipDuration: number,
+            e: React.MouseEvent
+        ) => {
+            if (navigationMode !== 'time_driven') return;
+            e.stopPropagation();
+            e.preventDefault();
+            pauseIfPlaying();
+            const bar = barRef.current;
+            if (!bar) return;
+
+            const startX = e.clientX;
+            const origDelay = track.delay ?? 0;
+            const clientXToTime = (cx: number): number => {
+                const { left, width } = bar.getBoundingClientRect();
+                const td = totalDurationRef.current;
+                return clamp((cx - left) / width, 0, 1) * td;
+            };
+            const t0 = clientXToTime(startX);
+            let moved = false;
+            let next: AudioLanePreview = {
+                delay: origDelay,
+                fadeIn: track.fadeIn ?? 0,
+                fadeOut: track.fadeOut ?? 0,
+            };
+
+            const onMove = (ev: MouseEvent) => {
+                if (Math.abs(ev.clientX - startX) > CLICK_DRAG_THRESHOLD_PX) moved = true;
+                const t = clientXToTime(ev.clientX);
+                if (kind === 'move') {
+                    // Alt disables snap; otherwise quantize the delay.
+                    const raw = origDelay + (t - t0);
+                    const snapped = ev.altKey ? raw : snapTime(raw);
+                    next = { ...next, delay: Math.max(0, snapped) };
+                } else if (kind === 'fadeIn') {
+                    next = { ...next, fadeIn: clamp(t - origDelay, 0, clipDuration) };
+                } else {
+                    next = {
+                        ...next,
+                        fadeOut: clamp(origDelay + clipDuration - t, 0, clipDuration),
+                    };
+                }
+                setAudioDrag({ trackId: track.id, ...next });
+            };
+
+            const onUp = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+                setAudioDrag(null);
+                if (!moved) {
+                    // Treated as a click → seek to the track's start.
+                    seek(origDelay);
+                    return;
+                }
+                const patch: Partial<AudioTrack> = {};
+                if (kind === 'move') patch.delay = Math.round(next.delay * 100) / 100;
+                if (kind === 'fadeIn') patch.fadeIn = Math.round(next.fadeIn * 10) / 10;
+                if (kind === 'fadeOut') patch.fadeOut = Math.round(next.fadeOut * 10) / 10;
+                updateAudioTrack(track.id, patch);
+                if (videoId && apiKey) {
+                    apiUpdateAudioTrack(videoId, apiKey, track.id, patch).catch(() => {
+                        toast.error('Failed to save audio track');
+                    });
+                }
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+        },
+        [navigationMode, seek, updateAudioTrack, videoId, apiKey]
     );
 
     // ── Edge drag (resize shots) ───────────────────────────────────────────
@@ -968,7 +1282,7 @@ export function TimelineScrubber() {
     return (
         <div
             className="shrink-0 select-none border-t border-gray-200 bg-white"
-            style={{ height: totalH + 28, minHeight: 72 }}
+            style={{ height: totalH + 28 + scrollbarGutter, minHeight: 72 }}
         >
             {/* Status bar: current time / mode toolbar / duration */}
             <div className="flex items-center justify-between gap-3 px-3 py-1">
@@ -981,6 +1295,38 @@ export function TimelineScrubber() {
                 <div className="flex items-center gap-2">
                     {waveformLoading && (
                         <span className="text-[10px] text-gray-400">Loading waveform…</span>
+                    )}
+                    {navigationMode === 'time_driven' && totalDuration > 0 && (
+                        <div
+                            className="flex items-center gap-0.5"
+                            title="Zoom timeline (Ctrl/⌘ + scroll)"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => zoomTimelineBy(1 / 1.5, fitPxPerSec || 1)}
+                                className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                aria-label="Zoom out"
+                            >
+                                <ZoomOut className="size-3.5" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTimelineZoom(null)}
+                                disabled={timelineZoom == null}
+                                className="rounded px-1.5 py-0.5 text-[10px] font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40"
+                                aria-label="Fit timeline to width"
+                            >
+                                Fit
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => zoomTimelineBy(1.5, fitPxPerSec || 1)}
+                                className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                                aria-label="Zoom in"
+                            >
+                                <ZoomIn className="size-3.5" />
+                            </button>
+                        </div>
                     )}
                     <span className="font-mono text-xs text-gray-400">
                         {navigationMode === 'time_driven'
@@ -1002,7 +1348,10 @@ export function TimelineScrubber() {
             )}
 
             {/* Two-column layout: [labels] [timeline] */}
-            <div className="flex" style={{ height: totalH, paddingLeft: 8, paddingRight: 8 }}>
+            <div
+                className="flex"
+                style={{ height: totalH + scrollbarGutter, paddingLeft: 8, paddingRight: 8 }}
+            >
                 {/* ── Left label column ───────────────────────────────── */}
                 <div
                     className="flex shrink-0 flex-col"
@@ -1039,552 +1388,600 @@ export function TimelineScrubber() {
                             </span>
                         </div>
                     ))}
-                    {channelGroups.length === 0 && (
+                    {channelGroups.length === 0 && audioLanesHeight === 0 && (
                         <div
                             className="flex-1"
                             style={{ background: '#eff6ff', borderRight: '2px solid #1d4ed820' }}
                         />
                     )}
-                </div>
-
-                {/* ── Timeline track area ─────────────────────────────── */}
-                <div
-                    ref={barRef}
-                    className="relative flex-1 cursor-pointer overflow-hidden rounded-r"
-                    style={{ height: totalH }}
-                    onMouseDown={startDrag}
-                    onTouchStart={startDrag}
-                >
-                    {/* Light background */}
-                    <div className="absolute inset-0 bg-gray-100" />
-
-                    {/* Time ruler */}
-                    <div
-                        className="absolute inset-x-0 top-0 border-b border-gray-200 bg-white"
-                        style={{ height: RULER_H }}
-                    >
-                        {ticks.map((t) => (
+                    {/* Audio-track lane labels — align with the lanes rendered
+                        at the bottom of the content area. */}
+                    {navigationMode === 'time_driven' &&
+                        audioTracks.map((track, i) => (
                             <div
-                                key={t}
-                                className="absolute flex flex-col items-center"
+                                key={track.id}
+                                className="flex items-center justify-center rounded-l"
                                 style={{
-                                    left: timeToPercent(t),
-                                    top: 0,
-                                    transform: 'translateX(-50%)',
+                                    height: AUDIO_LANE_H,
+                                    background: `${trackColor(i)}14`,
+                                    borderRight: `2px solid ${trackColor(i)}40`,
                                 }}
+                                title={track.label}
                             >
-                                <div className="w-px bg-gray-300" style={{ height: 6 }} />
-                                <span className="text-[9px] tabular-nums text-gray-400">
-                                    {formatSec(t)}
+                                <span
+                                    className="text-[11px] font-semibold"
+                                    style={{ color: trackColor(i) }}
+                                >
+                                    ♪
                                 </span>
                             </div>
                         ))}
-                    </div>
+                </div>
 
-                    {/* Audio waveform row */}
-                    {hasWaveform && (
+                {/* ── Timeline track area: scroll viewport + zoomable content ── */}
+                <div
+                    ref={viewportRef}
+                    className="relative flex-1 overflow-x-auto overflow-y-hidden rounded-r"
+                    style={{ height: totalH + scrollbarGutter }}
+                >
+                    <div
+                        ref={barRef}
+                        className="relative cursor-pointer"
+                        style={{ width: contentWidthPx ?? '100%', height: totalH }}
+                        onMouseDown={startDrag}
+                        onTouchStart={startDrag}
+                    >
+                        {/* Light background */}
+                        <div className="absolute inset-0 bg-gray-100" />
+
+                        {/* Time ruler */}
                         <div
-                            className="absolute inset-x-0 border-b border-indigo-100 bg-indigo-50"
-                            style={{ top: RULER_H, height: WAVEFORM_H }}
+                            className="absolute inset-x-0 top-0 border-b border-gray-200 bg-white"
+                            style={{ height: RULER_H }}
                         >
-                            {waveformPeaks.length > 0 ? (
-                                <WaveformBars peaks={waveformPeaks} height={WAVEFORM_H} />
-                            ) : (
-                                /* Loading shimmer */
-                                <div className="flex h-full items-center px-2">
-                                    <div className="h-2 w-full animate-pulse rounded bg-indigo-200" />
+                            {ticks.map((t) => (
+                                <div
+                                    key={t}
+                                    className="absolute flex flex-col items-center"
+                                    style={{
+                                        left: timeToPercent(t),
+                                        top: 0,
+                                        transform: 'translateX(-50%)',
+                                    }}
+                                >
+                                    <div className="w-px bg-gray-300" style={{ height: 6 }} />
+                                    <span className="text-[9px] tabular-nums text-gray-400">
+                                        {formatSec(t)}
+                                    </span>
                                 </div>
-                            )}
-                            {/* Current-time cursor line on waveform */}
-                            <PlayheadWaveformCursor
-                                totalDuration={totalDuration}
-                                navigationMode={navigationMode}
-                            />
+                            ))}
+                        </div>
 
-                            {/* Sound-effect markers: small clickable dots positioned at each
+                        {/* Audio waveform row */}
+                        {hasWaveform && (
+                            <div
+                                className="absolute inset-x-0 border-b border-indigo-100 bg-indigo-50"
+                                style={{ top: RULER_H, height: WAVEFORM_H }}
+                            >
+                                {waveformPeaks.length > 0 ? (
+                                    <WaveformBars peaks={waveformPeaks} height={WAVEFORM_H} />
+                                ) : (
+                                    /* Loading shimmer */
+                                    <div className="flex h-full items-center px-2">
+                                        <div className="h-2 w-full animate-pulse rounded bg-indigo-200" />
+                                    </div>
+                                )}
+                                {/* Current-time cursor line on waveform */}
+                                <PlayheadWaveformCursor
+                                    totalDuration={totalDuration}
+                                    navigationMode={navigationMode}
+                                />
+
+                                {/* Sound-effect markers: small clickable dots positioned at each
                                 cue's absolute_time. Rendered ABOVE sentence regions so they
                                 steal clicks first (handler stops propagation). Visual: a small
                                 amber pill sits above the waveform line so it's distinguishable
                                 from sentence-region borders without obscuring the waveform. */}
-                            {soundCues.map(({ cue, entryId, absoluteTime }, i) => {
-                                const left = timeToPercent(absoluteTime);
-                                const isActive = editingCue?.cue.id === cue.id;
-                                // Index suffix because the planner can emit
-                                // duplicate cue.id within one entry; the
-                                // entryId+cueId pair alone isn't guaranteed
-                                // unique.
-                                return (
-                                    <button
-                                        key={`${entryId}:${cue.id}:${i}`}
-                                        type="button"
-                                        title={`${cue.role || 'SFX'} · ${absoluteTime.toFixed(2)}s`}
-                                        onClick={(e) =>
-                                            handleCueClick(e, cue, entryId, absoluteTime)
-                                        }
-                                        // 8px square pill with a small downward "tail" via border
-                                        // tricks would be nice but keep the markup minimal: a
-                                        // simple rounded square is unambiguous enough at this size.
-                                        className={[
-                                            'absolute z-10 -translate-x-1/2 cursor-pointer rounded-sm border transition-all',
-                                            isActive
-                                                ? 'border-amber-700 bg-amber-500 shadow-md'
-                                                : 'border-amber-600 bg-amber-400 hover:scale-110 hover:bg-amber-500',
-                                        ].join(' ')}
-                                        style={{
-                                            left,
-                                            top: 2,
-                                            width: 6,
-                                            height: 6,
-                                        }}
-                                    />
-                                );
-                            })}
+                                {soundCues.map(({ cue, entryId, absoluteTime }, i) => {
+                                    const left = timeToPercent(absoluteTime);
+                                    const isActive = editingCue?.cue.id === cue.id;
+                                    // Index suffix because the planner can emit
+                                    // duplicate cue.id within one entry; the
+                                    // entryId+cueId pair alone isn't guaranteed
+                                    // unique.
+                                    return (
+                                        <button
+                                            key={`${entryId}:${cue.id}:${i}`}
+                                            type="button"
+                                            title={`${cue.role || 'SFX'} · ${absoluteTime.toFixed(2)}s`}
+                                            onClick={(e) =>
+                                                handleCueClick(e, cue, entryId, absoluteTime)
+                                            }
+                                            // 8px square pill with a small downward "tail" via border
+                                            // tricks would be nice but keep the markup minimal: a
+                                            // simple rounded square is unambiguous enough at this size.
+                                            className={[
+                                                'absolute z-10 -translate-x-1/2 cursor-pointer rounded-sm border transition-all',
+                                                isActive
+                                                    ? 'border-amber-700 bg-amber-500 shadow-md'
+                                                    : 'border-amber-600 bg-amber-400 hover:scale-110 hover:bg-amber-500',
+                                            ].join(' ')}
+                                            style={{
+                                                left,
+                                                top: 2,
+                                                width: 6,
+                                                height: 6,
+                                            }}
+                                        />
+                                    );
+                                })}
 
-                            {/* Per-{shot|sentence} regions: subtle hoverable bands so the
+                                {/* Per-{shot|sentence} regions: subtle hoverable bands so the
                                 user can click an editing unit to re-narrate its audio. v3
                                 timelines populate `meta.shots[]` which is the preferred unit
                                 (see `useShots`); pre-v3 timelines fall back to sentences. */}
-                            {useShots
-                                ? shots.map((sh, i) => {
-                                      const left = timeToPercent(sh.start_time);
-                                      const width = timeToPercent(sh.duration);
-                                      const isEditing = editingShot?.shot.shot_idx === sh.shot_idx;
-                                      // Intrinsic-only shots (source-clip / Veo audio) carry
-                                      // their own audio — render with an amber treatment so
-                                      // the user spots them as a different unit. They're
-                                      // clickable but the popover renders as read-only.
-                                      const isIntrinsic = sh.audio_policy === 'intrinsic_only';
-                                      return (
-                                          <button
-                                              key={sh.id}
-                                              type="button"
-                                              title={
-                                                  isIntrinsic
-                                                      ? `(intrinsic audio · ${sh.shot_type})`
-                                                      : sh.text || sh.narration_brief
-                                              }
-                                              onClick={(e) => handleShotClick(e, sh)}
-                                              className={[
-                                                  'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
-                                                  isEditing
-                                                      ? isIntrinsic
-                                                          ? 'border-amber-500 bg-amber-300/40'
-                                                          : 'border-indigo-500 bg-indigo-300/40'
-                                                      : isIntrinsic
-                                                        ? 'border-amber-400 bg-amber-100/40 hover:bg-amber-200/40'
-                                                        : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
-                                                  i === shots.length - 1
-                                                      ? 'border-r border-r-transparent'
-                                                      : '',
-                                              ].join(' ')}
-                                              style={{ left, width }}
-                                          />
-                                      );
-                                  })
-                                : sentences.map((s, i) => {
-                                      const left = timeToPercent(s.start_time);
-                                      const width = timeToPercent(s.duration);
-                                      const isEditing = editingSentence?.sentence.id === s.id;
-                                      // Silenced sentences (audio replaced with silence,
-                                      // text cleared) get a muted gray treatment so the
-                                      // user can spot empty slots at a glance.
-                                      const isSilenced =
-                                          s.text.trim() === '' && (s.audio_url ?? '') === '';
-                                      return (
-                                          <button
-                                              key={s.id}
-                                              type="button"
-                                              title={
-                                                  isSilenced
-                                                      ? '(silenced — click to add narration)'
-                                                      : s.text
-                                              }
-                                              onClick={(e) => handleSentenceClick(e, s)}
-                                              className={[
-                                                  'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
-                                                  isEditing
-                                                      ? isSilenced
-                                                          ? 'border-gray-500 bg-gray-300/40'
-                                                          : 'border-indigo-500 bg-indigo-300/40'
-                                                      : isSilenced
-                                                        ? 'border-gray-400 bg-gray-200/40 hover:bg-gray-300/40'
-                                                        : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
-                                                  // Right-most border on the last sentence so the
-                                                  // grid feels closed; intermediate sentences only
-                                                  // need the left border to mark their start.
-                                                  i === sentences.length - 1
-                                                      ? 'border-r border-r-transparent'
-                                                      : '',
-                                              ].join(' ')}
-                                              style={{ left, width }}
-                                          />
-                                      );
-                                  })}
-                        </div>
-                    )}
+                                {useShots
+                                    ? shots.map((sh, i) => {
+                                          const left = timeToPercent(sh.start_time);
+                                          const width = timeToPercent(sh.duration);
+                                          const isEditing =
+                                              editingShot?.shot.shot_idx === sh.shot_idx;
+                                          // Intrinsic-only shots (source-clip / Veo audio) carry
+                                          // their own audio — render with an amber treatment so
+                                          // the user spots them as a different unit. They're
+                                          // clickable but the popover renders as read-only.
+                                          const isIntrinsic = sh.audio_policy === 'intrinsic_only';
+                                          return (
+                                              <button
+                                                  key={sh.id}
+                                                  type="button"
+                                                  title={
+                                                      isIntrinsic
+                                                          ? `(intrinsic audio · ${sh.shot_type})`
+                                                          : sh.text || sh.narration_brief
+                                                  }
+                                                  onClick={(e) => handleShotClick(e, sh)}
+                                                  className={[
+                                                      'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
+                                                      isEditing
+                                                          ? isIntrinsic
+                                                              ? 'border-amber-500 bg-amber-300/40'
+                                                              : 'border-indigo-500 bg-indigo-300/40'
+                                                          : isIntrinsic
+                                                            ? 'border-amber-400 bg-amber-100/40 hover:bg-amber-200/40'
+                                                            : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
+                                                      i === shots.length - 1
+                                                          ? 'border-r border-r-transparent'
+                                                          : '',
+                                                  ].join(' ')}
+                                                  style={{ left, width }}
+                                              />
+                                          );
+                                      })
+                                    : sentences.map((s, i) => {
+                                          const left = timeToPercent(s.start_time);
+                                          const width = timeToPercent(s.duration);
+                                          const isEditing = editingSentence?.sentence.id === s.id;
+                                          // Silenced sentences (audio replaced with silence,
+                                          // text cleared) get a muted gray treatment so the
+                                          // user can spot empty slots at a glance.
+                                          const isSilenced =
+                                              s.text.trim() === '' && (s.audio_url ?? '') === '';
+                                          return (
+                                              <button
+                                                  key={s.id}
+                                                  type="button"
+                                                  title={
+                                                      isSilenced
+                                                          ? '(silenced — click to add narration)'
+                                                          : s.text
+                                                  }
+                                                  onClick={(e) => handleSentenceClick(e, s)}
+                                                  className={[
+                                                      'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
+                                                      isEditing
+                                                          ? isSilenced
+                                                              ? 'border-gray-500 bg-gray-300/40'
+                                                              : 'border-indigo-500 bg-indigo-300/40'
+                                                          : isSilenced
+                                                            ? 'border-gray-400 bg-gray-200/40 hover:bg-gray-300/40'
+                                                            : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
+                                                      // Right-most border on the last sentence so the
+                                                      // grid feels closed; intermediate sentences only
+                                                      // need the left border to mark their start.
+                                                      i === sentences.length - 1
+                                                          ? 'border-r border-r-transparent'
+                                                          : '',
+                                                  ].join(' ')}
+                                                  style={{ left, width }}
+                                              />
+                                          );
+                                      })}
+                            </div>
+                        )}
 
-                    {/* Captions phrase row. Sits between the waveform (or ruler) and
+                        {/* Captions phrase row. Sits between the waveform (or ruler) and
                         the shot channels. Each pill spans one caption phrase from the
                         narration words.json; click a pill to seek to its start.
                         Hidden when captions are off or no transcript is loaded so it
                         doesn't add empty height to the timeline. */}
-                    {hasCaptions && (
-                        <div
-                            className="absolute inset-x-0 border-b border-emerald-100 bg-emerald-50"
-                            style={{
-                                top: RULER_H + (hasWaveform ? WAVEFORM_H : 0),
-                                height: CAPTION_TRACK_H,
-                            }}
-                        >
-                            {captionPhrases.map((p, i) => {
-                                const left = timeToPercent(p.startTime);
-                                const width = timeToPercent(p.endTime - p.startTime);
-                                return (
-                                    <button
-                                        key={`cap-${i}`}
-                                        type="button"
-                                        title={`${p.startTime.toFixed(1)}s · ${p.text}`}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            pauseIfPlaying();
-                                            seek(p.startTime);
-                                        }}
-                                        className="absolute top-0.5 cursor-pointer overflow-hidden truncate rounded border border-emerald-300 bg-white px-1 text-left text-[10px] text-emerald-800 hover:border-emerald-500 hover:bg-emerald-100"
-                                        style={{
-                                            left,
-                                            width,
-                                            height: CAPTION_TRACK_H - 4,
-                                            lineHeight: `${CAPTION_TRACK_H - 6}px`,
-                                        }}
-                                    >
-                                        {p.text}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
+                        {hasCaptions && (
+                            <div
+                                className="absolute inset-x-0 border-b border-emerald-100 bg-emerald-50"
+                                style={{
+                                    top: RULER_H + (hasWaveform ? WAVEFORM_H : 0),
+                                    height: CAPTION_TRACK_H,
+                                }}
+                            >
+                                {captionPhrases.map((p, i) => {
+                                    const left = timeToPercent(p.startTime);
+                                    const width = timeToPercent(p.endTime - p.startTime);
+                                    return (
+                                        <button
+                                            key={`cap-${i}`}
+                                            type="button"
+                                            title={`${p.startTime.toFixed(1)}s · ${p.text}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                pauseIfPlaying();
+                                                seek(p.startTime);
+                                            }}
+                                            className="absolute top-0.5 cursor-pointer overflow-hidden truncate rounded border border-emerald-300 bg-white px-1 text-left text-[10px] text-emerald-800 hover:border-emerald-500 hover:bg-emerald-100"
+                                            style={{
+                                                left,
+                                                width,
+                                                height: CAPTION_TRACK_H - 4,
+                                                lineHeight: `${CAPTION_TRACK_H - 6}px`,
+                                            }}
+                                        >
+                                            {p.text}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
 
-                    {/* Sentence-edit popover. Rendered via portal at the document body
+                        {/* Sentence-edit popover. Rendered via portal at the document body
                         so it floats above any overflow:hidden ancestors in the editor
                         layout. Anchor coordinates are in viewport space. */}
-                    {editingSentence && (
-                        <SentenceEditPopover
-                            sentence={editingSentence.sentence}
-                            anchorViewportX={editingSentence.anchorViewportX}
-                            anchorViewportTop={editingSentence.anchorViewportTop}
-                            affectedEntryCount={countAffectedEntries(editingSentence.sentence)}
-                            onClose={() => setEditingSentence(null)}
-                        />
-                    )}
+                        {editingSentence && (
+                            <SentenceEditPopover
+                                sentence={editingSentence.sentence}
+                                anchorViewportX={editingSentence.anchorViewportX}
+                                anchorViewportTop={editingSentence.anchorViewportTop}
+                                affectedEntryCount={countAffectedEntries(editingSentence.sentence)}
+                                onClose={() => setEditingSentence(null)}
+                            />
+                        )}
 
-                    {/* Shot-edit popover (v3). Only opens when the timeline has
+                        {/* Shot-edit popover (v3). Only opens when the timeline has
                         meta.shots[] populated and the user clicked a shot region above. */}
-                    {editingShot && (
-                        <ShotEditPopover
-                            shot={editingShot.shot}
-                            anchorViewportX={editingShot.anchorViewportX}
-                            anchorViewportTop={editingShot.anchorViewportTop}
-                            affectedEntryCount={countAffectedShotEntries(editingShot.shot)}
-                            onClose={() => setEditingShot(null)}
-                        />
-                    )}
+                        {editingShot && (
+                            <ShotEditPopover
+                                shot={editingShot.shot}
+                                anchorViewportX={editingShot.anchorViewportX}
+                                anchorViewportTop={editingShot.anchorViewportTop}
+                                affectedEntryCount={countAffectedShotEntries(editingShot.shot)}
+                                onClose={() => setEditingShot(null)}
+                            />
+                        )}
 
-                    {/* Sound-effect remove popover. Same portal pattern. */}
-                    {editingCue && (
-                        <SoundCueRemovePopover
-                            cue={editingCue.cue}
-                            entryId={editingCue.entryId}
-                            anchorViewportX={editingCue.anchorViewportX}
-                            anchorViewportTop={editingCue.anchorViewportTop}
-                            onClose={() => setEditingCue(null)}
-                        />
-                    )}
+                        {/* Sound-effect remove popover. Same portal pattern. */}
+                        {editingCue && (
+                            <SoundCueRemovePopover
+                                cue={editingCue.cue}
+                                entryId={editingCue.entryId}
+                                anchorViewportX={editingCue.anchorViewportX}
+                                anchorViewportTop={editingCue.anchorViewportTop}
+                                onClose={() => setEditingCue(null)}
+                            />
+                        )}
 
-                    {/* Add-shot-in-gap popover. Same portal pattern. */}
-                    {editingGap && (
-                        <AddShotPopover
-                            gap={editingGap.gap}
-                            anchorViewportX={editingGap.anchorViewportX}
-                            anchorViewportTop={editingGap.anchorViewportTop}
-                            onClose={() => setEditingGap(null)}
-                        />
-                    )}
+                        {/* Add-shot-in-gap popover. Same portal pattern. */}
+                        {editingGap && (
+                            <AddShotPopover
+                                gap={editingGap.gap}
+                                anchorViewportX={editingGap.anchorViewportX}
+                                anchorViewportTop={editingGap.anchorViewportTop}
+                                onClose={() => setEditingGap(null)}
+                            />
+                        )}
 
-                    {/* Base-channel gap pills: dashed amber regions where audio
+                        {/* Base-channel gap pills: dashed amber regions where audio
                         plays but no shot exists. Click → AddShotPopover. Rendered
                         BEFORE channel sections so the + button sits behind any
                         base entries (entries that bleed into a gap by float-rounding
                         still steal the click); each gap is computed from the
                         canonical base-entries view, so the bookkeeping stays clean. */}
-                    {gaps.map((gap) => {
-                        const baseGroupIdx = channelGroups.findIndex(
-                            (g) => g.channel.id === 'base'
-                        );
-                        if (baseGroupIdx < 0) return null;
-                        const baseY = channelYOffsets[baseGroupIdx]!;
-                        const top = baseY + CHANNEL_SEP_H + 2;
-                        const height = TRACK_H - 4;
-                        const left = timeToPercent(gap.start);
-                        const width = timeToPercent(gap.end - gap.start);
-                        return (
-                            <button
-                                key={gap.key}
-                                type="button"
-                                title={`Empty range ${gap.start.toFixed(2)}s → ${gap.end.toFixed(2)}s · click to fill`}
-                                onClick={(e) => handleGapClick(e, gap)}
-                                className="absolute z-0 flex items-center justify-center rounded-sm border border-dashed border-amber-400 bg-amber-50/70 text-amber-600 transition-colors hover:bg-amber-100"
-                                style={{ left, width, top, height }}
-                            >
-                                <Plus className="size-3" />
-                            </button>
-                        );
-                    })}
+                        {gaps.map((gap) => {
+                            const baseGroupIdx = channelGroups.findIndex(
+                                (g) => g.channel.id === 'base'
+                            );
+                            if (baseGroupIdx < 0) return null;
+                            const baseY = channelYOffsets[baseGroupIdx]!;
+                            const top = baseY + CHANNEL_SEP_H + 2;
+                            const height = TRACK_H - 4;
+                            const left = timeToPercent(gap.start);
+                            const width = timeToPercent(gap.end - gap.start);
+                            return (
+                                <button
+                                    key={gap.key}
+                                    type="button"
+                                    title={`Empty range ${gap.start.toFixed(2)}s → ${gap.end.toFixed(2)}s · click to fill`}
+                                    onClick={(e) => handleGapClick(e, gap)}
+                                    className="absolute z-0 flex items-center justify-center rounded-sm border border-dashed border-amber-400 bg-amber-50/70 text-amber-600 transition-colors hover:bg-amber-100"
+                                    style={{ left, width, top, height }}
+                                >
+                                    <Plus className="size-3" />
+                                </button>
+                            );
+                        })}
 
-                    {/* Channel sections */}
-                    {channelGroups.map((group, gi) => {
-                        const channelY = channelYOffsets[gi]!;
+                        {/* Channel sections */}
+                        {channelGroups.map((group, gi) => {
+                            const channelY = channelYOffsets[gi]!;
 
-                        return (
-                            <Fragment key={group.channel.id}>
-                                {/* Channel separator / header */}
-                                <div
-                                    className="absolute inset-x-0 flex items-center px-2"
-                                    style={{
-                                        top: channelY,
-                                        height: CHANNEL_SEP_H,
-                                        background: group.channel.bgColor,
-                                        borderBottom: `1px solid ${group.channel.color}25`,
-                                    }}
-                                />
+                            return (
+                                <Fragment key={group.channel.id}>
+                                    {/* Channel separator / header */}
+                                    <div
+                                        className="absolute inset-x-0 flex items-center px-2"
+                                        style={{
+                                            top: channelY,
+                                            height: CHANNEL_SEP_H,
+                                            background: group.channel.bgColor,
+                                            borderBottom: `1px solid ${group.channel.color}25`,
+                                        }}
+                                    />
 
-                                {/* Entry blocks */}
-                                {group.entries.map(({ entry, channelTrack }) => {
-                                    const isSelected = entry.id === selectedEntryId;
-                                    const color = getEntryColor(entry.id, entry.z);
-                                    const isBranding = entry.id.startsWith('branding-');
-                                    const isMoving = moveDrag?.entryId === entry.id;
-                                    const isRippledByMove =
-                                        moveDrag != null &&
-                                        moveDrag.mode === 'ripple' &&
-                                        !isBranding &&
-                                        moveDrag.entryId !== entry.id &&
-                                        (entry.inTime ?? Infinity) >= moveDrag.originalExitTime;
+                                    {/* Entry blocks */}
+                                    {group.entries.map(({ entry, channelTrack }) => {
+                                        const isSelected = entry.id === selectedEntryId;
+                                        const color = getEntryColor(entry.id, entry.z);
+                                        const isBranding = entry.id.startsWith('branding-');
+                                        const isMoving = moveDrag?.entryId === entry.id;
+                                        const isRippledByMove =
+                                            moveDrag != null &&
+                                            moveDrag.mode === 'ripple' &&
+                                            !isBranding &&
+                                            moveDrag.entryId !== entry.id &&
+                                            (entry.inTime ?? Infinity) >= moveDrag.originalExitTime;
 
-                                    let left: string;
-                                    let width: string;
+                                        let left: string;
+                                        let width: string;
 
-                                    if (navigationMode === 'time_driven') {
-                                        let start = entry.inTime ?? entry.start ?? 0;
-                                        let end = entry.exitTime ?? entry.end ?? totalDuration;
+                                        if (navigationMode === 'time_driven') {
+                                            let start = entry.inTime ?? entry.start ?? 0;
+                                            let end = entry.exitTime ?? entry.end ?? totalDuration;
 
-                                        // Live drag preview: override edges without mutating the store.
-                                        if (resizeDrag) {
-                                            if (resizeDrag.entryId === entry.id) {
-                                                if (resizeDrag.edge === 'in')
-                                                    start = resizeDrag.time;
-                                                else end = resizeDrag.time;
-                                            } else if (resizeDrag.neighbourId === entry.id) {
-                                                // Roll neighbour: its opposite edge follows.
-                                                if (resizeDrag.edge === 'in') end = resizeDrag.time;
-                                                else start = resizeDrag.time;
-                                            }
-                                        }
-
-                                        // Body-move preview: shift the moving clip, and in ripple
-                                        // mode also shift every non-branding downstream entry.
-                                        if (isMoving) {
-                                            start = moveDrag!.originalInTime + moveDrag!.delta;
-                                            end = moveDrag!.originalExitTime + moveDrag!.delta;
-                                        } else if (isRippledByMove) {
-                                            start += moveDrag!.delta;
-                                            end += moveDrag!.delta;
-                                        }
-
-                                        const safeEnd = Math.min(end, totalDuration);
-                                        left = timeToPercent(start);
-                                        width = timeToPercent(safeEnd - start);
-                                    } else {
-                                        const idx = entries.indexOf(entry);
-                                        left = timeToPercent(idx);
-                                        width = timeToPercent(1);
-                                    }
-
-                                    const top =
-                                        channelY + CHANNEL_SEP_H + channelTrack * TRACK_H + 2;
-
-                                    const canResize = navigationMode === 'time_driven';
-                                    const canMove = canResize && !isBranding;
-                                    const isBeingDragged =
-                                        resizeDrag?.entryId === entry.id ||
-                                        resizeDrag?.neighbourId === entry.id ||
-                                        isMoving;
-                                    const outlineColor =
-                                        isMoving && moveDrag?.mode === 'ripple'
-                                            ? '#f59e0b'
-                                            : '#818cf8';
-
-                                    return (
-                                        <div
-                                            key={entry.id}
-                                            className="absolute rounded-sm transition-opacity hover:opacity-90"
-                                            style={{
-                                                left,
-                                                width,
-                                                top,
-                                                height: TRACK_H - 4,
-                                                background: color,
-                                                opacity: isSelected || isBeingDragged ? 1 : 0.75,
-                                                outline:
-                                                    isSelected || isBeingDragged
-                                                        ? `2px solid ${outlineColor}`
-                                                        : 'none',
-                                                outlineOffset: 1,
-                                                overflow: 'hidden',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            {/* Left edge resize handle */}
-                                            {canResize && (
-                                                <div
-                                                    onMouseDown={(e) =>
-                                                        startEdgeResize(entry, 'in', e)
-                                                    }
-                                                    className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize hover:bg-white/50"
-                                                    title="Drag to resize start (Shift = ripple)"
-                                                    style={{ zIndex: 2 }}
-                                                />
-                                            )}
-                                            {/* Body — drag-to-move (Move/Ripple); falls through to
-                                                a plain click when displacement < 3 px, which keeps
-                                                the existing select+seek behaviour intact. */}
-                                            <button
-                                                className="absolute inset-0 flex items-center px-2"
-                                                style={{
-                                                    cursor: canMove
-                                                        ? isMoving
-                                                            ? 'grabbing'
-                                                            : 'grab'
-                                                        : 'pointer',
-                                                }}
-                                                title={
-                                                    isBranding
-                                                        ? `${entry.id} (locked)`
-                                                        : canMove
-                                                          ? `Drag to ${mode} (${mode === 'move' ? 'M' : 'R'}). Alt = ignore snap.`
-                                                          : entry.id
+                                            // Live drag preview: override edges without mutating the store.
+                                            if (resizeDrag) {
+                                                if (resizeDrag.entryId === entry.id) {
+                                                    if (resizeDrag.edge === 'in')
+                                                        start = resizeDrag.time;
+                                                    else end = resizeDrag.time;
+                                                } else if (resizeDrag.neighbourId === entry.id) {
+                                                    // Roll neighbour: its opposite edge follows.
+                                                    if (resizeDrag.edge === 'in')
+                                                        end = resizeDrag.time;
+                                                    else start = resizeDrag.time;
                                                 }
-                                                onMouseDown={(e) => {
-                                                    if (canMove) startBodyDrag(entry, e);
-                                                }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (resizeDrag) return;
-                                                    if (canMove) return;
-                                                    selectEntry(entry.id);
-                                                    if (navigationMode === 'time_driven') {
-                                                        seek(entry.inTime ?? entry.start ?? 0);
-                                                    } else {
-                                                        seek(entries.indexOf(entry));
-                                                    }
+                                            }
+
+                                            // Body-move preview: shift the moving clip, and in ripple
+                                            // mode also shift every non-branding downstream entry.
+                                            if (isMoving) {
+                                                start = moveDrag!.originalInTime + moveDrag!.delta;
+                                                end = moveDrag!.originalExitTime + moveDrag!.delta;
+                                            } else if (isRippledByMove) {
+                                                start += moveDrag!.delta;
+                                                end += moveDrag!.delta;
+                                            }
+
+                                            const safeEnd = Math.min(end, totalDuration);
+                                            left = timeToPercent(start);
+                                            width = timeToPercent(safeEnd - start);
+                                        } else {
+                                            const idx = entries.indexOf(entry);
+                                            left = timeToPercent(idx);
+                                            width = timeToPercent(1);
+                                        }
+
+                                        const top =
+                                            channelY + CHANNEL_SEP_H + channelTrack * TRACK_H + 2;
+
+                                        const canResize = navigationMode === 'time_driven';
+                                        const canMove = canResize && !isBranding;
+                                        const isBeingDragged =
+                                            resizeDrag?.entryId === entry.id ||
+                                            resizeDrag?.neighbourId === entry.id ||
+                                            isMoving;
+                                        const outlineColor =
+                                            isMoving && moveDrag?.mode === 'ripple'
+                                                ? '#f59e0b'
+                                                : '#818cf8';
+
+                                        return (
+                                            <div
+                                                key={entry.id}
+                                                className="absolute rounded-sm transition-opacity hover:opacity-90"
+                                                style={{
+                                                    left,
+                                                    width,
+                                                    top,
+                                                    height: TRACK_H - 4,
+                                                    background: color,
+                                                    opacity:
+                                                        isSelected || isBeingDragged ? 1 : 0.75,
+                                                    outline:
+                                                        isSelected || isBeingDragged
+                                                            ? `2px solid ${outlineColor}`
+                                                            : 'none',
+                                                    outlineOffset: 1,
+                                                    overflow: 'hidden',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
                                                 }}
                                             >
-                                                <span
-                                                    className="truncate text-white"
+                                                {/* Left edge resize handle */}
+                                                {canResize && (
+                                                    <div
+                                                        onMouseDown={(e) =>
+                                                            startEdgeResize(entry, 'in', e)
+                                                        }
+                                                        className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize hover:bg-white/50"
+                                                        title="Drag to resize start (Shift = ripple)"
+                                                        style={{ zIndex: 2 }}
+                                                    />
+                                                )}
+                                                {/* Body — drag-to-move (Move/Ripple); falls through to
+                                                a plain click when displacement < 3 px, which keeps
+                                                the existing select+seek behaviour intact. */}
+                                                <button
+                                                    className="absolute inset-0 flex items-center px-2"
                                                     style={{
-                                                        fontSize: 9,
-                                                        lineHeight: 1,
-                                                        fontFamily: 'monospace',
+                                                        cursor: canMove
+                                                            ? isMoving
+                                                                ? 'grabbing'
+                                                                : 'grab'
+                                                            : 'pointer',
+                                                    }}
+                                                    title={
+                                                        isBranding
+                                                            ? `${entry.id} (locked)`
+                                                            : canMove
+                                                              ? `Drag to ${mode} (${mode === 'move' ? 'M' : 'R'}). Alt = ignore snap.`
+                                                              : entry.id
+                                                    }
+                                                    onMouseDown={(e) => {
+                                                        if (canMove) startBodyDrag(entry, e);
+                                                    }}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (resizeDrag) return;
+                                                        if (canMove) return;
+                                                        selectEntry(entry.id);
+                                                        if (navigationMode === 'time_driven') {
+                                                            seek(entry.inTime ?? entry.start ?? 0);
+                                                        } else {
+                                                            seek(entries.indexOf(entry));
+                                                        }
                                                     }}
                                                 >
-                                                    {entry.id}
-                                                </span>
-                                            </button>
-                                            {/* Right edge resize handle */}
-                                            {canResize && (
-                                                <div
-                                                    onMouseDown={(e) =>
-                                                        startEdgeResize(entry, 'out', e)
-                                                    }
-                                                    className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize hover:bg-white/50"
-                                                    title="Drag to resize end (Shift = ripple)"
-                                                    style={{ zIndex: 2 }}
-                                                />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </Fragment>
-                        );
-                    })}
+                                                    <span
+                                                        className="truncate text-white"
+                                                        style={{
+                                                            fontSize: 9,
+                                                            lineHeight: 1,
+                                                            fontFamily: 'monospace',
+                                                        }}
+                                                    >
+                                                        {entry.id}
+                                                    </span>
+                                                </button>
+                                                {/* Right edge resize handle */}
+                                                {canResize && (
+                                                    <div
+                                                        onMouseDown={(e) =>
+                                                            startEdgeResize(entry, 'out', e)
+                                                        }
+                                                        className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize hover:bg-white/50"
+                                                        title="Drag to resize end (Shift = ripple)"
+                                                        style={{ zIndex: 2 }}
+                                                    />
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </Fragment>
+                            );
+                        })}
 
-                    {/* Floating resize tooltip */}
-                    {resizeDrag && (
-                        <div
-                            className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 font-mono text-[10px] shadow-md"
-                            style={{
-                                left: timeToPercent(resizeDrag.time),
-                                top: 2,
-                                background:
-                                    resizeDrag.mode === 'ripple'
-                                        ? '#b45309'
-                                        : resizeDrag.blocked
-                                          ? '#6b7280'
-                                          : '#4338ca',
-                                color: 'white',
-                            }}
-                        >
-                            {resizeDrag.time.toFixed(1)}s
-                            <span className="ml-1 opacity-80">
-                                {resizeDrag.mode === 'ripple'
-                                    ? '⚠ ripple (downstream shifts)'
-                                    : resizeDrag.mode === 'roll'
-                                      ? 'roll'
-                                      : 'slip'}
-                            </span>
-                            {resizeDrag.blocked === 'min' && (
-                                <span className="ml-1 opacity-80">· min {MIN_SHOT_DURATION}s</span>
-                            )}
-                        </div>
-                    )}
+                        {/* Floating resize tooltip */}
+                        {resizeDrag && (
+                            <div
+                                className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 font-mono text-[10px] shadow-md"
+                                style={{
+                                    left: timeToPercent(resizeDrag.time),
+                                    top: 2,
+                                    background:
+                                        resizeDrag.mode === 'ripple'
+                                            ? '#b45309'
+                                            : resizeDrag.blocked
+                                              ? '#6b7280'
+                                              : '#4338ca',
+                                    color: 'white',
+                                }}
+                            >
+                                {resizeDrag.time.toFixed(1)}s
+                                <span className="ml-1 opacity-80">
+                                    {resizeDrag.mode === 'ripple'
+                                        ? '⚠ ripple (downstream shifts)'
+                                        : resizeDrag.mode === 'roll'
+                                          ? 'roll'
+                                          : 'slip'}
+                                </span>
+                                {resizeDrag.blocked === 'min' && (
+                                    <span className="ml-1 opacity-80">
+                                        · min {MIN_SHOT_DURATION}s
+                                    </span>
+                                )}
+                            </div>
+                        )}
 
-                    {/* Floating body-move tooltip — anchored to the previewed
+                        {/* Floating body-move tooltip — anchored to the previewed
                         midpoint of the dragged clip, showing the new in→out range
                         and the active mode. */}
-                    {moveDrag && (
-                        <div
-                            className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 font-mono text-[10px] shadow-md"
-                            style={{
-                                left: timeToPercent(
-                                    moveDrag.originalInTime +
-                                        moveDrag.delta +
-                                        (moveDrag.originalExitTime - moveDrag.originalInTime) / 2
-                                ),
-                                top: 2,
-                                background: moveDrag.mode === 'ripple' ? '#b45309' : '#4338ca',
-                                color: 'white',
-                            }}
-                        >
-                            {formatSec(moveDrag.originalInTime + moveDrag.delta)} →{' '}
-                            {formatSec(moveDrag.originalExitTime + moveDrag.delta)}
-                            <span className="ml-1 opacity-80">
-                                {moveDrag.mode === 'ripple' ? '⚠ ripple' : 'move'}
-                                {moveDrag.delta !== 0 && (
-                                    <>
-                                        {' '}
-                                        ({moveDrag.delta > 0 ? '+' : ''}
-                                        {moveDrag.delta.toFixed(1)}s)
-                                    </>
-                                )}
-                            </span>
-                        </div>
-                    )}
+                        {moveDrag && (
+                            <div
+                                className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded px-2 py-0.5 font-mono text-[10px] shadow-md"
+                                style={{
+                                    left: timeToPercent(
+                                        moveDrag.originalInTime +
+                                            moveDrag.delta +
+                                            (moveDrag.originalExitTime - moveDrag.originalInTime) /
+                                                2
+                                    ),
+                                    top: 2,
+                                    background: moveDrag.mode === 'ripple' ? '#b45309' : '#4338ca',
+                                    color: 'white',
+                                }}
+                            >
+                                {formatSec(moveDrag.originalInTime + moveDrag.delta)} →{' '}
+                                {formatSec(moveDrag.originalExitTime + moveDrag.delta)}
+                                <span className="ml-1 opacity-80">
+                                    {moveDrag.mode === 'ripple' ? '⚠ ripple' : 'move'}
+                                    {moveDrag.delta !== 0 && (
+                                        <>
+                                            {' '}
+                                            ({moveDrag.delta > 0 ? '+' : ''}
+                                            {moveDrag.delta.toFixed(1)}s)
+                                        </>
+                                    )}
+                                </span>
+                            </div>
+                        )}
 
-                    {/* Scrub head (on top of everything) */}
-                    <PlayheadScrubCursor
-                        totalDuration={totalDuration}
-                        navigationMode={navigationMode}
-                    />
+                        {/* Audio-track lanes (bottom of the timeline) */}
+                        {navigationMode === 'time_driven' &&
+                            audioTracks.map((track, i) => (
+                                <AudioLane
+                                    key={track.id}
+                                    track={track}
+                                    color={trackColor(i)}
+                                    top={audioLanesTop + i * AUDIO_LANE_H}
+                                    timeToPercent={timeToPercent}
+                                    preview={audioDrag?.trackId === track.id ? audioDrag : null}
+                                    onStartDrag={startAudioLaneDrag}
+                                />
+                            ))}
+
+                        {/* Scrub head (on top of everything) */}
+                        <PlayheadScrubCursor
+                            totalDuration={totalDuration}
+                            navigationMode={navigationMode}
+                        />
+                    </div>
                 </div>
             </div>
         </div>

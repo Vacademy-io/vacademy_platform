@@ -294,7 +294,7 @@ function RouteComponent() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      className={`rounded-full px-2 py-0.5 text-caption font-medium ${
                         cls.accessLevel === "private"
                           ? "bg-primary-50 text-primary-600"
                           : "bg-purple-50 text-purple-600"
@@ -303,7 +303,7 @@ function RouteComponent() {
                       {cls.accessLevel === "private" ? "Private" : "Public"}
                     </span>
                     <span
-                      className={`rounded-full px-3 py-0.5 text-[10px] font-medium ${
+                      className={`rounded-full px-3 py-0.5 text-caption font-medium ${
                         cls.attendanceStatus === "PRESENT"
                           ? "bg-success-50 text-success-600"
                           : cls.attendanceStatus === "ABSENT"
@@ -327,10 +327,10 @@ function RouteComponent() {
         {/* Table (visible on md and larger) */}
         <div className="hidden overflow-hidden rounded-lg border border-neutral-200 md:block">
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[800px] table-auto border-collapse">
+            <table className="w-full min-w-table-wide table-auto border-collapse">
               <thead>
                 <tr className="border-b border-neutral-200 bg-primary-100 text-left text-sm font-medium text-neutral-600">
-                  {/* <th className="w-[40px] px-4 py-3">
+                  {/* <th className="w-10 px-4 py-3">
                     <Checkbox
                       checked={allRowsSelected}
                       onCheckedChange={(val) => toggleSelectAll(!!val)}
@@ -463,7 +463,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
             <CalendarIcon className="ml-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[min(92vw,720px)] p-3 sm:w-auto" align="start">
+        <PopoverContent className="w-dialog-lg p-3 sm:w-auto" align="start">
           <div className="flex flex-col gap-3 sm:flex-row">
             <Calendar
               mode="range"
@@ -541,8 +541,8 @@ function BatchDropdown({
             <CaretDownIcon className="ml-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[min(92vw,360px)] p-3 sm:w-auto" align="start">
-          <div className="flex max-h-[50vh] flex-col gap-2 overflow-auto">
+        <PopoverContent className="w-dialog-sm p-3 sm:w-auto" align="start">
+          <div className="flex max-h-screen-50 flex-col gap-2 overflow-auto">
             <h4 className="mb-1 text-xs font-medium text-neutral-500">
               {label}
             </h4>

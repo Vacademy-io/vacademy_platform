@@ -110,7 +110,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
     // Loading state
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center w-full h-[80vh] bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-center w-full h-screen-80 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex flex-col items-center space-y-3">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     <p className="text-sm text-gray-600 font-medium">Loading diagram...</p>
@@ -122,7 +122,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
     // Error state
     if (error || !scene) {
         return (
-            <div className="flex items-center justify-center w-full h-[80vh] bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-center w-full h-screen-80 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex flex-col items-center space-y-3 text-center max-w-md">
                     <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,7 +142,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
     const initialData = {
         elements: scene.elements || [],
         appState: {
-            viewBackgroundColor: "#FFFFFF",
+            viewBackgroundColor: "#FFFFFF", // design-lint-ignore: Excalidraw appState diagram palette
             collaborators: new Map(),
             currentItemFontFamily: 1,
             scrollX: 0,
@@ -154,7 +154,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
     };
 
     return (
-        <div className="w-full h-[80vh] bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden relative">
+        <div className="w-full h-screen-80 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden relative">
             {/* Center Content Button */}
             <button
                 onClick={centerContent}

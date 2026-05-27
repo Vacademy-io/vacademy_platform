@@ -189,7 +189,7 @@ export function ComparisonDashboard({
                 <Clock size={18} weight="duotone" />
               </div>
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Attempt Date</div>
+                <div className="text-3xs text-muted-foreground uppercase tracking-wide">Attempt Date</div>
                 <div className="text-sm font-semibold">{formatDate(start_time)}</div>
               </div>
             </div>
@@ -200,7 +200,7 @@ export function ComparisonDashboard({
                 <Clock size={18} weight="duotone" />
               </div>
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Duration</div>
+                <div className="text-3xs text-muted-foreground uppercase tracking-wide">Duration</div>
                 <div className="text-sm font-semibold">{formatDuration(student_duration)}</div>
               </div>
             </div>
@@ -211,7 +211,7 @@ export function ComparisonDashboard({
                 <Clock size={18} weight="duotone" />
               </div>
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Start Time</div>
+                <div className="text-3xs text-muted-foreground uppercase tracking-wide">Start Time</div>
                 <div className="text-sm font-semibold">{formatTime(start_time)}</div>
               </div>
             </div>
@@ -222,7 +222,7 @@ export function ComparisonDashboard({
                 <Clock size={18} weight="duotone" />
               </div>
               <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">End Time</div>
+                <div className="text-3xs text-muted-foreground uppercase tracking-wide">End Time</div>
                 <div className="text-sm font-semibold">{formatTime(submit_time)}</div>
               </div>
             </div>
@@ -550,7 +550,7 @@ export function ComparisonDashboard({
                                   <div key={opt.id} className="flex items-center gap-2">
                                     <div className="flex-1">
                                       <div className="flex justify-between text-xs mb-0.5">
-                                        <span className="text-slate-600 truncate max-w-[200px]">
+                                        <span className="text-slate-600 truncate max-w-reg-200">
                                           {parseHtmlToString(opt.text?.content || opt.id)}
                                         </span>
                                         <span className="text-slate-500 font-medium ml-2">{pct}%</span>
@@ -626,7 +626,7 @@ function ComparisonBar({
         />
         {/* Average marker slit */}
         <div
-          className="absolute top-[-3px] w-[3px] h-[14px] bg-slate-800 rounded-sm"
+          className="absolute -top-0.5 w-0.5 h-3.5 bg-slate-800 rounded-sm"
           style={{ left: `${avgPct}%` }}
           title={`Class Average: ${avgLabel}`}
         />

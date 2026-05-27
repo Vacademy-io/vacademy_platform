@@ -14,7 +14,7 @@ import {
 } from "./-services/enroll-invite-services";
 import { handleGetInstituteCustomFields } from "./-services/custom-fields-setup";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap } from "@phosphor-icons/react";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { loginEnrolledUser } from "@/services/signup-api";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
@@ -2028,7 +2028,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             ) : (
               <div className="flex items-center gap-2">
                 <GraduationCap className="w-5 h-5 text-primary" />
-                <span className="font-medium text-sm text-gray-900 truncate max-w-[200px]">
+                <span className="font-medium text-sm text-gray-900 truncate max-w-reg-200">
                   {inviteData?.name || courseData.course || "Course Enrollment"}
                 </span>
               </div>
@@ -2206,7 +2206,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                         <TabsTrigger
                           key={session.packageSessionId}
                           value={session.packageSessionId}
-                          className="flex-1 min-w-[120px] px-3 py-1.5 text-xs font-medium rounded text-gray-600 bg-transparent data-[state=active]:bg-white data-[state=active]:text-gray-900"
+                          className="flex-1 min-w-reg-120 px-3 py-1.5 text-xs font-medium rounded text-gray-600 bg-transparent data-[state=active]:bg-white data-[state=active]:text-gray-900"
                         >
                           {resolvePackageSessionLabel(session.packageSessionId, index)}
                         </TabsTrigger>

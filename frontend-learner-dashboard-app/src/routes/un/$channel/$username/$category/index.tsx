@@ -100,10 +100,10 @@ function UnsubscribeCommunicationPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h1 className="text-[22px] font-semibold text-slate-900 sm:text-[28px] sm:leading-9">
+          <h1 className="text-h2 font-semibold text-slate-900 sm:text-h1 sm:leading-9">
             Update your notifications
           </h1>
-          <p className="text-[13px] text-slate-600 sm:text-sm">
+          <p className="text-body text-slate-600 sm:text-sm">
             We’re updating your message preference for{" "}
             <span className="font-medium text-slate-800">{flow.channelInfo.label}</span>.
           </p>
@@ -145,7 +145,7 @@ const BackgroundGlow = ({ hasTheme }: { hasTheme: boolean }) => (
       animate={{ opacity: hasTheme ? 0.35 : 0.2 }}
       transition={{ duration: 0.8 }}
       className={cn(
-        "pointer-events-none absolute left-[-12%] top-[-25%] h-72 w-72 rounded-full blur-3xl sm:h-96 sm:w-96",
+        "pointer-events-none absolute left-[-12%] top-[-25%] h-72 w-72 rounded-full blur-3xl sm:h-96 sm:w-96", // design-lint-ignore: decorative positioning
         hasTheme ? "bg-primary-300/70" : "bg-slate-200/80"
       )}
     />
@@ -154,7 +154,7 @@ const BackgroundGlow = ({ hasTheme }: { hasTheme: boolean }) => (
       animate={{ opacity: hasTheme ? 0.3 : 0.15 }}
       transition={{ delay: 0.2, duration: 0.8 }}
       className={cn(
-        "pointer-events-none absolute bottom-[-12%] right-[-15%] h-80 w-80 rounded-full blur-3xl sm:h-[26rem] sm:w-[26rem]",
+        "pointer-events-none absolute bottom-[-12%] right-[-15%] h-80 w-80 rounded-full blur-3xl sm:h-reg-420 sm:w-reg-420", // design-lint-ignore: decorative positioning
         hasTheme ? "bg-primary-100/80" : "bg-slate-200/70"
       )}
     />
@@ -164,8 +164,8 @@ const BackgroundGlow = ({ hasTheme }: { hasTheme: boolean }) => (
 const BackgroundPattern = () => (
   <div className="pointer-events-none absolute inset-0 opacity-40">
     <div className="absolute inset-0 bg-gradient-to-br from-white/50 via-transparent to-white/40" />
-    <div className="absolute inset-y-0 right-[-30%] hidden h-[120%] w-[60%] rounded-full bg-white/20 blur-3xl sm:block" />
-    <div className="absolute inset-y-0 left-[-35%] hidden h-[120%] w-[55%] rounded-full bg-white/20 blur-3xl sm:block" />
+    <div className="absolute inset-y-0 right-[-30%] hidden h-[120%] w-[60%] rounded-full bg-white/20 blur-3xl sm:block" /> {/* design-lint-ignore: decorative positioning */}
+    <div className="absolute inset-y-0 left-[-35%] hidden h-[120%] w-[55%] rounded-full bg-white/20 blur-3xl sm:block" /> {/* design-lint-ignore: decorative positioning */}
   </div>
 );
 

@@ -8,7 +8,7 @@ import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3, Clock, Zap, Target, Award, TrendingUp, BarChart2, Table2 } from "lucide-react";
+import { ChartBar, Clock, Lightning, Target, Medal, TrendUp, ChartBarHorizontal, Table } from "@phosphor-icons/react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { cn } from "@/lib/utils";
@@ -145,14 +145,14 @@ export const PastLearningInsights = () => {
         "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20",
         "[.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
         "[.ui-vibrant_&]:shadow-sm",
-        "[.ui-play_&]:!bg-[#1CB0F6] [.ui-play_&]:!border-2 [.ui-play_&]:!border-[#1899d6] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#1899d6]"
+        "[.ui-play_&]:!bg-play-info [.ui-play_&]:!border-2 [.ui-play_&]:!border-play-info-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-info"
       )}>
         {/* Header: title + inline stats + view toggle */}
         <CardHeader className="px-5 py-3 border-b [.ui-play_&]:border-white/20">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary [.ui-play_&]:bg-white/20 [.ui-play_&]:text-white">
-                <TrendingUp size={18} />
+                <TrendUp size={18} />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Learning Progress</CardTitle>
@@ -164,7 +164,7 @@ export const PastLearningInsights = () => {
               {/* Inline stats */}
               <InlineStat label="avg" value={avgTimeSpent} icon={Clock} />
               <InlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
-              <InlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Award} />
+              <InlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
 
               {/* View toggle */}
               <div className="flex items-center bg-muted/50 rounded-lg p-0.5 [.ui-play_&]:bg-white/20">
@@ -173,24 +173,24 @@ export const PastLearningInsights = () => {
                   className={cn(
                     "p-1.5 rounded-md transition-all",
                     activeView === "chart"
-                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-[#1899d6]"
+                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-info-deep"
                       : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/60 [.ui-play_&]:hover:text-white"
                   )}
                   title="Chart view"
                 >
-                  <BarChart2 size={14} />
+                  <ChartBarHorizontal size={14} />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); setActiveView("table"); }}
                   className={cn(
                     "p-1.5 rounded-md transition-all",
                     activeView === "table"
-                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-[#1899d6]"
+                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-info-deep"
                       : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/60 [.ui-play_&]:hover:text-white"
                   )}
                   title="Table view"
                 >
-                  <Table2 size={14} />
+                  <Table size={14} />
                 </button>
               </div>
             </div>

@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import type { ChildProfile, AdmissionTimelineEvent } from "@/types/parent-portal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Clock, ArrowRight, Circle, CalendarDays, Flag } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Circle, CalendarDots, Flag } from "@phosphor-icons/react";
 
 interface Props { child: ChildProfile; timeline: AdmissionTimelineEvent[] }
 
@@ -23,7 +23,7 @@ export function TrackerDemo({ child, timeline }: Props) {
       </motion.div>
 
       <Card className="shadow-sm">
-        <CardHeader className="pb-4"><CardTitle className="text-base flex items-center gap-2"><CalendarDays size={16} />Journey Timeline</CardTitle></CardHeader>
+        <CardHeader className="pb-4"><CardTitle className="text-base flex items-center gap-2"><CalendarDots size={16} />Journey Timeline</CardTitle></CardHeader>
         <CardContent>
           <div className="relative">{timeline.map((e, i) => {
             const comp = e.status === "COMPLETED", cur = e.status === "CURRENT", up = e.status === "UPCOMING", skip = e.status === "SKIPPED", last = i === timeline.length - 1;
@@ -33,14 +33,14 @@ export function TrackerDemo({ child, timeline }: Props) {
                   <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${comp ? "bg-emerald-500 text-white shadow-sm shadow-emerald-200 dark:shadow-emerald-900" : cur ? "bg-primary text-primary-foreground ring-4 ring-primary/15 shadow-sm" : skip ? "bg-muted border-2 border-dashed border-border" : "bg-muted border-2 border-border"}`}>
                     {comp ? <CheckCircle size={16} /> : cur ? <Clock size={14} /> : skip ? <ArrowRight size={12} className="text-muted-foreground" /> : <Circle size={8} className="text-muted-foreground/40" />}
                   </div>
-                  {!last && <div className={`w-0.5 flex-1 min-h-[24px] ${comp ? "bg-emerald-400" : "bg-border"}`} />}
+                  {!last && <div className={`w-0.5 flex-1 min-h-6 ${comp ? "bg-emerald-400" : "bg-border"}`} />}
                 </div>
                 <div className={`flex-1 pb-6 min-w-0 ${up ? "opacity-50" : ""} ${skip ? "opacity-40" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div><p className={`text-sm font-semibold ${cur ? "text-primary" : comp ? "text-foreground" : "text-muted-foreground"}`}>{e.title}</p>{e.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{e.description}</p>}</div>
-                    {cur && <Badge className="bg-primary/10 text-primary text-[9px] shrink-0 animate-pulse">Current</Badge>}
+                    {cur && <Badge className="bg-primary/10 text-primary text-caption shrink-0 animate-pulse">Current</Badge>}
                   </div>
-                  {e.timestamp && <p className="text-[10px] text-muted-foreground/60 mt-1">{new Date(e.timestamp).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</p>}
+                  {e.timestamp && <p className="text-caption text-muted-foreground/60 mt-1">{new Date(e.timestamp).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</p>}
                 </div>
               </motion.div>
             );

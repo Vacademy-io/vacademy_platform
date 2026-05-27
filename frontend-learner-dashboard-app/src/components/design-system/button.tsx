@@ -4,12 +4,12 @@ import { MyButtonProps } from "./utils/types/button-types";
 
 // Button Variants Configuration
 const myButtonVariants = {
-  base: "font-normal shadow-none disabled:cursor-not-allowed transition-colors text-subtitle font-semibold",
+  base: "font-normal shadow-none disabled:cursor-not-allowed transition duration-fast ease-out-soft active:scale-[0.98] disabled:active:scale-100 text-subtitle font-semibold",
   types: {
     primary:
       "bg-primary-500 !text-neutral-50 font-semibold hover:bg-primary-400 active:bg-primary-300 disabled:bg-primary-200",
     secondary:
-      "bg-white font-regular border-neutral-300 border !text-neutral-600 hover:border-primary-300 hover:bg-primary-50/50 active:border-primary-500 active:bg-primary-50/50 disabled:text-[#7f7f7f] disabled:bg-white disabled:border-neutral-200",
+      "bg-white font-regular border-neutral-300 border !text-neutral-600 hover:border-primary-300 hover:bg-primary-50/50 active:border-primary-500 active:bg-primary-50/50 disabled:text-neutral-400 disabled:bg-white disabled:border-neutral-200",
     text: "shadow-none bg-transparent text-primary-500 disabled:text-neutral-300 disabled:bg-transparent",
   },
   textStyles: {
@@ -20,8 +20,8 @@ const myButtonVariants = {
   scales: {
     default: {
       large: "min-w-60 h-10 px-4 text-subtitle ",
-      medium: "min-w-[140px] h-9 px-3 text-body ",
-      small: "min-w-[83px] h-6 px-2 text-caption",
+      medium: "min-w-36 h-9 px-3 text-body ",
+      small: "min-w-20 h-6 px-2 text-caption",
     },
     icon: {
       large: "w-10 h-10 !p-0",
@@ -36,7 +36,7 @@ const myButtonVariants = {
     extendedFloating: {
       large: "w-24 h-24 rounded-full",
       medium: "w-24 h-14 rounded-full px-4",
-      small: "w-[71px] h-10 rounded-full px-3",
+      small: "w-20 h-10 rounded-full px-3",
     },
   },
 } as const;

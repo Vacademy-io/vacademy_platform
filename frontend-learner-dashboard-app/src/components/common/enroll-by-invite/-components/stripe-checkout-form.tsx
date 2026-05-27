@@ -123,17 +123,17 @@ export const StripeCheckoutForm = ({
             options={{
               style: {
                 base: {
-                  color: "#32325d",
+                  color: "#32325d", // design-lint-ignore: Stripe SDK element style
                   fontFamily: "Arial, sans-serif",
                   fontSmoothing: "antialiased",
                   fontSize: "16px",
                   "::placeholder": {
-                    color: "#aab7c4",
+                    color: "#aab7c4", // design-lint-ignore: Stripe SDK element style
                   },
                 },
                 invalid: {
-                  color: "#fa755a",
-                  iconColor: "#fa755a",
+                  color: "#fa755a", // design-lint-ignore: Stripe SDK element style
+                  iconColor: "#fa755a", // design-lint-ignore: Stripe SDK element style
                 },
               },
               hidePostalCode: true,

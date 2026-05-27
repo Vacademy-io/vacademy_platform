@@ -198,7 +198,7 @@ export const TimestampDialog = ({ open, onOpenChange, onTimestampSet, initialTim
         <div style={{ zIndex: 20000 }} className="relative">
             <Dialog open={open} onOpenChange={onOpenChange}>
                 <DialogContent 
-                    className="max-w-md z-[20000] fixed bg-white/95 backdrop-blur-xl border border-gray-200/60 shadow-2xl rounded-2xl overflow-hidden" 
+                    className="max-w-md z-50 fixed bg-white/95 backdrop-blur-xl border border-gray-200/60 shadow-2xl rounded-2xl overflow-hidden"
                     style={{ zIndex: 20000 }}
                 >
                 <DialogHeader className="border-b border-gray-100/80 bg-gradient-to-r from-white to-primary-50/30 p-6 pb-4">

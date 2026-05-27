@@ -27,14 +27,14 @@ import {
   GraduationCap,
   GlobeSimple,
 } from "@phosphor-icons/react";
-import { Pencil } from "lucide-react";
+import { PencilSimple } from "@phosphor-icons/react";
 
 import { HOLISTIC_INSTITUTE_ID, STUDENT_DETAIL_EDIT } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { useNavigate } from "@tanstack/react-router";
 import { Preferences } from "@capacitor/preferences";
 import { MyButton } from "@/components/design-system/button";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import type { Student } from "@/types/user/user-detail";
 import { FormProvider, useForm } from "react-hook-form";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -304,7 +304,7 @@ export default function EditProfile() {
           {/* Header */}
           <div className="p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Pencil className="w-5 h-5 text-primary-500" />
+              <PencilSimple className="w-5 h-5 text-primary-500" />
               Edit Profile
             </h1>
             <button
@@ -339,7 +339,7 @@ export default function EditProfile() {
                 <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                   <DropdownMenuTrigger asChild>
                     <button type="button" className="absolute bottom-1 right-1 p-2 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 transition-colors border-2 border-white">
-                      <Pencil className="w-4 h-4" />
+                      <PencilSimple className="w-4 h-4" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -671,7 +671,7 @@ export default function EditProfile() {
               >
                 {isLoading ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
                     Saving...
                   </>
                 ) : (

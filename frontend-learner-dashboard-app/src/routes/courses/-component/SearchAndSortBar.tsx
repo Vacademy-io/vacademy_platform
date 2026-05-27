@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent } from "react";
-import { ChevronDownIcon } from "lucide-react";
+import { CaretDown } from "@phosphor-icons/react";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -55,7 +55,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
           {/* <option value="Popularity">Sort by: Popularity</option>
           <option value="Rating">Sort by: Rating</option> */}
         </select>
-        <ChevronDownIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+        <CaretDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
       </div>
     </div>
   );

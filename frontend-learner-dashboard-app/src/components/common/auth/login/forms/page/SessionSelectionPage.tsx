@@ -213,7 +213,7 @@ const SessionSelectionPage = () => {
         </div>
 
         {sessionList.length === 0 ? (
-          <div className="flex justify-center items-center h-[60vh]">
+          <div className="flex justify-center items-center h-screen-60">
             <div className="bg-white rounded-md p-6 shadow-lg border border-gray-200 max-w-md w-full text-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
                 <svg

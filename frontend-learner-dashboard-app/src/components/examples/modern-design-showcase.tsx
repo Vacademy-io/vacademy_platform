@@ -166,7 +166,7 @@ export const ModernDesignShowcase: React.FC = () => {
               Course completion rate
             </p>
             <div className="w-full bg-neutral-200 rounded-full h-2 mt-3">
-              <div className="bg-primary-500 h-2 rounded-full w-[85%] animate-fade-up"></div>
+              <div className="bg-primary-500 h-2 rounded-full w-[85%] animate-fade-up"></div> {/* design-lint-ignore: decorative positioning */}
             </div>
           </ModernCardContent>
         </ModernCard>

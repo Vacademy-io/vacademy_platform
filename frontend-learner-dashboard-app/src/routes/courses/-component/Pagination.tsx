@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import React from 'react';
 
 
@@ -90,7 +90,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
           className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-opacity"
         >
           <span className="sr-only">Previous</span>
-          <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+          <CaretLeft className="h-5 w-5" aria-hidden="true" />
         </button>
 
         {pagesToDisplay.map((page, index) => (
@@ -116,7 +116,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
           className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 transition-opacity"
         >
           <span className="sr-only">Next</span>
-          <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+          <CaretRight className="h-5 w-5" aria-hidden="true" />
         </button>
       </nav>
     </div>

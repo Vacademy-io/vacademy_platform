@@ -16,8 +16,8 @@ export const XpDisplayWidget: React.FC = () => {
 
   return (
     <div
-      className="overflow-hidden rounded-[20px]"
-      style={{ backgroundColor: "#FFB800", boxShadow: "0 5px 0 #CC9300" }}
+      className="overflow-hidden rounded-play-card"
+      style={{ backgroundColor: "var(--play-xp-bg)", boxShadow: "0 5px 0 var(--play-xp-shadow)" }}
     >
       <div className="flex flex-row md:flex-col">
         {/* SVG: right on mobile, top on desktop */}
@@ -41,14 +41,14 @@ export const XpDisplayWidget: React.FC = () => {
           </div>
 
           <div className="mb-2">
-            <div className="flex justify-between text-[10px] font-bold text-white/60 uppercase tracking-wide mb-1">
+            <div className="flex justify-between text-caption font-bold text-white/60 uppercase tracking-wide mb-1">
               <span>Lvl {level}</span>
               <span>Lvl {level + 1}</span>
             </div>
             <div className="h-3 rounded-full bg-white/20 overflow-hidden">
               <div className="h-full rounded-full bg-white transition-all duration-700" style={{ width: `${Math.max(progress, 5)}%` }} />
             </div>
-            <p className="text-[10px] font-bold text-white/60 mt-1 text-right uppercase">{xpToNext} XP to go</p>
+            <p className="text-caption font-bold text-white/60 mt-1 text-right uppercase">{xpToNext} XP to go</p>
           </div>
 
           {todayXp > 0 && (

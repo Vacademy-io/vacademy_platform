@@ -848,6 +848,18 @@ class RenderWorker:
             if on_progress:
                 on_progress(75)
 
+            # ── Collect HTML <video> audio ──
+            # Playwright screenshots are silent, so an UNMUTED <video> in the
+            # shot HTML (embedded clip, AI_VIDEO_HERO intrinsic audio) is
+            # inaudible in the MP4 unless we extract its audio and mux it at the
+            # shot's inTime. Non-fatal: a failure here just ships the video
+            # without that track rather than failing the whole render.
+            try:
+                video_audio_items = self._collect_video_audio(tl_entries, work_dir)
+            except Exception as _vae:
+                logger.warning(f"[VIDEO-AUDIO] collection failed (continuing without): {_vae}")
+                video_audio_items = []
+
             # ── Assemble with FFmpeg ──
             logger.info("Assembling video with FFmpeg...")
             # Frames rendered at native resolution (1080p/1920p).
@@ -872,8 +884,11 @@ class RenderWorker:
             for p, _ in valid_extra:
                 ffmpeg_cmd += ["-i", str(p)]
             # SFX cue inputs come after extras so the input-index math stays
-            # additive: 0=frames, 1=narration, 2..2+E-1=extras, 2+E..=sfx.
+            # additive: 0=frames, 1=narration, 2..2+E-1=extras, 2+E..=sfx,
+            # then HTML <video> audio after the sfx block.
             for p, _ in valid_sfx:
+                ffmpeg_cmd += ["-i", str(p)]
+            for p, _ in video_audio_items:
                 ffmpeg_cmd += ["-i", str(p)]
 
             # Build filter_complex
@@ -1012,7 +1027,35 @@ class RenderWorker:
                 )
                 final_nar_label = "[nar_duct]"
 
-            audio_labels = [final_nar_label, *extra_labels, *sfx_labels]
+            # Per HTML <video> audio: play from 0 at the shot's inTime, trimmed
+            # to the shot window. Anchored to inTime (the same timebase the
+            # frames use — see generate_video.py's seek: relTime = state.t -
+            # inTime), NOT audio_delay, so the audio lands exactly where the
+            # video's pixels are in the assembled MP4. `atrim`+`asetpts` cut the
+            # source to the shot length and reset its clock so `adelay` shifts
+            # it to inTime; longer-than-source shots just go silent after EOF
+            # (no loop — matches what a heard clip expects).
+            video_input_base = sfx_input_base + len(valid_sfx)
+            video_labels: list[str] = []
+            for rel_idx, (_, spec) in enumerate(video_audio_items):
+                abs_idx = video_input_base + rel_idx
+                delay_ms = max(0, int(round(float(spec.get("delay", 0.0)) * 1000)))
+                seg_dur = max(0.05, float(spec.get("duration", 0.0)))
+                vol = float(spec.get("volume", 1.0))
+                label = f"vid{rel_idx}"
+                chain = f"[{abs_idx}:a]atrim=0:{seg_dur:.3f},asetpts=PTS-STARTPTS"
+                if abs(vol - 1.0) > 1e-3:
+                    chain += f",volume={vol:.4f}"
+                chain += f",adelay={delay_ms}|{delay_ms},{FMT_NORM}[{label}]"
+                filter_parts.append(chain)
+                video_labels.append(f"[{label}]")
+
+            audio_labels = [final_nar_label, *extra_labels, *sfx_labels, *video_labels]
+            if video_labels:
+                logger.info(
+                    f"[AUDIO-MIX] +{len(video_labels)} HTML <video> audio track(s) "
+                    f"muxed at their shot inTimes"
+                )
 
             if valid_sfx:
                 logger.info(
@@ -1381,6 +1424,172 @@ class RenderWorker:
             logger.info(f"  ✅ Composited {last_frame_num - first_frame_num + 1} frames")
 
         cap.release()
+
+    def _collect_video_audio(self, tl_entries: list, work_dir: Path) -> "list[tuple[Path, dict]]":
+        """Extract audio specs for every UNMUTED <video> in the timeline HTML.
+
+        Playwright screenshots capture pixels only, so a <video> playing audio
+        in the browser is silent in the rendered MP4 — the FFmpeg assembly
+        otherwise mixes narration + extra tracks + SFX but never the videos'
+        own audio. This walks each timeline entry's HTML, finds unmuted <video>
+        tags, downloads the source once per URL, probes for an audio stream,
+        and returns list[(local_path, {delay, duration, volume, url})] so
+        render() can mux each at its shot's inTime.
+
+        MUTED videos are skipped by design — that's how the audio-policy layer
+        marks "narration plays, video is silent" (narration_only AI_VIDEO_HERO,
+        decorative loops). UNMUTED videos are the ones meant to be heard
+        (AI_VIDEO_HERO intrinsic audio, embedded clips). SOURCE_CLIP videos are
+        skipped here (their tag is stripped pre-render and they composite via
+        OpenCV; their audio is a separate path).
+        """
+        import hashlib
+        import re
+
+        _video_block = re.compile(r"<video\b([^>]*)>(.*?)</video>", re.IGNORECASE | re.DOTALL)
+        _src_attr = re.compile(r"""\bsrc\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+        _muted_attr = re.compile(r"\bmuted\b", re.IGNORECASE)
+        _vol_attr = re.compile(r"""\bdata-(?:render-)?volume\s*=\s*["']([0-9.]+)["']""", re.IGNORECASE)
+
+        specs: "list[tuple[Path, dict]]" = []
+        url_to_path: "dict[str, Optional[Path]]" = {}
+
+        for entry in tl_entries:
+            html = entry.get("html") or ""
+            if not html or "<video" not in html.lower():
+                continue
+            try:
+                in_time = float(entry.get("inTime", 0) or 0)
+                exit_time = float(entry.get("exitTime", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            shot_dur = exit_time - in_time
+            if shot_dur <= 0:
+                continue
+            for m in _video_block.finditer(html):
+                attrs, inner = m.group(1) or "", m.group(2) or ""
+                if _muted_attr.search(attrs):
+                    continue  # muted by design — narration plays instead
+                if "data-source-clip" in attrs.lower():
+                    continue  # composited separately
+                _sm = _src_attr.search(attrs) or _src_attr.search(inner)
+                if not _sm:
+                    continue
+                src_raw = _sm.group(1).strip()
+                is_data_uri = src_raw[:5].lower() == "data:"
+                # Strip a #t= media fragment for real URLs — the renderer seeks
+                # every video from 0 at the shot's inTime (relTime % duration),
+                # so audio starts from 0 too. Data URIs are left intact (base64
+                # payloads never contain '#'; splitting could corrupt them).
+                src = src_raw if is_data_uri else src_raw.split("#", 1)[0]
+                if not src:
+                    continue
+                vol = 1.0
+                _vm = _vol_attr.search(attrs)
+                if _vm:
+                    try:
+                        vol = max(0.0, min(2.0, float(_vm.group(1))))
+                    except (TypeError, ValueError):
+                        vol = 1.0
+                if src not in url_to_path:
+                    if is_data_uri:
+                        _vp = self._decode_data_uri_video(src, work_dir)
+                        if _vp is None:
+                            url_to_path[src] = None
+                        else:
+                            url_to_path[src] = _vp if self._has_audio_stream(_vp) else None
+                            if url_to_path[src] is None:
+                                logger.info("[VIDEO-AUDIO] no audio stream in data: URI video — skipping")
+                    else:
+                        _key = hashlib.md5(src.encode()).hexdigest()[:10]
+                        _ext = src.rsplit(".", 1)[-1].split("?")[0].lower() or "mp4"
+                        if len(_ext) > 5:
+                            _ext = "mp4"
+                        _vp = work_dir / f"htmlvideo_{_key}.{_ext}"
+                        try:
+                            self._download(src, _vp)
+                        except Exception as exc:
+                            logger.warning(f"[VIDEO-AUDIO] download failed for {src[:120]}: {exc}")
+                            url_to_path[src] = None
+                        else:
+                            url_to_path[src] = _vp if self._has_audio_stream(_vp) else None
+                            if url_to_path[src] is None:
+                                logger.info(f"[VIDEO-AUDIO] no audio stream in {src[:120]} — skipping")
+                _path = url_to_path.get(src)
+                if _path is None:
+                    continue
+                _disp_url = f"data:[{len(src)} chars]" if is_data_uri else src
+                specs.append((_path, {"delay": in_time, "duration": shot_dur, "volume": vol, "url": _disp_url}))
+
+        if specs:
+            _uniq = sum(1 for v in url_to_path.values() if v is not None)
+            logger.info(
+                f"[VIDEO-AUDIO] {len(specs)} unmuted <video> audio track(s) "
+                f"across {_uniq} unique file(s) will be muxed at their shot inTimes"
+            )
+        return specs
+
+    def _decode_data_uri_video(self, data_uri: str, work_dir: Path) -> Optional[Path]:
+        """Decode a `data:` URI <video> source to a temp file for audio extraction.
+
+        Handles `data:<mediatype>[;base64],<payload>`. Base64 payloads are
+        decoded (whitespace/newlines from HTML wrapping are tolerated);
+        non-base64 payloads are percent-decoded. Returns the written Path, or
+        None if the URI is malformed / empty. The file is named by a hash of
+        the URI so identical data URIs across shots dedupe to one file.
+        """
+        import base64
+        import hashlib
+        from urllib.parse import unquote_to_bytes
+
+        try:
+            header, sep, payload = data_uri.partition(",")
+            if not sep or not payload:
+                return None
+            meta = header[5:]  # strip leading "data:"
+            is_b64 = ";base64" in meta.lower()
+            mediatype = (meta.split(";", 1)[0].strip().lower() or "video/mp4")
+            ext = {
+                "video/mp4": "mp4",
+                "video/webm": "webm",
+                "video/ogg": "ogv",
+                "video/quicktime": "mov",
+                "video/x-matroska": "mkv",
+            }.get(mediatype, "mp4")
+            if is_b64:
+                # validate=False discards HTML-introduced whitespace/newlines
+                # before the padding check.
+                data = base64.b64decode(payload, validate=False)
+            else:
+                data = unquote_to_bytes(payload)
+            if not data:
+                return None
+            key = hashlib.md5(data_uri.encode("utf-8", "ignore")).hexdigest()[:10]
+            _vp = work_dir / f"htmlvideo_data_{key}.{ext}"
+            _vp.write_bytes(data)
+            logger.info(
+                f"[VIDEO-AUDIO] decoded data: URI video → {_vp.name} "
+                f"({len(data) / 1024:.0f} KB, {mediatype})"
+            )
+            return _vp
+        except Exception as exc:
+            logger.warning(
+                f"[VIDEO-AUDIO] failed to decode data: URI video "
+                f"({len(data_uri)} chars): {exc}"
+            )
+            return None
+
+    def _has_audio_stream(self, path: Path) -> bool:
+        """True if `path` has at least one audio stream (ffprobe)."""
+        try:
+            out = subprocess.check_output(
+                ["ffprobe", "-v", "error", "-select_streams", "a",
+                 "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+                timeout=30,
+            )
+            return b"audio" in out
+        except Exception:
+            return False
 
     def _upload(self, local_path: Path, s3_key: str) -> str:
         """Upload a file to S3 and return the public URL."""

@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
-import { FcGoogle } from "react-icons/fc";
-import { ArrowRight } from "lucide-react";
+import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: Google brand logo
+import { ArrowRight } from "@phosphor-icons/react";
 import { LOGIN_URL_GOOGLE_GITHUB } from "@/constants/urls";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
@@ -161,7 +161,7 @@ export function ModularDynamicLoginContainer({
           console.log('[ModularDynamicLoginContainer] 🏫 Fetching details for institute:', instituteId);
           const details = await fetchAndStoreInstituteDetails(instituteId, userId);
           if (setPrimaryColor) {
-            setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
+            setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22"); // design-lint-ignore: default brand color fallback
           }
           await fetchAndStoreStudentDetails(instituteId, userId);
           console.log('[ModularDynamicLoginContainer] ✅ Institute and student details fetched successfully');
@@ -636,7 +636,7 @@ export function ModularDynamicLoginContainer({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="min-h-[400px] flex items-center justify-center py-12 px-6"
+          className="min-h-96 flex items-center justify-center py-12 px-6"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -653,7 +653,7 @@ export function ModularDynamicLoginContainer({
               }}
               className="inline-block"
             >
-              <ClipLoader size={36} color="#374151" />
+              <ClipLoader size={36} color="hsl(var(--muted-foreground))" />
             </motion.div>
             <div className="space-y-2">
               <h3 className="text-base font-medium text-gray-900">

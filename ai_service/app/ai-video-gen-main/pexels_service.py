@@ -207,6 +207,44 @@ class PexelsService:
             "pexels_url": photo.get("url", ""),  # link back to Pexels page
         }
 
+    def search_photos_many(
+        self,
+        query: str,
+        orientation: str = "landscape",
+        per_page: int = 24,
+    ) -> List[Dict[str, Any]]:
+        """Return up to `per_page` normalized photo results (not just the best
+        match). Used by the editor's media picker grid. Shape per item:
+        {url, thumb, photographer, photographer_url, alt, source_url, width, height}."""
+        if not self.is_available:
+            return []
+        params = {
+            "query": query,
+            "orientation": orientation,
+            "per_page": min(max(per_page, 1), 80),
+            "size": "large",
+        }
+        data = self._request(self.PHOTOS_URL, params)
+        if not data:
+            return []
+        out: List[Dict[str, Any]] = []
+        for p in data.get("photos", []):
+            src = p.get("src", {})
+            url = src.get("large2x") or src.get("large") or src.get("original")
+            if not url:
+                continue
+            out.append({
+                "url": url,
+                "thumb": src.get("medium") or src.get("small") or url,
+                "photographer": p.get("photographer", ""),
+                "photographer_url": p.get("photographer_url", ""),
+                "alt": p.get("alt", query),
+                "source_url": p.get("url", ""),
+                "width": p.get("width"),
+                "height": p.get("height"),
+            })
+        return out
+
     # ── Video Search ────────────────────────────────────────────────────
 
     def search_videos(

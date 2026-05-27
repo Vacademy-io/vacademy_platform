@@ -3,10 +3,10 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Lock } from "lucide-react";
-import { SiStripe } from "react-icons/si";
+import { Lock } from "@phosphor-icons/react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand logo (Simple Icons; no Phosphor equivalent)
 import { EnvelopeSimple } from "@phosphor-icons/react";
-import { Loader2, CheckCircle, CreditCard } from "lucide-react";
+import { SpinnerGap, CheckCircle, CreditCard } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
   formatCurrency,
@@ -231,16 +231,16 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
             style: {
               base: {
                 fontSize: "16px",
-                color: "#374151",
+                color: "#374151", // design-lint-ignore: payment SDK element style
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 "::placeholder": {
-                  color: "#9CA3AF",
+                  color: "#9CA3AF", // design-lint-ignore: payment SDK element style
                 },
                 padding: "8px 0",
               },
               invalid: {
-                color: "#DC2626",
+                color: "#DC2626", // design-lint-ignore: payment SDK element style
               },
             },
             hidePostalCode: true,
@@ -584,8 +584,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     return (
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
-          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
             <DialogPrimitive.Title className="sr-only">
               Loading Subscription Options
             </DialogPrimitive.Title>
@@ -594,7 +594,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
               this course.
             </DialogPrimitive.Description>
             <div className="text-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading subscription options...</p>
             </div>
           </DialogPrimitive.Content>
@@ -608,8 +608,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     return (
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
-          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
             <DialogPrimitive.Title className="sr-only">
               Subscription Error
             </DialogPrimitive.Title>
@@ -637,9 +637,9 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     <>
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className={`fixed left-1/2 top-1/2 z-[9999] w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-[90vh] overflow-y-auto ${
+            className={`fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-screen-90 overflow-y-auto ${
               step === "plans"
                 ? "max-w-sm sm:max-w-2xl lg:max-w-4xl"
                 : "max-w-md"
@@ -1007,7 +1007,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   ) : (
                     <div
-                      className={`border rounded p-3 text-sm w-full min-h-[48px] ${
+                      className={`border rounded p-3 text-sm w-full min-h-12 ${
                         cardElementError
                           ? "border-red-500 bg-red-50"
                           : "border-gray-300"
@@ -1015,7 +1015,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     >
                       {!cardElementReady && (
                         <div className="flex items-center justify-center h-full text-gray-500">
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
                           Loading payment form...
                         </div>
                       )}
@@ -1040,7 +1040,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     >
                       {processingPayment ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <SpinnerGap className="w-4 h-4 animate-spin" />
                           Processing...
                         </>
                       ) : (

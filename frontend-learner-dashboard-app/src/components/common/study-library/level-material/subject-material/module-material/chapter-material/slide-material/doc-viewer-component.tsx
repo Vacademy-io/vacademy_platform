@@ -265,7 +265,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
 
   if (error) {
     return (
-      <div className="flex h-[600px] items-center justify-center bg-gradient-to-br from-red-50 to-red-100 rounded-2xl border border-red-200 shadow-lg">
+      <div className="flex h-reg-600 items-center justify-center bg-gradient-to-br from-red-50 to-red-100 rounded-2xl border border-red-200 shadow-lg">
         <div className="text-center p-8 max-w-md">
           <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,7 +284,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
 
   if (isLoading) {
     return (
-      <div className="flex h-[600px] items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl border border-blue-200 shadow-lg">
+      <div className="flex h-reg-600 items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl border border-blue-200 shadow-lg">
         <div className="text-center p-8">
           <div className="relative w-16 h-16 mx-auto mb-6">
             <div className="absolute inset-0 border-4 border-blue-200 rounded-full animate-pulse"></div>
@@ -306,7 +306,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
   }
 
   return (
-    <div ref={containerRef} className="min-h-[40vh] sm:min-h-[50vh] lg:min-h-[60vh] max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <div ref={containerRef} className="min-h-screen-40 sm:min-h-screen-50 lg:min-h-screen-60 max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300"> {/* design-lint-ignore: viewport math */}
       {isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
           {/* Always use htmlContent if it exists (even if markdownContent also exists) for mermaid support */}
@@ -532,7 +532,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
             .markdown-content {
               font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
               line-height: 1.7;
-              color: #374151;
+              color: #374151; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
               max-width: none;
             }
             
@@ -569,17 +569,17 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
             }
             
             .markdown-content *::-webkit-scrollbar-track {
-              background: #f1f5f9;
+              background: #f1f5f9; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
               border-radius: 3px;
             }
-            
+
             .markdown-content *::-webkit-scrollbar-thumb {
-              background: #cbd5e1;
+              background: #cbd5e1; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
               border-radius: 3px;
             }
-            
+
             .markdown-content *::-webkit-scrollbar-thumb:hover {
-              background: #94a3b8;
+              background: #94a3b8; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
             }
           `}</style>
         </div>
@@ -591,16 +591,16 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               padding: 2rem;
               font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
               line-height: 1.6;
-              color: #374151;
+              color: #374151; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
             }
-            
+
             .docx-content .docx-viewer h1,
             .docx-content .docx-viewer h2,
             .docx-content .docx-viewer h3,
             .docx-content .docx-viewer h4,
             .docx-content .docx-viewer h5,
             .docx-content .docx-viewer h6 {
-              color: #1f2937;
+              color: #1f2937; /* design-lint-ignore: injected CSS string, cannot use Tailwind token */
               font-weight: 600;
               margin-top: 1.5rem;
               margin-bottom: 1rem;

@@ -35,13 +35,13 @@ import {
 import { formatDuration } from "@/constants/helper";
 import { toast } from "sonner";
 import {
-  CalendarDays,
+  CalendarDots,
   Timer,
-  RotateCw,
+  ArrowClockwise,
   Clock,
   Eye,
-  AlertCircle,
-} from "lucide-react";
+  WarningCircle,
+} from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 interface AssessmentProps {
@@ -269,7 +269,7 @@ export const AssessmentCard = ({
               {/* Start Time */}
               {assessmentInfo.play_mode !== "MOCK" && (
                 <InfoItem
-                  icon={<CalendarDays className="w-4 h-4 text-blue-600" />}
+                  icon={<CalendarDots className="w-4 h-4 text-blue-600" />}
                   bgClass="bg-blue-50"
                   label="Starts"
                   value={dayjs(assessmentInfo.bound_start_time).format(
@@ -317,7 +317,7 @@ export const AssessmentCard = ({
 
               {/* Attempts */}
               <InfoItem
-                icon={<RotateCw className="w-4 h-4 text-green-600" />}
+                icon={<ArrowClockwise className="w-4 h-4 text-green-600" />}
                 bgClass="bg-green-50"
                 label="Attempts"
                 value={`${assessmentInfo.created_attempts ?? 0} / ${
@@ -336,7 +336,7 @@ export const AssessmentCard = ({
             assessmentType !== assessmentTypes.PAST && (
               <Button
                 className={cn(
-                  "w-full sm:w-auto min-w-[140px] font-semibold transition-all",
+                  "w-full sm:w-auto min-w-36 font-semibold transition-all",
                 )}
                 variant={
                   isResume
@@ -359,7 +359,7 @@ export const AssessmentCard = ({
           {assessmentType === assessmentTypes.UPCOMING && (
             <Button
               variant="outline"
-              className="w-full sm:w-auto min-w-[140px] cursor-not-allowed text-muted-foreground"
+              className="w-full sm:w-auto min-w-36 cursor-not-allowed text-muted-foreground"
               disabled
             >
               Upcoming
@@ -373,7 +373,7 @@ export const AssessmentCard = ({
               <>
                 <Button
                   variant="outline"
-                  className="w-full sm:w-auto min-w-[140px] text-primary hover:text-primary hover:bg-primary/5"
+                  className="w-full sm:w-auto min-w-36 text-primary hover:text-primary hover:bg-primary/5"
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate({
@@ -392,7 +392,7 @@ export const AssessmentCard = ({
                 </Button>
                 <Button
                   variant="outline"
-                  className="w-full sm:w-auto min-w-[140px] text-primary hover:text-primary hover:bg-primary/5"
+                  className="w-full sm:w-auto min-w-36 text-primary hover:text-primary hover:bg-primary/5"
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate({
@@ -414,7 +414,7 @@ export const AssessmentCard = ({
             assessmentInfo.report_release_status !== 'RELEASED' && (
               <Button
                 variant="outline"
-                className="w-full sm:w-auto min-w-[140px] cursor-not-allowed text-muted-foreground"
+                className="w-full sm:w-auto min-w-36 cursor-not-allowed text-muted-foreground"
                 disabled
               >
                 Results Pending
@@ -429,7 +429,7 @@ export const AssessmentCard = ({
           <DialogHeader>
             <div className="flex items-center gap-2 mb-2">
               <div className="p-2 bg-yellow-100 rounded-full">
-                <AlertCircle className="w-5 h-5 text-yellow-600" />
+                <WarningCircle className="w-5 h-5 text-yellow-600" />
               </div>
               <DialogTitle className="text-lg font-semibold">
                 Assessment Unavailable
@@ -512,7 +512,7 @@ const InfoItem = ({
     <div className="flex items-start gap-3">
       <div className={cn("p-2 rounded-lg shrink-0", bgClass)}>{icon}</div>
       <div className="flex flex-col">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+        <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
           {label}
         </span>
         <span className="text-sm font-medium text-foreground leading-tight mt-0.5">

@@ -16,15 +16,15 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  Trash2,
+  Trash,
   Camera,
   Image,
-  FileType,
+  FileDashed,
   File,
-  Loader2,
-  AlertTriangle,
+  SpinnerGap,
+  Warning,
   ShieldCheck,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 
 interface DocumentsModuleProps {
   child: ChildProfile;
@@ -261,7 +261,7 @@ function DocumentCard({
                 {doc.document_name}
               </p>
               {doc.is_required && (
-                <Badge variant="outline" className="text-[9px] shrink-0">
+                <Badge variant="outline" className="text-caption shrink-0">
                   Required
                 </Badge>
               )}
@@ -275,7 +275,7 @@ function DocumentCard({
 
             {/* Status Badge */}
             <Badge
-              className={`${statusConfig.badgeBg} ${statusConfig.badgeText} text-[10px] mb-2`}
+              className={`${statusConfig.badgeBg} ${statusConfig.badgeText} text-caption mb-2`}
             >
               {statusConfig.statusIcon}
               {statusConfig.label}
@@ -290,7 +290,7 @@ function DocumentCard({
                     {doc.uploaded_file_name}
                   </p>
                   {doc.uploaded_at && (
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-caption text-muted-foreground">
                       Uploaded{" "}
                       {new Date(doc.uploaded_at).toLocaleDateString("en-US", {
                         month: "short",
@@ -308,9 +308,9 @@ function DocumentCard({
                     disabled={isDeleting}
                   >
                     {isDeleting ? (
-                      <Loader2 size={12} className="animate-spin" />
+                      <SpinnerGap size={12} className="animate-spin" />
                     ) : (
-                      <Trash2 size={12} />
+                      <Trash size={12} />
                     )}
                   </Button>
                 )}
@@ -321,7 +321,7 @@ function DocumentCard({
             {isRejected && doc.rejection_reason && (
               <div className="mt-2 p-2 rounded-lg bg-destructive/5 border border-destructive/20">
                 <p className="text-xs text-destructive flex items-start gap-1.5">
-                  <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                  <Warning size={12} className="shrink-0 mt-0.5" />
                   {doc.rejection_reason}
                 </p>
               </div>
@@ -349,9 +349,9 @@ function DocumentCard({
                   disabled={isUploading}
                 >
                   {isUploading ? (
-                    <Loader2 size={12} className="animate-spin" />
+                    <SpinnerGap size={12} className="animate-spin" />
                   ) : (
-                    <Upload size={12} />
+                    <UploadSimple size={12} />
                   )}
                   {isRejected ? "Re-upload" : "Upload"}
                 </Button>
@@ -367,7 +367,7 @@ function DocumentCard({
                   Camera
                 </Button>
 
-                <span className="text-[10px] text-muted-foreground ml-auto">
+                <span className="text-caption text-muted-foreground ml-auto">
                   Max {doc.max_size_mb}MB •{" "}
                   {doc.allowed_formats.join(", ").toUpperCase()}
                 </span>
@@ -385,7 +385,7 @@ function DocumentCard({
 function FileIcon({ filename }: { filename: string }) {
   const ext = filename.split(".").pop()?.toLowerCase();
   if (ext === "pdf")
-    return <FileType size={16} className="text-red-500 shrink-0" />;
+    return <FileDashed size={16} className="text-red-500 shrink-0" />;
   if (["jpg", "jpeg", "png", "webp"].includes(ext || ""))
     return <Image size={16} className="text-blue-500 shrink-0" />;
   return <File size={16} className="text-muted-foreground shrink-0" />;
@@ -407,7 +407,7 @@ function getDocStatusConfig(status: string) {
   > = {
     NOT_UPLOADED: {
       label: "Not Uploaded",
-      icon: <Upload size={18} className="text-muted-foreground" />,
+      icon: <UploadSimple size={18} className="text-muted-foreground" />,
       iconBg: "bg-muted",
       badgeBg: "bg-gray-100 dark:bg-gray-800",
       badgeText: "text-gray-600 dark:text-gray-300",
@@ -419,7 +419,7 @@ function getDocStatusConfig(status: string) {
       iconBg: "bg-blue-100 dark:bg-blue-900/30",
       badgeBg: "bg-blue-100 dark:bg-blue-900/30",
       badgeText: "text-blue-700 dark:text-blue-300",
-      statusIcon: <Upload size={10} className="mr-1" />,
+      statusIcon: <UploadSimple size={10} className="mr-1" />,
     },
     UNDER_REVIEW: {
       label: "Under Review",

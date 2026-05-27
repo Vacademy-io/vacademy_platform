@@ -265,7 +265,7 @@ const CourseCatalougePage: React.FC<CourseCatalougePageProps> = ({ instituteId }
                 autoOpenDonation={autoOpenDonation}
             />
 
-            <div className="relative h-[250px] sm:h-[300px] lg:h-[370px]">
+            <div className="relative h-64 sm:h-72 lg:h-96">
                 {/* Transparent blue overlay */}
                 {instituteData?.cover_image_file_id ? (
                     <div className="pointer-events-none absolute inset-0 z-10 bg-blue-900/50" />

@@ -86,7 +86,7 @@ export default function RegistrationForm({
             onSubmit={handleSubmit(onSubmit, onError)}
             className="flex flex-col gap-5"
           >
-            <div className="flex flex-col gap-4 overflow-auto max-h-[50vh] pr-1">
+            <div className="flex flex-col gap-4 overflow-auto max-h-screen-50 pr-1">
               {[...(customFields || [])].sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0)).map((responseField) => {
                 const renderType = getFieldRenderType(
                   responseField.fieldKey,
@@ -152,7 +152,7 @@ export default function RegistrationForm({
                           _id: idx,
                         }))}
                         control={form.control}
-                        className="mt-[8px] w-full font-thin"
+                        className="mt-2 w-full font-thin"
                         onSelect={(value) => {
                           form.setValue("email", value);
                           onEmailChange(value);

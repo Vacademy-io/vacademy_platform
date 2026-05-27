@@ -16,17 +16,17 @@ import {
 import { fetchInstituteCatalogueTags } from "../../-services/institute-tags-service";
 import { Button } from "@/components/ui/button";
 import {
-  Search,
+  MagnifyingGlass,
   ShoppingCart,
-  Filter,
-  ChevronUp,
-  ChevronDown,
+  Funnel,
+  CaretUp,
+  CaretDown,
   X,
   Plus,
   Minus,
   ShoppingBag,
-  Trash2,
-} from "lucide-react";
+  Trash,
+} from "@phosphor-icons/react";
 import { toTitleCase, formatTagForDisplay } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
@@ -521,7 +521,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             {/* SEARCH BAR (added) */}
             <div className={`w-full overflow-hidden transition-all duration-300 ease-in-out px-2 origin-top ${togle ? "max-h-20 opacity-100 py-2" : "max-h-0 opacity-0 py-0"}`}>
               <div className="relative border-gray-400">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <MagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -580,12 +580,12 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                     {storeFilter ? activeStoreName || "Selected store" : "All stores"}
-                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${storeMenuOpen ? "rotate-180" : ""}`} />
+                    <CaretDown className={`h-3.5 w-3.5 transition-transform ${storeMenuOpen ? "rotate-180" : ""}`} />
                   </button>
                   {storeMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setStoreMenuOpen(false)} />
-                      <div className="absolute left-0 z-50 mt-2 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                      <div className="absolute left-0 z-50 mt-2 min-w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                         {cartMode !== "rent" && (
                           <button
                             onClick={() => {
@@ -733,7 +733,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                     {/* Book Cover */}
                     <div className="relative aspect-[9/16] rounded-xl overflow-hidden shadow-lg transition-all duration-500 ease-out md:group-hover:-translate-y-2 ring-1 ring-black/5 bg-gradient-to-br from-amber-50 via-white to-amber-100">
                       {/* Decorative frame inner shadow - desktop only (mobile has no hover so shows expanded state) */}
-                      <div className="absolute inset-0 shadow-[inset_0_0_0_1px_rgba(180,140,80,0.15),inset_0_2px_8px_rgba(180,140,80,0.08)] opacity-0 md:opacity-100 md:group-hover:opacity-0 transition-opacity duration-500 ease-out pointer-events-none rounded-xl" />
+                      <div className="absolute inset-0 shadow-card-inset opacity-0 md:opacity-100 md:group-hover:opacity-0 transition-opacity duration-500 ease-out pointer-events-none rounded-xl" />
 
                       {/* Padded image wrapper - mobile always expanded; desktop: p-4 default, collapses to p-0 on hover */}
                       <div className="absolute inset-0 p-0 md:p-4 md:group-hover:p-0 transition-[padding] duration-500 ease-out">
@@ -744,20 +744,20 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       <div className="absolute top-2 left-2 z-20 flex flex-col items-start gap-1">
                         <OfferBadge actual={book.price} elevated={book.elevatedPrice} />
                         {!storeFilter && (book.storeCount ?? 0) > 1 ? (
-                          <div className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
+                          <div className="px-2 py-1 rounded-lg text-caption font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                             <span className="text-blue-700 uppercase tracking-wider">Available at {book.storeCount} stores</span>
                           </div>
                         ) : book.available_slots !== undefined && (
-                          <div className="px-2 py-1 rounded-lg text-[10px] font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
+                          <div className="px-2 py-1 rounded-lg text-caption font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
                             {book.available_slots > 5 ? (
                               <>
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-glow-live-green" />
                                 <span className="text-green-700 uppercase tracking-wider">In Stock</span>
                               </>
                             ) : book.available_slots > 0 ? (
                               <>
-                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse shadow-glow-live-orange" />
                                 <span className="text-orange-700 uppercase tracking-wider">Only {book.available_slots} Left</span>
                               </>
                             ) : (
@@ -834,7 +834,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                       </div>
                                       {/* Go to Cart button */}
                                       <Button
-                                        className="h-7 px-2 bg-primary-400 hover:bg-primary-500 text-white text-[11px] font-semibold rounded-lg shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                        className="h-7 px-2 bg-primary-400 hover:bg-primary-500 text-white text-caption font-semibold rounded-lg shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                                         onClick={() => navigate({ to: `/${tagName}/cart` })}
                                       >
                                         <ShoppingBag className="h-3 w-3" />
@@ -848,7 +848,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                 return (
                                   <div className="flex items-center gap-1.5 w-full min-w-0">
                                     <Button
-                                      className="flex-1 min-w-0 px-2 h-8 bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-semibold shadow-md rounded-lg border border-red-200 flex items-center justify-center gap-1 transition-all duration-200 active:scale-[0.98]"
+                                      className="flex-1 min-w-0 px-2 h-8 bg-red-50 hover:bg-red-100 text-red-600 text-caption font-semibold shadow-md rounded-lg border border-red-200 flex items-center justify-center gap-1 transition-all duration-200 active:scale-[0.98]"
                                       onClick={async () => {
                                         if (book.enrollInviteId) {
                                           await updateQuantity(book.enrollInviteId, 0);
@@ -857,11 +857,11 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                         }
                                       }}
                                     >
-                                      <Trash2 className="h-3 w-3 flex-shrink-0" />
+                                      <Trash className="h-3 w-3 flex-shrink-0" />
                                       <span className="truncate">Remove</span>
                                     </Button>
                                     <Button
-                                      className="h-8 px-2 bg-primary-400 hover:bg-primary-500 text-white text-[11px] font-semibold rounded-lg shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                                      className="h-8 px-2 bg-primary-400 hover:bg-primary-500 text-white text-caption font-semibold rounded-lg shadow-md flex items-center gap-1 flex-shrink-0 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
                                       onClick={() => navigate({ to: `/${tagName}/cart` })}
                                     >
                                       <ShoppingBag className="h-3 w-3" />
@@ -924,7 +924,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                             size="md"
                           />
                           {!storeFilter && book.sessionName && (
-                            <p className="text-[11px] text-gray-500 mt-0.5">
+                            <p className="text-caption text-gray-500 mt-0.5">
                               from <span className="font-medium text-gray-700">{book.sessionName}</span>
                               {(book.storeCount ?? 0) > 1 ? " — lowest price" : ""}
                             </p>
@@ -952,9 +952,9 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                           <div className="flex flex-col items-end gap-1">
                             {/* Tags display */}
                             {book.comma_separeted_tags && (
-                              <div className="flex flex-wrap justify-end gap-1 max-w-[120px]">
+                              <div className="flex flex-wrap justify-end gap-1 max-w-32">
                                 {book.comma_separeted_tags.split(',').filter(t => t.trim()).slice(0, 2).map((tag, i) => (
-                                  <span key={i} className="text-[10px] font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 line-clamp-1">
+                                  <span key={i} className="text-caption font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100 line-clamp-1">
                                     {tag.trim()}
                                   </span>
                                 ))}
@@ -970,7 +970,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             </div>
 
             {/* Infinite Scroll Loading Indicator */}
-            <div ref={loadMoreRef} className="mt-8 flex justify-center items-center min-h-[100px]">
+            <div ref={loadMoreRef} className="mt-8 flex justify-center items-center min-h-24">
               {isFetchingNextPage && (
                 <div className="flex flex-col items-center gap-3">
                   <div className="flex gap-2">

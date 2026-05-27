@@ -1,13 +1,12 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Loader2, Mail, MessageCircle } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { CheckCircle, SpinnerGap, Envelope, ChatCircle, type Icon } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusCard } from "./StatusCard";
 
 interface UnsubscribeSummaryCardProps {
-  icon: LucideIcon;
+  icon: Icon;
   channelLabel: string;
 
   isError: boolean;
@@ -95,15 +94,15 @@ const SummaryIllustration = ({
   channelLabel,
 }: {
   state: "idle" | "pending" | "success" | "error";
-  icon: LucideIcon;
+  icon: Icon;
   channelLabel: string;
 }) => {
   const getBaseIcon = () => {
     if (channelLabel.toLowerCase().includes("whatsapp")) {
-      return MessageCircle;
+      return ChatCircle;
     }
     if (channelLabel.toLowerCase().includes("email")) {
-      return Mail;
+      return Envelope;
     }
     return Icon;
   };
@@ -122,7 +121,7 @@ const SummaryIllustration = ({
           animate={{ scale: 1, opacity: 1 }}
           transition={{ duration: 0.24, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
         >
-          <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+          <CheckCircle className="h-8 w-8 text-emerald-600" />
         </motion.span>
       </motion.div>
     );
@@ -137,7 +136,7 @@ const SummaryIllustration = ({
         transition={{ duration: 0.2 }}
         className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/80 shadow-inner"
       >
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <SpinnerGap className="h-6 w-6 animate-spin text-primary" />
       </motion.div>
     );
   }

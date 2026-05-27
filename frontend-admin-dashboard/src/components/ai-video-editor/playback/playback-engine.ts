@@ -190,20 +190,49 @@ async function scheduleTrack(
     }
 }
 
+/**
+ * Whether per-entry clips should drive narration (and the master MP3 be
+ * muted). Incremental "entry owns its audio clip": this is true ONLY when the
+ * timeline is explicitly flagged fully-migrated (`meta.entries_own_audio`) AND
+ * at least one narration clip is actually present. Until then the master MP3
+ * stays authoritative and per-entry narration clips are skipped to avoid
+ * double-play — the per-entry refs the BE writes on regen/silence ride along
+ * as the future source of truth without changing what you hear today.
+ */
+function entriesOwnAudio(entries: Entry[], entriesOwnFlag: boolean | undefined): boolean {
+    if (!entriesOwnFlag) return false;
+    return entries.some((e) => e.audio?.policy === 'narration_only' && !!e.audio.clip_url);
+}
+
 async function schedulePerEntryAudio(
     ctx: AudioContext,
     gen: number,
     entries: Entry[],
-    playheadStart: number
+    playheadStart: number,
+    ownAudio: boolean
 ) {
-    // Per-entry `audio_url` is mostly used in user_driven mode but some
-    // time_driven shots also carry one. Schedule each so it begins at the
-    // entry's inTime (or `start`) and offsets correctly when starting mid-way.
+    // Resolve each entry's audio source under the dual-read model:
+    //  - new `entry.audio` ref: 'silent' → nothing; 'intrinsic' → always
+    //    layered (source-clip/Veo audio over a muted master window);
+    //    'narration_only' → only when `ownAudio` (else the master MP3 carries it).
+    //  - legacy `entry.audio_url` (no ref): scheduled as before — this is the
+    //    user_driven path where there is no master MP3.
     for (const e of entries) {
-        if (!e.audio_url) continue;
+        let clipUrl: string | undefined;
+        const ref = e.audio;
+        if (ref) {
+            if (ref.policy === 'silent') continue;
+            if (ref.policy === 'intrinsic') clipUrl = ref.clip_url;
+            else if (ownAudio)
+                clipUrl = ref.clip_url; // narration_only
+            else continue; // narration_only but master is authoritative
+        } else if (e.audio_url) {
+            clipUrl = e.audio_url;
+        }
+        if (!clipUrl) continue;
         const timelineStart = e.inTime ?? e.start ?? 0;
         try {
-            const buffer = await decodeForContext(ctx, e.audio_url);
+            const buffer = await decodeForContext(ctx, clipUrl);
             if (isStale(ctx, gen)) return;
             const scheduled = scheduleBuffer({
                 ctx,
@@ -252,11 +281,16 @@ export async function play() {
     };
     rafId = requestAnimationFrame(tick);
 
-    // Schedule audio sources in parallel
+    // Schedule audio sources in parallel. When entries own their audio (fully
+    // migrated), the master narration MP3 is muted and per-entry narration
+    // clips drive playback; otherwise the master plays and per-entry narration
+    // clips are skipped (only intrinsic/legacy per-entry audio layers).
+    const ownAudio = entriesOwnAudio(state.entries, state.meta.entries_own_audio);
     const promises: Promise<void>[] = [];
-    if (state.audioUrl) promises.push(scheduleNarration(ctx, gen, state.audioUrl, startAt));
+    if (state.audioUrl && !ownAudio)
+        promises.push(scheduleNarration(ctx, gen, state.audioUrl, startAt));
     for (const track of state.audioTracks) promises.push(scheduleTrack(ctx, gen, track, startAt));
-    promises.push(schedulePerEntryAudio(ctx, gen, state.entries, startAt));
+    promises.push(schedulePerEntryAudio(ctx, gen, state.entries, startAt, ownAudio));
     await Promise.all(promises);
 }
 

@@ -6,15 +6,15 @@ import {
   Moon,
   Sun,
   Copy,
-  Download,
-  Settings,
-  ChevronDown,
-  ChevronUp,
+  DownloadSimple,
+  Gear,
+  CaretDown,
+  CaretUp,
   X,
-  Minimize2,
-  Maximize2,
-  GripVertical,
-} from "lucide-react";
+  ArrowsIn,
+  ArrowsOut,
+  DotsSixVertical,
+} from "@phosphor-icons/react";
 
 import Editor from "@monaco-editor/react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -875,7 +875,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
     <div className="h-full p-1 relative">
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -963,9 +963,9 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                     size="sm"
                     onClick={handleUserActivity}
                   >
-                    <Settings className="mr-1 size-4" />
+                    <Gear className="mr-1 size-4" />
                     Settings
-                    <ChevronDown className="ml-1 size-3" />
+                    <CaretDown className="ml-1 size-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -1007,7 +1007,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                       handleUserActivity();
                     }}
                   >
-                    <Download className="mr-2 size-4" />
+                    <DownloadSimple className="mr-2 size-4" />
                     Download Code
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -1016,7 +1016,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="flex h-[550px] flex-col">
+          <div className="flex h-reg-550 flex-col">
             <div
               className="flex-1 border-t"
               style={{ height: getEditorHeight() }}
@@ -1052,7 +1052,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                   className="flex h-1 cursor-ns-resize items-center justify-center bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
                   onMouseDown={handleResizeStart}
                 >
-                  <GripVertical className="size-4 text-gray-500" />
+                  <DotsSixVertical className="size-4 text-gray-500" />
                 </div>
 
                 {/* Output Content */}
@@ -1078,9 +1078,9 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                         className="size-8 p-0"
                       >
                         {isOutputFullScreen ? (
-                          <Minimize2 className="size-4" />
+                          <ArrowsIn className="size-4" />
                         ) : (
-                          <Maximize2 className="size-4" />
+                          <ArrowsOut className="size-4" />
                         )}
                       </Button>
                       <Button
@@ -1114,7 +1114,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                   size="sm"
                   onClick={toggleOutputExpanded}
                 >
-                  <ChevronUp className="mr-1 size-4" />
+                  <CaretUp className="mr-1 size-4" />
                   Show Output
                 </Button>
               </div>

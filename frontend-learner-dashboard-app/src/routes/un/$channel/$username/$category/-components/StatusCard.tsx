@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { WarningCircle, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 interface StatusCardProps {
@@ -24,7 +24,7 @@ export const StatusCard = ({
     return (
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-5 shadow-sm">
         <div className="flex items-center gap-2.5">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <SpinnerGap className="h-5 w-5 animate-spin text-primary" />
           <div>
             <p className="text-sm font-medium text-slate-800">
               Updating your preference
@@ -54,7 +54,7 @@ export const StatusCard = ({
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.25, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
           >
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            <CheckCircle className="h-5 w-5 text-emerald-600" />
           </motion.span>
           <div>
             <p className="text-sm font-medium text-emerald-700">Preference updated</p>
@@ -76,7 +76,7 @@ export const StatusCard = ({
   return (
     <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-5 shadow-sm">
       <div className="flex items-start gap-2.5">
-        <AlertCircle className="h-5 w-5 text-rose-600" />
+        <WarningCircle className="h-5 w-5 text-rose-600" />
         <div>
           <p className="text-sm font-medium text-rose-700">
             We couldn&apos;t update this

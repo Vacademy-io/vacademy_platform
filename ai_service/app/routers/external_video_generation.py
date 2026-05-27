@@ -361,6 +361,12 @@ async def generate_video_external(
                         # transaction open across the multi-minute render, which
                         # Postgres then killed (idle-in-transaction timeout).
                         repository=AiVideoRepository(),
+                        # Session-less repo: every get/update opens its own
+                        # short-lived, pre-pinged session and closes it. Sharing
+                        # the long-lived `bg_session` here caused reads to leave a
+                        # transaction open across the multi-minute render, which
+                        # Postgres then killed (idle-in-transaction timeout).
+                        repository=AiVideoRepository(),
                         s3_service=S3Service()
                     )
                     async for event in bg_svc.generate_till_stage(
@@ -676,6 +682,9 @@ async def resume_video_external(
                         # Session-less repo — see note in _run_generation. Avoids
                         # idle-in-transaction kills across the long resume render.
                         repository=AiVideoRepository(),
+                        # Session-less repo — see note in _run_generation. Avoids
+                        # idle-in-transaction kills across the long resume render.
+                        repository=AiVideoRepository(),
                         s3_service=S3Service(),
                     )
                     # Retrieve the original record to get prompt + settings
@@ -841,6 +850,9 @@ async def retry_video_external(
         try:
             with make_db_session() as bg_session:
                 bg_svc = VideoGenerationService(
+                    # Session-less repo — see note in _run_generation. Avoids
+                    # idle-in-transaction kills across the long retry render.
+                    repository=AiVideoRepository(),
                     # Session-less repo — see note in _run_generation. Avoids
                     # idle-in-transaction kills across the long retry render.
                     repository=AiVideoRepository(),

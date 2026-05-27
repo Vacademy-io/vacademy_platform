@@ -325,7 +325,8 @@ export function convertInviteData(
     referralProgramDetails: ReferralData[],
     instituteLogoFileId: string,
     inviteId?: string,
-    existingInviteDetails?: IndividualInviteLinkDetails | null
+    existingInviteDetails?: IndividualInviteLinkDetails | null,
+    instituteVendor?: { vendor: string; vendor_id: string } | null
 ) {
     const instituteId = getInstituteId();
     const isBundle = selectedBatches.length > 1;
@@ -378,8 +379,8 @@ export function convertInviteData(
         invite_code: '',
         status: 'ACTIVE',
         institute_id: instituteId,
-        vendor: existingInviteDetails?.vendor || 'STRIPE',
-        vendor_id: existingInviteDetails?.vendor_id || 'STRIPE',
+        vendor: existingInviteDetails?.vendor || instituteVendor?.vendor || 'STRIPE',
+        vendor_id: existingInviteDetails?.vendor_id || instituteVendor?.vendor_id || 'STRIPE',
         currency: '',
         tag: '',
         is_bundled: isBundle,

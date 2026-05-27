@@ -28,6 +28,7 @@ export const handleEnrollInvite = async ({
     referralProgramDetails,
     instituteLogoFileId,
     inviteId,
+    instituteVendor,
 }: {
     data: InviteLinkFormValues;
     selectedCourse: Course | null;
@@ -45,6 +46,7 @@ export const handleEnrollInvite = async ({
     referralProgramDetails: ReferralData[];
     instituteLogoFileId: string;
     inviteId?: string;
+    instituteVendor?: { vendor: string; vendor_id: string } | null;
 }) => {
     const convertedData = convertInviteData(
         data,
@@ -54,7 +56,9 @@ export const handleEnrollInvite = async ({
         paymentsData,
         referralProgramDetails,
         instituteLogoFileId,
-        inviteId
+        inviteId,
+        null,
+        instituteVendor
     );
 
     // For update, use PUT method; for create, use POST

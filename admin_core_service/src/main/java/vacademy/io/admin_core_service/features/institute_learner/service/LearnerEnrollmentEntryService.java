@@ -86,8 +86,7 @@ public class LearnerEnrollmentEntryService {
     public int markPreviousEntriesAsDeleted(String userId, String invitedPackageSessionId,
             String actualPackageSessionId, String instituteId) {
         List<String> typesToDelete = List.of(
-                LearnerSessionTypeEnum.ABANDONED_CART.name(),
-                LearnerSessionTypeEnum.PAYMENT_FAILED.name());
+                LearnerSessionTypeEnum.ABANDONED_CART.name());
 
         int deletedCount = studentSessionRepository.markEntriesAsDeleted(
                 userId,

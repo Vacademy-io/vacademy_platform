@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { LockSimple } from "@phosphor-icons/react";
-import { SiStripe } from "react-icons/si";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: brand logo, no phosphor equivalent
 import { MyButton } from "@/components/design-system/button";
 import { DonationSummary } from "./DonationSummary";
 
@@ -50,12 +50,12 @@ export const DonationPaymentForm: React.FC<DonationPaymentFormProps> = ({
           <label className="block text-xs text-gray-600">Card Details</label>
         </div>
         
-        <div className={`border rounded p-3 text-sm w-full min-h-[48px] ${
+        <div className={`border rounded p-3 text-sm w-full min-h-12 ${
           cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
         }`}>
           {!cardElementReady && (
             <div className="flex items-center justify-center h-full text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
               Loading payment form...
             </div>
           )}
@@ -79,7 +79,7 @@ export const DonationPaymentForm: React.FC<DonationPaymentFormProps> = ({
           >
             {isApiLoading ? (
               <>
-                <Loader2 size={18} className="animate-spin" />
+                <SpinnerGap size={18} className="animate-spin" />
                 Processing...
               </>
             ) : (

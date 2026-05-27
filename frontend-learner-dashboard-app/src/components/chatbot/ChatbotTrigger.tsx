@@ -24,7 +24,7 @@ export const ChatbotTrigger: React.FC = () => {
           role="button"
           onClick={() => setIsOpen(!isOpen)}
         >
-          {/* <MessageCircle className="h-4 w-4" /> */}
+          {/* <ChatCircle className="h-4 w-4" /> */}
           <Avatar className="size-8 bg-background shrink-0">
             {avatarUrl ? (
               <AvatarImage

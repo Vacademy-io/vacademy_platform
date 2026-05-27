@@ -1,5 +1,5 @@
 import React from "react";
-import { FileText, Image, Film, FileQuestion } from "lucide-react";
+import { FileText, Image, FilmStrip, FileDashed } from "@phosphor-icons/react";
 import type { PublicMediaDetails } from "../-types/types";
 import { MediaSource } from "../-types/types";
 
@@ -18,7 +18,7 @@ export const GenericMediaViewer: React.FC<GenericMediaViewerProps> = ({
     if (source === MediaSource.PDF || file_type?.toLowerCase().includes("pdf")) {
         return (
             <div className={`relative overflow-hidden rounded-lg sm:rounded-xl bg-white ${className}`}>
-                <div className="relative w-full h-[60vh] sm:h-[70vh] md:h-[80vh] lg:h-[85vh]">
+                <div className="relative w-full h-screen-60 sm:h-screen-70 md:h-screen-80 lg:h-screen-85">
                     <iframe
                         src={`${url}#toolbar=0&navpanes=0&scrollbar=1`}
                         title={file_name || "PDF Document"}
@@ -33,11 +33,11 @@ export const GenericMediaViewer: React.FC<GenericMediaViewerProps> = ({
     if (source === MediaSource.IMAGE || file_type?.toLowerCase().startsWith("image/")) {
         return (
             <div className={`relative overflow-hidden rounded-lg sm:rounded-xl bg-transparent ${className}`}>
-                <div className="relative flex items-center justify-center min-h-[40vh] sm:min-h-[50vh]">
+                <div className="relative flex items-center justify-center min-h-screen-40 sm:min-h-screen-50">
                     <img
                         src={url}
                         alt={file_name || "Image"}
-                        className="max-w-full max-h-[70vh] sm:max-h-[80vh] md:max-h-[85vh] object-contain"
+                        className="max-w-full max-h-screen-70 sm:max-h-screen-80 md:max-h-screen-85 object-contain"
                     />
                 </div>
             </div>
@@ -100,7 +100,7 @@ function getMediaIcon(source: string, fileType: string) {
         return <Image className={iconClass} />;
     }
     if (source === MediaSource.VIDEO || fileType?.toLowerCase().startsWith("video/")) {
-        return <Film className={iconClass} />;
+        return <FilmStrip className={iconClass} />;
     }
-    return <FileQuestion className={iconClass} />;
+    return <FileDashed className={iconClass} />;
 }

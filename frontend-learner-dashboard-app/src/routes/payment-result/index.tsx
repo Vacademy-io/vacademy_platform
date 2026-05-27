@@ -6,7 +6,7 @@ import { getPaymentCompletionStatus } from "@/components/common/enroll-by-invite
 import { getCashfreePaymentStatus } from "@/services/cashfree-payment";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, SpinnerGap } from "@phosphor-icons/react";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
 const paymentResultSearchSchema = z.object({
@@ -232,7 +232,7 @@ function PaymentResultPage() {
         ) : isPaid ? (
           <div className="w-full flex flex-col items-center justify-center text-center px-6">
             <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-10 h-10 text-green-600" />
+              <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
               Payment Successful!
@@ -278,7 +278,7 @@ function PaymentResultPage() {
         ) : (
           <div className="w-full flex flex-col items-center justify-center text-center px-6">
             <div className="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <SpinnerGap className="w-10 h-10 text-blue-600 animate-spin" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
               Processing Payment...

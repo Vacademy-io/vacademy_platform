@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { User, ShoppingCart, Plus, Minus, ShoppingBag, CheckCircle2 } from "lucide-react";
+import { User, ShoppingCart, Plus, Minus, ShoppingBag, CheckCircle } from "@phosphor-icons/react";
 import { useCartStore } from "../../-stores/cart-store";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -142,18 +142,18 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                 {/* Book Image Section - Larger on Mobile */}
                 <div className="w-full md:w-2/5 lg:w-1/3 mb-4 md:mb-0">
                     <div className="md:sticky md:top-24">
-                        <div className="relative aspect-[9/16] w-full max-w-[280px] mx-auto md:max-w-none rounded-xl overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
+                        <div className="relative aspect-[9/16] w-full max-w-reg-280 mx-auto md:max-w-none rounded-xl overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
                             {/* Stock Indicator Overlay */}
                             {courseData.available_slots !== undefined && (
                                 <div className="absolute top-2 left-2 z-20 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-2 border border-white/20">
                                     {courseData.available_slots > 5 ? (
                                         <>
-                                            <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                                            <div className="w-2 h-2 rounded-full bg-green-500 shadow-glow-live-green" />
                                             <span className="text-green-700 uppercase tracking-wider">In Stock</span>
                                         </>
                                     ) : courseData.available_slots > 0 ? (
                                         <>
-                                            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+                                            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse shadow-glow-live-orange" />
                                             <span className="text-orange-700 uppercase tracking-wider">Only {courseData.available_slots} Left</span>
                                         </>
                                     ) : (
@@ -310,7 +310,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             disabled
                                             className="flex-1 bg-green-100 text-green-700 font-semibold text-sm py-2.5 px-6 rounded-lg border border-green-200 flex items-center justify-center gap-2 shadow-sm"
                                         >
-                                            <CheckCircle2 className="h-4 w-4" />
+                                            <CheckCircle className="h-4 w-4" />
                                             Added
                                         </Button>
                                         {/* Go to Cart button */}

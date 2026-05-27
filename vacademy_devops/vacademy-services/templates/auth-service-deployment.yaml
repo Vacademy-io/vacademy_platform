@@ -1,3 +1,4 @@
+{{- if .Values.services.auth_service.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,7 +7,7 @@ metadata:
   labels:
     app: auth-service
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicaCount }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -27,6 +28,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: myconfigmapv1.0
+            - secretRef:
+                name: vacademy-secrets
           resources:
             requests:
               cpu: "200m"
@@ -66,3 +69,4 @@ spec:
             successThreshold: 1
           ports:
             - containerPort: {{ .Values.services.auth_service.port }}
+{{- end }}

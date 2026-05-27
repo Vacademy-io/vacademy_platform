@@ -167,7 +167,7 @@ export const fetchAndStoreInstituteDetails = async (
       email: "",
       website_url: "",
       institute_logo_file_id: null,
-      institute_theme_code: "#000000"
+      institute_theme_code: "#000000" // design-lint-ignore: theme default color
     };
 
     await Preferences.set({

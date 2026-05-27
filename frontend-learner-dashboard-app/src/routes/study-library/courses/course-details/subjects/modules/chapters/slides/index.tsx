@@ -42,7 +42,7 @@ import { getInstituteId } from "@/constants/helper";
 import { fetchModulesWithChapters, fetchModulesWithChaptersPublic } from "@/services/study-library/getModulesWithChapters";
 import { toast } from "sonner";
 import FeedbackPage from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/FeedbackPage";
-import { FiEdit } from "react-icons/fi";
+import { PencilSimple } from "@phosphor-icons/react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { Preferences } from "@capacitor/preferences";
 import { BatchForSessionType } from "@/stores/study-library/institute-schema";
@@ -108,14 +108,14 @@ const ModuleAccordionItem = ({
       >
         <div className="min-w-0 flex-1">
           <span
-            className={`text-[11px] font-semibold leading-tight line-clamp-1 ${
+            className={`text-caption font-semibold leading-tight line-clamp-1 ${
               isInitiallyExpanded ? "text-primary-700" : "text-gray-700"
             }`}
           >
             {toTitleCase(modData.module.module_name)}
           </span>
           {modData.chapters.length > 0 && (
-            <span className="text-[10px] text-gray-400 mt-0.5 block">
+            <span className="text-caption text-gray-400 mt-0.5 block">
               {completedChapters}/{modData.chapters.length} {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters).toLowerCase()}
             </span>
           )}
@@ -137,7 +137,7 @@ const ModuleAccordionItem = ({
               <button
                 key={chapter.id}
                 onClick={() => onChapterSelect(modData.module.id, chapter.id)}
-                className={`w-full text-left px-5 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${
+                className={`w-full text-left px-5 py-1.5 text-caption transition-colors flex items-center gap-2 ${
                   isCurrent
                     ? "bg-primary-50 text-primary-700 font-semibold"
                     : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
@@ -162,7 +162,7 @@ const ModuleAccordionItem = ({
                   />
                 )}
                 {isCurrent && (
-                  <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
+                  <span className="text-caption font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
                     Now
                   </span>
                 )}
@@ -923,10 +923,10 @@ function Slides() {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-[13px] font-semibold text-gray-900 leading-tight truncate">
+            <h3 className="text-caption font-semibold text-gray-900 leading-tight truncate">
               {courseName ? toTitleCase(courseName) : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Details`}
             </h3>
-            <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase mt-0.5">
+            <p className="text-caption text-gray-400 font-medium tracking-wide uppercase mt-0.5">
               {levelName && levelName.toLowerCase() !== "default"
                 ? toTitleCase(levelName)
                 : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Material`}
@@ -969,7 +969,7 @@ function Slides() {
                         className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
                         title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
                       >
-                        <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                        <span className="truncate max-w-24 sm:max-w-32">
                           {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
                         </span>
                         <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
@@ -981,7 +981,7 @@ function Slides() {
                       sideOffset={6}
                     >
                       <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        <p className="text-caption font-bold text-gray-500 uppercase tracking-wider">
                           {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}s
                         </p>
                       </div>
@@ -994,7 +994,7 @@ function Slides() {
                               key={s.id}
                               disabled={!!switchingSubjectId && !isSwitching}
                               onClick={() => handleSubjectSelect(s.id)}
-                              className={`w-full text-left px-3 py-2 text-[11px] transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+                              className={`w-full text-left px-3 py-2 text-caption transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
                                 isCurrent
                                   ? "bg-primary-50 text-primary-700 font-semibold"
                                   : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
@@ -1011,7 +1011,7 @@ function Slides() {
                               {isSwitching ? (
                                 <div className="w-3 h-3 border-2 border-primary-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
                               ) : isCurrent ? (
-                                <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
+                                <span className="text-caption font-bold text-primary-500 uppercase tracking-wide flex-shrink-0">
                                   Now
                                 </span>
                               ) : null}
@@ -1025,7 +1025,7 @@ function Slides() {
                   // Tree mode: crumb is a passive label; the sidebar tree
                   // already exposes every cross-subject jump.
                   <span
-                    className="truncate max-w-[90px] sm:max-w-[130px]"
+                    className="truncate max-w-24 sm:max-w-32"
                     title={subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}
                   >
                     {toTitleCase(subjectName || getTerminology(ContentTerms.Subjects, SystemTerms.Subjects))}
@@ -1051,7 +1051,7 @@ function Slides() {
                         className="flex items-center gap-0.5 min-w-0 shrink hover:text-primary-600 transition-colors group"
                         title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
                       >
-                        <span className="truncate max-w-[90px] sm:max-w-[130px]">
+                        <span className="truncate max-w-24 sm:max-w-32">
                           {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
                         </span>
                         <ChevronDownIcon className="w-3 h-3 flex-shrink-0 text-gray-400 group-hover:text-primary-400 transition-colors" />
@@ -1063,7 +1063,7 @@ function Slides() {
                       sideOffset={6}
                     >
                       <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/80">
-                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        <p className="text-caption font-bold text-gray-500 uppercase tracking-wider">
                           {subjectName && !isDefaultName(subjectName)
                             ? `${toTitleCase(subjectName)} · ${getTerminology(ContentTerms.Modules, SystemTerms.Modules)}s`
                             : `${getTerminology(ContentTerms.Course, SystemTerms.Course)} Content`}
@@ -1096,7 +1096,7 @@ function Slides() {
                   </Popover>
                 ) : (
                   <span
-                    className="truncate max-w-[90px] sm:max-w-[130px]"
+                    className="truncate max-w-24 sm:max-w-32"
                     title={moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules)}
                   >
                     {toTitleCase(moduleName || getTerminology(ContentTerms.Modules, SystemTerms.Modules))}
@@ -1183,10 +1183,10 @@ function Slides() {
                 className="text-neutral-500 shrink-0 transition-transform group-hover/prev:-translate-x-0.5"
                 weight="bold"
               />
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider shrink-0">
+              <span className="text-caption font-bold text-neutral-500 uppercase tracking-wider shrink-0">
                 Prev
               </span>
-              <span className="text-[12px] font-semibold text-neutral-700 truncate leading-tight min-w-0">
+              <span className="text-caption font-semibold text-neutral-700 truncate leading-tight min-w-0">
                 {toTitleCase(previousChapter.chapter.chapter_name)}
               </span>
             </button>
@@ -1198,10 +1198,10 @@ function Slides() {
               title={`Up next: ${toTitleCase(nextChapter.chapter.chapter_name)}`}
               className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
-              <span className="text-[10px] font-bold text-primary-500 uppercase tracking-wider shrink-0">
+              <span className="text-caption font-bold text-primary-500 uppercase tracking-wider shrink-0">
                 Up next
               </span>
-              <span className="text-[12px] font-bold text-primary-700 truncate leading-tight min-w-0 flex-1">
+              <span className="text-caption font-bold text-primary-700 truncate leading-tight min-w-0 flex-1">
                 {toTitleCase(nextChapter.chapter.chapter_name)}
               </span>
               <CaretRight
@@ -1214,7 +1214,7 @@ function Slides() {
 
           {/* Progress Bar */}
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px] font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+            <div className="flex items-center justify-between text-caption font-semibold text-gray-500 uppercase tracking-wider [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
               <span>Progress</span>
               <span className="text-gray-800 text-xs normal-case tracking-normal [.ui-play_&]:font-black">
                 {Math.min(calculateOverallCompletion(slides), 100)}%
@@ -1254,7 +1254,7 @@ function Slides() {
                 setActiveItem(feedbackSlide);
               }}
               className={`
-                w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium
+                w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-caption font-medium
                 transition-all duration-150
                 ${activeItem?.id === "feedback-slide"
                   ? "bg-primary-50 text-primary-700 border border-primary-200"
@@ -1262,7 +1262,7 @@ function Slides() {
                 }
               `}
             >
-              <FiEdit className="w-3 h-3" />
+              <PencilSimple className="w-3 h-3" />
               <span>Feedback</span>
             </button>
           )}
@@ -1283,7 +1283,7 @@ function Slides() {
           <CaretLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
         </button>
         <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
-          <div className="p-0.5 sm:p-1 bg-primary-50 rounded-lg flex-shrink-0 flex items-center justify-center min-w-[32px] min-h-[32px] sm:min-w-[40px] sm:min-h-[40px]">
+          <div className="p-0.5 sm:p-1 bg-primary-50 rounded-lg flex-shrink-0 flex items-center justify-center min-w-8 min-h-8 sm:min-w-10 sm:min-h-10">
             {instituteLogoUrl ? (
               <img
                 src={instituteLogoUrl}
@@ -1324,12 +1324,12 @@ function Slides() {
                   </button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-[90vw] max-w-sm p-2"
+                  className="w-vw-90 max-w-sm p-2"
                   sideOffset={6}
                   align="start"
                 >
                   <div className="space-y-2">
-                    <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                    <div className="text-caption font-semibold text-gray-500 uppercase tracking-wide">
                       Learning Path
                     </div>
                     <div className="flex items-center gap-1 text-sm">

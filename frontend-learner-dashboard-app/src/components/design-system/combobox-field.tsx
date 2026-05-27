@@ -20,7 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, CaretUpDown } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useState, useMemo } from "react";
 
@@ -91,11 +91,11 @@ const ComboboxField: React.FC<SelectFieldProps> = ({
                         (option) => option.value.toString() === field.value
                       )?.label || field.value
                     : `Select ${label}`}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <CaretUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </FormControl>
             </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+            <PopoverContent className="w-radix-popover p-0">
               <Command shouldFilter={false}>
                 <CommandInput
                   placeholder={`Search ${label}...`}

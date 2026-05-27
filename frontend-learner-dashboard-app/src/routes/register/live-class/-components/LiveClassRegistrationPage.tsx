@@ -411,8 +411,8 @@ export default function LiveClassRegistrationPage() {
     <>
       <div className="w-screen min-h-screen bg-gradient-to-b from-primary-50/80 via-white to-primary-50/40 relative overflow-hidden">
         {/* Decorative background elements */}
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-100/30 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-primary-100/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 pointer-events-none" />
+        <div className="absolute top-0 right-0 w-blob-lg h-blob-lg bg-primary-100/30 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-blob-md h-blob-md bg-primary-100/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 pointer-events-none" />
 
         <div className="relative z-10 w-full min-h-screen p-4 sm:p-8 lg:p-12 flex flex-col lg:flex-row gap-8 lg:gap-14 justify-center items-center max-w-7xl mx-auto">
           <SessionInfo
@@ -426,7 +426,7 @@ export default function LiveClassRegistrationPage() {
             instituteLogoUrl={instituteBranding.instituteLogoUrl}
           />
 
-          <div className="w-full max-w-[420px] lg:w-[420px] flex-shrink-0">
+          <div className="w-full max-w-reg-420 lg:w-blob-sm flex-shrink-0">
             {isUserAlreadyRegistered && sessionDetails ? (
               <SessionStatusCard
                 sessionDetails={sessionDetails}

@@ -6148,6 +6148,36 @@ class VideoGenerationPipeline:
     # --- Google TTS bridge -------------------------------------------------
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
     @retry_with_backoff(max_retries=3, initial_delay=2.0)
+    def _voice_result(
+        self,
+        *,
+        response_json: Path,
+        audio_path: Path,
+        script_text: str,
+        provider: str,
+        voice_id: Optional[str],
+    ) -> Dict[str, Any]:
+        """Build the `_synthesize_voice` return dict AND stamp the concrete
+        provider/voice actually used onto the instance.
+
+        `voice_id` is the real voice name fed to the TTS engine (e.g.
+        `en-US-AvaNeural`, a Google voice, or a Sarvam speaker) — never None
+        for a successful synth, even when the caller passed voice_id=None and
+        the provider auto-selected one. This is the value the per-sentence /
+        per-shot re-narration path (sentence_clip_service._resolve_voice) pins
+        on so regenerated audio uses the SAME voice as the original — including
+        when a mid-synth fallback (premium → google → edge) changed the
+        provider out from under the request."""
+        self._tts_provider_resolved = provider
+        self._tts_voice_id_resolved = voice_id
+        return {
+            "response_json": response_json,
+            "audio_path": audio_path,
+            "tts_character_count": len(script_text),
+            "resolved_provider": provider,
+            "resolved_voice_id": voice_id,
+        }
+
     def _synthesize_voice(
         self,
         script_path: Path,
@@ -6279,7 +6309,10 @@ class VideoGenerationPipeline:
                     language_code=lang_code
                 )
                 print(f"    ✅ Google TTS generation successful.")
-                return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
+                return self._voice_result(
+                    response_json=response_json, audio_path=audio_path,
+                    script_text=script_text, provider="google", voice_id=selected_voice,
+                )
             except Exception as e:
                 print(f"    ❌ Google TTS failed: {e}")
                 raise e
@@ -6497,7 +6530,12 @@ class VideoGenerationPipeline:
             with open(audio_path, "wb") as f:
                 f.write(audio_data)
 
-        # Run async code in sync context
+        # Run async code in sync context. Track the voice/provider actually
+        # used: if EdgeTTS fails and we fall back to Google below, the return
+        # value must report google + the google voice so re-narration pins on
+        # what was really synthesized (not the originally-selected edge voice).
+        resolved_provider = "edge"
+        resolved_voice = selected_voice
         try:
             asyncio.run(_run_tts())
         except Exception as e:
@@ -6524,12 +6562,14 @@ class VideoGenerationPipeline:
                     lang_code = f"{lang_code_parts[0]}-{lang_code_parts[1]}"
                     
                     gc_client.synthesize(
-                        text=script_text, 
-                        output_path=audio_path, 
+                        text=script_text,
+                        output_path=audio_path,
                         raw_json_path=response_json,
                         voice_name=fallback_voice,
                         language_code=lang_code
                     )
+                    resolved_provider = "google"
+                    resolved_voice = fallback_voice
                 except Exception as e2:
                     print(f"    ❌ Google TTS Fallback also failed: {e2}")
                     raise e  # Raise original EdgeTTS error if fallback fails
@@ -6537,7 +6577,10 @@ class VideoGenerationPipeline:
                 print("    ❌ No google_credentials.json found or env var set for fallback.")
                 raise e
         
-        return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
+        return self._voice_result(
+            response_json=response_json, audio_path=audio_path,
+            script_text=script_text, provider=resolved_provider, voice_id=resolved_voice,
+        )
 
     # --- Per-shot TTS support helpers (Phase 0) ----------------------------
     @staticmethod
@@ -7580,11 +7623,10 @@ class VideoGenerationPipeline:
         response_json.write_text(json.dumps(final_data))
         print(f"    ✅ Sarvam TTS pipeline complete (speaker={speaker}, {len(script_text)} chars)")
 
-        return {
-            "response_json": response_json,
-            "audio_path": audio_path,
-            "tts_character_count": len(script_text),
-        }
+        return self._voice_result(
+            response_json=response_json, audio_path=audio_path,
+            script_text=script_text, provider="sarvam", voice_id=speaker,
+        )
 
     # --- Alignment + words -------------------------------------------------
     def _parse_timestamps(self, response_json: Path, run_dir: Path) -> Dict[str, Path]:

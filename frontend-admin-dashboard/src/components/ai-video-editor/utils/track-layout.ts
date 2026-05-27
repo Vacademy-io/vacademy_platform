@@ -28,6 +28,16 @@ export const CHANNELS: readonly Channel[] = [
     { id: 'ui', label: 'Watermarks', color: '#52525b', bgColor: '#f4f4f5' },
 ] as const;
 
+// ── Audio-track lane colours ────────────────────────────────────────────────
+// Shared palette for audio tracks, used by both the AudioTracksPanel and the
+// timeline audio lanes so a given track is the same colour in both surfaces.
+export const TRACK_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#14b8a6'];
+
+/** Deterministic colour for the audio track at list index `idx`. */
+export function trackColor(idx: number): string {
+    return TRACK_COLORS[idx % TRACK_COLORS.length]!;
+}
+
 /** Map an entry to its channel based on z-index and id convention. */
 export function getChannelId(entry: Entry): ChannelId {
     if (entry.id.startsWith('branding-')) return 'ui';

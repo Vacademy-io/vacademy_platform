@@ -1,4 +1,4 @@
-import { Mail } from "lucide-react";
+import { Envelope } from "@phosphor-icons/react";
 
 interface DonationEmailStepProps {
   amount: number;
@@ -40,7 +40,7 @@ export const DonationEmailStep = ({
         </label>
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-            <Mail size={16} />
+            <Envelope size={16} />
           </span>
           <input
             id="donation-email"
@@ -53,7 +53,7 @@ export const DonationEmailStep = ({
             placeholder={validationError ? validationError : "you@example.com"}
           />
         </div>
-        <p className="text-[11px] text-gray-400 mt-1">
+        <p className="text-caption text-gray-400 mt-1">
           We'll send your receipt to this email address
         </p>
       </div>

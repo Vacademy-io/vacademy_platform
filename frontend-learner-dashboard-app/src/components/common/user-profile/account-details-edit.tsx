@@ -5,13 +5,13 @@ import { Label } from "@/components/ui/label";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Eye,
-  EyeOff,
+  EyeSlash,
   User,
   Lock,
   CheckCircle,
-  AlertCircle,
-  Loader2,
-} from "lucide-react";
+  WarningCircle,
+  SpinnerGap,
+} from "@phosphor-icons/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -247,7 +247,7 @@ export default function AccountDetailsEdit({
                   onClick={() => setShowNewPassword(!showNewPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showNewPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {errors.newPassword && (
@@ -269,7 +269,7 @@ export default function AccountDetailsEdit({
                       {validation.valid ? (
                         <CheckCircle size={12} />
                       ) : (
-                        <AlertCircle size={12} />
+                        <WarningCircle size={12} />
                       )}
                       <span>{validation.label}</span>
                     </div>
@@ -298,7 +298,7 @@ export default function AccountDetailsEdit({
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showConfirmPassword ? (
-                    <EyeOff size={16} />
+                    <EyeSlash size={16} />
                   ) : (
                     <Eye size={16} />
                   )}
@@ -320,7 +320,7 @@ export default function AccountDetailsEdit({
                   {passwordsMatch ? (
                     <CheckCircle size={12} />
                   ) : (
-                    <AlertCircle size={12} />
+                    <WarningCircle size={12} />
                   )}
                   <span>
                     {passwordsMatch
@@ -344,7 +344,7 @@ export default function AccountDetailsEdit({
               disable={isLoading || redirecting}
             >
               {redirecting && (
-                <Loader2 className="animate-spin text-primary-500 size-10" />
+                <SpinnerGap className="animate-spin text-primary-500 size-10" />
               )}
               Cancel
             </MyButton>

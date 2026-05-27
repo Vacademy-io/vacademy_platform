@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { PaymentOption } from "../../-services/payment-options-api";
 import { getCurrencySymbol, getCurrencyWithPriority } from "@/utils/currency";
 
@@ -79,7 +79,7 @@ export const DonationAmountStep = ({
   if (loading) {
     return (
       <div className="text-center py-8">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-4" />
+        <SpinnerGap className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-4" />
         <p className="text-sm text-gray-600">Loading payment options...</p>
       </div>
     );
@@ -91,7 +91,7 @@ export const DonationAmountStep = ({
         {suggestedAmounts.map((amount) => (
             <div
               key={amount}
-              className={`h-11 min-w-[90px] flex items-center justify-center rounded border cursor-pointer select-none text-sm font-medium transition-colors duration-200 ${
+              className={`h-11 min-w-24 flex items-center justify-center rounded border cursor-pointer select-none text-sm font-medium transition-colors duration-200 ${
                 selectedAmount === amount ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-800 border-gray-300 hover:bg-blue-50'
               }`}
               onClick={() => onAmountSelect(amount)}

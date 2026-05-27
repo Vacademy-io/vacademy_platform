@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Network } from "@capacitor/network";
-import { Wifi, WifiOff, RefreshCw, Loader2 } from "lucide-react";
+import { WifiHigh, WifiSlash, ArrowsClockwise, SpinnerGap } from "@phosphor-icons/react";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useAssessmentStore } from "@/stores/assessment-store";
 
@@ -69,7 +69,7 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
         className={`
           mt-4 flex items-center gap-3 rounded-lg px-4 py-2
           transform transition-all duration-300 ease-in-out
-          bg-[#0f0f0f] text-white
+          bg-foreground text-white
           ${showBanner ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"}
         `}
         role="status"
@@ -78,7 +78,7 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
         <div className="flex items-center gap-3">
           {!isOnline ? (
             <>
-              <WifiOff className="h-5 w-5 text-red-500" />
+              <WifiSlash className="h-5 w-5 text-red-500" />
               <div className="flex flex-col">
                 <span className="text-sm font-medium">No Internet connection</span>
                 <span className="text-xs text-gray-400">
@@ -88,7 +88,7 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
             </>
           ) : saveFailed ? (
             <>
-              <WifiOff className="h-5 w-5 text-amber-500" />
+              <WifiSlash className="h-5 w-5 text-amber-500" />
               <div className="flex flex-col">
                 <span className="text-sm font-medium">Save failed</span>
                 <span className="text-xs text-gray-400">
@@ -98,7 +98,7 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
             </>
           ) : (
             <>
-              <Wifi className="h-5 w-5 text-green-500" />
+              <WifiHigh className="h-5 w-5 text-green-500" />
               <div className="flex flex-col">
                 <span className="text-sm font-medium">Back online</span>
                 <span className="text-xs text-gray-400">
@@ -115,9 +115,9 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
               className="ml-2 flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs font-medium hover:bg-white/20 disabled:opacity-60"
             >
               {isRetrying ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <SpinnerGap className="h-3 w-3 animate-spin" />
               ) : (
-                <RefreshCw className="h-3 w-3" />
+                <ArrowsClockwise className="h-3 w-3" />
               )}
               Retry
             </button>

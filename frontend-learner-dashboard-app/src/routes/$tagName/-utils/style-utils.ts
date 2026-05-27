@@ -115,7 +115,7 @@ export function buildComponentStyle(style?: ComponentStyle): React.CSSProperties
     // Border
     if (style.borderWidth && style.borderWidth !== '0') {
         css.borderWidth = style.borderWidth;
-        css.borderColor = style.borderColor || '#E5E7EB';
+        css.borderColor = style.borderColor || '#E5E7EB'; // design-lint-ignore: default border color
         css.borderStyle = style.borderStyle || 'solid';
     }
     if (style.borderRadius) css.borderRadius = style.borderRadius;

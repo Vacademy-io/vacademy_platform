@@ -309,8 +309,8 @@ export const SubjectMaterial = () => {
         <div className="max-w-2xl space-y-1.5">
           {studyLibraryData?.map((subject, idx) => {
             const isSubjectOpen = openSubjects.has(subject.id);
-            const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]";
-            const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
+            const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]"; // design-lint-ignore: viewport math
+            const subjectContentIndent = `${baseIndent} pl-6`;
 
             return (
               <Collapsible
@@ -367,7 +367,7 @@ export const SubjectMaterial = () => {
                     {(subjectModulesMap[subject.id] ?? []).map(
                       (mod, modIdx) => {
                         const isModuleOpen = openModules.has(mod.module.id);
-                        const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                        const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`; // design-lint-ignore: viewport math
                         return (
                           <Collapsible
                             key={mod.module.id}

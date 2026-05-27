@@ -15,10 +15,14 @@ import { decodeFromUrl } from '../playback/audio-decode-cache';
 export function useAudioWaveform(audioUrl?: string, numPeaks = 400) {
     const [peaks, setPeaks] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
+    // Natural clip length (seconds) — needed to size an audio-track lane clip
+    // on the timeline. `undefined` until decoded (or on decode failure).
+    const [duration, setDuration] = useState<number | undefined>(undefined);
 
     useEffect(() => {
         if (!audioUrl) {
             setPeaks([]);
+            setDuration(undefined);
             return;
         }
         let cancelled = false;
@@ -27,6 +31,7 @@ export function useAudioWaveform(audioUrl?: string, numPeaks = 400) {
         decodeFromUrl(audioUrl)
             .then((decoded) => {
                 if (cancelled) return;
+                setDuration(decoded.duration);
                 const raw = decoded.channels[0];
                 if (!raw || raw.length === 0) {
                     setPeaks([]);
@@ -61,5 +66,5 @@ export function useAudioWaveform(audioUrl?: string, numPeaks = 400) {
         };
     }, [audioUrl, numPeaks]);
 
-    return { peaks, loading };
+    return { peaks, loading, duration };
 }

@@ -185,6 +185,43 @@ class PixabayService:
             "pexels_url": photo.get("pageURL", ""),
         }
 
+    def search_photos_many(
+        self,
+        query: str,
+        orientation: str = "landscape",
+        per_page: int = 24,
+    ) -> List[Dict[str, Any]]:
+        """Return up to `per_page` normalized photo results (editor media
+        picker grid). Same item shape as PexelsService.search_photos_many."""
+        if not self.is_available:
+            return []
+        params = {
+            "q": query,
+            "image_type": "photo",
+            "orientation": self._ORIENTATION_MAP.get(orientation, "all"),
+            "per_page": max(3, min(per_page, 200)),
+            "safesearch": "true",
+        }
+        data = self._request(self.PHOTOS_URL, params)
+        if not data:
+            return []
+        out: List[Dict[str, Any]] = []
+        for h in data.get("hits", []):
+            url = h.get("fullHDURL") or h.get("largeImageURL") or h.get("webformatURL")
+            if not url:
+                continue
+            out.append({
+                "url": url,
+                "thumb": h.get("webformatURL") or h.get("previewURL") or url,
+                "photographer": h.get("user", ""),
+                "photographer_url": f"https://pixabay.com/users/{h.get('user', '')}-{h.get('user_id', '')}/",
+                "alt": h.get("tags", query),
+                "source_url": h.get("pageURL", ""),
+                "width": h.get("imageWidth"),
+                "height": h.get("imageHeight"),
+            })
+        return out
+
     # ── Video Search ────────────────────────────────────────────────────
 
     def search_videos(

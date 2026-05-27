@@ -22,13 +22,13 @@ import { Button } from "@/components/ui/button";
 import {
   CheckCircle,
   Clock,
-  ClipboardList,
-  DollarSign,
+  ClipboardText,
+  CurrencyDollar,
   ArrowRight,
-  AlertTriangle,
-  PartyPopper,
+  Warning,
+  Confetti,
   Info,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 
 import { type TabId } from "./navigation-config";
 import { getInstituteId } from "@/constants/helper";
@@ -200,12 +200,12 @@ function AdmissionProgressSteps({
                   {stage.stage_name}
                 </p>
                 {isCurrent && (
-                  <p className="text-[11px] text-primary/70 mt-0.5">
+                  <p className="text-caption text-primary/70 mt-0.5">
                     In progress
                   </p>
                 )}
                 {userStage?.completed_at && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-caption text-muted-foreground mt-0.5">
                     Completed on{" "}
                     {new Date(userStage.completed_at).toLocaleDateString()}
                   </p>
@@ -252,7 +252,7 @@ function getAdmissionStatusInfo(status: string) {
         "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
       borderColor: "border-l-amber-500",
       iconBg: "bg-amber-100 dark:bg-amber-900/30",
-      bannerIcon: <AlertTriangle size={20} className="text-amber-600" />,
+      bannerIcon: <Warning size={20} className="text-amber-600" />,
       bannerTitle: "Registration Required",
       bannerDescription:
         "Complete the registration form to proceed with the admission process. All sections must be filled.",
@@ -265,7 +265,7 @@ function getAdmissionStatusInfo(status: string) {
         "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
       borderColor: "border-l-yellow-500",
       iconBg: "bg-yellow-100 dark:bg-yellow-900/30",
-      bannerIcon: <ClipboardList size={20} className="text-yellow-600" />,
+      bannerIcon: <ClipboardText size={20} className="text-yellow-600" />,
       bannerTitle: "Continue Application",
       bannerDescription:
         "You have a draft registration. Continue filling the form and submit when ready.",
@@ -278,7 +278,7 @@ function getAdmissionStatusInfo(status: string) {
         "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
       borderColor: "border-l-orange-500",
       iconBg: "bg-orange-100 dark:bg-orange-900/30",
-      bannerIcon: <DollarSign size={20} className="text-orange-600" />,
+      bannerIcon: <CurrencyDollar size={20} className="text-orange-600" />,
       bannerTitle: "Payment Pending",
       bannerDescription:
         "Complete your fee payment to finalize the admission process.",
@@ -291,7 +291,7 @@ function getAdmissionStatusInfo(status: string) {
         "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
       borderColor: "border-l-emerald-500",
       iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
-      bannerIcon: <PartyPopper size={20} className="text-emerald-600" />,
+      bannerIcon: <Confetti size={20} className="text-emerald-600" />,
       bannerTitle: "Admission Complete!",
       bannerDescription:
         "Congratulations! Your child has been successfully enrolled.",

@@ -6,7 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/input";
-import { Eye, EyeOff, ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
+import { Eye, EyeSlash, ArrowLeft, ArrowRight, SpinnerGap } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 
@@ -270,7 +270,7 @@ export function CredentialsForm({
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
                 Creating Account...
               </>
             ) : (

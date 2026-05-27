@@ -8,7 +8,7 @@ import { getUserId } from "@/constants/getUserId";
 import { PAYMENT_LOGS_URL } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
-import { ShoppingBag, ChevronLeft, ChevronRight, Package } from "lucide-react";
+import { ShoppingBag, CaretLeft, CaretRight, Package } from "@phosphor-icons/react";
 
 interface MyOrdersWidgetProps {
     className?: string;
@@ -83,7 +83,7 @@ const StatusBadge = ({ label, styles }: { label: string; styles: Record<string, 
         <Badge
             variant="outline"
             className={cn(
-                "text-[9px] px-1.5 py-0 h-4 font-semibold border-0 whitespace-nowrap",
+                "text-caption px-1.5 py-0 h-4 font-semibold border-0 whitespace-nowrap",
                 styles[label] || "bg-gray-100 text-gray-600"
             )}
         >
@@ -112,13 +112,13 @@ const OrderTableRow = ({
 
     return (
         <tr className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
-            <td className="py-2 px-3 text-xs font-medium text-foreground max-w-[180px] truncate">
+            <td className="py-2 px-3 text-xs font-medium text-foreground max-w-44 truncate">
                 {getBookName(entry)}
             </td>
-            <td className="py-2 px-3 text-[10px] text-muted-foreground whitespace-nowrap">
+            <td className="py-2 px-3 text-caption text-muted-foreground whitespace-nowrap">
                 {storeName || "—"}
             </td>
-            <td className="py-2 px-3 text-[10px] text-muted-foreground whitespace-nowrap">
+            <td className="py-2 px-3 text-caption text-muted-foreground whitespace-nowrap">
                 {formatDate(log.date)}
             </td>
             <td className="py-2 px-3">
@@ -127,13 +127,13 @@ const OrderTableRow = ({
             <td className="py-2 px-3">
                 {orderStatus ? <StatusBadge label={orderStatus} styles={ORDER_STATUS_STYLES} /> : "—"}
             </td>
-            <td className="py-2 px-3 text-[10px] text-muted-foreground font-mono truncate max-w-[140px]">
+            <td className="py-2 px-3 text-caption text-muted-foreground font-mono truncate max-w-36">
                 {log.tracking_id || <span className="italic text-muted-foreground/70 font-sans">Expected in 5-7 days</span>}
             </td>
-            <td className="py-2 px-3 text-[10px] text-muted-foreground whitespace-nowrap">
+            <td className="py-2 px-3 text-caption text-muted-foreground whitespace-nowrap">
                 {log.tracking_source || "—"}
             </td>
-            <td className="py-2 px-3 text-[10px] text-muted-foreground font-mono truncate max-w-[160px]">
+            <td className="py-2 px-3 text-caption text-muted-foreground font-mono truncate max-w-40">
                 {log.transaction_id || "—"}
             </td>
         </tr>
@@ -171,13 +171,13 @@ const OrderCard = ({
                             {getBookName(entry)}
                         </p>
                         {storeName && (
-                            <p className="text-[9px] text-muted-foreground truncate leading-none mt-0.5">
+                            <p className="text-caption text-muted-foreground truncate leading-none mt-0.5">
                                 {storeName}
                             </p>
                         )}
                     </div>
                 </div>
-                <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                <span className="text-caption text-muted-foreground whitespace-nowrap">
                     {formatDate(log.date)}
                 </span>
             </div>
@@ -189,7 +189,7 @@ const OrderCard = ({
             </div>
 
             {/* Details grid */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 ml-9 text-[9px]">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 ml-9 text-caption">
                 <span className="text-muted-foreground font-medium">Tracking ID</span>
                 {log.tracking_id ? (
                     <span className="text-foreground font-mono truncate">{log.tracking_id}</span>
@@ -310,14 +310,14 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="border-b border-border">
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Book</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Store</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Date</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Payment</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Order Status</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tracking ID</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Source</th>
-                                        <th className="py-2 px-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Transaction ID</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Book</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Store</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Date</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Payment</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Order Status</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Tracking ID</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Source</th>
+                                        <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Transaction ID</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -349,7 +349,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                     </>
                 ) : (
                     <div className="py-4 px-3 rounded-lg border border-dashed border-border flex flex-col items-center justify-center text-center bg-secondary/10">
-                        <p className="text-[11px] text-muted-foreground italic font-medium">
+                        <p className="text-caption text-muted-foreground italic font-medium">
                             No orders found.
                         </p>
                     </div>
@@ -358,7 +358,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                 {/* Pagination */}
                 {totalPages > 1 && (
                     <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
-                        <span className="text-[9px] text-muted-foreground font-black uppercase tracking-tighter">
+                        <span className="text-caption text-muted-foreground font-black uppercase tracking-tighter">
                             {page + 1} / {totalPages}
                         </span>
                         <div className="flex gap-1">
@@ -369,7 +369,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                                 disabled={page === 0 || loading}
                                 onClick={() => setPage((prev) => Math.max(0, prev - 1))}
                             >
-                                <ChevronLeft className="h-3.5 w-3.5" />
+                                <CaretLeft className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                                 variant="ghost"
@@ -378,7 +378,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                                 disabled={page >= totalPages - 1 || loading}
                                 onClick={() => setPage((prev) => Math.min(totalPages - 1, prev + 1))}
                             >
-                                <ChevronRight className="h-3.5 w-3.5" />
+                                <CaretRight className="h-3.5 w-3.5" />
                             </Button>
                         </div>
                     </div>

@@ -2,7 +2,7 @@ import { Slide } from "@/types/dashbaord/types";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Book, FileText, ClipboardList, ChevronRight } from "lucide-react";
+import { Book, FileText, ClipboardText, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 interface DashboardTabsProps {
@@ -17,7 +17,7 @@ interface DashboardTabsProps {
 const getIcon = (title: string) => {
   if (title.toLowerCase().includes('subject')) return <Book className="w-5 h-5" />;
   if (title.toLowerCase().includes('homework')) return <FileText className="w-5 h-5" />;
-  if (title.toLowerCase().includes('test')) return <ClipboardList className="w-5 h-5" />;
+  if (title.toLowerCase().includes('test')) return <ClipboardText className="w-5 h-5" />;
   return <Book className="w-5 h-5" />;
 };
 
@@ -92,7 +92,7 @@ export function DashboardTabs({
       {button && (
         <CardFooter>
           <Button className="w-full">
-            {buttonText} <ChevronRight className="ml-2 w-4 h-4" />
+            {buttonText} <CaretRight className="ml-2 w-4 h-4" />
           </Button>
         </CardFooter>
       )}

@@ -3,7 +3,7 @@ import mermaid from 'mermaid';
 import { sanitizeMermaidCode } from '@/utils/mermaidSanitizer';
 import { initializeMermaid } from '@/utils/initializeMermaid';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-import { Maximize2, ZoomIn } from 'lucide-react';
+import { ArrowsOut, MagnifyingGlassPlus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 interface MermaidDiagramProps {
@@ -118,12 +118,11 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                     )}
                     style={{
                         margin: '20px 0',
-                        backgroundColor: '#fff', // Changed to white for better readability
                     }}
                 >
                     {/* Simplified View Container */}
                     <div
-                        className="flex justify-center p-4 max-h-[300px] overflow-hidden opacity-90 group-hover:opacity-100 transition-opacity"
+                        className="flex justify-center p-4 max-h-reg-300 overflow-hidden opacity-90 group-hover:opacity-100 transition-opacity"
                         dangerouslySetInnerHTML={{ __html: svgHtml }}
                     />
 
@@ -133,20 +132,20 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                     {/* Pop-out / Zoom Overlay Options */}
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <div className="bg-white/90 backdrop-blur-sm p-1.5 rounded-md shadow-sm border border-gray-200 text-gray-500 hover:text-primary-600">
-                            <Maximize2 size={18} />
+                            <ArrowsOut size={18} />
                         </div>
                     </div>
 
                     <div className="absolute inset-x-0 bottom-3 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-full shadow-sm border border-gray-200 text-xs font-medium text-gray-600">
-                            <ZoomIn size={14} />
+                            <MagnifyingGlassPlus size={14} />
                             <span>Click to expand</span>
                         </div>
                     </div>
                 </div>
             </DialogTrigger>
 
-            <DialogContent className="max-w-[90vw] h-[85vh] p-0 gap-0 overflow-hidden flex flex-col bg-slate-50 border-none outline-none">
+            <DialogContent className="max-w-vw-90 h-screen-85 p-0 gap-0 overflow-hidden flex flex-col bg-slate-50 border-none outline-none">
                 <div className="flex-1 overflow-auto p-8 min-h-0">
                     <div className="min-h-full w-full flex flex-col items-center justify-center">
                         <div

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { CheckCircle, BookOpen, ArrowRight } from '@phosphor-icons/react';
+import { CheckCircle, BookOpen, ArrowRight } from "@phosphor-icons/react";
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import type { ProductPageData } from '../-types/product-page-types';
 
@@ -52,7 +52,7 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
         <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-12">
             {/* Success icon */}
             <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-green-100">
-                <CheckCircle className="size-10 text-green-600" weight="fill" />
+                <CheckCircle className="size-10 text-green-600" />
             </div>
 
             <h1 className="text-2xl font-bold text-gray-900">You're enrolled!</h1>
@@ -68,7 +68,7 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
                         key={m.ps_invite_payment_option_id}
                         className="flex items-center gap-3 rounded-xl border bg-white p-4 shadow-sm"
                     >
-                        <CheckCircle className="size-4 shrink-0 text-green-500" weight="fill" />
+                        <CheckCircle className="size-4 shrink-0 text-green-500" />
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-gray-900">
                                 {m.payment_plan?.name || 'Course'}
@@ -77,8 +77,8 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
                                 <p className="text-xs text-gray-400">
                                     {m.payment_plan.validity_in_days === 365 ? '1 year access'
                                         : m.payment_plan.validity_in_days % 30 === 0
-                                        ? `${m.payment_plan.validity_in_days / 30} months access`
-                                        : `${m.payment_plan.validity_in_days} days access`}
+                                            ? `${m.payment_plan.validity_in_days / 30} months access`
+                                            : `${m.payment_plan.validity_in_days} days access`}
                                 </p>
                             )}
                         </div>

@@ -56,7 +56,7 @@ const HeroTags: React.FC<{ tags?: string[]; textAlign: "left" | "center" | "righ
       {tags.map((tag, i) => (
         <span
           key={`${tag}-${i}`}
-          className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-gray-700"
+          className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-caption sm:text-xs font-semibold uppercase tracking-wide text-gray-700"
         >
           {tag}
         </span>
@@ -245,7 +245,7 @@ const HeroSectionPlaceholder: React.FC<{
   return (
     <section
       className={`w-full py-12 md:py-20 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden`}
-      style={{ textAlign, backgroundColor: backgroundColor || '#f8fafc' }}
+      style={{ textAlign, backgroundColor: backgroundColor || '#f8fafc' }} // design-lint-ignore: page-builder default color
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {layout === "split" ? (
@@ -386,7 +386,7 @@ const HeroSectionWithState: React.FC<{
       className={`w-full py-12 md:py-20 ${roundedEdges ? "rounded-lg" : ""} overflow-hidden`}
       style={{
         textAlign,
-        backgroundColor: hasBgImage ? undefined : (backgroundColor || '#f8fafc'),
+        backgroundColor: hasBgImage ? undefined : (backgroundColor || '#f8fafc'), // design-lint-ignore: page-builder default color
         ...(hasBgImage ? {
           backgroundImage: `url(${resolvedBgUrl})`,
           backgroundSize: 'cover',
@@ -425,7 +425,7 @@ const HeroSectionWithState: React.FC<{
                 <img
                   src={resolvedImageUrl || heroImage}
                   alt={heroImageAlt}
-                  className="w-full h-auto max-h-[400px] lg:max-h-[480px] rounded-xl object-contain"
+                  className="w-full h-auto max-h-96 lg:max-h-preview-480 rounded-xl object-contain"
                   onError={(e) => {
                     e.currentTarget.style.display = 'none';
                   }}

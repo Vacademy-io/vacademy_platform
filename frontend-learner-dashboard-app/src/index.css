@@ -37,6 +37,10 @@ html, body {
     min-height: 100vh;
     color: hsl(var(--base-black));
 
+    /* Default UI font. Premium grotesk; the white-label flow (index.html TabBranding)
+       overrides this var at runtime, and Tailwind `font-sans` reads it. */
+    --app-font-family: 'Plus Jakarta Sans', 'Open Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
     /* ========= ShadCN variables ========= */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
@@ -136,6 +140,43 @@ html, body {
     --info-500: 214 77% 54%; /* #4096FF */
     --info-600: 214 73% 47%; /* #2680FF */
     --info-700: 214 69% 40%;
+
+    /* Vibrant pastel palette (promoted from scattered hardcoded hex). Single source
+       of truth for the .ui-vibrant theme's decorative pastels; reference via var(),
+       never inline hex in selectors. Kept as hex to preserve exact values. */
+    --pastel-blue: #afd9e8;
+    --pastel-blue-border: #8bc6dc;
+    --pastel-green: #b6e2b6;
+    --pastel-green-border: #94d794;
+    --pastel-yellow: #fff5ba;
+    --pastel-yellow-border: #ffe98a;
+    --pastel-red: #ffb5b5;
+    --pastel-red-border: #ff9b9b;
+    --pastel-purple: #d7bde2;
+    --pastel-purple-border: #c9a7d7;
+    --pastel-orange: #ffdab9;
+    --pastel-orange-border: #ffc899;
+    --pastel-pink: #fbc4c4;
+    --pastel-pink-border: #f7a9a9;
+    --pastel-teal: #b2dfdb;
+    --pastel-teal-border: #93d3cd;
+    --pastel-ink: #0f172a;
+
+    /* ========= Shadow scale (tinted, light mode) ========= */
+    /* Tinted to a cool slate hue rather than pure black; one step per surface type. */
+    --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+    --shadow-sm: 0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+    --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+    --shadow-lg: 0 12px 28px -6px rgb(15 23 42 / 0.12), 0 4px 8px -4px rgb(15 23 42 / 0.06);
+    --shadow-xl: 0 24px 48px -12px rgb(15 23 42 / 0.18);
+
+    /* ========= Motion tokens (default / vibrant; play has its own) ========= */
+    --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+    --duration-fast: 150ms;
+    --duration-base: 220ms;
+    --duration-slow: 320ms;
+
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -316,31 +357,31 @@ html, body {
     background-color: hsl(var(--success-500)) !important;
     border-color: hsl(var(--success-400)) !important;
   }
-  /* Pastel overrides for dashboard stat cards (theme-agnostic) */
+  /* Pastel overrides for dashboard stat cards (theme-agnostic) — values tokenized in :root */
   .ui-vibrant .dashboard-container .stat-card--courses .stat-card-inner {
-    background-color: #afd9e8 !important;
-    border-color: #8bc6dc !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-blue) !important;
+    border-color: var(--pastel-blue-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .dashboard-container .stat-card--assignments .stat-card-inner {
-    background-color: #ffdab9 !important;
-    border-color: #ffc899 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-orange) !important;
+    border-color: var(--pastel-orange-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .dashboard-container .stat-card--evaluations .stat-card-inner {
-    background-color: #d7bde2 !important;
-    border-color: #c9a7d7 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-purple) !important;
+    border-color: var(--pastel-purple-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .dashboard-container .stat-card--attendance .stat-card-inner {
-    background-color: #b6e2b6 !important;
-    border-color: #94d794 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-green) !important;
+    border-color: var(--pastel-green-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .dashboard-container .stat-card--live .stat-card-inner {
-    background-color: #b2dfdb !important;
-    border-color: #93d3cd !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-teal) !important;
+    border-color: var(--pastel-teal-border) !important;
+    color: var(--pastel-ink) !important;
   }
   /* Optional alt stat colors using secondary/tertiary */
   .ui-vibrant .stat-card--alt-secondary .stat-card-inner {
@@ -533,10 +574,9 @@ html, body {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: "Open Sans", system-ui, -apple-system, BlinkMacSystemFont,
-      "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-background text-foreground font-sans;
+    /* font-sans resolves to var(--app-font-family) -> Plus Jakarta Sans by default,
+       white-label override at runtime. */
     font-variation-settings: normal;
   }
   /* Chrome, Safari and Opera */
@@ -970,104 +1010,104 @@ html, body {
   /* ========== Vibrant Pastel Palette (theme-agnostic) ========== */
   /* Fixed pastel utilities to use across vibrant widgets regardless of theme */
   .ui-vibrant .pastel-bg-blue {
-    background-color: #afd9e8 !important;
+    background-color: var(--pastel-blue) !important;
   }
   .ui-vibrant .pastel-border-blue {
-    border-color: #afd9e8 !important;
+    border-color: var(--pastel-blue) !important;
   }
   .ui-vibrant .pastel-bg-green {
-    background-color: #b6e2b6 !important;
+    background-color: var(--pastel-green) !important;
   }
   .ui-vibrant .pastel-border-green {
-    border-color: #b6e2b6 !important;
+    border-color: var(--pastel-green) !important;
   }
   .ui-vibrant .pastel-bg-yellow {
-    background-color: #fff5ba !important;
+    background-color: var(--pastel-yellow) !important;
   }
   .ui-vibrant .pastel-border-yellow {
-    border-color: #fff5ba !important;
+    border-color: var(--pastel-yellow) !important;
   }
   .ui-vibrant .pastel-bg-red {
-    background-color: #ffb5b5 !important;
+    background-color: var(--pastel-red) !important;
   }
   .ui-vibrant .pastel-border-red {
-    border-color: #ffb5b5 !important;
+    border-color: var(--pastel-red) !important;
   }
   .ui-vibrant .pastel-bg-purple {
-    background-color: #d7bde2 !important;
+    background-color: var(--pastel-purple) !important;
   }
   .ui-vibrant .pastel-border-purple {
-    border-color: #d7bde2 !important;
+    border-color: var(--pastel-purple) !important;
   }
   .ui-vibrant .pastel-bg-orange {
-    background-color: #ffdab9 !important;
+    background-color: var(--pastel-orange) !important;
   }
   .ui-vibrant .pastel-border-orange {
-    border-color: #ffdab9 !important;
+    border-color: var(--pastel-orange) !important;
   }
   .ui-vibrant .pastel-bg-pink {
-    background-color: #fbc4c4 !important;
+    background-color: var(--pastel-pink) !important;
   }
   .ui-vibrant .pastel-border-pink {
-    border-color: #fbc4c4 !important;
+    border-color: var(--pastel-pink) !important;
   }
   .ui-vibrant .pastel-bg-teal {
-    background-color: #b2dfdb !important;
+    background-color: var(--pastel-teal) !important;
   }
   .ui-vibrant .pastel-border-teal {
-    border-color: #b2dfdb !important;
+    border-color: var(--pastel-teal) !important;
   }
 
   /* Pastel chips and badges */
   .ui-vibrant .pastel-chip {
-    color: #0f172a !important;
+    color: var(--pastel-ink) !important;
     border-width: 1px !important;
   }
   .ui-vibrant .pastel-chip-blue {
-    background-color: #afd9e8 !important;
-    border-color: #8bc6dc !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-blue) !important;
+    border-color: var(--pastel-blue-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-green {
-    background-color: #b6e2b6 !important;
-    border-color: #94d794 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-green) !important;
+    border-color: var(--pastel-green-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-yellow {
-    background-color: #fff5ba !important;
-    border-color: #ffe98a !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-yellow) !important;
+    border-color: var(--pastel-yellow-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-red {
-    background-color: #ffb5b5 !important;
-    border-color: #ff9b9b !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-red) !important;
+    border-color: var(--pastel-red-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-purple {
-    background-color: #d7bde2 !important;
-    border-color: #c9a7d7 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-purple) !important;
+    border-color: var(--pastel-purple-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-orange {
-    background-color: #ffdab9 !important;
-    border-color: #ffc899 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-orange) !important;
+    border-color: var(--pastel-orange-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-pink {
-    background-color: #fbc4c4 !important;
-    border-color: #f7a9a9 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-pink) !important;
+    border-color: var(--pastel-pink-border) !important;
+    color: var(--pastel-ink) !important;
   }
   .ui-vibrant .pastel-chip-teal {
-    background-color: #b2dfdb !important;
-    border-color: #93d3cd !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-teal) !important;
+    border-color: var(--pastel-teal-border) !important;
+    color: var(--pastel-ink) !important;
   }
 
   /* Tab trigger active override helper */
   .ui-vibrant .pastel-tab-active[data-state="active"] {
-    background-color: #afd9e8 !important;
-    color: #0f172a !important;
+    background-color: var(--pastel-blue) !important;
+    color: var(--pastel-ink) !important;
   }
 
   /* ========== Playful white surfaces (vibrant) ========== */
@@ -1257,7 +1297,7 @@ html, body {
   [class*="stat-card--"]
   .stat-card-inner
   .text-primary-600 {
-  color: #0f172a !important;
+  color: var(--pastel-ink) !important;
 }
 .ui-vibrant
   .dashboard-container
@@ -1265,7 +1305,7 @@ html, body {
   .stat-card-inner
   .group:hover
   [class*="group-hover:text-primary-"] {
-  color: #0f172a !important;
+  color: var(--pastel-ink) !important;
 }
 .ui-vibrant
   .dashboard-container
@@ -1273,5 +1313,5 @@ html, body {
   .stat-card-inner
   .group:hover
   .lucide-chevron-right {
-  color: #0f172a !important;
+  color: var(--pastel-ink) !important;
 }

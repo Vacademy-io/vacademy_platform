@@ -36,6 +36,47 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     """Initialize a blank page with desired viewport and helper updaters for snippets/captions."""
     libs = f"file://{Path.cwd()}/assets/libs"
     page.set_viewport_size({"width": width, "height": height})
+
+    # ── Navigation guard ──
+    # LLM-generated shot HTML occasionally triggers a real top-level navigation
+    # (a `window.location =` script, a <meta http-equiv="refresh">, an
+    # auto-submitting <form>, an <a> that gets click()'d). When that navigation
+    # commits, the page's JS execution context is destroyed — and the renderer
+    # scrubs `gsap.globalTimeline.totalTime(t)` via page.evaluate() on EVERY
+    # frame. The next evaluate then dies with "Execution context was destroyed,
+    # most likely because of a navigation" and the whole multi-minute render is
+    # lost mid-way (observed at frame ~300 when shot-1 mounted).
+    #
+    # We abort any main-frame navigation that fires AFTER the harness page has
+    # loaded. Subresource loads (images/fonts/videos/libs) are navigation=False
+    # and pass straight through, so this doesn't break asset loading. Iframe
+    # navigations are left alone — they don't touch the main execution context.
+    _nav_guard = {"armed": False}
+
+    def _route_guard(route):
+        request = route.request
+        try:
+            if (
+                _nav_guard["armed"]
+                and request.is_navigation_request()
+                and request.frame == page.main_frame
+            ):
+                print(
+                    f"[RENDER-GUARD] blocked top-level navigation → {request.url[:160]}",
+                    flush=True,
+                )
+                route.abort()
+                return
+        except Exception:
+            pass
+        try:
+            route.continue_()
+        except Exception:
+            # Route already handled / page closing — nothing to recover.
+            pass
+
+    page.route("**/*", _route_guard)
+
     # Install updater that creates/removes/positions shadow-root wrapped snippets and scales to fit.
 
 
@@ -143,6 +184,52 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
         """
     )
 
+    # In-page navigation guard (defense-in-depth alongside the route abort
+    # above). Neutralizes the common in-document navigation triggers before any
+    # shot HTML runs. The route guard is the catch-all (it stops even a raw
+    # `location.href = ...` assignment, which can't be overridden from JS); this
+    # init script additionally suppresses anchor clicks / form submits /
+    # window.open / beforeunload so they never even reach the network layer.
+    page.add_init_script(
+        """
+        (() => {
+          try { window.open = function () { return null; }; } catch (e) {}
+          // Anchors / forms: prevent default navigation. Nothing should be
+          // clicked during a headless render, but shot scripts sometimes
+          // synthesize clicks or call form.submit().
+          document.addEventListener('click', (e) => {
+            const a = e.target && e.target.closest && e.target.closest('a[href]');
+            if (a) { e.preventDefault(); e.stopPropagation(); }
+          }, true);
+          document.addEventListener('submit', (e) => {
+            e.preventDefault(); e.stopPropagation();
+          }, true);
+          try {
+            const noop = function () {};
+            HTMLFormElement.prototype.submit = noop;
+            if (HTMLFormElement.prototype.requestSubmit) {
+              HTMLFormElement.prototype.requestSubmit = noop;
+            }
+          } catch (e) {}
+          // Best-effort: stub the Location methods (direct `location.href = x`
+          // is caught by the Playwright route guard, not here).
+          try {
+            ['assign', 'replace', 'reload'].forEach((m) => {
+              try {
+                Object.defineProperty(window.location, m, {
+                  value: function () {}, writable: false, configurable: true,
+                });
+              } catch (e) {}
+            });
+          } catch (e) {}
+          // Cancel any beforeunload-driven unload.
+          window.addEventListener('beforeunload', (e) => {
+            e.preventDefault(); e.returnValue = '';
+          }, true);
+        })();
+        """
+    )
+
     # Base content with background color. HTML overlays are transparent.
     # The harness HTML — with all educational library script tags, base CSS,
     # and the __updateSnippets shadow-DOM dispatcher — lives in render_harness.py
@@ -152,6 +239,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     temp_html_path = Path.cwd() / ".render_page.html"
     temp_html_path.write_text(html_content, encoding="utf-8")
     page.goto(f"file://{temp_html_path}", wait_until="domcontentloaded")
+    # Harness is loaded — arm the navigation guard so any FURTHER top-level
+    # navigation (triggered by shot HTML) is aborted instead of destroying the
+    # execution context the renderer scrubs each frame.
+    _nav_guard["armed"] = True
 
     # Replace background color token
     # page.evaluate("(bg) => { document.querySelector('style').textContent = document.querySelector('style').textContent.replace('REPLACE_BG', bg); }", background_color)
@@ -1064,7 +1155,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-05-09-v34 (gsap-gc-no-recurse-into-nested-timelines, fps={fps})", flush=True)
+        print(f"[RENDER-VERSION] generate_video.py build=2026-05-26-v36 (nav-guard + dispatcher neutralizes location/open/document.write in shot scripts, fps={fps})", flush=True)
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")
@@ -1804,15 +1895,42 @@ def render_video_from_json(
                 )
                 sys.stdout.flush()
 
-            page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
-                "entries": None,  # Already updated via __updateSnippets above
-                "camera": _cam_state,
-                "character": _char_state,
-                "caption": _caption_entry,
-                "t": t,
-                "seekVideos": True,
-                "segmentChanged": _segment_changed,
-            })
+            try:
+                page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
+                    "entries": None,  # Already updated via __updateSnippets above
+                    "camera": _cam_state,
+                    "character": _char_state,
+                    "caption": _caption_entry,
+                    "t": t,
+                    "seekVideos": True,
+                    "segmentChanged": _segment_changed,
+                })
+            except Exception as _eval_err:
+                # Name the culprit shot when the page context dies mid-render. The
+                # Python side knows exactly which entries are active at this frame,
+                # so we can point at the offending shot even when the browser logs
+                # are truncated. The dispatcher now neutralizes the common in-page
+                # navigation triggers (location.*/window.open/document.write); if
+                # this still fires, inspect the listed shot's HTML for a channel we
+                # don't yet cover (<meta http-equiv=refresh>, a submitting <form>,
+                # an iframe, etc.).
+                _emsg = str(_eval_err)
+                if (
+                    "Execution context was destroyed" in _emsg
+                    or "Target closed" in _emsg
+                    or "Target crashed" in _emsg
+                ):
+                    _active_ids = [e.get("id") for e in active]
+                    print(
+                        f"[RENDER-FATAL] page context died at frame={frame_index} "
+                        f"t={t:.2f}s segment_changed={_segment_changed} "
+                        f"active_shots={_active_ids} — a shot navigated the page or "
+                        f"wiped the document. The shot that just mounted is the culprit; "
+                        f"inspect its HTML.",
+                        flush=True,
+                    )
+                    sys.stdout.flush()
+                raise
 
             # Capture frame — clip to exact viewport to prevent camera/overflow bleeding
             # JPEG is 3-5x faster than PNG to encode and sufficient for H.264 re-encoding

@@ -6,14 +6,12 @@ import {
   SignOut,
   NotePencil,
   Users,
-} from "@phosphor-icons/react";
-import {
   AddressBook,
   Files,
   Password,
   UserCircle,
   UserCircleMinus,
-} from "phosphor-react";
+} from "@phosphor-icons/react";
 import { NamingSettingsType } from "@/services/fetchAndStoreInstituteDetails";
 import {
   ContentTerms,

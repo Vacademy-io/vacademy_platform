@@ -17,7 +17,7 @@ export const SearchInput = ({ searchInput, onSearchChange, placeholder }: Search
                 inputPlaceholder={placeholder}
                 className="pl-9 pr-9"
             />
-            <MagnifyingGlass className="absolute left-3 top-1/4 size-[18px] text-neutral-600" />
+            <MagnifyingGlass className="absolute left-3 top-1/4 size-5 text-neutral-600" />
         </div>
     );
 };

@@ -130,7 +130,7 @@ export const PlayBottomNav: React.FC = () => {
               <div
                 className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-150 ${
                   isActive
-                    ? "bg-primary text-white shadow-[0_3px_0_hsl(var(--primary-500))]"
+                    ? "bg-primary text-white shadow-[0_3px_0_hsl(var(--primary-500))]" // design-lint-ignore: custom shadow
                     : "text-muted-foreground"
                 }`}
               >
@@ -141,7 +141,7 @@ export const PlayBottomNav: React.FC = () => {
                   })}
               </div>
               <span
-                className={`text-[10px] font-bold uppercase tracking-wide leading-none ${
+                className={`text-3xs font-bold uppercase tracking-wide leading-none ${
                   isActive ? "text-primary" : "text-muted-foreground"
                 }`}
               >
@@ -159,7 +159,7 @@ export const PlayBottomNav: React.FC = () => {
                 <div className="flex items-center justify-center w-10 h-10 rounded-xl text-muted-foreground">
                   <DotsThree size={24} weight="bold" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wide leading-none text-muted-foreground">
+                <span className="text-3xs font-bold uppercase tracking-wide leading-none text-muted-foreground">
                   More
                 </span>
               </button>
@@ -189,7 +189,7 @@ export const PlayBottomNav: React.FC = () => {
                       <div
                         className={`flex items-center justify-center w-12 h-12 rounded-xl ${
                           isActive
-                            ? "bg-primary text-white shadow-[0_3px_0_hsl(var(--primary-500))]"
+                            ? "bg-primary text-white shadow-[0_3px_0_hsl(var(--primary-500))]" // design-lint-ignore: custom shadow
                             : "bg-muted text-muted-foreground"
                         }`}
                       >

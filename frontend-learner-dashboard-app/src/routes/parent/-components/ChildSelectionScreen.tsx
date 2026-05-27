@@ -37,13 +37,13 @@ export function ChildSelectionScreen({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4 sm:p-8 relative overflow-hidden"
+      className="min-h-screen bg-muted flex flex-col items-center justify-center p-4 sm:p-8 relative overflow-hidden"
     >
       {/* Background Ambient Glow - Lightened */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -left-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl opacity-60" />
         <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-violet-400/10 rounded-full blur-3xl opacity-60" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-blue-400/5 rounded-full blur-3xl opacity-60" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-col-600 h-96 bg-blue-400/5 rounded-full blur-3xl opacity-60" />
       </div>
 
       {/* Header */}

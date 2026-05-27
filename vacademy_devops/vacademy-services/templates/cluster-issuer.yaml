@@ -1,0 +1,24 @@
+{{- /*
+  Let's Encrypt ClusterIssuer for standalone client deployments (HTTP-01 solved
+  via the cluster ingress controller). Requires cert-manager to be installed
+  (install.sh does this). Cloud prod uses its own pre-existing ClusterIssuer.
+*/ -}}
+{{- if and .Values.standalone.enabled .Values.certManager.enabled }}
+{{- if not .Values.certManager.email }}
+  {{- fail "certManager.email is required when certManager.enabled=true (Let's Encrypt registration). Set it in values.secret.yaml or via the installer." -}}
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: vacademy-letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: {{ .Values.certManager.email | quote }}
+    privateKeySecretRef:
+      name: vacademy-letsencrypt-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: {{ .Values.ingress.className }}
+{{- end }}

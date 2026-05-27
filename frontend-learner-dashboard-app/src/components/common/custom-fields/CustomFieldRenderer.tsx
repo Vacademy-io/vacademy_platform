@@ -11,7 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { useFileUpload } from "@/hooks/use-file-upload";
@@ -264,7 +264,7 @@ export const CustomFieldRenderer = ({
           disabled={disabled}
           required={required}
           rows={3}
-          className="min-h-[60px] w-full"
+          className="min-h-16 w-full"
         />
       );
 
@@ -372,7 +372,7 @@ export const CustomFieldRenderer = ({
           />
           {isUploading && (
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <Loader2 className="size-4 animate-spin" />
+              <SpinnerGap className="size-4 animate-spin" />
               Uploading...
             </div>
           )}

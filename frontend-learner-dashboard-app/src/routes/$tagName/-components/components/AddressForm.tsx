@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { Loader2, MapPin } from "lucide-react";
+import { SpinnerGap, MapPin } from "@phosphor-icons/react";
 
 /**
  * Backend-shaped output. Parent reads this via getValue() at submit time.
@@ -43,12 +43,12 @@ const INDIAN_STATES = [
 
 const PINCODE_API = "https://api.postalpincode.in/pincode";
 
-const labelCls = "text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5";
+const labelCls = "text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5";
 const inputBase =
   "w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium";
 const inputDefault = "border-gray-200 focus:ring-primary-50 focus:border-primary-400";
 const inputError = "border-red-300 focus:ring-red-50";
-const errorText = "text-red-500 text-[10px] font-semibold";
+const errorText = "text-red-500 text-caption font-semibold";
 
 export const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(({ initial }, ref) => {
   const [houseNo, setHouseNo] = useState("");
@@ -235,7 +235,7 @@ export const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(({ in
               className={`${inputBase} pr-8 ${errors.pinCode ? inputError : inputDefault}`}
             />
             {pinLookupLoading && (
-              <Loader2 className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
+              <SpinnerGap className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
             )}
           </div>
           {errors.pinCode && <p className={errorText}>{errors.pinCode}</p>}

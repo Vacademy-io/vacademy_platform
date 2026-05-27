@@ -1,3 +1,4 @@
+{{- if .Values.services.ai_service.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,6 +32,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: myconfigmapv1.0
+            - secretRef:
+                name: vacademy-secrets
           env:
             - name: WHISPER_CPU_THREADS
               value: "{{ .Values.services.ai_service.whisper.cpuThreads | default "2" }}"
@@ -79,3 +82,4 @@ spec:
             successThreshold: 1
           ports:
             - containerPort: {{ .Values.services.ai_service.port }}
+{{- end }}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
-import { ShoppingCart, CheckCircle2, SlidersHorizontal, X, Star, ChevronDown, BookOpen, Users, Lightbulb, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShoppingCart, CheckCircle, SlidersHorizontal, X, Star, CaretDown, BookOpen, Users, Lightbulb, MagnifyingGlass, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { BASE_URL } from "@/constants/urls";
@@ -71,13 +71,13 @@ function getThumbnailStyle(primaryColor: string, selected: boolean) {
 
   if (isDark) {
     return {
-      bg: selected ? '#1e293b' : '#f1f5f9',
-      text: selected ? '#e2e8f0' : '#334155',
+      bg: selected ? '#1e293b' : '#f1f5f9', // design-lint-ignore: page-builder default color
+      text: selected ? '#e2e8f0' : '#334155', // design-lint-ignore: page-builder default color
     };
   }
   return {
     bg: selected ? primaryColor : `${primaryColor}22`,
-    text: selected ? '#ffffff' : primaryColor,
+    text: selected ? 'white' : primaryColor,
   };
 }
 
@@ -133,7 +133,7 @@ const HeroBannerBlock = ({
 
   return (
     <div
-      className="relative flex min-h-[220px] items-end overflow-hidden px-8 pb-8 md:min-h-[280px]"
+      className="relative flex min-h-56 items-end overflow-hidden px-8 pb-8 md:min-h-72"
       style={
         hasBg
           ? {
@@ -343,7 +343,7 @@ const HighlightAccordion: React.FC<{
         <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
           {icon}{title}
         </span>
-        <ChevronDown className={cn("size-4 text-gray-400 transition-transform", open && "rotate-180")} />
+        <CaretDown className={cn("size-4 text-gray-400 transition-transform", open && "rotate-180")} />
       </button>
       {open && <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/40">{children}</div>}
     </div>
@@ -439,7 +439,7 @@ const CourseDetailSheet = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center" onClick={onClose}>
-      <div className="relative w-full max-h-[94vh] overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl sm:max-w-2xl" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-h-screen-90 overflow-y-auto bg-white rounded-t-2xl sm:rounded-2xl sm:max-w-2xl" onClick={e => e.stopPropagation()}>
 
         {/* Close */}
         <button type="button" onClick={onClose}
@@ -461,7 +461,7 @@ const CourseDetailSheet = ({
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {tags.map(tag => (
-                <span key={tag} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-gray-500">{tag}</span>
+                <span key={tag} className="rounded-full bg-gray-100 px-2.5 py-0.5 text-caption font-medium uppercase tracking-wider text-gray-500">{tag}</span>
               ))}
             </div>
           )}
@@ -658,13 +658,13 @@ const CourseCard = ({
             <BookOpen className="size-10 transition-transform duration-200 group-hover:scale-110" style={{ color: primaryColor, opacity: 0.75 }} />
           )}
           {hasDiscount && discountPct > 0 && (
-            <div className="absolute left-2.5 top-2.5 rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+            <div className="absolute left-2.5 top-2.5 rounded-full bg-orange-500 px-2 py-0.5 text-caption font-bold text-white shadow">
               {discountPct}% OFF
             </div>
           )}
           {selected && (
             <div className="absolute right-2.5 top-2.5 flex size-6 items-center justify-center rounded-full shadow" style={{ backgroundColor: primaryColor }}>
-              <CheckCircle2 className="size-3.5 text-white" />
+              <CheckCircle className="size-3.5 text-white" />
             </div>
           )}
         </div>
@@ -677,7 +677,7 @@ const CourseCard = ({
           <div className="mt-auto flex items-end justify-between gap-2">
             <div className="flex flex-wrap gap-1">
               {mapping.level_name && (
-                <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                <span className="rounded-full border border-gray-200 bg-white px-2 py-0.5 text-caption font-medium text-gray-600">
                   {mapping.level_name}{mapping.session_name ? ` - ${mapping.session_name}` : ""}
                 </span>
               )}
@@ -691,7 +691,7 @@ const CourseCard = ({
                     {currency} {plan!.actual_price.toLocaleString()}
                   </span>
                   {hasDiscount && (
-                    <span className="ml-1 text-[10px] text-gray-400 line-through">{plan!.elevated_price.toLocaleString()}</span>
+                    <span className="ml-1 text-caption text-gray-400 line-through">{plan!.elevated_price.toLocaleString()}</span>
                   )}
                 </div>
               )}
@@ -705,14 +705,14 @@ const CourseCard = ({
           onClick={(e) => { e.stopPropagation(); if (selected) { if (canDeselect) onToggle(); } else onToggle(); }}
           disabled={selected && !canDeselect}
           className={cn(
-            "flex w-full items-center justify-center gap-1.5 py-2.5 text-[11px] font-semibold transition-all duration-150",
+            "flex w-full items-center justify-center gap-1.5 py-2.5 text-caption font-semibold transition-all duration-150",
             selected
               ? "hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
               : "text-white hover:opacity-90",
           )}
           style={selected ? { backgroundColor: `${primaryColor}10`, color: primaryColor } : { backgroundColor: primaryColor }}
         >
-          {selected ? <><CheckCircle2 className="size-3" /> Added to Cart</> : <><ShoppingCart className="size-3" /> Add to Cart</>}
+          {selected ? <><CheckCircle className="size-3" /> Added to Cart</> : <><ShoppingCart className="size-3" /> Add to Cart</>}
         </button>
       </div>
 
@@ -812,7 +812,7 @@ const CourseGridBlock = ({
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-gray-900">Filters</span>
         {hasActiveFilters && (
-          <button type="button" onClick={clearAll} className="text-[11px] font-medium text-gray-400 hover:text-gray-700">
+          <button type="button" onClick={clearAll} className="text-caption font-medium text-gray-400 hover:text-gray-700">
             Clear all
           </button>
         )}
@@ -838,8 +838,8 @@ const CourseGridBlock = ({
           </div>
           {allLevels.length > 4 && (
             <button type="button" onClick={() => setShowMoreLevels((p) => !p)}
-              className="mt-2 flex items-center gap-1 text-[11px] font-medium text-gray-400 hover:text-gray-700">
-              <ChevronDown className={cn("size-3 transition-transform", showMoreLevels && "rotate-180")} />
+              className="mt-2 flex items-center gap-1 text-caption font-medium text-gray-400 hover:text-gray-700">
+              <CaretDown className={cn("size-3 transition-transform", showMoreLevels && "rotate-180")} />
               {showMoreLevels ? "Show less" : `Show ${allLevels.length - 4} more`}
             </button>
           )}
@@ -873,7 +873,7 @@ const CourseGridBlock = ({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Price Range</p>
           <div className="flex items-center gap-2">
             <div className="flex-1">
-              <p className="mb-1 text-[10px] text-gray-400">Min</p>
+              <p className="mb-1 text-caption text-gray-400">Min</p>
               <input
                 type="number" min={0} value={priceMin} placeholder="0"
                 onChange={(e) => { setPriceMin(e.target.value); setPage(0); }}
@@ -882,7 +882,7 @@ const CourseGridBlock = ({
             </div>
             <span className="mt-4 text-xs text-gray-400">–</span>
             <div className="flex-1">
-              <p className="mb-1 text-[10px] text-gray-400">Max</p>
+              <p className="mb-1 text-caption text-gray-400">Max</p>
               <input
                 type="number" min={0} value={priceMax} placeholder={maxPriceAll.toString()}
                 onChange={(e) => { setPriceMax(e.target.value); setPage(0); }}
@@ -920,7 +920,7 @@ const CourseGridBlock = ({
           {/* Search + filter toggle row */}
           <div className="mb-4 flex items-center gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+              <MagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 value={search}
@@ -937,7 +937,7 @@ const CourseGridBlock = ({
             >
               <SlidersHorizontal className="size-4" />
               Filters
-              {hasActiveFilters && <span className="flex size-4 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ backgroundColor: primaryColor }}>{levelSel.length + sessionSel.length}</span>}
+              {hasActiveFilters && <span className="flex size-4 items-center justify-center rounded-full text-caption font-bold text-white" style={{ backgroundColor: primaryColor }}>{levelSel.length + sessionSel.length}</span>}
             </button>
           </div>
 
@@ -996,7 +996,7 @@ const CourseGridBlock = ({
                 onClick={() => setPage((p) => p - 1)}
                 className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-30"
               >
-                <ChevronLeft className="size-4" />
+                <CaretLeft className="size-4" />
               </button>
               <div className="flex items-center gap-1">
                 {Array.from({ length: totalPages }, (_, i) => (
@@ -1020,7 +1020,7 @@ const CourseGridBlock = ({
                 onClick={() => setPage((p) => p + 1)}
                 className="flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-50 disabled:opacity-30"
               >
-                <ChevronRight className="size-4" />
+                <CaretRight className="size-4" />
               </button>
             </div>
           )}
@@ -1048,10 +1048,10 @@ const StickyCartBar = ({
   if (count === 0) return null;
 
   return (
-    <div className="sticky bottom-0 z-30 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-md">
+    <div className="sticky bottom-0 z-30 border-t border-gray-100 bg-white/95 px-4 py-3 shadow-top-bar backdrop-blur-md">
       <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[13px] text-gray-500">
+          <p className="text-caption text-gray-500">
             {count} course{count !== 1 ? "s" : ""} selected
           </p>
           {price > 0 ? (
@@ -1088,8 +1088,8 @@ const HeroSectionBlock = ({
   const layout = (props.layout as string) || "split";
   const left = (props.left as Record<string, unknown>) || {};
   const right = (props.right as Record<string, unknown>) || {};
-  const bg = (props.backgroundColor as string) || "#F8FAFC";
-  const fg = (props.textColor as string) || "#111827";
+  const bg = (props.backgroundColor as string) || "#F8FAFC"; // design-lint-ignore: page-builder default color
+  const fg = (props.textColor as string) || "#111827"; // design-lint-ignore: page-builder default color
   const backgroundImage = (props.backgroundImage as string) || "";
   const title = (left.title as string) || "";
   const subheading = (left.subheading as string) || "";
@@ -1097,7 +1097,7 @@ const HeroSectionBlock = ({
   const tags = ((left.tags as string[]) || []).filter(Boolean);
   const button = (left.button as { enabled?: boolean; text?: string; target?: string; bgColor?: string; textColor?: string }) || {};
   const btnBg = button.bgColor || primaryColor;
-  const btnFg = button.textColor || "#FFFFFF";
+  const btnFg = button.textColor || "white";
   const imageUrl = (right.image as string) || "";
   const collage = (Array.isArray(right.imageCollage)
     ? (right.imageCollage as string[])
@@ -1228,8 +1228,8 @@ export const NewHeaderBlock = ({
   const navigation = (props.navigation as Array<{ label: string; url?: string; route?: string }>) || [];
   const ctaButton = (props.ctaButton as { enabled?: boolean; text?: string; url?: string; bgColor?: string; textColor?: string }) || {};
   const bg = (props.backgroundColor as string) || primaryColor;
-  const fg = (props.textColor as string) || "#FFFFFF";
-  const ctaBg = ctaButton.bgColor || "#FFFFFF";
+  const fg = (props.textColor as string) || "white";
+  const ctaBg = ctaButton.bgColor || "white";
   const ctaFg = ctaButton.textColor || bg;
 
   return (
@@ -1277,8 +1277,8 @@ export const NewFooterBlock = ({ props }: { props: Record<string, unknown> }) =>
   const left = (props.leftSection as Record<string, unknown>) || {};
   const bottomNote = (props.bottomNote as string) || (props.text as string) || "";
   const title = (left.title as string) || "";
-  const bg = (props.backgroundColor as string) || "#F9FAFB";
-  const fg = (props.textColor as string) || "#374151";
+  const bg = (props.backgroundColor as string) || "#F9FAFB"; // design-lint-ignore: page-builder default color
+  const fg = (props.textColor as string) || "#374151"; // design-lint-ignore: page-builder default color
 
   // Collect right sections
   const rightCols: Array<{ title: string; links: Array<{ label: string; url: string }> }> = [];
@@ -1326,8 +1326,8 @@ const StatsHighlightsBlock = ({
   props: Record<string, unknown>;
   primaryColor: string;
 }) => {
-  const bg = (props.backgroundColor as string) || (props as any).styles?.backgroundColor || "#FFFFFF";
-  const fg = (props.textColor as string) || (props as any).styles?.textColor || "#111827";
+  const bg = (props.backgroundColor as string) || (props as any).styles?.backgroundColor || "white";
+  const fg = (props.textColor as string) || (props as any).styles?.textColor || "#111827"; // design-lint-ignore: page-builder default color
   const stats: Array<{ label: string; value: string }> = (props.stats as any[]) || [];
   if (stats.length === 0 && !props.headerText) return null;
   return (
@@ -1355,8 +1355,8 @@ const StatsHighlightsBlock = ({
 };
 
 const TestimonialSectionBlock = ({ props }: { props: Record<string, unknown> }) => {
-  const bg = (props.backgroundColor as string) || "#F9FAFB";
-  const fg = (props.textColor as string) || "#111827";
+  const bg = (props.backgroundColor as string) || "#F9FAFB"; // design-lint-ignore: page-builder default color
+  const fg = (props.textColor as string) || "#111827"; // design-lint-ignore: page-builder default color
   const testimonials: Array<{ author?: string; name?: string; role?: string; content?: string; feedback?: string }> =
     (props.testimonials as any[]) || [];
   if (testimonials.length === 0 && !props.headerText) return null;
@@ -1386,8 +1386,8 @@ const TestimonialSectionBlock = ({ props }: { props: Record<string, unknown> }) 
 
 const FaqSectionBlock = ({ props }: { props: Record<string, unknown> }) => {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
-  const bg = (props.backgroundColor as string) || "#F9FAFB";
-  const fg = (props.textColor as string) || "#111827";
+  const bg = (props.backgroundColor as string) || "#F9FAFB"; // design-lint-ignore: page-builder default color
+  const fg = (props.textColor as string) || "#111827"; // design-lint-ignore: page-builder default color
   const faqs: Array<{ question: string; answer: string }> = (props.faqs as any[]) || [];
   if (faqs.length === 0 && !props.headerText) return null;
   return (
@@ -1411,7 +1411,7 @@ const FaqSectionBlock = ({ props }: { props: Record<string, unknown> }) => {
               className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
             >
               <span className="text-sm font-semibold" style={{ color: fg }}>{faq.question}</span>
-              <ChevronDown className={cn("size-4 shrink-0 text-gray-400 transition-transform", openIdx === i && "rotate-180")} />
+              <CaretDown className={cn("size-4 shrink-0 text-gray-400 transition-transform", openIdx === i && "rotate-180")} />
             </button>
             {openIdx === i && (
               <div className="border-t border-gray-100 px-5 py-4 text-sm leading-relaxed text-gray-600">
@@ -1426,8 +1426,8 @@ const FaqSectionBlock = ({ props }: { props: Record<string, unknown> }) => {
 };
 
 const CtaBannerBlock = ({ props }: { props: Record<string, unknown> }) => {
-  const bg = (props.backgroundColor as string) || "#3B82F6";
-  const fg = (props.textColor as string) || "#FFFFFF";
+  const bg = (props.backgroundColor as string) || "#3B82F6"; // design-lint-ignore: page-builder default color
+  const fg = (props.textColor as string) || "white";
   const btn = (props.button as { enabled?: boolean; text?: string; target?: string; url?: string }) || {};
   return (
     <section className="py-16 px-6 text-center" style={{ backgroundColor: bg }}>
@@ -1463,8 +1463,8 @@ const FeatureGridBlock = ({
   props: Record<string, unknown>;
   primaryColor: string;
 }) => {
-  const bg = (props.backgroundColor as string) || "#FFFFFF";
-  const fg = (props.textColor as string) || "#111827";
+  const bg = (props.backgroundColor as string) || "white";
+  const fg = (props.textColor as string) || "#111827"; // design-lint-ignore: page-builder default color
   const features: Array<{ icon?: string; title: string; description: string }> = (props.features as any[]) || [];
   const cols = (props.columns as number) || 3;
   const colClass = cols >= 4
@@ -1512,8 +1512,8 @@ const StepsProcessBlock = ({
   props: Record<string, unknown>;
   primaryColor: string;
 }) => {
-  const bg = (props.backgroundColor as string) || "#FFFFFF";
-  const fg = (props.textColor as string) || "#111827";
+  const bg = (props.backgroundColor as string) || "white";
+  const fg = (props.textColor as string) || "#111827"; // design-lint-ignore: page-builder default color
   const steps: Array<{ number?: string; title: string; description: string }> = (props.steps as any[]) || [];
   const isHorizontal = (props.layout as string) !== "vertical";
   if (steps.length === 0 && !props.headerText) return null;
@@ -1550,7 +1550,7 @@ const StepsProcessBlock = ({
 };
 
 const VideoEmbedBlock = ({ props }: { props: Record<string, unknown> }) => {
-  const bg = (props.backgroundColor as string) || "#000000";
+  const bg = (props.backgroundColor as string) || "black";
   const rawUrl = (props.url as string) || "";
 
   const getEmbedUrl = (url: string) => {
@@ -1634,9 +1634,9 @@ const MarqueeBlock = ({ props }: { props: Record<string, unknown> }) => {
   const items = (props.items as Array<{ icon: string; text: string }>) ?? [];
   const speed = MARQUEE_SPEED[(props.speed as keyof typeof MARQUEE_SPEED) ?? 'medium'] ?? 25;
   const direction = (props.direction as string) ?? 'left';
-  const bg = (props.backgroundColor as string) ?? '#1e1b4b';
-  const fg = (props.textColor as string) ?? '#ffffff';
-  const iconColor = (props.iconColor as string) ?? '#facc15';
+  const bg = (props.backgroundColor as string) ?? '#1e1b4b'; // design-lint-ignore: page-builder default color
+  const fg = (props.textColor as string) ?? 'white';
+  const iconColor = (props.iconColor as string) ?? '#facc15'; // design-lint-ignore: page-builder default color
   const pauseOnHover = props.pauseOnHover !== false;
   const fontSizeMap: Record<string, string> = { xs: '12px', sm: '14px', base: '16px', lg: '18px', xl: '20px' };
   const fontSize = fontSizeMap[(props.fontSize as string) ?? 'sm'] ?? '14px';
@@ -1711,7 +1711,7 @@ export const PageRenderer = ({
   settings,
   onNext,
 }: PageRendererProps) => {
-  const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5";
+  const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
   const components = (pageJson.components || []).filter((c) => c.enabled);
   const pageName = pageData.name;
 

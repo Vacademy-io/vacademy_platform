@@ -1,41 +1,58 @@
-replicaCount: 1
+# Replicas for auth + admin-core (cloud prod runs 2 for HA; standalone overlay = 1).
+replicaCount: 2
 
 rollingUpdate:
   maxSurge: 1
   maxUnavailable: 0
 
+# ---------------------------------------------------------------------------
+# Services
+#
+# `enabled` toggles whether a service's Deployment/Service/ingress-path render.
+# Mandatory for any working install: auth, admin_core, media.
+# Optional/toggleable: assessment, ai, notification, community.
+# NOTE: auth sends OTPs via notification-service — if you use email/WhatsApp OTP
+#       login, keep notification_service enabled (password/OAuth login works without it).
+# ---------------------------------------------------------------------------
 services:
-  admin_core_service:
-    port: 8072
-    image:
-      repository: public.ecr.aws/e0x1f4p4/admin-core-service/admin-core-service-repo
-      tag: latest
-  community_service:
-    port: 8073
-    image:
-      repository: public.ecr.aws/e0x1f4p4/community-service/community-service-repo
-      tag: latest
-  media_service:
-    port: 8075
-    image:
-      repository: public.ecr.aws/e0x1f4p4/media-service/media-service-repo
-      tag: latest
   auth_service:
+    enabled: true
     port: 8071
     image:
       repository: public.ecr.aws/e0x1f4p4/auth-service/auth-service-repo
       tag: latest
+  admin_core_service:
+    enabled: true
+    port: 8072
+    image:
+      repository: public.ecr.aws/e0x1f4p4/admin-core-service/admin-core-service-repo
+      tag: latest
+  media_service:
+    enabled: true
+    port: 8075
+    image:
+      repository: public.ecr.aws/e0x1f4p4/media-service/media-service-repo
+      tag: latest
   assessment_service:
+    enabled: true
     port: 8074
     image:
       repository: public.ecr.aws/e0x1f4p4/assessment-service/assessment-service-repo
       tag: latest
+  community_service:
+    enabled: true
+    port: 8073
+    image:
+      repository: public.ecr.aws/e0x1f4p4/community-service/community-service-repo
+      tag: latest
   notification_service:
+    enabled: true
     port: 8076
     image:
       repository: public.ecr.aws/e0x1f4p4/notification-service/notification-service-repo
       tag: latest
   ai_service:
+    enabled: true
     port: 8077
     image:
       repository: public.ecr.aws/e0x1f4p4/ai-service/ai-service-repo
@@ -53,16 +70,163 @@ environment:
   stage: stage
   prod: prod
 
+# ---------------------------------------------------------------------------
+# Standalone single-server mode (client deployments)
+#
+# When true, the chart is self-contained: bundled Postgres, frontends, and a
+# Let's Encrypt ingress for a single client domain. Cloud prod leaves this false.
+# ---------------------------------------------------------------------------
+standalone:
+  enabled: false
+  # The single domain the client points at this box (frontends + API, same origin).
+  # Required when standalone.enabled=true.
+  domain: ""
+
+# ---------------------------------------------------------------------------
+# Bundled PostgreSQL (used for standalone; cloud prod uses managed DB via pgbouncer)
+# ---------------------------------------------------------------------------
+postgres:
+  bundled: false
+  image: pgvector/pgvector:pg16   # pgvector + pgcrypto available (admin_core needs them)
+  storage: 20Gi
+  storageClassName: ""            # "" = cluster default (k3s: local-path)
+  # Load the prod schema baselines (baseline/*.sql) into each DB on first init.
+  # These are schema + flyway history, so services' Flyway continues cleanly.
+  loadBaseline: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+# ---------------------------------------------------------------------------
+# Frontends (served as static nginx; same origin as API via ingress)
+# ---------------------------------------------------------------------------
+frontends:
+  enabled: false
+  admin:
+    image:
+      repository: public.ecr.aws/e0x1f4p4/frontend-admin-dashboard/frontend-admin-dashboard-repo
+      tag: latest
+  learner:
+    image:
+      repository: public.ecr.aws/e0x1f4p4/frontend-learner-dashboard-app/frontend-learner-dashboard-repo
+      tag: latest
+
+# ---------------------------------------------------------------------------
+# cert-manager Let's Encrypt (standalone). Cloud prod uses its own ClusterIssuer.
+# ---------------------------------------------------------------------------
+certManager:
+  enabled: false
+  email: ""                       # required for Let's Encrypt registration
+
+ingress:
+  className: nginx                # cloud prod; standalone overlay sets traefik (k3s)
+  clusterIssuer: vacademy-stage-letsencrypt-prod-cert-issuer
+  hosts:
+    - backend-stage.vacademy.io
+
+# ---------------------------------------------------------------------------
 # PgBouncer Configuration
-# Override these values via a local `values.secret.yaml` overlay (see
-# values.secret.example.yaml). That file is gitignored — never commit real
-# credentials to this file.
+# Override DB host/creds via a local `values.secret.yaml` overlay (gitignored).
+# When postgres.bundled=true the installer points dbHost at the in-cluster DB.
+# ---------------------------------------------------------------------------
 pgbouncer:
+  enabled: true                   # cloud prod = true; standalone overlay sets false
   dbHost: "REPLACE_WITH_LINODE_DB_HOST"
   dbReadHost: "REPLACE_WITH_LINODE_READ_REPLICA_HOST"
   dbPort: 26754
   dbUsername: "postgres"
   dbPassword: "REPLACE_WITH_LINODE_DB_PASSWORD"
+
+# ---------------------------------------------------------------------------
+# FULL ENVIRONMENT — source of truth for every service's runtime config.
+# Non-secret values render into the `myconfigmapv1.0` ConfigMap; secret values
+# render into the `vacademy-secrets` Secret. Both are mounted via envFrom on
+# every service. Spring/uvicorn ignore env vars they don't use, so one shared
+# pair across all services is intentional.
+#
+# Per-service DB URLs are derived from db.host/db.port below (services connect
+# through pgbouncer). community_service shares the assessment DB by design.
+#
+# GUARD: when env.required=true the ConfigMap/Secret refuse to render unless
+# secrets.jwtSecretKey is set — this prevents a prod deploy from overwriting the
+# live (manually-maintained) config with blanks. Populate values.secret.yaml
+# first (use scripts/export-live-config.sh to capture the current cluster config).
+# ---------------------------------------------------------------------------
+env:
+  required: true
+  springProfile: prod             # SPRING_PROFILES_ACTIVE
+  db:
+    host: pgbouncer
+    port: "6432"
+    username: postgres
+  app:
+    username: admin               # APP_USERNAME (internal service-to-service)
+  cloudFrontUrl: ""               # CLOUD_FRONT_URL (media CDN; standalone: media-service URL)
+  teacherPortalClientUrl: ""
+  toolExecutorBaseUrl: ""
+  schedulingTimeFrame: "30"
+  s3:
+    region: ap-south-1
+    bucket: ""                    # AWS_BUCKET_NAME
+    publicBucket: ""              # AWS_S3_PUBLIC_BUCKET
+  mail:
+    host: ""                      # MAIL_HOST (SES SMTP endpoint)
+    port: "587"
+  ses:
+    senderEmail: ""
+    configurationSet: ""
+    eventsSqsUrl: ""
+  sqs:
+    region: ap-south-1
+    endpoint: ""
+
+# ---------------------------------------------------------------------------
+# SECRETS — render into the `vacademy-secrets` Secret. Provide real values in a
+# gitignored `values.secret.yaml`. Clients supply their OWN cloud keys here.
+# The installer generates a unique jwtSecretKey per client.
+# ---------------------------------------------------------------------------
+secrets:
+  dbPassword: ""
+  appPassword: ""                 # APP_PASSWORD
+  jwtSecretKey: ""                # shared across this install's services
+  oauth:
+    googleClientId: ""
+    googleClientSecret: ""
+    githubClientId: ""
+    githubClientSecret: ""
+  s3:
+    accessKey: ""                 # S3_AWS_ACCESS_KEY
+    accessSecret: ""              # S3_AWS_ACCESS_SECRET
+  ses:
+    mailUsername: ""              # AWS_MAIL_USERNAME
+    mailPassword: ""              # AWS_MAIL_PASSWORD
+  sqs:
+    accessKey: ""                 # SQS_AWS_ACCESS_KEY
+    secretKey: ""                 # SQS_AWS_SECRET_KEY
+  api:
+    openrouter: ""
+    gemini: ""
+    youtube: ""
+    unsplash: ""
+    deepseek: ""
+    fal: ""
+    whatsappToken: ""
+  ai:
+    clientName: ai_service        # CLIENT_NAME (ai internal auth)
+    clientSecret: ""              # CLIENT_SECRET
+  cloudflare:                     # admin-core white-label custom domains (optional)
+    apiToken: ""
+    zoneId: ""
+  whatsapp:                       # notification-service WhatsApp (optional)
+    accessToken: ""
+    phoneNumberId: ""
+  sentry:
+    dsn: ""
+    authToken: ""
 
 # Redis Configuration
 redis:

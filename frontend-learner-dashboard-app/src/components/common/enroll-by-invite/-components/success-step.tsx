@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle, Warning } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -52,7 +52,7 @@ const SuccessStep = ({
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-6">
                             <div className="flex items-start gap-3">
                                 <div className="p-1.5 bg-amber-100 rounded-lg flex-shrink-0">
-                                    <AlertTriangle className="w-5 h-5 text-amber-600" />
+                                    <Warning className="w-5 h-5 text-amber-600" />
                                 </div>
                                 <div className="text-left">
                                     <h3 className="text-base font-semibold text-gray-900 mb-1">

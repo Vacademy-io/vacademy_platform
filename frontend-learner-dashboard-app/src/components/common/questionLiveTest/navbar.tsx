@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { HelpCircle, Upload, FileText } from "lucide-react";
+import { Question, UploadSimple, FileText } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { TimesUpModal } from "@/components/modals/times-up-modal";
 import { ASSESSMENT_SUBMIT, ASSESSMENT_SUBMIT_MANUAL } from "@/constants/urls";
@@ -570,7 +570,7 @@ export function Navbar({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon">
-                <HelpCircle className="h-5 w-5" />
+                <Question className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -609,7 +609,7 @@ export function Navbar({
                                 {time}
                               </span>
                               {index < array.length - 1 && (
-                                <span className="absolute right-[-10px] text-lg">
+                                <span className="absolute -right-2.5 text-lg">
                                   :
                                 </span>
                               )}
@@ -657,7 +657,7 @@ export function Navbar({
                   {isUploading ? (
                     <span className="loader h-4 w-4"></span>
                   ) : (
-                    <Upload className="h-4 w-4" />
+                    <UploadSimple className="h-4 w-4" />
                   )}
                   {isUploading ? "Uploading..." : "Upload PDF"}
                 </MyButton>
@@ -679,7 +679,7 @@ export function Navbar({
 
       {showPdfPreview && pdfFile ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col">
+          <div className="bg-white rounded-lg w-full max-w-5xl h-screen-90 flex flex-col">
             <div className="flex justify-between items-center p-4 border-b">
               {/* <h2 className="text-lg font-semibold">
                 PDF Preview: {pdfFile.fileName} {pdfDocumentInfo.currentPage + 1}/{pdfDocumentInfo.numPages}

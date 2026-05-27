@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { Mic, MicOff, Loader2 } from "lucide-react";
+import { Microphone, MicrophoneSlash, SpinnerGap } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -102,7 +102,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
         className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground"
         title="Transcribing..."
       >
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <SpinnerGap className="h-4 w-4 animate-spin" />
       </button>
     );
   }
@@ -139,7 +139,7 @@ export const MicButton: React.FC<MicButtonProps> = ({
       disabled={disabled}
       title="Voice to text"
     >
-      <Mic className="h-4 w-4" />
+      <Microphone className="h-4 w-4" />
     </button>
   );
 };

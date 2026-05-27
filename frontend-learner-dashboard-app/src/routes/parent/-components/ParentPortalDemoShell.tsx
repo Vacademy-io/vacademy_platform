@@ -13,9 +13,9 @@ import {
   MOCK_DOCUMENTS,
 } from "./mock-data";
 import {
-  Home, ClipboardList, CalendarCheck, DollarSign,
-  FileText, RefreshCw, Bell, Users, Menu, X,
-} from "lucide-react";
+  House, ClipboardText, CalendarCheck, CurrencyDollar,
+  FileText, ArrowsClockwise, Bell, Users, List, X,
+} from "@phosphor-icons/react";
 import { ParentDashboardDemo } from "./demos/DashboardDemo";
 import { RegistrationDemo } from "./demos/RegistrationDemo";
 import { InterviewDemo } from "./demos/InterviewDemo";
@@ -25,12 +25,12 @@ import { TrackerDemo } from "./demos/TrackerDemo";
 
 type TabId = "dashboard" | "registration" | "schedule" | "payments" | "documents" | "tracker";
 const NAV_TABS: { id: TabId; label: string; icon: React.ElementType; mobileLabel: string }[] = [
-  { id: "dashboard", label: "Dashboard", icon: Home, mobileLabel: "Home" },
-  { id: "registration", label: "Registration", icon: ClipboardList, mobileLabel: "Register" },
+  { id: "dashboard", label: "Dashboard", icon: House, mobileLabel: "Home" },
+  { id: "registration", label: "Registration", icon: ClipboardText, mobileLabel: "Register" },
   { id: "schedule", label: "Interview & Assessment", icon: CalendarCheck, mobileLabel: "Schedule" },
-  { id: "payments", label: "Payments", icon: DollarSign, mobileLabel: "Payments" },
+  { id: "payments", label: "Payments", icon: CurrencyDollar, mobileLabel: "Payments" },
   { id: "documents", label: "Documents", icon: FileText, mobileLabel: "Docs" },
-  { id: "tracker", label: "Admission Tracker", icon: RefreshCw, mobileLabel: "Tracker" },
+  { id: "tracker", label: "Admission Tracker", icon: ArrowsClockwise, mobileLabel: "Tracker" },
 ];
 
 interface Props { child: ChildProfile; allChildren: ChildProfile[]; onSwitchChild: () => void }
@@ -64,13 +64,13 @@ export function ParentPortalDemoShell({ child, allChildren, onSwitchChild }: Pro
         <div className="flex items-center justify-between px-4 h-14 sm:h-16 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-3">
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="lg:hidden p-1.5 rounded-lg hover:bg-muted/50">
-              {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+              {isMobileMenuOpen ? <X size={20} /> : <List size={20} />}
             </button>
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center text-primary-foreground text-xs font-bold shadow-sm">{initials}</div>
               <div className="hidden sm:block">
                 <p className="text-sm font-semibold text-foreground leading-tight">{child.full_name}</p>
-                <p className="text-[10px] text-muted-foreground leading-tight">{child.grade_applying || "Admission in progress"}</p>
+                <p className="text-caption text-muted-foreground leading-tight">{child.grade_applying || "Admission in progress"}</p>
               </div>
             </div>
           </div>
@@ -110,7 +110,7 @@ export function ParentPortalDemoShell({ child, allChildren, onSwitchChild }: Pro
       {/* Bottom tabs mobile */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/90 backdrop-blur-xl border-t border-border/50">
         <div className="flex items-center justify-around px-2 h-16">
-          {NAV_TABS.slice(0, 5).map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 py-1 rounded-lg relative ${activeTab === tab.id ? "text-primary" : "text-muted-foreground"}`}><tab.icon size={20} className="shrink-0" /><span className="text-[10px] font-medium truncate w-full text-center">{tab.mobileLabel}</span>{activeTab === tab.id && <motion.div layoutId="demoMobileTab" className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />}</button>))}
+          {NAV_TABS.slice(0, 5).map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 py-1 rounded-lg relative ${activeTab === tab.id ? "text-primary" : "text-muted-foreground"}`}><tab.icon size={20} className="shrink-0" /><span className="text-caption font-medium truncate w-full text-center">{tab.mobileLabel}</span>{activeTab === tab.id && <motion.div layoutId="demoMobileTab" className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />}</button>))}
         </div>
       </nav>
       <div className="lg:hidden h-16" />

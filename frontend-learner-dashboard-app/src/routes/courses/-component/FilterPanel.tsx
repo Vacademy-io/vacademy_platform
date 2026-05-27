@@ -4,7 +4,7 @@ import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { toTitleCase } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { Funnel, CaretDown, CaretUp } from "@phosphor-icons/react";
 
 // Internal reusable component for individual filter sections
 interface FilterSectionProps {
@@ -72,12 +72,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           {isExpanded ? (
             <>
               Show Less
-              <ChevronUp size={14} />
+              <CaretUp size={14} />
             </>
           ) : (
             <>
               Show More
-              <ChevronDown size={14} />
+              <CaretDown size={14} />
             </>
           )}
         </button>
@@ -159,7 +159,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
           className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
         >
           <div className="flex items-center space-x-2">
-            <Filter size={18} className="text-gray-600" />
+            <Funnel size={18} className="text-gray-600" />
             <span className="text-sm font-semibold text-gray-900">Filters</span>
             {hasActiveFilters && (
               <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded-full">
@@ -167,7 +167,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
               </span>
             )}
           </div>
-          <ChevronDown
+          <CaretDown
             size={16}
             className={`text-gray-500 transition-transform ${isMobileExpanded ? 'rotate-180' : ''}`}
           />
@@ -183,14 +183,14 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             <Button
               onClick={clearAllFilters}
               disabled={!hasActiveFilters}
-              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+              className={`px-2 py-1 h-fit transition text-xs mt-px`}
             >
               Clear All
             </Button>
             <Button
               onClick={onApplyFilters}
               disabled={!hasActiveFilters}
-              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+              className={`px-2 py-1 h-fit transition text-xs mt-px`}
             >
               Apply
             </Button>
@@ -204,14 +204,14 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             <Button
               onClick={clearAllFilters}
               disabled={!hasActiveFilters}
-              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+              className={`px-2 py-1 h-fit transition text-xs mt-px`}
             >
               Clear All
             </Button>
             <Button
               onClick={onApplyFilters}
               disabled={!hasActiveFilters}
-              className={`px-2 py-1 h-fit transition text-xs mt-[1px]`}
+              className={`px-2 py-1 h-fit transition text-xs mt-px`}
             >
               Apply
             </Button>

@@ -6,7 +6,7 @@ import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { useState, useEffect, useRef } from "react";
-import { Search, ShoppingCart } from "lucide-react";
+import { MagnifyingGlass, ShoppingCart } from "@phosphor-icons/react";
 import { useCartStore } from "../../-stores/cart-store";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
 import { Capacitor } from "@capacitor/core";
@@ -388,7 +388,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     return (
       <header
-        className={`fixed top-0 left-0 right-0 z-[var(--catalogue-z-fixed)] bg-white border-b border-[hsl(var(--catalogue-border-subtle))] w-full ${headerTopOffset}`}
+        className={`fixed top-0 left-0 right-0 z-catalogue-fixed bg-white border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
         style={{
           '--header-height': 'var(--catalogue-header-height)',
           '--header-height-mobile': 'var(--catalogue-header-height-mobile)'
@@ -412,7 +412,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     sessionStorage.setItem('searchBarOpen', 'false');
                   }
                 }}
-                className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] flex-shrink-0 transition-colors duration-200"
+                className="md:hidden p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover flex-shrink-0 transition-colors duration-200"
                 aria-label="Toggle menu"
               >
                 <div className="relative w-5 h-5 flex flex-col justify-center items-center">
@@ -448,7 +448,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     }}
                   />
                   {jsonTitle && (
-                    <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
+                    <span className="text-base md:text-lg font-semibold text-catalogue-text-primary truncate max-w-48 md:max-w-none">
                       {jsonTitle}
                     </span>
                   )}
@@ -461,7 +461,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       src={instituteLogoUrl}
                       alt="Institute Logo"
                       onClick={domainRouting.homeIconClickRoute ? handleInstituteLogoClick : undefined}
-                      className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-[hsl(var(--catalogue-border))] ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
+                      className={`h-10 w-10 md:h-11 md:w-11 rounded-full object-cover border border-catalogue-border ${domainRouting.homeIconClickRoute ? 'cursor-pointer' : ''
                         }`}
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
@@ -469,7 +469,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     />
                   )}
                   {/* Title: use JSON title if set, else institute name */}
-                  <span className="text-base md:text-lg font-semibold text-[hsl(var(--catalogue-text-primary))] truncate max-w-[200px] md:max-w-none">
+                  <span className="text-base md:text-lg font-semibold text-catalogue-text-primary truncate max-w-48 md:max-w-none">
                     {jsonTitle || domainRouting.instituteName || ""}
                   </span>
                 </>
@@ -488,7 +488,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       onClick={() => handleNavigation(item.route, item.label, openInSameTab)}
                       className={`px-4 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActive
                         ? 'text-primary-500 bg-primary-50'
-                        : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                        : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                         }`}
                     >
                       {item.label}
@@ -513,7 +513,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       sessionStorage.setItem('searchBarOpen', 'false');
                     }
                   }}
-                  className="md:hidden p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
+                  className="md:hidden p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                   aria-label="Toggle menu"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -539,10 +539,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                       }
                     }}
-                    className="p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
+                    className="p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                     aria-label="Search"
                   >
-                    <Search className="w-5 h-5" />
+                    <MagnifyingGlass className="w-5 h-5" />
                   </button>
                   )}
 
@@ -555,12 +555,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       const currentTagName = pathSegments[0] || tagName;
                       navigate({ to: `/${currentTagName}/cart` });
                     }}
-                    className="relative p-2 rounded-md text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))] transition-colors duration-200"
+                    className="relative p-2 rounded-md text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover transition-colors duration-200"
                     aria-label="Shopping Cart"
                   >
                     <ShoppingCart className="w-5 h-5" />
                     {cartItemCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 bg-primary-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                      <span className="absolute -top-0.5 -right-0.5 bg-primary-500 text-white text-caption font-semibold rounded-full min-w-5 h-5 flex items-center justify-center px-1">
                         {cartItemCount > 99 ? '99+' : cartItemCount}
                       </span>
                     )}
@@ -574,7 +574,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 <button
                   onClick={() => navigate({ to: '/login' })}
                   className="md:hidden px-3 py-1.5 rounded-md text-xs font-medium text-white hover:opacity-90 transition-opacity duration-200"
-                  style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }}
+                  style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }} // design-lint-ignore: page-builder default color
                 >
                   Login
                 </button>
@@ -619,10 +619,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         : 'border hover:bg-opacity-10 opacity-90 hover:opacity-100'
                         }`}
                       style={index === 0 ? {
-                        backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                        backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                       } : {
-                        color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6',
-                        borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                        color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6', // design-lint-ignore: page-builder default color
+                        borderColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                       }}
                     >
                       {link.label}
@@ -637,7 +637,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden  fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] bg-white border-b border-[hsl(var(--catalogue-border))] transition-all duration-300 ease-out ${isMobileMenuOpen
+              className={`md:hidden  fixed left-0 right-0 z-catalogue-dropdown bg-white border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
                 ? 'opacity-100 visible'
                 : 'opacity-0 invisible pointer-events-none'
                 }`}
@@ -648,7 +648,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                 <div className="px-4 py-4 space-y-3">
                   {/* Navigation Links */}
                   {navigation.length > 0 && (
-                    <div className="space-y-1 pb-3 border-b border-[hsl(var(--catalogue-border-subtle))]">
+                    <div className="space-y-1 pb-3 border-b border-catalogue-border-subtle">
                       {navigation.map((item, index) => {
                         const isActive = isActiveRoute(item.route, item.label);
                         const openInSameTab = item.openInSameTab === true || String(item.openInSameTab) === "true";
@@ -661,7 +661,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                             }}
                             className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
                               ? 'text-primary-500 bg-primary-50'
-                              : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                              : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                               }`}
                           >
                             {item.label}
@@ -679,7 +679,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                       navigate({ to: '/login' });
                     }}
                     className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white hover:opacity-90 transition-opacity duration-200"
-                    style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }}
+                    style={{ backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' }} // design-lint-ignore: page-builder default color
                   >
                     <span>Login</span>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -720,7 +720,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         window.open('https://chat.whatsapp.com/Kvh1fsDcL1GFCBrIveQ8q8', '_blank', 'noopener,noreferrer');
                       }
                     }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-[hsl(var(--catalogue-text-secondary))] bg-[hsl(var(--catalogue-bg-subtle))] hover:bg-[hsl(var(--catalogue-interactive-hover))] border border-[hsl(var(--catalogue-border))] transition-colors duration-200"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-catalogue-text-secondary bg-catalogue-bg-subtle hover:bg-catalogue-interactive-hover border border-catalogue-border transition-colors duration-200"
                   >
                     <span className="flex items-center gap-3">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -740,7 +740,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         setIsMobileMenuOpen(false);
                         window.open(catalogueData.globalSettings.communityJoinLink!, '_blank', 'noopener,noreferrer');
                       }}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-[#25D366] hover:bg-[#20ba59] transition-colors duration-200 shadow-sm"
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-base font-medium text-white bg-whatsapp hover:bg-whatsapp-hover transition-colors duration-200 shadow-sm"
                     >
                       <span className="flex items-center gap-3">
                         <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
@@ -817,7 +817,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
               <div
                 ref={setMobileMenuRef}
-                className={`md:hidden fixed left-0 right-0 z-[var(--catalogue-z-dropdown)] border-t border-[hsl(var(--catalogue-border-subtle))] bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
+                className={`md:hidden fixed left-0 right-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
                 style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
               >
                 <div className="px-4 py-3 space-y-1">
@@ -834,7 +834,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                         }}
                         className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
                           ? 'text-primary-500 bg-primary-50'
-                          : 'text-[hsl(var(--catalogue-text-secondary))] hover:text-[hsl(var(--catalogue-text-primary))] hover:bg-[hsl(var(--catalogue-interactive-hover))]'
+                          : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                           }`}
                       >
                         {item.label}
@@ -844,7 +844,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
                   {/* Auth Links */}
                   {(authLinks.length > 0 || isAuthenticated) && (
-                    <div className="border-t border-[hsl(var(--catalogue-border-subtle))] pt-3 mt-3 space-y-2">
+                    <div className="border-t border-catalogue-border-subtle pt-3 mt-3 space-y-2">
                       {isAuthenticated ? (
                         <>
                           <button
@@ -889,9 +889,9 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               : 'hover:opacity-80'
                               }`}
                             style={index === 0 ? {
-                                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                                backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                             } : {
-                                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                                color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                             }}
                           >
                             {link.label}

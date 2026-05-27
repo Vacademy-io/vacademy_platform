@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Award, Target, Info } from "lucide-react";
+import { Medal, Target, Info } from "@phosphor-icons/react";
 
 interface FinalCourseData {
   aboutCourse: string;
@@ -73,7 +73,7 @@ const CourseInfoCard = ({ courseData, levelName }: CourseInfoCardProps) => {
         {/* Level Wedge - hidden when level is 'default' (case-insensitive) or empty */}
         {hasLevel && (
           <div className="flex items-start gap-2 mb-8">
-            <Award className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <Medal className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
             <Badge
               variant="outline"
               className="h-7 rounded-full px-3 text-xs font-medium uppercase tracking-wide border-amber-200 text-amber-700 bg-amber-50"

@@ -1,0 +1,68 @@
+{{- /*
+  Post-install/upgrade hook: creates the per-service databases in the bundled
+  Postgres and loads each baseline (schema + flyway history) ONLY if that DB is
+  still empty. Idempotent — safe to re-run on every helm upgrade. community_service
+  shares the assessment_service DB, so only five DBs are created.
+*/ -}}
+{{- if and .Values.standalone.enabled .Values.postgres.bundled .Values.postgres.loadBaseline }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-baseline-load
+  namespace: default
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        app: postgres-baseline-load
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: baseline-load
+          image: {{ .Values.postgres.image }}
+          env:
+            - name: PGUSER
+              value: {{ .Values.env.db.username | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vacademy-secrets
+                  key: DB_PASSWORD
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "waiting for postgres to accept connections..."
+              until pg_isready -h postgres -U "$PGUSER" -d postgres; do sleep 3; done
+              for db in auth_service admin_core_service assessment_service media_service notification_service; do
+                exists=$(psql -h postgres -U "$PGUSER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'")
+                if [ "$exists" != "1" ]; then
+                  echo "creating database $db"
+                  psql -h postgres -U "$PGUSER" -d postgres -c "CREATE DATABASE $db"
+                fi
+                n=$(psql -h postgres -U "$PGUSER" -d "$db" -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
+                if [ "$n" = "0" ] && [ -f "/baseline/$db.sql" ]; then
+                  echo "loading baseline into $db"
+                  psql -h postgres -U "$PGUSER" -v ON_ERROR_STOP=1 -d "$db" -f "/baseline/$db.sql"
+                else
+                  echo "$db already has $n table(s); skipping baseline"
+                fi
+              done
+              echo "baseline load complete"
+          volumeMounts:
+            - name: baselines
+              mountPath: /baseline
+      volumes:
+        - name: baselines
+          projected:
+            sources:
+            {{- range $path, $_ := $.Files.Glob "baseline/*.sql" }}
+              - configMap:
+                  name: baseline-{{ base $path | trimSuffix ".sql" | replace "_" "-" }}
+            {{- end }}
+{{- end }}

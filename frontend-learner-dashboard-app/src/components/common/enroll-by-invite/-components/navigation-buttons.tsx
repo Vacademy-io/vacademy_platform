@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, SpinnerGap } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { SelectedPayment } from "./types";
 import { PaymentVendor } from "../-utils/payment-vendor-helper";
@@ -95,7 +95,7 @@ const NavigationButtons = ({
                 : "Confirm & Pay"
               : "Next"}
         {loading ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <SpinnerGap className="w-4 h-4 animate-spin" />
         ) : (
           <ArrowRight className="w-4 h-4" />
         )}

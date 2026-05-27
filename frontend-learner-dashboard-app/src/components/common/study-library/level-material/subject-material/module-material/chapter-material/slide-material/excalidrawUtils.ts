@@ -21,7 +21,7 @@ const MOCKED_EXCALIDRAW_DATA: Record<string, ExcalidrawSceneData> = {
                 width: 300,
                 height: 100,
                 text: "Fallback Content - API data not available",
-                strokeColor: "#666666",
+                strokeColor: "#666666", // design-lint-ignore: Excalidraw element data palette
                 backgroundColor: "transparent",
                 fillStyle: "hachure",
                 strokeWidth: 1,
@@ -45,7 +45,7 @@ const MOCKED_EXCALIDRAW_DATA: Record<string, ExcalidrawSceneData> = {
             }
         ],
         appState: { 
-            viewBackgroundColor: "#F8F9FA",
+            viewBackgroundColor: "#F8F9FA", // design-lint-ignore: Excalidraw diagram background color
             collaborators: new Map(),
             currentItemFontFamily: 1,
             zoom: { value: 1 },
@@ -105,7 +105,7 @@ export const fetchExcalidrawContent = async (fileId: string): Promise<Excalidraw
 
         // Ensure appState has the correct structure with proper Map for collaborators
         const appState = {
-            viewBackgroundColor: "#FFFFFF",
+            viewBackgroundColor: "#FFFFFF", // design-lint-ignore: Excalidraw diagram background color
             currentItemFontFamily: 1,
             zoom: { value: 1 },
             scrollX: 0,

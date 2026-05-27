@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Users, RefreshCw, X, Check, ChevronsUpDown, Loader2, Upload } from 'lucide-react';
+import { Plus, Trash, Users, ArrowsClockwise, X, Check, CaretUpDown, SpinnerGap, UploadSimple } from '@phosphor-icons/react';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -471,11 +471,11 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={loadMembers} variant="outline" size="sm">
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <ArrowsClockwise className="w-4 h-4 mr-2" />
             Refresh
           </Button>
           <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
-            <Upload className="w-4 h-4 mr-2" />
+            <UploadSimple className="w-4 h-4 mr-2" />
             Bulk Upload
           </Button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
@@ -485,14 +485,14 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                 Add Learner
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto p-4 sm:p-6 z-[9999]">
+            <DialogContent className="max-w-md w-vw-95 max-h-screen-90 overflow-y-auto p-4 sm:p-6 z-50">
               <DialogHeader>
                 <DialogTitle>Add New Learner</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 {loadingCustomFields ? (
                   <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                    <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
                   </div>
                 ) : instituteCustomFields.length > 0 ? (
                   <>
@@ -547,7 +547,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   <Label htmlFor="roles">Organization Roles *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <div className="flex min-h-[40px] w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
+                      <div className="flex min-h-10 w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
                         <div className="flex flex-wrap gap-1">
                           {formData.comma_separated_org_roles.split(',').filter(Boolean).length > 0 ? (
                             formData.comma_separated_org_roles.split(',').filter(Boolean).map((role: string) => (
@@ -580,10 +580,10 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                             <span className="text-muted-foreground">Select the Roles</span>
                           )}
                         </div>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                        <CaretUpDown className="h-4 w-4 shrink-0 opacity-50" />
                       </div>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[10000]" align="start">
+                    <PopoverContent className="w-radix-popover p-0 z-50" align="start">
                       <Command>
                         <CommandList>
                           <CommandEmpty>No role found.</CommandEmpty>
@@ -693,7 +693,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             {selectedMembers.length > 0 && (
               <>
                 <Button variant="destructive" size="sm" onClick={openTerminateDialog} className="text-white">
-                  <Trash2 className="w-4 h-4 mr-2 text-white" />
+                  <Trash className="w-4 h-4 mr-2 text-white" />
                   Terminate Selected ({selectedMembers.length})
                 </Button>
 
@@ -719,7 +719,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                       >
                         {isTerminating ? (
                           <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
                             Terminating...
                           </>
                         ) : (

@@ -140,7 +140,7 @@ const ReferralDetailsDialog = ({ referral }: { referral: ReferralBenefit }) => {
           <ArrowSquareOut className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-auto">
+      <DialogContent className="max-w-2xl max-h-screen-80 overflow-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 text-xl">
             <div className="p-2 bg-primary-100 rounded-lg">

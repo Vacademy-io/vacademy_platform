@@ -225,7 +225,7 @@ export class CourseCatalogueService {
           ],
           style: {
             variant: "outlined" as const,
-            chipColor: "#ED7626",
+            chipColor: "#ED7626", // design-lint-ignore: default chip color
             allowMultiple: false
           }
         });

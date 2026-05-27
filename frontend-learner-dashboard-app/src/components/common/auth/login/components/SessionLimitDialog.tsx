@@ -8,12 +8,12 @@ import {
 } from "@/components/ui/dialog";
 import {
     Monitor,
-    Smartphone,
-    Tablet,
-    LogOut,
-    RefreshCw,
-    AlertTriangle,
-} from "lucide-react";
+    DeviceMobile,
+    DeviceTablet,
+    SignOut,
+    ArrowsClockwise,
+    Warning,
+} from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import axios from "axios";
 import { TERMINATE_SESSION } from "@/constants/urls";
@@ -38,9 +38,9 @@ interface SessionLimitDialogProps {
 function getDeviceIcon(deviceType: string) {
     switch (deviceType?.toUpperCase()) {
         case "MOBILE":
-            return <Smartphone className="w-5 h-5" />;
+            return <DeviceMobile className="w-5 h-5" />;
         case "TABLET":
-            return <Tablet className="w-5 h-5" />;
+            return <DeviceTablet className="w-5 h-5" />;
         default:
             return <Monitor className="w-5 h-5" />;
     }
@@ -95,10 +95,10 @@ export function SessionLimitDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-md max-h-screen-85 overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-gray-900">
-                        <AlertTriangle className="w-5 h-5 text-amber-500" />
+                        <Warning className="w-5 h-5 text-amber-500" />
                         Session Limit Reached
                     </DialogTitle>
                     <DialogDescription className="text-sm text-gray-600 pt-1">
@@ -154,13 +154,13 @@ export function SessionLimitDialog({
                                                 ease: "linear",
                                             }}
                                         >
-                                            <RefreshCw className="w-3 h-3" />
+                                            <ArrowsClockwise className="w-3 h-3" />
                                         </motion.div>
                                         Logging out...
                                     </>
                                 ) : (
                                     <>
-                                        <LogOut className="w-3 h-3" />
+                                        <SignOut className="w-3 h-3" />
                                         Log Out
                                     </>
                                 )}
@@ -177,7 +177,7 @@ export function SessionLimitDialog({
                         onClick={onRetryLogin}
                         className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-150"
                     >
-                        <RefreshCw className="w-4 h-4" />
+                        <ArrowsClockwise className="w-4 h-4" />
                         Retry Login
                     </motion.button>
                 </div>

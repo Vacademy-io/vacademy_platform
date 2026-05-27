@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
 import { UserActivityArray } from "../-types/dashboard-data-types";
 import dayjs from "dayjs";
-import { TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { TrendDown, TrendUp, Minus } from "@phosphor-icons/react";
 import {
     Table,
     TableBody,
@@ -78,26 +78,26 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "Above":
-                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-[#58CC02] [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-[0_2px_0_0_#46a302]"><TrendingUp size={12} className="mr-1" /> Above</Badge>;
+                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-play-2d-success"><TrendUp size={12} className="mr-1" /> Above</Badge>;
             case "Below":
-                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-[#FF4B4B] [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-[0_2px_0_0_#cc3c3c]"><TrendingDown size={12} className="mr-1" /> Below</Badge>;
+                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-play-2d-danger"><TrendDown size={12} className="mr-1" /> Below</Badge>;
             default:
-                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-[#AFAFAF] [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-[0_2px_0_0_#8e8e8e]"><Minus size={12} className="mr-1" /> Average</Badge>;
+                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-muted [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-play-2d-muted"><Minus size={12} className="mr-1" /> Average</Badge>;
         }
     };
 
     const getProgressBarColor = (percentage: number) => {
-        if (percentage >= 120) return "bg-green-500 [.ui-vibrant_&]:bg-green-400 [.ui-play_&]:bg-[#58CC02]";
-        if (percentage >= 100) return "bg-primary [.ui-vibrant_&]:bg-indigo-400 [.ui-play_&]:bg-[#1CB0F6]";
-        if (percentage >= 80) return "bg-primary/70 [.ui-play_&]:bg-[#FF9600]";
-        return "bg-yellow-500 [.ui-vibrant_&]:bg-yellow-400 [.ui-play_&]:bg-[#FF4B4B]";
+        if (percentage >= 120) return "bg-green-500 [.ui-vibrant_&]:bg-green-400 [.ui-play_&]:bg-play-success";
+        if (percentage >= 100) return "bg-primary [.ui-vibrant_&]:bg-indigo-400 [.ui-play_&]:bg-play-info";
+        if (percentage >= 80) return "bg-primary/70 [.ui-play_&]:bg-play-warn";
+        return "bg-yellow-500 [.ui-vibrant_&]:bg-yellow-400 [.ui-play_&]:bg-play-danger";
     };
 
     return (
         <div className="space-y-6 relative overflow-hidden">
             {/* Summary Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative">
-                <Card className="shadow-none border-dashed bg-muted/30 [.ui-vibrant_&]:bg-gray-100/50 [.ui-play_&]:bg-[#E5E5E5] [.ui-play_&]:border-2 [.ui-play_&]:border-[#AFAFAF] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#AFAFAF] [.ui-play_&]:font-bold">
+                <Card className="shadow-none border-dashed bg-muted/30 [.ui-vibrant_&]:bg-gray-100/50 [.ui-play_&]:bg-play-surface [.ui-play_&]:border-2 [.ui-play_&]:border-play-muted [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-muted [.ui-play_&]:font-bold">
                     <CardContent className="p-4 flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground">Total Sessions</span>
                         <div className="text-2xl font-bold tracking-tight">
@@ -106,7 +106,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20 [.ui-vibrant_&]:bg-green-50 [.ui-vibrant_&]:border-green-200 [.ui-play_&]:bg-[#58CC02] [.ui-play_&]:border-2 [.ui-play_&]:border-[#46a302] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#46a302] [.ui-play_&]:text-white [.ui-play_&]:font-bold">
+                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20 [.ui-vibrant_&]:bg-green-50 [.ui-vibrant_&]:border-green-200 [.ui-play_&]:bg-play-success [.ui-play_&]:border-2 [.ui-play_&]:border-play-success-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-success [.ui-play_&]:text-white [.ui-play_&]:font-bold">
                     <CardContent className="p-4 flex flex-col gap-1">
                         <span className="text-sm font-medium text-green-600 [.ui-vibrant_&]:text-green-700 [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Above Average</span>
                         <div className="text-2xl font-bold text-foreground">
@@ -115,7 +115,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20 [.ui-vibrant_&]:bg-primary/10 [.ui-vibrant_&]:border-primary/30 [.ui-play_&]:bg-[#CE82FF] [.ui-play_&]:border-2 [.ui-play_&]:border-[#a866cc] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#a866cc] [.ui-play_&]:text-white [.ui-play_&]:font-bold">
+                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20 [.ui-vibrant_&]:bg-primary/10 [.ui-vibrant_&]:border-primary/30 [.ui-play_&]:bg-play-accent [.ui-play_&]:border-2 [.ui-play_&]:border-play-accent-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-accent [.ui-play_&]:text-white [.ui-play_&]:font-bold">
                     <CardContent className="p-4 flex flex-col gap-1">
                         <span className="text-sm font-medium text-primary [.ui-vibrant_&]:text-primary-700 [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Consistency</span>
                         <div className="text-2xl font-bold text-foreground">
@@ -126,11 +126,11 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
             </div>
 
             {/* Desktop Table */}
-            <div className="hidden sm:block rounded-md border shadow-sm [.ui-vibrant_&]:border-primary/10 [.ui-play_&]:border-2 [.ui-play_&]:border-[#E5E5E5] [.ui-play_&]:rounded-2xl [.ui-play_&]:overflow-hidden [.ui-play_&]:shadow-[0_4px_0_0_#E5E5E5]">
+            <div className="hidden sm:block rounded-md border shadow-sm [.ui-vibrant_&]:border-primary/10 [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:rounded-2xl [.ui-play_&]:overflow-hidden [.ui-play_&]:shadow-play-4d-surface">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-muted/40 hover:bg-muted/40 [.ui-vibrant_&]:bg-primary/5 [.ui-play_&]:bg-[#E5E5E5] [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
-                            <TableHead className="w-[180px] font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [.ui-vibrant_&]:bg-primary/5 [.ui-play_&]:bg-play-surface [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+                            <TableHead className="w-44 font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Your Time</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Batch Avg</TableHead>
                             <TableHead className="text-right font-semibold text-xs uppercase text-muted-foreground">Status</TableHead>
@@ -142,7 +142,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                             const isToday = dayjs(row.raw_date).isSame(dayjs(), 'day');
 
                             return (
-                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30 [.ui-vibrant_&]:bg-blue-50/50 [.ui-play_&]:bg-[#FFF3CD] [.ui-play_&]:font-bold")}>
+                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30 [.ui-vibrant_&]:bg-blue-50/50 [.ui-play_&]:bg-play-highlight [.ui-play_&]:font-bold")}>
                                     <TableCell>
                                         <div className="flex items-center gap-3">
                                             {isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
@@ -153,7 +153,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <div className="space-y-1.5 w-[140px]">
+                                        <div className="space-y-1.5 w-36">
                                             <div className="font-medium text-sm">{row.time_spent}</div>
                                             <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
                                                 <div

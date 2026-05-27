@@ -10,7 +10,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useProctoring } from "@/hooks";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { WarningCircle, SpinnerGap } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 
 interface SubmitModalProps {
@@ -67,7 +67,7 @@ export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps)
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-primary-500" />
+            <WarningCircle className="h-5 w-5 text-primary-500" />
             Submit Assessment
           </AlertDialogTitle>
           <AlertDialogDescription>
@@ -108,7 +108,7 @@ export function SubmitModal({ open, onOpenChange, onConfirm }: SubmitModalProps)
           >
             {isSubmitting ? (
               <div className="flex items-center justify-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <SpinnerGap className="h-4 w-4 animate-spin" />
                 Submitting...
               </div>
             ) : (

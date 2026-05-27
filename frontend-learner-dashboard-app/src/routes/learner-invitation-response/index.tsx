@@ -5,7 +5,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetEnrollInviteData } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { PaymentGatewayWrapper } from "@/components/common/enroll-by-invite/-components/payment-gateway-wrapper";
 import { getPaymentVendor } from "@/components/common/enroll-by-invite/-utils/payment-vendor-helper";
-import { Link2Off, CreditCard, AlertTriangle } from "lucide-react";
+import { LinkBreak, CreditCard, Warning } from "@phosphor-icons/react";
 
 const inviteParamsSchema = z.object({
   instituteId: z.string().uuid(),
@@ -24,8 +24,8 @@ function InviteNotFoundPage() {
     <div className="h-screen w-full bg-gray-50 flex flex-col justify-center items-center px-4">
       <div className="max-w-md mx-auto text-center w-full">
         <div className="mb-8 flex justify-center">
-          <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-orange-100 border-4 border-white shadow-sm">
-            <Link2Off className="h-12 w-12 text-orange-500" aria-hidden="true" />
+          <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-orange-100 border-4 border-white shadow-sm">
+            <LinkBreak className="h-12 w-12 text-orange-500" aria-hidden="true" />
           </div>
         </div>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
@@ -53,7 +53,7 @@ function PaymentGatewayNotConfiguredPage() {
     <div className="h-screen w-full bg-gray-50 flex flex-col justify-center items-center px-4">
       <div className="max-w-md mx-auto text-center w-full">
         <div className="mb-8 flex justify-center">
-          <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-blue-100 border-4 border-white shadow-sm">
+          <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-blue-100 border-4 border-white shadow-sm">
             <CreditCard className="h-12 w-12 text-blue-500" aria-hidden="true" />
           </div>
         </div>
@@ -82,8 +82,8 @@ function UnexpectedErrorPage() {
     <div className="h-screen w-full bg-gray-50 flex flex-col justify-center items-center px-4">
       <div className="max-w-md mx-auto text-center w-full">
         <div className="mb-8 flex justify-center">
-          <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-red-100 border-4 border-white shadow-sm">
-            <AlertTriangle className="h-12 w-12 text-red-500" aria-hidden="true" />
+          <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-red-100 border-4 border-white shadow-sm">
+            <Warning className="h-12 w-12 text-red-500" aria-hidden="true" />
           </div>
         </div>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">

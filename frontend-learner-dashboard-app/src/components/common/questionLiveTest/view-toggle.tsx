@@ -1,4 +1,4 @@
-import { LayoutGrid, List } from "lucide-react";
+import { GridFour, List } from "@phosphor-icons/react";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 interface ViewToggleProps {
@@ -21,7 +21,7 @@ export function ViewToggle({ view, onViewChange }: ViewToggleProps) {
           view === "grid" ? "border-primary-500 " : ""
         }`}
       >   
-        <LayoutGrid className="h-4 w-4" />
+        <GridFour className="h-4 w-4" />
       </ToggleGroupItem>
       <ToggleGroupItem
         value="list"

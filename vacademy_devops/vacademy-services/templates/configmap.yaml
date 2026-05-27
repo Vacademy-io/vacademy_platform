@@ -1,17 +1,84 @@
+{{- /*
+  Full non-secret environment — the source of truth for every service.
+  Mounted via `envFrom: configMapRef` on all service deployments. Spring/uvicorn
+  ignore keys they don't use, so one shared ConfigMap across services is fine.
+
+  GUARD: refuse to render with a blank jwtSecretKey when env.required=true, so a
+  prod deploy can't overwrite the live (manually-maintained) config with blanks.
+  Populate values.secret.yaml first (scripts/export-live-config.sh helps).
+*/ -}}
+{{- if and .Values.env.required (not .Values.secrets.jwtSecretKey) -}}
+  {{- fail "secrets.jwtSecretKey is empty. The env ConfigMap/Secret are now the source of truth; set real values in values.secret.yaml (see values.secret.example.yaml) before deploying, or set env.required=false to acknowledge an intentionally-empty config." -}}
+{{- end -}}
+{{- $db := .Values.env.db -}}
+{{- $jdbc := printf "jdbc:postgresql://%s:%s" $db.host (toString $db.port) -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
   name: myconfigmapv1.0
   namespace: default
 data:
-  ADMIN_CORE_SERVICE_BASE_URL: http://admin-core-service:8072
-  AI_SERVICE_BASE_URL: http://ai-service:8077
-  ASSESSMENT_SERVER_BASE_URL: http://assessment-service:8074
-  AUTH_SERVER_BASE_URL: http://auth-service:8071
-  COMMUNITY_SERVICE_BASE_URL: http://community-service:8073
+  # --- Spring profile ---
+  SPRING_PROFILES_ACTIVE: {{ .Values.env.springProfile | quote }}
+
+  # --- Inter-service URLs (in-cluster; callers append the /<name>-service prefix) ---
+  AUTH_SERVER_BASE_URL: http://auth-service:{{ .Values.services.auth_service.port }}
+  ADMIN_CORE_SERVICE_BASE_URL: http://admin-core-service:{{ .Values.services.admin_core_service.port }}
+  ASSESSMENT_SERVER_BASE_URL: http://assessment-service:{{ .Values.services.assessment_service.port }}
+  COMMUNITY_SERVICE_BASE_URL: http://community-service:{{ .Values.services.community_service.port }}
+  MEDIA_SERVER_BASE_URL: http://media-service:{{ .Values.services.media_service.port }}
+  MEDIA_SERVICE_BASE_URL: http://media-service:{{ .Values.services.media_service.port }}
+  NOTIFICATION_SERVER_BASE_URL: http://notification-service:{{ .Values.services.notification_service.port }}
+  AI_SERVICE_BASE_URL: http://ai-service:{{ .Values.services.ai_service.port }}
+  TOOL_EXECUTOR_BASE_URL: {{ .Values.env.toolExecutorBaseUrl | quote }}
+  TEACHER_PORTAL_CLIENT_URL: {{ .Values.env.teacherPortalClientUrl | quote }}
+
+  # --- Database connection (services connect through pgbouncer) ---
+  DB_HOST: {{ $db.host | quote }}
+  DB_PORT: {{ $db.port | quote }}
+  DB_USERNAME: {{ $db.username | quote }}
+  AUTH_SERVICE_DB_URL: {{ printf "%s/auth_service" $jdbc | quote }}
+  ADMIN_CORE_SERVICE_DB_URL: {{ printf "%s/admin_core_service" $jdbc | quote }}
+  ADMIN_CORE_SERVICE_READ_DB_URL: {{ printf "%s/admin_core_service" $jdbc | quote }}
+  ASSESSMENT_SERVICE_DB_URL: {{ printf "%s/assessment_service" $jdbc | quote }}
+  MEDIA_SERVICE_DB_URL: {{ printf "%s/media_service" $jdbc | quote }}
+  NOTIFICATION_SERVICE_DB_URL: {{ printf "%s/notification_service" $jdbc | quote }}
+  # ai-service (Python) parses this JDBC URL + DB_USERNAME/DB_PASSWORD
+  DB_NAME: admin_core_service
+
+  # --- App / misc ---
+  APP_USERNAME: {{ .Values.env.app.username | quote }}
+  CLOUD_FRONT_URL: {{ .Values.env.cloudFrontUrl | quote }}
+  SCHEDULING_TIME_FRAME: {{ .Values.env.schedulingTimeFrame | quote }}
   FONT_COLOR: '#FFFFFF'
-  MEDIA_SERVER_BASE_URL: http://media-service:8075
-  MEDIA_SERVICE_BASE_URL: http://media-service:8075
-  NOTIFICATION_SERVER_BASE_URL: http://notification-service:8076
+
+  # --- S3 (non-secret) ---
+  S3_AWS_REGION: {{ .Values.env.s3.region | quote }}
+  AWS_REGION: {{ .Values.env.s3.region | quote }}
+  AWS_BUCKET_NAME: {{ .Values.env.s3.bucket | quote }}
+  AWS_S3_PUBLIC_BUCKET: {{ .Values.env.s3.publicBucket | quote }}
+
+  # --- Mail / SES (non-secret) ---
+  MAIL_HOST: {{ .Values.env.mail.host | quote }}
+  MAIL_PORT: {{ .Values.env.mail.port | quote }}
+  SES_SENDER_EMAIL: {{ .Values.env.ses.senderEmail | quote }}
+  SES_CONFIGURATION_SET: {{ .Values.env.ses.configurationSet | quote }}
+  SES_EVENTS_SQS_URL: {{ .Values.env.ses.eventsSqsUrl | quote }}
+
+  # --- SQS (non-secret) ---
+  SQS_AWS_REGION: {{ .Values.env.sqs.region | quote }}
+  SQS_REGION: {{ .Values.env.sqs.region | quote }}
+  SQS_ENDPOINT: {{ .Values.env.sqs.endpoint | quote }}
+
+  # --- ai-service internal auth (non-secret part) ---
+  AUTH_SERVICE_BASE_URL: http://auth-service:{{ .Values.services.auth_service.port }}
+  CLIENT_NAME: {{ .Values.secrets.ai.clientName | quote }}
+
+  # --- Whisper (ai forced-alignment) ---
+  WHISPER_CPU_THREADS: {{ .Values.services.ai_service.whisper.cpuThreads | quote }}
+  WHISPER_NUM_WORKERS: {{ .Values.services.ai_service.whisper.numWorkers | quote }}
+  WHISPER_MODEL_SIZE: {{ .Values.services.ai_service.whisper.modelSize | quote }}
+
+  # --- Redis ---
   REDIS_HOST: redis
   REDIS_PORT: '6379'

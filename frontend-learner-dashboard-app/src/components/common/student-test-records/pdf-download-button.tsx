@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2 } from "lucide-react";
+import { DownloadSimple, SpinnerGap } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { EXPORT_ASSESSMENT_REPORT } from "@/constants/urls";
 
@@ -58,9 +58,9 @@ export function PdfDownloadButton({
       className={`gap-2 ${error ? "border-destructive text-destructive" : ""}`}
     >
       {downloading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <SpinnerGap className="h-4 w-4 animate-spin" />
       ) : (
-        <Download className="h-4 w-4" />
+        <DownloadSimple className="h-4 w-4" />
       )}
       {downloading
         ? "Downloading..."

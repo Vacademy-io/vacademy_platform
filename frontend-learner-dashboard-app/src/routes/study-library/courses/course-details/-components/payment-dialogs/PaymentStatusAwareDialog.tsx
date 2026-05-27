@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { usePaymentStatusDialog } from "@/hooks/use-payment-status";
 import { DonationDialog } from "@/components/common/donation/DonationDialog";
 import { SubscriptionPaymentDialog } from "./SubscriptionPaymentDialog";
@@ -67,10 +67,10 @@ export const PaymentStatusAwareDialog: React.FC<PaymentStatusAwareDialogProps> =
   // Show loading state
   if (is_loading) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
             <p className="text-gray-600">Checking payment status...</p>
           </div>
         </div>
@@ -81,7 +81,7 @@ export const PaymentStatusAwareDialog: React.FC<PaymentStatusAwareDialogProps> =
   // Show error state
   if (error) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
             <h3 className="text-lg font-semibold mb-4">Status Check Error</h3>
@@ -103,7 +103,7 @@ export const PaymentStatusAwareDialog: React.FC<PaymentStatusAwareDialogProps> =
   // User is already enrolled
   if (isAlreadyEnrolled) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
             <h3 className="text-lg font-semibold mb-4">Already Enrolled</h3>
@@ -150,7 +150,7 @@ export const PaymentStatusAwareDialog: React.FC<PaymentStatusAwareDialogProps> =
       // User has active plan but needs to complete payment
       // This would show a different dialog focused on payment completion
       return (
-        <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
           <div className="bg-white rounded-lg p-6 max-w-sm">
             <div className="text-center">
               <h3 className="text-lg font-semibold mb-4">Payment Required</h3>

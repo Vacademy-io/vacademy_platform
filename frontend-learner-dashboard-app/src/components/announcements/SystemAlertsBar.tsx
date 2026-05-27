@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
-import { Bell, X, ChevronDown, ChevronUp, Loader2, Trash2 } from 'lucide-react';
+import { Bell, X, CaretDown, CaretUp, SpinnerGap, Trash } from "@phosphor-icons/react";
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -232,13 +232,13 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                 {unreadCount > 99 ? '99+' : unreadCount}
               </Badge>
             )}
-            {isOpen ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />}
+            {isOpen ? <CaretUp className="ml-1 h-4 w-4" /> : <CaretDown className="ml-1 h-4 w-4" />}
           </Button>
         </DropdownMenuTrigger>
 
         <DropdownMenuContent
           align="end"
-          className="w-[calc(100vw-1rem)] sm:w-[32rem] md:w-96 max-h-[80vh] sm:max-h-96 p-0 z-[10000]"
+          className="w-calc-vw-1 sm:w-chat-panel md:w-96 max-h-screen-80 sm:max-h-96 p-0 z-50"
           sideOffset={8}
         >
           <div className="p-3 sm:p-4 border-b border-gray-200">
@@ -254,11 +254,11 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs sm:text-sm px-2 sm:px-3"
                         disabled={loading}
                       >
-                        <Trash2 className="h-4 w-4 mr-1" />
+                        <Trash className="h-4 w-4 mr-1" />
                         Clear All
                       </Button>
                     </AlertDialogTrigger>
-                    <AlertDialogContent className="z-[10001]">
+                    <AlertDialogContent className="z-50">
                       <AlertDialogHeader>
                         <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -284,13 +284,13 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                   onClick={handleRefresh}
                   disabled={loading}
                 >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+                  {loading ? <SpinnerGap className="h-4 w-4 animate-spin" /> : 'Refresh'}
                 </Button>
               </div>
             </div>
           </div>
 
-          <ScrollArea className="h-[60vh] sm:h-80">
+          <ScrollArea className="h-screen-60 sm:h-80">
             <div className="p-3 sm:p-4">
               {error && (
                 <div className="text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-md">
@@ -300,7 +300,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
 
               {loading && alerts.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                  <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
                   <span className="ml-2 text-sm text-gray-500">Loading alerts...</span>
                 </div>
               ) : alerts.length === 0 ? (
@@ -322,7 +322,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                       >
                         {loading ? (
                           <>
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
                             Loading...
                           </>
                         ) : (
@@ -343,11 +343,11 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
     {/* Full Content Modal — portaled to body so it's never clipped by navbar stacking context */}
     {selectedAlert && showFullContent && createPortal(
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-4"
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
         onClick={() => setShowFullContent(false)}
       >
         <Card
-          className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh]  overflow-hidden flex flex-col"
+          className="w-full max-w-vw-95 sm:max-w-2xl max-h-screen-90  overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           <CardContent className="p-1 sm:p-8 flex flex-col overflow-hidden">

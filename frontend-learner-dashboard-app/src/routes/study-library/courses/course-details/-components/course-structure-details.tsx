@@ -1101,7 +1101,7 @@ export const CourseStructureDetails = ({
             courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
-              const subjectContentIndent = "pl-1 sm:pl-[calc(18px+0.5rem+18px+0.5rem+1.5rem)]";
+              const subjectContentIndent = "pl-1 sm:pl-struct-subject";
               return (
                 <Collapsible
                   key={subject.id}
@@ -1115,8 +1115,8 @@ export const CourseStructureDetails = ({
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                       "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
                       // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
+                      "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1174,7 +1174,7 @@ export const CourseStructureDetails = ({
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-1 sm:pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                          const moduleContentIndent = `pl-1 sm:pl-struct-module`;
                           return (
                             <Collapsible
                               key={mod.module.id}
@@ -1187,7 +1187,7 @@ export const CourseStructureDetails = ({
                                   // Vibrant Styles
                                   "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                   // Play Styles — solid, bold, Duolingo-style
-                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#1cb0f6] [.ui-play_&]:hover:text-white"
+                                  "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-info [.ui-play_&]:hover:text-white"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -1234,7 +1234,7 @@ export const CourseStructureDetails = ({
                                     {mod.module.module_name}
                                   </span>
                                   {/* Module Progress Indicator */}
-                                  <div className="flex items-center gap-2 ml-auto shrink-0 min-w-[88px]">
+                                  <div className="flex items-center gap-2 ml-auto shrink-0 min-w-20">
                                     {(() => {
                                       const progress = calculateModuleProgress(
                                         mod.chapters || []
@@ -1301,7 +1301,7 @@ export const CourseStructureDetails = ({
                                               "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                             // Play Styles — solid, bold, Duolingo-style
                                             !isChapterLocked &&
-                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]"
+                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-gold [.ui-play_&]:hover:text-play-ink"
                                           )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -1486,7 +1486,7 @@ export const CourseStructureDetails = ({
                                                         // Vibrant Styles
                                                         "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:border-primary/20 [.ui-vibrant_&]:transition-colors",
                                                         // Play Styles — solid, bold, Duolingo-style
-                                                        "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                                        "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-accent [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
                                                       )}
                                                       onClick={
                                                         isSlideClickable() &&
@@ -1541,7 +1541,7 @@ export const CourseStructureDetails = ({
                                                         return (
                                                           <Badge
                                                             variant="secondary"
-                                                            className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium ${badgeClass}`}
+                                                            className={`ml-2 hidden sm:inline align-middle text-caption font-medium ${badgeClass}`}
                                                           >
                                                             {sd.label}
                                                           </Badge>
@@ -1636,8 +1636,8 @@ export const CourseStructureDetails = ({
                       className={cn(
                         "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
-                        "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                        "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
+                        "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                        "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1699,7 +1699,7 @@ export const CourseStructureDetails = ({
                                       ? "cursor-not-allowed opacity-60"
                                       : "hover:bg-accent hover:text-accent-foreground cursor-pointer"
                                   }`,
-                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]"
+                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-gold [.ui-play_&]:hover:text-play-ink"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -1778,7 +1778,7 @@ export const CourseStructureDetails = ({
                                         key={slide.id}
                                         className={cn(
                                           getSlideStyling() + " rounded-md",
-                                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                          "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-accent [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
                                         )}
                                         onClick={
                                           isSlideClickable()
@@ -1806,19 +1806,19 @@ export const CourseStructureDetails = ({
                                               ? "bg-primary-50 text-primary-700 border-primary-200"
                                               : "bg-neutral-50 text-neutral-600 border-neutral-200";
                                           return (
-                                            <Badge variant="secondary" className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium border ${badgeClass}`}>
+                                            <Badge variant="secondary" className={`ml-2 hidden sm:inline align-middle text-caption font-medium border ${badgeClass}`}>
                                               {sd.label}
                                             </Badge>
                                           );
                                         })()}
                                         <div className="flex items-center gap-1.5 ml-auto shrink-0">
                                           {getSlideTypeDisplay(slide) && (
-                                            <Badge variant="secondary" className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(slide)}`}>
+                                            <Badge variant="secondary" className={`hidden sm:inline text-caption font-medium border ${getTypeBadgeClasses(slide)}`}>
                                               {getSlideTypeDisplay(slide)}
                                             </Badge>
                                           )}
                                           {getSlideMetaText(slide) && (
-                                            <Badge variant="outline" className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
+                                            <Badge variant="outline" className="hidden sm:inline text-caption font-normal bg-neutral-50 text-neutral-600 border-neutral-200">
                                               {getSlideMetaText(slide)}
                                             </Badge>
                                           )}
@@ -2063,7 +2063,7 @@ export const CourseStructureDetails = ({
                                                     return (
                                                       <Badge
                                                         variant="secondary"
-                                                        className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium border ${badgeClass}`}
+                                                        className={`ml-2 hidden sm:inline align-middle text-caption font-medium border ${badgeClass}`}
                                                       >
                                                         {sd.label}
                                                       </Badge>
@@ -2076,7 +2076,7 @@ export const CourseStructureDetails = ({
                                                     ) && (
                                                       <Badge
                                                         variant="secondary"
-                                                        className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
+                                                        className={`hidden sm:inline text-caption font-medium border ${getTypeBadgeClasses(
                                                           slide
                                                         )}`}
                                                       >
@@ -2090,7 +2090,7 @@ export const CourseStructureDetails = ({
                                                     ) && (
                                                       <Badge
                                                         variant="outline"
-                                                        className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
+                                                        className="hidden sm:inline text-caption font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
                                                       >
                                                         {getSlideMetaText(
                                                           slide
@@ -2143,8 +2143,8 @@ export const CourseStructureDetails = ({
                       "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-all hover:bg-accent hover:text-accent-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
                       // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-[0_3px_0_#1a3d6d] [.ui-play_&]:hover:bg-[#1a3d6d] [.ui-play_&]:hover:text-white"
+                      "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -2176,7 +2176,7 @@ export const CourseStructureDetails = ({
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#1cb0f6] [.ui-play_&]:hover:text-white")}>
+                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-info [.ui-play_&]:hover:text-white")}>
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {isModuleOpen ? (
                                   <CaretDown size={16} className="shrink-0 text-neutral-500" />
@@ -2210,7 +2210,7 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ffc800] [.ui-play_&]:hover:text-[#3c3c3c]")}>
+                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-gold [.ui-play_&]:hover:text-play-ink")}>
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown size={14} className="shrink-0 text-neutral-500" />
@@ -2244,7 +2244,7 @@ export const CourseStructureDetails = ({
                                                   key={slide.id}
                                                   className={cn(
                                                     getSlideStyling("sm"),
-                                                    "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-[#ce82ff] [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
+                                                    "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-accent [.ui-play_&]:hover:text-white [.ui-play_&]:transition-colors"
                                                   )}
                                                   onClick={() => {
                                                     handleSlideNavigation(
@@ -2283,7 +2283,7 @@ export const CourseStructureDetails = ({
                                                     return (
                                                       <Badge
                                                         variant="secondary"
-                                                        className={`ml-2 hidden sm:inline align-middle text-[10px] font-medium border ${badgeClass}`}
+                                                        className={`ml-2 hidden sm:inline align-middle text-caption font-medium border ${badgeClass}`}
                                                       >
                                                         {sd.label}
                                                       </Badge>
@@ -2296,7 +2296,7 @@ export const CourseStructureDetails = ({
                                                     ) && (
                                                       <Badge
                                                         variant="secondary"
-                                                        className={`hidden sm:inline text-[10px] font-medium border ${getTypeBadgeClasses(
+                                                        className={`hidden sm:inline text-caption font-medium border ${getTypeBadgeClasses(
                                                           slide
                                                         )}`}
                                                       >
@@ -2310,7 +2310,7 @@ export const CourseStructureDetails = ({
                                                     ) && (
                                                       <Badge
                                                         variant="outline"
-                                                        className="hidden sm:inline text-[10px] font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
+                                                        className="hidden sm:inline text-caption font-normal bg-neutral-50 text-neutral-600 border-neutral-200"
                                                       >
                                                         {getSlideMetaText(
                                                           slide

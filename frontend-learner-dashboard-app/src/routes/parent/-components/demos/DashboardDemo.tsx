@@ -13,13 +13,13 @@ import { Button } from "@/components/ui/button";
 import {
   CheckCircle,
   Clock,
-  ClipboardList,
+  ClipboardText,
   CalendarCheck,
-  DollarSign,
+  CurrencyDollar,
   FileText,
   ArrowRight,
   Info,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 
 type TabId =
   | "dashboard"
@@ -68,7 +68,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
           <CardContent className="p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 shrink-0 mt-0.5">
-                <ClipboardList size={20} className="text-yellow-600" />
+                <ClipboardText size={20} className="text-yellow-600" />
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-semibold text-foreground">
@@ -114,7 +114,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
         {[
           {
             id: "registration" as TabId,
-            icon: ClipboardList,
+            icon: ClipboardText,
             label: "Registration",
             desc: "Form & payment",
             color: "text-blue-600 dark:text-blue-400",
@@ -141,7 +141,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
           },
           {
             id: "documents" as TabId,
-            icon: ClipboardList,
+            icon: ClipboardText,
             label: "Verification",
             desc: "Upload & verify",
             color: "text-amber-600 dark:text-amber-400",
@@ -150,7 +150,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
           },
           {
             id: "payments" as TabId,
-            icon: DollarSign,
+            icon: CurrencyDollar,
             label: "Fee Payment",
             desc: "Fees & receipts",
             color: "text-emerald-600 dark:text-emerald-400",
@@ -176,7 +176,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
                   <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
                     {c.label}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">{c.desc}</p>
+                  <p className="text-caption text-muted-foreground">{c.desc}</p>
                 </div>
               </CardContent>
             </Card>
@@ -224,7 +224,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
                       </p>
                     )}
                     {e.timestamp && (
-                      <p className="text-[10px] text-muted-foreground/60 mt-1">
+                      <p className="text-caption text-muted-foreground/60 mt-1">
                         {new Date(e.timestamp).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
@@ -311,7 +311,7 @@ function ProgressSteps({ currentStatus }: { currentStatus: string }) {
                 {s.label}
               </p>
               {cur && (
-                <p className="text-[11px] text-primary/70 mt-0.5">
+                <p className="text-caption text-primary/70 mt-0.5">
                   In progress
                 </p>
               )}

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Monitor, LogIn, ShieldAlert } from "lucide-react";
+import { Monitor, SignIn, ShieldWarning } from "@phosphor-icons/react";
 
 export const Route = createFileRoute("/session-terminated/")({
   component: SessionTerminatedPage,
@@ -14,7 +14,7 @@ function SessionTerminatedPage() {
           {/* Header banner */}
           <div className="bg-gradient-to-r from-primary-500 to-primary-400 px-8 py-6 text-center">
             <div className="mx-auto w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
-              <ShieldAlert className="w-9 h-9 text-white" />
+              <ShieldWarning className="w-9 h-9 text-white" />
             </div>
             <h1 className="text-xl font-semibold text-white">
               Session Terminated
@@ -69,7 +69,7 @@ function SessionTerminatedPage() {
                 to="/login"
                 className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-400 text-white font-medium rounded-xl hover:from-primary-500/90 hover:to-primary-400/90 transition-all duration-200 shadow-md hover:shadow-lg"
               >
-                <LogIn className="w-5 h-5" />
+                <SignIn className="w-5 h-5" />
                 Log In Again
               </Link>
 

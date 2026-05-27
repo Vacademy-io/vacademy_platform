@@ -35,6 +35,7 @@ import { inferDisplayMeta } from './registry/friendly-labels';
 import { AdvancedSection } from './AdvancedSection';
 import { LengthControl, RotationControl } from './controls';
 import { OverlayEditor } from './OverlayEditor';
+import { MediaPicker } from './MediaPicker';
 import {
     listOverlays,
     upsertOverlay,
@@ -128,6 +129,11 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
     const replaceTargetRef = useRef<{ id: string; kind: 'image' | 'video' } | null>(null);
     const [uploadingReplace, setUploadingReplace] = useState(false);
 
+    // Media picker (Upload / Stock / AI / Library). Opening it sets
+    // `replaceTargetRef` (NEW = create overlay, otherwise replace src); the
+    // picker's onSelect routes the resolved URL through `applyMediaUrl`.
+    const [pickerKind, setPickerKind] = useState<'image' | 'video' | null>(null);
+
     const onOverlayReplaceSrc = useCallback(() => {
         if (!selectedOverlay) return;
         if (selectedOverlay.kind !== 'image' && selectedOverlay.kind !== 'video') return;
@@ -135,7 +141,7 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
             id: selectedOverlay.id,
             kind: selectedOverlay.kind,
         };
-        fileInputRef.current?.click();
+        setPickerKind(selectedOverlay.kind);
     }, [selectedOverlay]);
 
     // Toolbar handlers — Add Text Overlay, Add Image Overlay, Add Video Overlay.
@@ -150,12 +156,35 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
 
     const addMediaOverlay = useCallback((kind: 'image' | 'video') => {
         replaceTargetRef.current = { id: 'NEW', kind };
-        const input = fileInputRef.current;
-        if (!input) return;
-        input.accept = kind === 'image' ? 'image/*' : 'video/*';
-        input.value = '';
-        input.click();
+        setPickerKind(kind);
     }, []);
+
+    // Apply a resolved (already S3-hosted) media URL — shared by the media
+    // picker and the legacy file-input path. Reads `replaceTargetRef` to know
+    // whether to create a new overlay or replace an existing one's src.
+    const applyMediaUrl = useCallback(
+        (url: string) => {
+            const target = replaceTargetRef.current;
+            if (!url || !target) return;
+            if (target.id === 'NEW') {
+                const fresh = target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
+                const nextHtml = upsertOverlay(entryHtml, fresh);
+                updateEntryHtml(entryId, nextHtml);
+                const path = findOverlayPath(nextHtml, fresh.id);
+                if (path) selectLayer(path);
+            } else {
+                const existing = listOverlays(entryHtml, { w: canvasW, h: canvasH }).find(
+                    (o) => o.id === target.id
+                );
+                if (existing) {
+                    const next = { ...existing, src: url } as Overlay;
+                    updateEntryHtml(entryId, upsertOverlay(entryHtml, next));
+                }
+            }
+            replaceTargetRef.current = null;
+        },
+        [entryHtml, entryId, canvasW, canvasH, updateEntryHtml, selectLayer]
+    );
 
     const handleReplaceFile = useCallback(
         async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,38 +212,13 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
                     toast.error('Could not resolve uploaded URL');
                     return;
                 }
-                if (target.id === 'NEW') {
-                    // Create-overlay flow (Add Image / Add Video toolbar).
-                    const fresh =
-                        target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
-                    const nextHtml = upsertOverlay(entryHtml, fresh);
-                    updateEntryHtml(entryId, nextHtml);
-                    const path = findOverlayPath(nextHtml, fresh.id);
-                    if (path) selectLayer(path);
-                    return;
-                }
-                // Replace-src flow (Replace button inside OverlayEditor).
-                const existing = listOverlays(entryHtml, { w: canvasW, h: canvasH }).find(
-                    (o) => o.id === target.id
-                );
-                if (!existing) return;
-                const next = { ...existing, src: url } as Overlay;
-                updateEntryHtml(entryId, upsertOverlay(entryHtml, next));
+                applyMediaUrl(url);
             } finally {
                 setUploadingReplace(false);
                 replaceTargetRef.current = null;
             }
         },
-        [
-            entryHtml,
-            entryId,
-            canvasW,
-            canvasH,
-            updateEntryHtml,
-            uploadFile,
-            getPublicUrl,
-            selectLayer,
-        ]
+        [uploadFile, getPublicUrl, applyMediaUrl]
     );
 
     const onOverlayPatch = useCallback(
@@ -432,6 +436,15 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
                 }
                 className="hidden"
                 onChange={handleReplaceFile}
+            />
+
+            {/* Unified media picker — Upload / Stock / AI / Library. */}
+            <MediaPicker
+                open={pickerKind != null}
+                accept={pickerKind ?? 'image'}
+                orientation={canvasH > canvasW ? 'portrait' : 'landscape'}
+                onSelect={applyMediaUrl}
+                onClose={() => setPickerKind(null)}
             />
         </div>
     );

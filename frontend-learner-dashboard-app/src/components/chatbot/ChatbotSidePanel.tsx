@@ -1,18 +1,18 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
 import {
   X,
-  Send,
+  PaperPlaneTilt,
   Plus,
-  Trash2,
+  Trash,
   Copy,
   Check,
-  Settings,
-  GripVertical,
+  Gear,
+  DotsSixVertical,
   Sigma,
-  ImagePlus,
-  Loader2,
-  Mic,
-} from "lucide-react";
+  ImageSquare,
+  SpinnerGap,
+  Microphone,
+} from "@phosphor-icons/react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -231,7 +231,7 @@ export const ChatbotSidePanel: React.FC = () => {
         )}
       >
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-8 flex items-center justify-center -ml-1.5 opacity-0 hover:opacity-100 transition-opacity">
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+          <DotsSixVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
 
@@ -254,7 +254,7 @@ export const ChatbotSidePanel: React.FC = () => {
             <CardTitle className="text-sm font-semibold tracking-tight truncate">
               {chatbotSettings.assistant_name}
             </CardTitle>
-            <p className="text-[10px] text-primary-foreground/70 truncate">
+            <p className="text-caption text-primary-foreground/70 truncate">
               {instituteName}
             </p>
           </div>
@@ -278,16 +278,16 @@ export const ChatbotSidePanel: React.FC = () => {
             onClick={closeSession}
             title="Close session"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash className="h-3.5 w-3.5" />
           </Button>
           <Link to="/ai-settings">
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7 rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15 hover:text-primary-foreground"
-              title="AI Settings"
+              title="AI Gear"
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Gear className="h-3.5 w-3.5" />
             </Button>
           </Link>
           <Button
@@ -318,7 +318,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {messages.map((msg) => {
               if (msg.role === "quiz" && msg.metadata?.quiz_data) {
                 return (
-                  <div key={msg.id} className="w-full max-w-[95%] mr-auto">
+                  <div key={msg.id} className="w-full max-w-pct-95 mr-auto">
                     <div className="flex gap-2">
                       <Avatar className="h-7 w-7 mt-1 shrink-0">
                         {avatarUrl ? (
@@ -358,7 +358,7 @@ export const ChatbotSidePanel: React.FC = () => {
 
               if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
                 return (
-                  <div key={msg.id} className="w-full max-w-[95%] mr-auto">
+                  <div key={msg.id} className="w-full max-w-pct-95 mr-auto">
                     <div className="flex gap-2">
                       <Avatar className="h-7 w-7 mt-1 shrink-0">
                         {avatarUrl ? (
@@ -389,7 +389,7 @@ export const ChatbotSidePanel: React.FC = () => {
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex w-full max-w-[92%]",
+                    "flex w-full max-w-pct-92",
                     msg.role === "user"
                       ? "ml-auto justify-end"
                       : "mr-auto justify-start",
@@ -404,7 +404,7 @@ export const ChatbotSidePanel: React.FC = () => {
                           className="object-cover"
                         />
                       ) : null}
-                      <AvatarFallback className="text-primary font-bold text-[10px] bg-muted">
+                      <AvatarFallback className="text-primary font-bold text-caption bg-muted">
                         {chatbotSettings.assistant_name
                           .substring(0, 2)
                           .toUpperCase()}
@@ -414,7 +414,7 @@ export const ChatbotSidePanel: React.FC = () => {
                   <div className="flex items-end gap-1">
                     <div
                       className={cn(
-                        "rounded-xl px-2.5 py-1.5 text-[13px] break-words max-w-full leading-relaxed",
+                        "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground rounded-br-sm shadow-sm"
                           : "bg-card text-card-foreground rounded-bl-sm shadow-sm ring-1 ring-border/30",
@@ -423,7 +423,7 @@ export const ChatbotSidePanel: React.FC = () => {
                       {msg.role === "user" ? (
                         <div>
                           {msg.attachments?.filter(a => a.type === 'image').map((att, i) => (
-                            <img key={i} src={att.url} alt="attached" className="max-w-[200px] max-h-[150px] rounded-lg mb-1" />
+                            <img key={i} src={att.url} alt="attached" className="max-w-48 max-h-36 rounded-lg mb-1" />
                           ))}
                           <p className="whitespace-pre-wrap">{msg.content}</p>
                         </div>
@@ -530,7 +530,7 @@ export const ChatbotSidePanel: React.FC = () => {
 
             {/* Streaming response */}
             {isStreaming && streamingContent && (
-              <div className="flex items-start gap-1.5 mr-auto max-w-[90%]">
+              <div className="flex items-start gap-1.5 mr-auto max-w-pct-90">
                 <Avatar className="h-6 w-6 shrink-0 ring-1 ring-border/40">
                   {avatarUrl ? (
                     <AvatarImage
@@ -539,11 +539,11 @@ export const ChatbotSidePanel: React.FC = () => {
                       className="object-cover"
                     />
                   ) : null}
-                  <AvatarFallback className="text-primary font-bold text-[10px] bg-muted">
+                  <AvatarFallback className="text-primary font-bold text-caption bg-muted">
                     {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="rounded-xl rounded-bl-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30 text-[13px] leading-relaxed">
+                <div className="rounded-xl rounded-bl-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30 text-caption leading-relaxed">
                   <ReactMarkdown
                     remarkPlugins={[remarkBreaks, remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
@@ -562,7 +562,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {!isStreaming && (isLoading ||
               aiStatus === "thinking" ||
               aiStatus === "generating_quiz") && (
-              <div className="mr-auto flex max-w-[90%] items-end space-x-1.5">
+              <div className="mr-auto flex max-w-pct-90 items-end space-x-1.5">
                 <Avatar className="h-6 w-6 shrink-0 ring-1 ring-border/40">
                   {avatarUrl ? (
                     <AvatarImage
@@ -571,7 +571,7 @@ export const ChatbotSidePanel: React.FC = () => {
                       className="object-cover"
                     />
                   ) : null}
-                  <AvatarFallback className="text-primary font-bold text-[10px] bg-muted">
+                  <AvatarFallback className="text-primary font-bold text-caption bg-muted">
                     {chatbotSettings.assistant_name
                       .substring(0, 2)
                       .toUpperCase()}
@@ -580,7 +580,7 @@ export const ChatbotSidePanel: React.FC = () => {
                 <div className="rounded-xl rounded-bl-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30">
                   <div className="flex space-x-1 items-center h-4">
                     {aiStatus === "generating_quiz" ? (
-                      <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <span className="text-caption text-muted-foreground flex items-center gap-1.5">
                         <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                         Generating...
                       </span>
@@ -648,13 +648,13 @@ export const ChatbotSidePanel: React.FC = () => {
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 backdrop-blur-[2px] pointer-events-none">
           <div className="flex flex-col items-center gap-2 text-primary">
-            <ImagePlus className="h-8 w-8" />
+            <ImageSquare className="h-8 w-8" />
             <span className="text-sm font-medium">Drop image here</span>
           </div>
         </div>
       )}
 
-      <CardFooter className="border-t border-border/40 px-2.5 py-2 shrink-0 max-h-[45%] overflow-y-auto flex-col gap-2 bg-background">
+      <CardFooter className="border-t border-border/40 px-2.5 py-2 shrink-0 max-h-pct-45 overflow-y-auto flex-col gap-2 bg-background">
         {/* Quick Action Chips - show when input is empty */}
         {!inputValue.trim() && (
           <div className={cn("w-full flex flex-wrap", messages.length === 0 ? "gap-1.5" : "gap-1")}>
@@ -676,9 +676,9 @@ export const ChatbotSidePanel: React.FC = () => {
                 onClick={() => setShowVoiceSelector(true)}
                 disabled={isLoading || !sessionId}
                 title="Start a voice conversation"
-                className="inline-flex items-center h-6 px-2.5 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
+                className="inline-flex items-center h-6 px-2.5 text-caption font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
               >
-                <Mic className="h-3 w-3 mr-1" />
+                <Microphone className="h-3 w-3 mr-1" />
                 Voice Chat
               </button>
             )}
@@ -695,11 +695,11 @@ export const ChatbotSidePanel: React.FC = () => {
                 <img src={att.previewUrl || att.url} alt={att.name || 'attachment'} className="size-full object-cover" />
                 {!att.url && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                    <Loader2 className="h-3 w-3 text-white animate-spin" />
+                    <SpinnerGap className="h-3 w-3 text-white animate-spin" />
                   </div>
                 )}
                 <button
-                  className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-[8px] flex items-center justify-center"
+                  className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
                   onClick={() => {
                     if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
                     setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));
@@ -746,7 +746,7 @@ export const ChatbotSidePanel: React.FC = () => {
             ].map((item) => (
               <button
                 key={item.label}
-                className="h-6 min-w-[28px] px-1 text-[10px] font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
+                className="h-6 min-w-7 px-1 text-caption font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
                 onClick={() => {
                   const hasOpenDelimiter = inputValue.lastIndexOf('$') > inputValue.lastIndexOf(' ');
                   const toInsert = hasOpenDelimiter ? item.insert : `$${item.insert}$`;
@@ -763,7 +763,7 @@ export const ChatbotSidePanel: React.FC = () => {
         {/* LaTeX preview */}
         {inputValue.includes('$') && (
           <div className="w-full px-2 py-1 bg-muted/20 rounded border border-dashed border-border/50 text-xs overflow-x-auto">
-            <span className="text-muted-foreground text-[10px] block mb-0.5">Preview:</span>
+            <span className="text-muted-foreground text-caption block mb-0.5">Preview:</span>
             <ReactMarkdown
               remarkPlugins={[remarkMath]}
               rehypePlugins={[rehypeKatex]}
@@ -782,7 +782,7 @@ export const ChatbotSidePanel: React.FC = () => {
             onKeyDown={handleKeyDown}
             disabled={!sessionId || isLoading}
             rows={1}
-            className="flex-1 min-h-[32px] max-h-[120px] px-3 py-1.5 text-[13px] bg-transparent border-0 shadow-none focus:outline-none focus-visible:ring-0 placeholder:text-muted-foreground/50 resize-none"
+            className="flex-1 min-h-8 max-h-32 px-3 py-1.5 text-caption bg-transparent border-0 shadow-none focus:outline-none focus-visible:ring-0 placeholder:text-muted-foreground/50 resize-none"
             style={{ height: 'auto', overflow: 'hidden' }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
@@ -807,9 +807,9 @@ export const ChatbotSidePanel: React.FC = () => {
             title="Attach image"
           >
             {isUploadingImage ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <SpinnerGap className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <ImagePlus className="h-3.5 w-3.5" />
+              <ImageSquare className="h-3.5 w-3.5" />
             )}
           </button>
           <MicButton
@@ -836,7 +836,7 @@ export const ChatbotSidePanel: React.FC = () => {
                 : "bg-muted text-muted-foreground",
             )}
           >
-            <Send className="h-3.5 w-3.5" />
+            <PaperPlaneTilt className="h-3.5 w-3.5" />
           </Button>
         </div>
       </CardFooter>

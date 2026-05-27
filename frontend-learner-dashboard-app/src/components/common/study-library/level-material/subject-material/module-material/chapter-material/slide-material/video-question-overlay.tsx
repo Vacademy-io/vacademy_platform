@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useEffect } from "react";
-import { X, Clock, CheckCircle, XCircle } from "lucide-react";
+import { X, Clock, CheckCircle, XCircle } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_SLIDE_ANSWERS } from "@/constants/urls";
@@ -653,7 +653,7 @@ const VideoQuestionOverlay = ({
                         value={inputValue}
                         onChange={handleInputChange}
                         placeholder="Type your detailed answer here..."
-                        className="w-full min-h-[120px] text-base resize-none"
+                        className="w-full min-h-reg-120 text-base resize-none"
                         disabled={!!response}
                     />
                 </div>
@@ -786,8 +786,8 @@ const VideoQuestionOverlay = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[10] p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-10 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-screen-90 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300">
                 {/* Header */}
                 <div className="flex-shrink-0 bg-white border-b border-gray-100 rounded-t-xl">
                     <div className="flex items-center justify-between p-4 sm:p-6">
@@ -916,7 +916,7 @@ const VideoQuestionOverlay = ({
                                 layoutVariant="default"
                                 onClick={onClose}
                                 disable={false}
-                                className="min-w-[160px] shadow-lg"
+                                className="min-w-reg-150 shadow-lg"
                             >
                                 Continue Video
                             </MyButton>
@@ -927,7 +927,7 @@ const VideoQuestionOverlay = ({
                                 layoutVariant="default"
                                 onClick={handleSubmit}
                                 disable={isSubmitDisabled()}
-                                className="min-w-[160px] shadow-lg"
+                                className="min-w-reg-150 shadow-lg"
                             >
                                 {isSubmitting
                                     ? "Submitting..."

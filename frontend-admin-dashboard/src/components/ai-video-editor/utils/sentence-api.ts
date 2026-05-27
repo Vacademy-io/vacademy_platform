@@ -215,6 +215,38 @@ export async function apiRegenerateShot(
 }
 
 /**
+ * Mute one shot — replace its audio with synthesized silence of equal length
+ * so the timing slot (and downstream timing) is preserved. Returns the same
+ * shape as regenerate so callers apply the response identically. The shot
+ * stays in `meta.shots[]` with empty `text`/`audio_url` and `audio_skipped`,
+ * which the editor renders as a "muted" slot the user can later re-narrate.
+ *
+ * Refuses (HTTP 400) for `audio_policy: 'intrinsic_only'` shots and pre-v3
+ * timelines (no meta.shots[]).
+ */
+export async function apiSilenceShot(
+    videoId: string,
+    apiKey: string,
+    shotIdx: number
+): Promise<ApiResult<RegenerateShotResponse>> {
+    try {
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/shot/silence`, {
+            method: 'POST',
+            headers: headers(apiKey),
+            body: JSON.stringify({
+                video_id: videoId,
+                shot_idx: shotIdx,
+            }),
+        });
+        if (!res.ok) return { ok: false, error: await readError(res) };
+        const data = (await res.json()) as RegenerateShotResponse;
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+/**
  * Trigger a backfill build of meta.sentences[] for an older video.
  * Safe to call on a video that already has sentences[] — the server
  * overwrites them at the same S3 keys.

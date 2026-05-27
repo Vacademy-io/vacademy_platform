@@ -566,6 +566,12 @@ class SentenceClipService:
             _ripple_entries(timeline, boundary=old_end, delta=duration_delta)
             _bump_total_duration(timeline, delta=duration_delta)
 
+            # Write the per-entry audio ref ("entry owns its audio clip"). The
+            # edited entry's inTime is unchanged by the old_end-boundary ripple,
+            # so the 1:1 match still resolves. Master MP3 stays authoritative
+            # for playback/render this round (see TimelineMeta.entries_own_audio).
+            self._sync_entry_audio_ref(timeline, updated_target, policy="narration_only")
+
             # 5. Optional: splice global narration.words.json (best-effort —
             # captions for downstream content stay in sync). Same logic as
             # the sentence path; lifted directly.
@@ -667,6 +673,76 @@ class SentenceClipService:
     @staticmethod
     def _versioned_shot_clip_key(video_id: str, shot_id: str, version_tag: str) -> str:
         return f"ai-videos/{video_id}/shot_clips/{shot_id}-{version_tag}.mp3"
+
+    @staticmethod
+    def _entry_audio_ref_from(
+        shot: Dict[str, Any],
+        *,
+        policy: str,
+        clip_url: Optional[str] = None,
+        duration_s: Optional[float] = None,
+        words_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Build the per-entry ``audio`` ref ("entry owns its audio clip") for
+        a shot. ``clip_url`` / ``duration_s`` default to the shot's current
+        audio fields. Policy is one of narration_only | intrinsic | silent."""
+        ref: Dict[str, Any] = {
+            "clip_url": clip_url if clip_url is not None else (shot.get("audio_url") or ""),
+            "duration_s": float(
+                duration_s if duration_s is not None
+                else (shot.get("audio_duration_s") or shot.get("duration") or 0.0)
+            ),
+            "policy": policy,
+        }
+        if words_url:
+            ref["words_url"] = words_url
+        return ref
+
+    def _sync_entry_audio_ref(
+        self,
+        timeline: Dict[str, Any],
+        shot: Dict[str, Any],
+        *,
+        policy: str,
+        clip_url: Optional[str] = None,
+        duration_s: Optional[float] = None,
+        words_url: Optional[str] = None,
+    ) -> None:
+        """Write the per-entry ``audio`` ref onto the timeline entry that maps
+        1:1 to ``shot`` (v3 invariant: ``entry.inTime == shot.start_time``).
+
+        No-op when no matching base entry is found (e.g. legacy v2 sentence
+        timelines, which stay master-driven this round). The master narration
+        MP3 remains authoritative for playback/render until a full migration
+        sets ``meta.entries_own_audio`` — these refs ride along as the future
+        source of truth and let the player avoid double-playing narration."""
+        entries = self._extract_entries(timeline)
+        if not entries:
+            return
+        start = float(shot.get("start_time") or 0.0)
+        eps = 0.05
+        best: Optional[Dict[str, Any]] = None
+        best_z: Optional[float] = None
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            if str(e.get("id") or "").startswith("branding-"):
+                continue
+            in_t = e.get("inTime")
+            if not isinstance(in_t, (int, float)):
+                continue
+            if abs(float(in_t) - start) > eps:
+                continue
+            z = e.get("z")
+            z = float(z) if isinstance(z, (int, float)) else 0.0
+            if best is None or (best_z is not None and z < best_z):
+                best, best_z = e, z
+        if best is None:
+            return
+        best["audio"] = self._entry_audio_ref_from(
+            shot, policy=policy, clip_url=clip_url,
+            duration_s=duration_s, words_url=words_url,
+        )
 
     def _sync_shot_plan_after_regen(
         self,
@@ -840,6 +916,133 @@ class SentenceClipService:
         return SentenceRegenerateResult(
             video_id=video_id,
             sentence=target,
+            duration_delta=duration_delta,
+            new_global_audio_url=new_global_url,
+            new_global_duration=new_global_duration,
+            timeline_url=timeline_url,
+        )
+
+    def silence_shot(
+        self,
+        video_id: str,
+        shot_idx: int,
+        *,
+        crossfade_ms: int = 50,
+        head_pad_ms: int = 40,
+    ) -> ShotRegenerateResult:
+        """Mute one shot: replace its audio range with silence of the same
+        length and clear the shot's text + words. Total duration and
+        downstream timestamps are preserved (no ripple).
+
+        Mirrors `silence_sentence` but on `meta.shots[]`, and refuses
+        `intrinsic_only` shots (they carry their own audio — edit the
+        underlying source asset instead). The shot stays in `meta.shots[]`
+        (with `text=""`, `audio_url=""`, `audio_skipped=True`) so the editor
+        can re-narrate the same slot later via `regenerate_shot`. Also writes
+        the per-entry audio ref with policy='silent' ("entry owns its audio
+        clip"). `duration_delta` ~0.
+        """
+        record = self.repository.get_by_video_id(video_id)
+        if record is None:
+            raise ValueError(f"video {video_id} not found")
+        s3_urls = dict(record.s3_urls or {})
+        if not s3_urls.get("audio") or not s3_urls.get("timeline"):
+            raise ValueError("video is missing audio/timeline S3 URLs; cannot silence")
+
+        with tempfile.TemporaryDirectory(prefix=f"silence-shot-{video_id}-") as tmpdir:
+            tmp = Path(tmpdir)
+
+            timeline = self._download_json(s3_urls["timeline"], tmp / "timeline.json")
+            shots = self._extract_shots(timeline)
+            if not shots:
+                raise ValueError(
+                    "this video has no meta.shots[] — it predates the v3 "
+                    "shot-clip editor schema."
+                )
+            idx_in_list, target = _find_shot_by_idx(shots, shot_idx)
+            if target is None:
+                raise ValueError(f"shot {shot_idx!r} not in timeline")
+            if (target.get("audio_policy") or "narration_only") == "intrinsic_only":
+                raise ValueError(
+                    f"shot {shot_idx} is intrinsic_only — it carries its own "
+                    f"audio (source clip / Veo) and cannot be muted here. To "
+                    f"change its audio, edit the underlying source asset."
+                )
+
+            old_start = float(target.get("start_time") or 0.0)
+            old_duration = float(target.get("duration") or 0.0)
+            old_end = old_start + old_duration
+
+            # 1. Splice silence into the master MP3 (duration-preserving).
+            version_tag = _version_tag()
+            new_audio_key = self._versioned_audio_key(video_id, version_tag)
+            silence = self.render_service.silence_audio_range(
+                base_audio_url=s3_urls["audio"],
+                silence_start=old_start,
+                silence_end=old_end,
+                output_key=new_audio_key,
+                crossfade_ms=crossfade_ms,
+                head_pad_ms=head_pad_ms,
+            )
+            new_global_url = silence.get("output_url")
+            new_global_duration = float(silence.get("new_duration") or 0.0)
+            duration_delta = float(silence.get("duration_delta") or 0.0)
+            if not new_global_url:
+                raise RuntimeError(f"silence_audio_range returned no output_url: {silence}")
+
+            # 2. Mark the shot silenced (slot preserved, no ripple). Empty text
+            # + audio_url + audio_skipped is the signal the FE uses to render
+            # the slot as muted and offer "Add narration" (re-narrate).
+            target["text"] = ""
+            target["audio_url"] = ""
+            target["audio_skipped"] = True
+            target["words"] = []
+
+            # 3. Per-entry audio ref → silent ("entry owns its audio clip").
+            self._sync_entry_audio_ref(
+                timeline, target, policy="silent", clip_url="",
+                duration_s=old_duration,
+            )
+
+            # 4. Splice words.json over the range (drop, no insert → silent).
+            words_url = s3_urls.get("words")
+            if words_url:
+                try:
+                    self._splice_global_words(
+                        words_s3_url=words_url,
+                        old_start=old_start,
+                        old_end=old_end,
+                        new_sentence_words=[],
+                        sentence_start_time=old_start,
+                        duration_delta=duration_delta,  # ~0
+                        tmp_path=tmp / "words.out.json",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to splice global words.json for shot %s of %s: %s",
+                        shot_idx, video_id, exc,
+                    )
+
+            # 5. Persist timeline + audio URL update on the video record.
+            timeline_url = self._upload_timeline_json(
+                timeline=timeline,
+                timeline_s3_url=s3_urls["timeline"],
+                video_id=video_id,
+                tmp_path=tmp / "timeline.out.json",
+            )
+            try:
+                self.repository.update_files(
+                    video_id=video_id, s3_urls={"audio": new_global_url},
+                )
+            except AttributeError:
+                logger.warning(
+                    "repository.update_files missing; record %s still points at old audio",
+                    video_id,
+                )
+
+        return ShotRegenerateResult(
+            video_id=video_id,
+            shot=target,
             duration_delta=duration_delta,
             new_global_audio_url=new_global_url,
             new_global_duration=new_global_duration,
@@ -1020,21 +1223,106 @@ class SentenceClipService:
     # ----- regenerate-only internals -----
 
     def _resolve_voice(self, record, overrides: Optional[Dict[str, Any]]):
-        """Build the VoiceConfig used for re-narration: video record's
-        persisted metadata is the base; per-request overrides win."""
+        """Build the VoiceConfig used for re-narration.
+
+        Precedence (highest first):
+          1. per-request `overrides`
+          2. pinned `extra_metadata.resolved_voice` — the CONCRETE provider +
+             voice name that synthesis actually used at generation (incl. a
+             premium auto-pick or a mid-synth edge→google fallback)
+          3. top-level `extra_metadata` knobs (only non-default knobs are
+             stored there)
+          4. `extra_metadata.user_selections` knobs (the request snapshot)
+          5. language default
+
+        (2) is what fixes regenerated clips drifting to a different voice than
+        the original — see VideoGenerationService's persistence of
+        `resolved_voice`. (4) is the fallback for videos generated before the
+        pin existed: at least reuse the requested provider/gender/voice_id
+        instead of a bare default. For Edge the concrete voice is deterministic
+        from (language, gender), so pinning the provider also prevents regen
+        from re-attempting premium and landing on a different provider."""
         self._ensure_video_gen_on_path()
         try:
             from sentence_tts import VoiceConfig
         except ImportError as exc:
             raise RuntimeError(f"sentence_tts not importable: {exc}") from exc
-        meta = dict(record.extra_metadata or {})
+
+        emeta = dict(record.extra_metadata or {})
+        meta: Dict[str, Any] = {}
+
+        # Layer low→high so higher-precedence sources overwrite lower ones.
+        # (4) user_selections — request knobs always snapshotted at gen time.
+        user_sel = emeta.get("user_selections")
+        if isinstance(user_sel, dict):
+            for key in ("voice_gender", "tts_provider", "voice_id"):
+                v = user_sel.get(key)
+                if v is not None:
+                    meta[key] = v
+        # (3) top-level extra_metadata.
+        for key in ("voice_gender", "tts_provider", "voice_id"):
+            v = emeta.get(key)
+            if v is not None:
+                meta[key] = v
+        # (2) pinned concrete resolved voice.
+        resolved = emeta.get("resolved_voice")
+        if isinstance(resolved, dict):
+            if resolved.get("provider"):
+                meta["tts_provider"] = resolved["provider"]
+            if resolved.get("voice_id"):
+                meta["voice_id"] = resolved["voice_id"]
+            if resolved.get("gender"):
+                meta["voice_gender"] = resolved["gender"]
+        # (1) per-request overrides win outright.
         if overrides:
             for key in ("voice_gender", "tts_provider", "voice_id"):
                 v = overrides.get(key)
                 if v is not None:
                     meta[key] = v
-        language = (overrides or {}).get("language") or record.language or "English"
+
+        language = (
+            (overrides or {}).get("language")
+            or (resolved.get("language") if isinstance(resolved, dict) else None)
+            or record.language
+            or "English"
+        )
         return VoiceConfig.from_metadata(language=language, metadata=meta)
+
+    def backfill_resolved_voice(
+        self, video_id: str, *, overwrite: bool = False
+    ) -> Dict[str, Any]:
+        """Freeze the current voice derivation onto an existing video's
+        ``extra_metadata.resolved_voice`` so future re-narration is pinned and
+        cannot drift if VOICE_MAPPING / defaults change later.
+
+        Limitation: this does NOT recover a lost premium auto-pick. Videos
+        generated before the resolved-voice pin existed never recorded the
+        concrete voice the TTS engine auto-selected, so for the
+        ``premium`` + ``voice_id=None`` case the best we can do is freeze the
+        provider / gender / language (Edge is deterministic from those;
+        Google/Sarvam auto-picks stay approximate). New videos record the real
+        concrete voice at TTS time via VideoGenerationService.
+
+        Returns the ``resolved_voice`` dict (existing one when a pin already
+        exists and ``overwrite`` is False)."""
+        record = self.repository.get_by_video_id(video_id)
+        if record is None:
+            raise ValueError(f"video {video_id} not found")
+        emeta = dict(record.extra_metadata or {})
+        existing = emeta.get("resolved_voice")
+        if isinstance(existing, dict) and existing.get("voice_id") and not overwrite:
+            return existing
+        vc = self._resolve_voice(record, None)
+        resolved = {
+            "provider": getattr(vc, "tts_provider", None),
+            "voice_id": getattr(vc, "voice_id", None),
+            "gender": getattr(vc, "voice_gender", None),
+            "language": getattr(vc, "language", None) or record.language,
+            "backfilled": True,
+        }
+        emeta["resolved_voice"] = resolved
+        self.repository.update_metadata(video_id, emeta)
+        return resolved
 
     def _synthesize_sentence(self, *, text: str, output_path: Path, voice):
         """TTS one sentence using the same code path the pipeline uses."""

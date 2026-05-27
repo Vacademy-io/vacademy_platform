@@ -70,11 +70,11 @@ export const ReadOnlyQuillViewer = ({
         }
         .readonly-quill-viewer .ql-editor table td,
         .readonly-quill-viewer .ql-editor table th {
-          border: 1px solid #e5e7eb;
+          border: 1px solid #e5e7eb; /* design-lint-ignore: editor theme data */
           padding: 8px;
         }
         .readonly-quill-viewer .ql-editor table th {
-          background-color: #f9fafb;
+          background-color: #f9fafb; /* design-lint-ignore: editor theme data */
           font-weight: 600;
         }
         /* Ensure images are responsive */

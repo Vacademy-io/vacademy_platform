@@ -194,14 +194,16 @@ public interface UserRepository extends CrudRepository<User, String> {
         @Query(value = "SELECT DISTINCT u.* FROM users u " +
                         "JOIN user_role ur ON u.id = ur.user_id " +
                         "JOIN roles r ON r.id = ur.role_id " +
-                        "WHERE ur.status IN (:statuses) " +
-                        "AND r.role_name IN (:roles) " +
+                        "WHERE (:applyStatusFilter = FALSE OR ur.status IN (:statuses)) " +
+                        "AND (:applyRoleFilter = FALSE OR LOWER(r.role_name) IN (:roles)) " +
                         "AND ur.institute_id = :instituteId " +
                         "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
                         "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
                         "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%')) " +
                         "ORDER BY u.full_name ASC", nativeQuery = true)
-        List<User> findUsersByStatusAndInstitutePaged(@Param("statuses") List<String> statuses,
+        List<User> findUsersByStatusAndInstitutePaged(@Param("applyStatusFilter") boolean applyStatusFilter,
+                        @Param("statuses") List<String> statuses,
+                        @Param("applyRoleFilter") boolean applyRoleFilter,
                         @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
                         @Param("name") String name,
                         @Param("email") String email,
@@ -211,13 +213,15 @@ public interface UserRepository extends CrudRepository<User, String> {
         @Query(value = "SELECT COUNT(DISTINCT u.id) FROM users u " +
                         "JOIN user_role ur ON u.id = ur.user_id " +
                         "JOIN roles r ON r.id = ur.role_id " +
-                        "WHERE ur.status IN (:statuses) " +
-                        "AND r.role_name IN (:roles) " +
+                        "WHERE (:applyStatusFilter = FALSE OR ur.status IN (:statuses)) " +
+                        "AND (:applyRoleFilter = FALSE OR LOWER(r.role_name) IN (:roles)) " +
                         "AND ur.institute_id = :instituteId " +
                         "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
                         "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
                         "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%'))", nativeQuery = true)
-        long countUsersByStatusAndInstitute(@Param("statuses") List<String> statuses,
+        long countUsersByStatusAndInstitute(@Param("applyStatusFilter") boolean applyStatusFilter,
+                        @Param("statuses") List<String> statuses,
+                        @Param("applyRoleFilter") boolean applyRoleFilter,
                         @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
                         @Param("name") String name,
                         @Param("email") String email,
@@ -227,15 +231,17 @@ public interface UserRepository extends CrudRepository<User, String> {
         @Query(value = "SELECT DISTINCT u.* FROM users u " +
                         "JOIN user_role ur ON u.id = ur.user_id " +
                         "JOIN roles r ON r.id = ur.role_id " +
-                        "WHERE ur.status IN (:statuses) " +
-                        "AND r.role_name IN (:roles) " +
+                        "WHERE (:applyStatusFilter = FALSE OR ur.status IN (:statuses)) " +
+                        "AND (:applyRoleFilter = FALSE OR LOWER(r.role_name) IN (:roles)) " +
                         "AND ur.institute_id = :instituteId " +
                         "AND u.id IN (:userIds) " +
                         "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
                         "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
                         "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%')) " +
                         "ORDER BY u.full_name ASC", nativeQuery = true)
-        List<User> findUsersByStatusAndInstituteAndUserIdsPaged(@Param("statuses") List<String> statuses,
+        List<User> findUsersByStatusAndInstituteAndUserIdsPaged(@Param("applyStatusFilter") boolean applyStatusFilter,
+                        @Param("statuses") List<String> statuses,
+                        @Param("applyRoleFilter") boolean applyRoleFilter,
                         @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
                         @Param("userIds") List<String> userIds,
                         @Param("name") String name,
@@ -246,14 +252,16 @@ public interface UserRepository extends CrudRepository<User, String> {
         @Query(value = "SELECT COUNT(DISTINCT u.id) FROM users u " +
                         "JOIN user_role ur ON u.id = ur.user_id " +
                         "JOIN roles r ON r.id = ur.role_id " +
-                        "WHERE ur.status IN (:statuses) " +
-                        "AND r.role_name IN (:roles) " +
+                        "WHERE (:applyStatusFilter = FALSE OR ur.status IN (:statuses)) " +
+                        "AND (:applyRoleFilter = FALSE OR LOWER(r.role_name) IN (:roles)) " +
                         "AND ur.institute_id = :instituteId " +
                         "AND u.id IN (:userIds) " +
                         "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
                         "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
                         "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%'))", nativeQuery = true)
-        long countUsersByStatusAndInstituteAndUserIds(@Param("statuses") List<String> statuses,
+        long countUsersByStatusAndInstituteAndUserIds(@Param("applyStatusFilter") boolean applyStatusFilter,
+                        @Param("statuses") List<String> statuses,
+                        @Param("applyRoleFilter") boolean applyRoleFilter,
                         @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
                         @Param("userIds") List<String> userIds,
                         @Param("name") String name,

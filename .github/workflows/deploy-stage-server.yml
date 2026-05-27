@@ -80,6 +80,17 @@ jobs:
             helm upgrade --install vac . \
               -f values.yaml -f values-standalone.yaml -f values.secret.yaml \
               $SETS --wait --timeout 20m
+            # ':latest' is a moving tag: a same-tag helm upgrade yields an
+            # identical pod spec, so Kubernetes does NOT recreate pods and the
+            # freshly-pushed image is never pulled. Force a rollout so every
+            # deploy re-pulls (imagePullPolicy: Always does the rest). Harmless
+            # for unique tags too, since the spec change already triggers one.
+            for d in auth-service admin-core-service media-service assessment-service community-service notification-service ai-service admin-frontend learner-frontend; do
+              kubectl get deploy "\$d" >/dev/null 2>&1 && kubectl rollout restart deploy "\$d"
+            done
+            for d in auth-service admin-core-service media-service assessment-service community-service notification-service ai-service admin-frontend learner-frontend; do
+              kubectl get deploy "\$d" >/dev/null 2>&1 && kubectl rollout status deploy "\$d" --timeout=300s || true
+            done
             kubectl get pods
           EOF
 

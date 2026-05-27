@@ -13,7 +13,7 @@ import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { cn, parseHtmlToString } from '@/lib/utils';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { CREATE_TIMELINE_EVENT } from '@/constants/urls';
+import { CREATE_TIMELINE_EVENT, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
 import { CallRecordingInput } from '@/components/shared/lead-calls/CallRecordingInput';
 import {
     type CallActivity,
@@ -39,6 +39,9 @@ interface AddLeadNoteDialogProps {
     onOpenChange: (open: boolean) => void;
     userId: string;
     userName?: string;
+    /** Required to schedule a follow-up via POST /v1/lead-followup. When missing,
+     *  the Follow Up tab is disabled with an inline hint. */
+    audienceResponseId?: string;
     onSuccess?: () => void;
 }
 
@@ -47,12 +50,19 @@ export const AddLeadNoteDialog = ({
     onOpenChange,
     userId,
     userName,
+    audienceResponseId,
     onSuccess,
 }: AddLeadNoteDialogProps) => {
     const [noteText, setNoteText] = useState('');
     const [actionType, setActionType] = useState('NOTE');
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
+    // Counsellor-set callback time when Follow Up is the active tab. Stored as the
+    // raw <input type="datetime-local"> value (browser-local "YYYY-MM-DDTHH:mm"),
+    // converted to ISO at submit-time so the backend receives a UTC timestamp.
+    const [scheduleTime, setScheduleTime] = useState('');
     const queryClient = useQueryClient();
+
+    const isFollowUp = actionType === 'FOLLOW_UP';
 
     // The rich text editor emits HTML — check the rendered text for emptiness.
     const isNoteEmpty = !parseHtmlToString(noteText).trim();
@@ -62,9 +72,18 @@ export const AddLeadNoteDialog = ({
         actionType === 'CALL_LOG' && !isCallActivityEmpty(callActivity)
             ? callActivityToMetadata(callActivity as CallActivity)
             : undefined;
-    const canSubmit = !isNoteEmpty || callMeta !== undefined;
+    const canSubmit = isFollowUp
+        ? !!scheduleTime && !!audienceResponseId
+        : !isNoteEmpty || callMeta !== undefined;
 
-    const createMutation = useMutation({
+    const resetState = () => {
+        setNoteText('');
+        setActionType('NOTE');
+        setCallActivity(null);
+        setScheduleTime('');
+    };
+
+    const createNoteMutation = useMutation({
         mutationFn: async () => {
             const label = NOTE_ACTION_TYPES.find((t) => t.value === actionType)?.label ?? 'Note';
             const response = await authenticatedAxiosInstance.post(CREATE_TIMELINE_EVENT, {
@@ -80,9 +99,7 @@ export const AddLeadNoteDialog = ({
         },
         onSuccess: () => {
             toast.success('Note added');
-            setNoteText('');
-            setActionType('NOTE');
-            setCallActivity(null);
+            resetState();
             queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
             queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
             onSuccess?.();
@@ -91,11 +108,43 @@ export const AddLeadNoteDialog = ({
         onError: () => toast.error('Failed to add note'),
     });
 
+    const createFollowUpMutation = useMutation({
+        mutationFn: () =>
+            authenticatedAxiosInstance.post(CREATE_LEAD_FOLLOWUP, {
+                audience_response_id: audienceResponseId,
+                schedule_time: scheduleTime ? new Date(scheduleTime).toISOString() : null,
+                content: noteText.trim() || null,
+            }),
+        onSuccess: () => {
+            toast.success('Follow-up scheduled');
+            resetState();
+            // Refresh the lead lists so the new schedule_time appears in the
+            // "Follow up at" column and the followups-by-lead query is fresh.
+            if (audienceResponseId) {
+                queryClient.invalidateQueries({
+                    queryKey: ['lead-followups', audienceResponseId],
+                });
+            }
+            queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+            queryClient.invalidateQueries({ queryKey: ['campaign-users'] });
+            queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
+            queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
+            onSuccess?.();
+            onOpenChange(false);
+        },
+        onError: () => toast.error('Failed to schedule follow-up'),
+    });
+
+    const isPending = createNoteMutation.isPending || createFollowUpMutation.isPending;
+    const submit = () => {
+        if (!canSubmit || isPending) return;
+        if (isFollowUp) createFollowUpMutation.mutate();
+        else createNoteMutation.mutate();
+    };
+
     const handleClose = () => {
-        if (createMutation.isPending) return;
-        setNoteText('');
-        setActionType('NOTE');
-        setCallActivity(null);
+        if (isPending) return;
+        resetState();
         onOpenChange(false);
     };
 
@@ -142,21 +191,51 @@ export const AddLeadNoteDialog = ({
                         ))}
                     </div>
 
-                    {/* Writing surface */}
+                    {/* Schedule time — Follow Up tab only; required to create the
+                        lead_followup row that powers the "Follow up at" column. */}
+                    {isFollowUp && (
+                        <div className="flex flex-col gap-1">
+                            <label
+                                htmlFor="lead-followup-schedule"
+                                className="text-xs font-medium text-neutral-700"
+                            >
+                                Schedule time <span className="text-danger-500">*</span>
+                            </label>
+                            <input
+                                id="lead-followup-schedule"
+                                type="datetime-local"
+                                value={scheduleTime}
+                                onChange={(e) => setScheduleTime(e.target.value)}
+                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 focus:border-primary-300 focus:outline-none focus:ring-1 focus:ring-primary-300"
+                            />
+                            {!audienceResponseId && (
+                                <p className="text-xs text-warning-600">
+                                    No campaign response linked — follow-up cannot be scheduled
+                                    from here.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Writing surface — note body (for FOLLOW_UP it's an optional reminder). */}
                     <div
                         className="overflow-hidden rounded-lg border border-neutral-200 bg-white text-sm text-neutral-800 transition-colors focus-within:border-primary-300 focus-within:ring-1 focus-within:ring-primary-300 [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                                 e.preventDefault();
-                                if (canSubmit) createMutation.mutate();
+                                submit();
                             }
                         }}
                     >
                         <RichTextEditor
                             value={noteText}
                             onChange={setNoteText}
-                            placeholder="Type your note here…"
-                            minHeight={120}
+                            placeholder={
+                                isFollowUp
+                                    ? 'Add a note for this follow-up (optional)…'
+                                    : 'Type your note here…'
+                            }
+                            minHeight={isFollowUp ? 80 : 120}
                             minimalToolbar
                         />
                     </div>
@@ -174,19 +253,19 @@ export const AddLeadNoteDialog = ({
                         to save
                     </span>
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            onClick={handleClose}
-                            disabled={createMutation.isPending}
-                        >
+                        <Button variant="ghost" onClick={handleClose} disabled={isPending}>
                             Cancel
                         </Button>
                         <Button
-                            onClick={() => createMutation.mutate()}
-                            disabled={createMutation.isPending || !canSubmit}
+                            onClick={submit}
+                            disabled={isPending || !canSubmit}
                             className="disabled:bg-neutral-200 disabled:text-neutral-500 disabled:opacity-100"
                         >
-                            {createMutation.isPending ? 'Saving…' : 'Add note'}
+                            {isPending
+                                ? 'Saving…'
+                                : isFollowUp
+                                  ? 'Schedule Follow-up'
+                                  : 'Add note'}
                         </Button>
                     </div>
                 </DialogFooter>

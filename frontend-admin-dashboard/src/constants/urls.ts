@@ -494,6 +494,11 @@ export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
 
+// Persist LLM-generated study notes (Markdown) so the next dialog open
+// can show them without re-running the LLM. POST body: { markdown: string }.
+export const RECORDING_STUDY_NOTES = (scheduleId: string, recordingId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/study-notes`;
+
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
 
@@ -833,3 +838,9 @@ export const CREATE_PRODUCT_PAGE_COUPON = (coursePageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/create?coursePageId=${coursePageId}`;
 export const DELETE_PRODUCT_PAGE_COUPON = (couponCodeId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/${couponCodeId}`;
+export const ADD_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/add`;
+export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
+export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;

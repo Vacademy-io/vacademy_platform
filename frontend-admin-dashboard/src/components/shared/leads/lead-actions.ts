@@ -12,7 +12,9 @@ export type LeadStatus = 'LEAD' | 'CONVERTED' | 'LOST';
 export interface LeadActionHandlers {
     /** Open the shared StudentSidebar for this lead. */
     onOpenDetails: (vm: LeadCardVM) => void;
-    onAddNote?: (userId: string, userName: string) => void;
+    /** `responseId` is the audience_response_id — required to schedule a follow-up via
+     *  POST /v1/lead-followup. Without it the Follow Up tab in the dialog is disabled. */
+    onAddNote?: (userId: string, userName: string, responseId?: string) => void;
     onAssignCounsellor?: (userId: string, userName: string) => void;
     onSetTier?: (userId: string, userName: string, tier: LeadTier) => void;
     onSetStatus?: (userId: string, userName: string, status: LeadStatus) => void;

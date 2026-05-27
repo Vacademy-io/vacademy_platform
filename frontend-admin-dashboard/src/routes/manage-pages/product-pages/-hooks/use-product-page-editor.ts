@@ -37,7 +37,7 @@ function mappingResponseToRow(m: ProductPageResponse['mappings'][number], idx: n
 
 export const useProductPageEditor = (productPageId: string) => {
     const [isDirty, setIsDirty] = useState(false);
-    const [activeTab, setActiveTab] = useState<'design' | 'courses' | 'settings' | 'coupons' | 'preview'>(
+    const [activeTab, setActiveTab] = useState<'design' | 'courses' | 'settings' | 'coupons' | 'custom-fields' | 'preview'>(
         'design'
     );
 

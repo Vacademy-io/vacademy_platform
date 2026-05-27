@@ -55,6 +55,13 @@ public class LeadFilterDTO {
     // 'ONLY_CONVERTED' shows only converted leads. 'ALL' shows everything.
     private String conversionStatusFilter;
 
+    // ── SLA-state filter ──
+    // Filters by audience_response.tat_reminder_stage — the stage the SLA scheduler last
+    // emitted for the lead. Same values shown in the leads-table badges:
+    //   TAT_BEFORE | TAT_OVERDUE | FOLLOW_UP_DUE | FOLLOW_UP_OVERDUE
+    // Plus 'ANY_OVERDUE' which matches TAT_OVERDUE OR FOLLOW_UP_OVERDUE. Null/empty = no filter.
+    private String slaFilter;
+
     // ── Custom-field dropdown filters ──
     // Each entry narrows the result set so a response only matches when there
     // is a {custom_field_id, value} row in custom_field_values for it. Multiple

@@ -63,6 +63,7 @@ public class RecordingTranscriptionService {
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
     private final FileService fileService;
+    private final vacademy.io.admin_core_service.features.notification_service.service.NotificationService notificationService;
 
     @Value("${ai.service.url:http://localhost:8077}")
     private String aiServiceUrl;
@@ -201,6 +202,53 @@ public class RecordingTranscriptionService {
     // Status (UI polling)
     // ---------------------------------------------------------------------
 
+    /**
+     * Persist LLM-generated study notes for a recording. Called by the
+     * frontend after a successful ai-service `/transcript/generate-notes`
+     * roundtrip — the markdown is cached so the next dialog open can show
+     * the notes immediately without re-paying the LLM cost.
+     *
+     * <p>Idempotent on jobId — re-saving overwrites the previous notes and
+     * advances the generated-at timestamp. (Regeneration is the intended
+     * way to refresh; we don't keep history because the transcript itself
+     * is the source of truth and a regen will re-derive everything.)
+     *
+     * <p>Throws 404 if there's no transcription row yet — the UI shouldn't
+     * be able to reach this state, but defensive.
+     */
+    public TranscriptionStatusDto saveStudyNotes(
+            String scheduleId, String recordingId, String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Markdown is empty — nothing to save");
+        }
+
+        SessionSchedule schedule = scheduleRepo.findById(scheduleId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
+        if (findRecording(schedule, recordingId) == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Recording " + recordingId + " not found on schedule " + scheduleId);
+        }
+
+        Optional<AiContentSource> source = sourceRepo
+                .findBySourceTypeAndSourceId(SOURCE_TYPE_BBB_RECORDING, recordingId);
+        if (source.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "No content source for recording — generate the transcript first");
+        }
+        AiContentExtraction row = extractionRepo
+                .findBySourceIdAndExtractionType(source.get().getId(), EXTRACTION_WHISPER_TRANSCRIBE_TRANSLATE)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No transcription extraction row — generate the transcript first"));
+
+        row.setStudyNotesMarkdown(markdown);
+        row.setStudyNotesGeneratedAt(new java.util.Date());
+        row = extractionRepo.save(row);
+        log.info("[study-notes] Saved notes for recording={} ({} chars)",
+                recordingId, markdown.length());
+        return toDto(recordingId, row);
+    }
+
     public TranscriptionStatusDto getStatus(String scheduleId, String recordingId) {
         SessionSchedule schedule = scheduleRepo.findById(scheduleId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
@@ -245,10 +293,24 @@ public class RecordingTranscriptionService {
         if (payload == null || payload.getJobId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing jobId");
         }
+        applyTerminalState(payload, "transcription-callback");
+    }
 
+    /**
+     * Apply a terminal-state worker payload (completed/failed) to the extraction
+     * row keyed by jobId. Caller is responsible for authenticating the payload
+     * source — both the public callback endpoint (after token check) and the
+     * watchdog reconciliation job (after polling the worker directly) feed in
+     * here so the row-update path is shared and stays consistent.
+     *
+     * @param origin short label included in logs to distinguish callback vs.
+     *               watchdog updates, e.g. "transcription-callback" or
+     *               "transcription-watchdog".
+     */
+    public void applyTerminalState(TranscriptionCallbackDto payload, String origin) {
         AiContentExtraction row = extractionRepo.findByJobId(payload.getJobId())
                 .orElseThrow(() -> {
-                    log.warn("[transcription-callback] No extraction row for jobId={}", payload.getJobId());
+                    log.warn("[{}] No extraction row for jobId={}", origin, payload.getJobId());
                     return new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown jobId");
                 });
 
@@ -280,8 +342,8 @@ public class RecordingTranscriptionService {
                             row.setEnglishTextContent(resp.getBody());
                         }
                     } catch (Exception e) {
-                        log.warn("[transcription-callback] Could not cache transcript text for jobId={}: {}",
-                                payload.getJobId(), e.getMessage());
+                        log.warn("[{}] Could not cache transcript text for jobId={}: {}",
+                                origin, payload.getJobId(), e.getMessage());
                     }
                 }
             }
@@ -291,13 +353,98 @@ public class RecordingTranscriptionService {
             row.setStatus("FAILED");
             row.setErrorMessage(payload.getError() != null ? payload.getError() : "Worker reported failure");
         } else {
-            // Worker only calls back on terminal states — anything else is a bug.
-            log.warn("[transcription-callback] Unexpected status='{}' for jobId={}", status, payload.getJobId());
+            // Non-terminal — should never reach here from the callback endpoint
+            // (worker only calls on terminal states), and the watchdog filters
+            // these out before calling. Treat as a bug and bail without touching
+            // the row.
+            log.warn("[{}] Unexpected status='{}' for jobId={}", origin, status, payload.getJobId());
             return;
         }
         extractionRepo.save(row);
-        log.info("[transcription-callback] jobId={} → {} (lang={})",
-                payload.getJobId(), row.getStatus(), row.getDetectedLanguage());
+        log.info("[{}] jobId={} → {} (lang={})",
+                origin, payload.getJobId(), row.getStatus(), row.getDetectedLanguage());
+
+        // Notify the user who originally submitted the transcribe request. Fire-and-forget:
+        // NotificationService.createSystemAlertAnnouncement already swallows downstream
+        // failures, so a notification-service blip can't fail the row update.
+        dispatchTerminalAlert(row);
+    }
+
+    /**
+     * Post a system-alert announcement (bell-icon notification in the UI) to the user who
+     * triggered the transcription, summarising the terminal state. Looks up
+     * {@code AiContentSource} for institute_id + created_by — created_by is set at submit
+     * time from the CustomUserDetails of the caller.
+     *
+     * No-ops if the source row is missing, has no creator (legacy rows / system-triggered
+     * jobs), or the row's status is non-terminal — the contract is "called once per
+     * terminal transition". Any failure here must not bubble up because the row save
+     * has already succeeded.
+     */
+    private void dispatchTerminalAlert(AiContentExtraction row) {
+        try {
+            String status = row.getStatus();
+            if (!"COMPLETED".equals(status) && !"FAILED".equals(status)) {
+                return;
+            }
+            Optional<AiContentSource> maybeSource = sourceRepo.findById(row.getSourceId());
+            if (maybeSource.isEmpty()) {
+                return;
+            }
+            AiContentSource source = maybeSource.get();
+            String userId = source.getCreatedBy();
+            String instituteId = source.getInstituteId();
+            if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
+                // Legacy rows without a creator, or system-initiated jobs.
+                return;
+            }
+
+            String title;
+            String body;
+            if ("COMPLETED".equals(status)) {
+                title = "Transcript ready";
+                body = "Your recording transcript has been generated and is ready to view.";
+            } else {
+                title = "Transcript failed";
+                String reason = row.getErrorMessage();
+                if (reason == null || reason.isBlank()) {
+                    reason = "Unknown error";
+                }
+                // Truncate to keep the notification body readable; the full error
+                // is still on the row for the UI / support to inspect.
+                if (reason.length() > 240) {
+                    reason = reason.substring(0, 237) + "...";
+                }
+                body = "Transcript generation failed: " + reason
+                        + " You can retry from the Recordings page.";
+            }
+
+            // Explicit settings map matches what CounselorAssignmentService /
+            // DoubtNotificationService pass — keeps every system alert on this
+            // service interchangeable at the recipient end.
+            Map<String, Object> alertSettings = Map.of(
+                    "priority", 2,
+                    "isDismissible", true,
+                    "showBadge", true,
+                    "isActive", true);
+
+            notificationService.createSystemAlertAnnouncement(
+                    instituteId,
+                    java.util.List.of(userId),
+                    title,
+                    body,
+                    "system",            // createdBy
+                    "System",            // createdByName — matches counselor / doubt convention
+                    "ADMIN",             // createdByRole — bypasses approval gate, same as other system alerts
+                    alertSettings);
+
+            log.info("[transcription-alert] Dispatched {} alert for jobId={} → user={}",
+                    status, row.getJobId(), userId);
+        } catch (Exception e) {
+            // Notification dispatch must never fail the business flow.
+            log.warn("[transcription-alert] Failed to dispatch alert for jobId={}: {}",
+                    row.getJobId(), e.getMessage());
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -356,6 +503,15 @@ public class RecordingTranscriptionService {
             AiContentSource s = existing.get();
             s.setSourceUrl(sourceUrl);
             s.setMetadataJson(buildSourceMetadataJson(schedule, recording));
+            // Backfill createdBy when the legacy row was inserted without one
+            // (predates user tracking, or first transcription was triggered by
+            // an automated path). Without this, dispatchTerminalAlert silently
+            // bails because it has no user to notify — see the silent-skip
+            // guard in that method.
+            if ((s.getCreatedBy() == null || s.getCreatedBy().isBlank())
+                    && userId != null && !userId.isBlank()) {
+                s.setCreatedBy(userId);
+            }
             return sourceRepo.save(s);
         }
         AiContentSource fresh = AiContentSource.builder()
@@ -488,6 +644,8 @@ public class RecordingTranscriptionService {
                 .errorMessage(row.getErrorMessage())
                 .createdAt(row.getCreatedAt())
                 .updatedAt(row.getUpdatedAt())
+                .savedNotesMarkdown(row.getStudyNotesMarkdown())
+                .savedNotesGeneratedAt(row.getStudyNotesGeneratedAt())
                 .build();
     }
 }

@@ -15,6 +15,7 @@ public class ConnectorListItemDTO {
     private String audienceId;
     private String platformPageId;
     private String platformFormId;
+    private String platformFormName;
     private String connectionStatus;
     private String producesSourceType;
     private String createdAt;
@@ -35,6 +36,7 @@ public class ConnectorListItemDTO {
                 .audienceId(c.getAudienceId())
                 .platformPageId(c.getPlatformPageId())
                 .platformFormId(c.getPlatformFormId())
+                .platformFormName(c.getPlatformFormName())
                 .connectionStatus(c.getConnectionStatus())
                 .producesSourceType(c.getProducesSourceType())
                 .createdAt(c.getCreatedAt() != null ? c.getCreatedAt().toString() : null)

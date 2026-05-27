@@ -304,6 +304,32 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     }
 
     /**
+     * Fetch just the display name of a single Lead Gen Form. Used by the
+     * one-time backfill endpoint that populates platform_form_name on
+     * connectors created before that column existed. Returns null on any
+     * failure (form deleted, token expired, etc.) so the caller can skip
+     * gracefully without aborting the whole batch.
+     */
+    public String fetchFormName(String formId, String pageAccessToken) {
+        try {
+            String url = GRAPH_API_BASE + "/" + formId
+                    + "?access_token=" + pageAccessToken
+                    + "&fields=name";
+            JsonNode response = webClientBuilder.build()
+                    .get().uri(url)
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .block();
+            if (response == null) return null;
+            String name = response.path("name").asText(null);
+            return (name == null || name.isBlank()) ? null : name;
+        } catch (Exception e) {
+            log.warn("Failed to fetch form name for formId={}: {}", formId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * List all lead gen forms for a Facebook Page.
      * Returns [{id, name, status}] — no tokens exposed.
      */

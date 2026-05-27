@@ -72,6 +72,17 @@ export interface RecentLeadsRequest {
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /** Filter by SLA stage (the badge shown in the table). 'ANY_OVERDUE' = TAT_OVERDUE OR FOLLOW_UP_OVERDUE. */
+    sla_filter?:
+        | 'TAT_BEFORE'
+        | 'TAT_OVERDUE'
+        | 'FOLLOW_UP_DUE'
+        | 'FOLLOW_UP_OVERDUE'
+        | 'ANY_OVERDUE';
+    /** Filter leads by the assigned counsellor's userId. Matches against
+     *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
+     *  Omitted = all counsellors (and unassigned leads). */
+    assigned_counselor_id?: string;
     page: number;
     size: number;
 }

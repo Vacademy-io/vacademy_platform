@@ -178,8 +178,11 @@ export const AddPdfDialog = ({
             setUploadProgress(100);
             openState && openState(false);
         } catch (err) {
+            const apiMessage = (err as { response?: { data?: { message?: string } } })?.response
+                ?.data?.message;
             const errorMessage =
-                err instanceof Error ? err.message : 'Upload failed. Please try again.';
+                apiMessage ||
+                (err instanceof Error ? err.message : 'Upload failed. Please try again.');
             setError(errorMessage);
             toast.error(errorMessage);
         } finally {

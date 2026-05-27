@@ -268,10 +268,13 @@ public class TimelineEventService {
                                 .isPinned(event.getIsPinned() != null ? event.getIsPinned() : false)
                                 .studentUserId(event.getStudentUserId())
                                 .category(event.getCategory())
-                                .createdAt(event.getCreatedAt() != null
-                                        ? event.getCreatedAt().toLocalDateTime()
-                                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"))
-                                        : null)
+                                // Pass the Timestamp through so Jackson emits an ISO with the
+                                // `+HH:MM` offset (matches AudienceService's submitted_at_local
+                                // / first_response_at format). Previously this was hand-formatted
+                                // as a String via toLocalDateTime(), which dropped the offset and
+                                // forced the frontend to assume UTC — that double-converted IST
+                                // values and shifted the Activity-cell time by the local offset.
+                                .createdAt(event.getCreatedAt())
                                 .build();
         }
 }

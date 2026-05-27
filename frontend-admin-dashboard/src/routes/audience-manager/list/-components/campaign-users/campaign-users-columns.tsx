@@ -433,13 +433,14 @@ export const generateDynamicColumns = (
     if (onAssignCounsellor) {
         columns.push({
             id: 'reach_out_by',
-            header: 'Reach out by',
+            header: 'Reach out in',
             size: 160,
             minSize: 130,
             maxSize: 200,
             cell: ({ row }) => (
                 <div className="p-3">
                     <SlaDeadlineCell
+                        mode="response"
                         dueAt={row.original._tat_due_at}
                         overdue={row.original._tat_overdue}
                         respondedAt={row.original._first_response_at}
@@ -450,7 +451,7 @@ export const generateDynamicColumns = (
         });
         columns.push({
             id: 'follow_up_by',
-            header: 'Follow up by',
+            header: 'Follow up at',
             size: 150,
             minSize: 120,
             maxSize: 180,

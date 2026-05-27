@@ -1147,7 +1147,10 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
                         'progress_marker', NULL,
-                        'percentage_completed', NULL,
+                        'percentage_completed', CASE
+                            WHEN lo_scorm_percent.value IS NULL OR lo_scorm_percent.value = 'null' THEN NULL
+                            ELSE CAST(lo_scorm_percent.value AS double precision)
+                        END,
                         'scorm_slide', json_build_object(
                             'id', sc.id,
                             'launch_path', sc.launch_path,
@@ -1160,6 +1163,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
                 JOIN scorm_slide sc ON sc.id = s.source_id
+                LEFT JOIN learner_operation lo_scorm_percent ON lo_scorm_percent.source = 'SLIDE' AND lo_scorm_percent.source_id = s.id AND lo_scorm_percent.user_id = :userId AND lo_scorm_percent.operation = 'PERCENTAGE_SCORM_COMPLETED'
                 WHERE s.source_type = 'SCORM' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
                 AND cs.status IN (:chapterToSlidesStatus)

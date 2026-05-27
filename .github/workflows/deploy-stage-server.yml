@@ -6,9 +6,12 @@ name: Deploy to Stage Server (standalone k3s)
 # — run the per-service build workflows (or push to main) to produce the tag first,
 # then deploy it here.
 #
-# Requires repo Actions secrets:
+# Requires these Actions secrets (REPO or ORG — same ${{ secrets.* }} namespace):
 #   STAGE_SSH_KEY  - private key authorized as root on the stage server
 #   STAGE_HOST     - stage server IP/host (e.g. 188.245.114.166)
+# If set at the ORG level, the secret's "Repository access" must include this
+# repo (All repositories, or Selected repositories -> vacademy_platform), else
+# ${{ secrets.* }} resolves to empty and the SSH steps fail.
 # The server must already be bootstrapped once via vacademy_devops/install.sh
 # (k3s + cert-manager + values.secret.yaml present at /root/vacademy-services).
 

@@ -520,6 +520,25 @@ class SentenceClipService:
                 text=new_text, output_path=tmp / "new_shot_clip.mp3", voice=voice,
             )
 
+            # Guard against a SILENT premium→edge downgrade baking a different
+            # voice than the video was made with. If the video's voice resolves
+            # to premium (Sarvam/Google) but synthesis actually used edge, the
+            # premium TTS failed (historically: Sarvam calling asyncio.run()
+            # from a running event loop, or missing credentials) and fell back —
+            # fail loudly instead of splicing a mismatched voice into the
+            # narration. The endpoint now runs this off the event loop so Sarvam
+            # works; this stays as a safety net.
+            _req_provider = (voice.tts_provider or "standard").strip().lower()
+            _act_provider = (getattr(tts_result, "resolved_provider", None) or "").strip().lower()
+            if _req_provider == "premium" and _act_provider == "edge":
+                raise RuntimeError(
+                    "Could not reproduce the video's voice: it uses a premium "
+                    "voice (e.g. Sarvam) but premium TTS was unavailable here, "
+                    "so synthesis fell back to a different (Edge) voice. Aborting "
+                    "so a mismatched voice isn't baked into the narration — retry, "
+                    "or pass voice_overrides to pick an available voice."
+                )
+
             # 2. Upload the new per-shot clip with a versioned key (cache-safe).
             version_tag = _version_tag()
             shot_id = str(target.get("id") or f"shot_{shot_idx:03d}")

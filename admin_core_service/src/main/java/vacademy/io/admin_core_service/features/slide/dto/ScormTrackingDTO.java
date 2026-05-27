@@ -40,9 +40,27 @@ public class ScormTrackingDTO {
     @JsonProperty("score_max")
     private Double scoreMax;
 
+    @JsonProperty("score_scaled")
+    private Double scoreScaled;
+
+    @JsonProperty("progress_measure")
+    private Double progressMeasure;
+
     @JsonProperty("total_time")
     private String totalTime;
 
     @JsonProperty("cmi_json")
     private Map<String, Object> cmiJson;
+
+    @JsonProperty("chapter_id")
+    private String chapterId;
+
+    @JsonProperty("module_id")
+    private String moduleId;
+
+    @JsonProperty("subject_id")
+    private String subjectId;
+
+    @JsonProperty("package_session_id")
+    private String packageSessionId;
 }

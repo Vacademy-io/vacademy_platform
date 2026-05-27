@@ -45,6 +45,12 @@ public class ScormLearnerProgress {
     @Column(name = "score_max")
     private Double scoreMax;
 
+    @Column(name = "score_scaled")
+    private Double scoreScaled;
+
+    @Column(name = "progress_measure")
+    private Double progressMeasure;
+
     @Column(name = "total_time")
     private String totalTime;
 

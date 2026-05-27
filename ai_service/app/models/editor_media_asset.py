@@ -12,7 +12,9 @@ from datetime import datetime
 from typing import Dict, Any
 from uuid import uuid4
 
-from sqlalchemy import Column, String, Text, Float, Integer, DateTime, Index, text
+from sqlalchemy import (
+    Column, String, Text, Float, Integer, DateTime, Index, CheckConstraint, text,
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from .ai_gen_video import Base
@@ -21,6 +23,13 @@ from .ai_gen_video import Base
 class EditorMediaAsset(Base):
     """A reusable media asset in an institute's editor library."""
     __tablename__ = "editor_media_asset"
+    __table_args__ = (
+        CheckConstraint("kind IN ('image', 'video')", name="editor_media_asset_kind_chk"),
+        CheckConstraint(
+            "source IN ('upload', 'pexels', 'pixabay', 'ai')",
+            name="editor_media_asset_source_chk",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4,
                 server_default=text("gen_random_uuid()"))

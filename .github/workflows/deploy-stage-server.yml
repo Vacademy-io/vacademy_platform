@@ -46,6 +46,18 @@ jobs:
           printf '%s\n' "${{ secrets.STAGE_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${{ secrets.STAGE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # Keepalives: the helm upgrade + rollout-status waits can sit silent for
+          # minutes (e.g. a slow admin-core roll), and an idle SSH session gets
+          # dropped ("client_loop: send disconnect: Broken pipe") — which fails the
+          # job even though the deploy on the box succeeded. Probe every 30s and
+          # tolerate ~15m of silence so the session survives long rollouts.
+          cat > ~/.ssh/config <<'CFG'
+          Host *
+            ServerAliveInterval 30
+            ServerAliveCountMax 30
+            TCPKeepAlive yes
+          CFG
+          chmod 600 ~/.ssh/config
 
       - name: Sync chart to server (preserving values.secret.yaml)
         run: |

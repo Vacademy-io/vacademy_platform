@@ -25,6 +25,7 @@ import {
     saveFacultyAccessData,
     getAccessiblePackageFilters,
     hasFacultyPermission,
+    getFacultyAccessData,
 } from '@/lib/auth/facultyAccessUtils';
 
 import { useDeleteCourse } from '@/services/study-library/course-operations/delete-course';
@@ -717,7 +718,28 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
     }
 
     const isFacultyUser = hasFacultyAssignedPermission(instituteDetails?.id);
-    const canCreateCourse = !isFacultyUser || hasFacultyPermission('CREATE_COURSE');
+    // Anyone with FSPSSM rows (sub-org admins included) is gated by their
+    // access_permission CSV — NOT just users carrying the HAS_FACULTY_ASSIGNED JWT
+    // flag. Sub-org admins typically don't get HAS_FACULTY_ASSIGNED, so relying on
+    // `isFacultyUser` alone leaked the Create Course button to every sub-org admin
+    // regardless of their stored permission set.
+    const facultyAccessData = getFacultyAccessData();
+    const hasAnyFacultyMapping = !!facultyAccessData && (
+        (facultyAccessData.subOrgs?.length ?? 0) > 0
+        || (facultyAccessData.permissions?.length ?? 0) > 0
+        || (facultyAccessData.globalPackageIds?.length ?? 0) > 0
+        || (facultyAccessData.globalPackageSessionIds?.length ?? 0) > 0
+    );
+    const isPermissionGated = isFacultyUser || hasAnyFacultyMapping;
+    // Create-course is allowed when:
+    //   - the caller is a pure institute admin (no FSPSSM at all → not gated), OR
+    //   - the gated caller has the explicit CREATE_COURSE permission.
+    // NOTE: FULL is deliberately NOT a shortcut. The institute admin must pick
+    // CREATE_COURSE explicitly at sub-org creation (or via the Edit Sub-Org modal)
+    // for a sub-org admin to see this button.
+    const canCreateCourse =
+        !isPermissionGated
+        || hasFacultyPermission('CREATE_COURSE');
 
     if (availableTabs.length === 0) {
         return (

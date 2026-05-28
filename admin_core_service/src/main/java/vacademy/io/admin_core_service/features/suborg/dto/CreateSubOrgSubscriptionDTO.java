@@ -34,4 +34,13 @@ public class CreateSubOrgSubscriptionDTO {
     // FREE under the scoped invites; only the admin's UserPlan gets StudentFeePayment
     // rows generated, mirroring the bulk/v3/assign CPO flow.
     private String complexPaymentOptionId;
+
+    /**
+     * Permissions the sub-org admin will hold on their FSPSSM rows (FULL,
+     * CREATE_COURSE, …). Persisted to the org-level invite's settingJson under
+     * ADMIN_PERMISSIONS so it is applied whenever an ADMIN/ROOT_ADMIN user is
+     * enrolled to this sub-org. Null / empty → defaults to "FULL" (current
+     * legacy behaviour).
+     */
+    private List<String> adminPermissions;
 }

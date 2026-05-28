@@ -219,6 +219,15 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                     roleId = roleResponse.id || roleResponse.roleId;
                     roleName = customRoleName;
                 }
+                // DELIBERATELY omitting access_permission in subOrg mode. The form
+                // doesn't expose a permissions picker, so it would always send the
+                // default "FULL" — which would short-circuit the backend's
+                // resolveAdminPermissionCsv (the resolver only runs when the request
+                // value is blank). Letting the backend resolve from the sub-org's
+                // settingJson.ADMIN_PERMISSIONS means new team members automatically
+                // inherit whatever permission set the institute admin picked at
+                // sub-org creation (e.g. "FULL,CREATE_COURSE"), instead of being
+                // silently forced back to "FULL".
                 const result = await addSubOrgTeamMember({
                     sub_org_id: subOrgId,
                     institute_id: instituteId!,
@@ -230,7 +239,6 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                     role_name: roleName,
                     role_id: roleId,
                     package_session_ids: selectedPackageSessionIds,
-                    access_permission: data.accessPermission,
                 });
                 return { userId: result.user_id, roleId, success: true };
             }

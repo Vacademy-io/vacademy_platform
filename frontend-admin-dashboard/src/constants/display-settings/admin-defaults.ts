@@ -7,7 +7,11 @@ import type {
 } from '@/types/display-settings';
 
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
-const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>(['suborg-teams', 'notification-hub']);
+const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>([
+    'suborg-teams',
+    'manage-institute-suborgs',
+    'notification-hub',
+]);
 
 // Tabs that ship hidden until an institute admin opts them in via the
 // Display Settings UI. Distinct from admissions/fee-management which are

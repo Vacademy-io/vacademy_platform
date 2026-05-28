@@ -155,9 +155,11 @@ public class ProductPageEnrollmentService {
             learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                     user.getId(), invitedSession.getId(), packageSessionId, request.getInstituteId());
 
+            // Pass the full UserDTO so the ABANDONED_CART workflow's webhook gets
+            // #ctx['user'] populated — same shape as LEARNER_BATCH_ENROLLMENT.
             StudentSessionInstituteGroupMapping entry = learnerEnrollmentEntryService
                     .createOnlyDetailsFilledEntry(user.getId(), invitedSession, actualSession,
-                            request.getInstituteId(), null);
+                            request.getInstituteId(), null, user);
 
             abandonedCartEntryIds.add(entry.getId());
         }

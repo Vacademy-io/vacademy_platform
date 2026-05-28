@@ -795,7 +795,7 @@ export const StudentFiles = () => {
 
             {/* Add File Dialog */}
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                <DialogContent className="max-h-[90vh] min-w-[600px] overflow-y-auto ">
+                <DialogContent className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
                     <DialogHeader>
                         <DialogTitle className="text-xl font-semibold">
                             Add File for {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}

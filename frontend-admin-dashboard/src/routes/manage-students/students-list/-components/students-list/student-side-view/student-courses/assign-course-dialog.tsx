@@ -682,8 +682,9 @@ export const AssignCourseDialog = ({
             onOpenChange={onOpenChange}
             // Match the bulk Enroll Learner dialog (~820px) so per-installment
             // configuration has room to breathe — the narrow max-w-lg made the
-            // dates + override + discount cells crowd into each other.
-            dialogWidth="w-[820px] max-w-[820px]"
+            // dates + override + discount cells crowd into each other. On mobile,
+            // collapse to full-width so the dialog fits a phone viewport.
+            dialogWidth="w-full max-w-4xl"
             footer={footer}
         >
             {renderStepper()}

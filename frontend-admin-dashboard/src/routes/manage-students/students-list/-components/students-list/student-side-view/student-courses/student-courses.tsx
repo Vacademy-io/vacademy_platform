@@ -220,13 +220,15 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            {/* Action buttons */}
-            <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:gap-6">
+            {/* Action buttons — stacked on narrow side-view (mobile sheet ~288px),
+                row layout on wider desktop side-view (565px). */}
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
                 <MyButton
                     buttonType="primary"
                     scale="small"
                     onClick={() => setAssignOpen(true)}
+                    className="w-full md:w-auto"
                 >
                     + Assign to {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>
@@ -235,6 +237,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     scale="small"
                     onClick={() => setDeassignOpen(true)}
                     disable={allActiveCourses.length === 0}
+                    className="w-full md:w-auto"
                 >
                     Remove from {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                 </MyButton>
@@ -355,14 +358,14 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                             onCourseClick={handleCourseClick}
                             getSessionName={getSessionNameFn}
                             renderBadge={(course) => (
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
                                     {course.level_name && (
-                                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
+                                        <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
                                             {course.level_name}
                                         </span>
                                     )}
-                                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                                        {Number(Math.min(Math.max(course.percentage_completed ?? 0, 0), 100).toFixed(2))}% Completed
+                                    <span className="shrink-0 whitespace-nowrap rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                                        {Number(Math.min(Math.max(course.percentage_completed ?? 0, 0), 100).toFixed(2))}%
                                     </span>
                                 </div>
                             )}

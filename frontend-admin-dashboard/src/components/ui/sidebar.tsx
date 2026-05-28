@@ -165,6 +165,14 @@ const Sidebar = React.forwardRef<
         side?: 'left' | 'right';
         variant?: 'sidebar' | 'floating' | 'inset';
         collapsible?: 'offcanvas' | 'icon' | 'none';
+        /**
+         * When true, taps outside the mobile Sheet do NOT close it — close only
+         * via an explicit in-sheet button. Workaround for a Radix Dialog
+         * touch-device bug where internal taps can spuriously fire
+         * onPointerDownOutside (pointercancel / focus jitter on Android).
+         * Default false keeps existing overlay-tap-to-close UX for the main nav.
+         */
+        preventOutsideClose?: boolean;
     }
 >(
     (
@@ -172,6 +180,7 @@ const Sidebar = React.forwardRef<
             side = 'left',
             variant = 'sidebar',
             collapsible = 'offcanvas',
+            preventOutsideClose = false,
             className,
             children,
             ...props
@@ -196,6 +205,9 @@ const Sidebar = React.forwardRef<
         }
 
         if (isMobile) {
+            const guardOutside = preventOutsideClose
+                ? (e: Event) => e.preventDefault()
+                : undefined;
             return (
                 <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
                     <SheetContent
@@ -208,6 +220,9 @@ const Sidebar = React.forwardRef<
                             } as React.CSSProperties
                         }
                         side={side}
+                        onPointerDownOutside={guardOutside}
+                        onInteractOutside={guardOutside}
+                        onFocusOutside={guardOutside}
                     >
                         <div className="flex size-full flex-col">{children}</div>
                     </SheetContent>

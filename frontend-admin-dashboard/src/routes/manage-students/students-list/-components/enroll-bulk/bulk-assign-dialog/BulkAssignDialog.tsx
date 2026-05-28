@@ -18,6 +18,7 @@ import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
 import { Step4Preview } from './steps/Step4Preview';
 import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useCourseSettings } from '@/hooks/useCourseSettings';
 import {
     getTerminology,
     getTerminologyPlural,
@@ -38,6 +39,9 @@ interface BulkAssignDialogProps {
 
 export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackageSessionId }: BulkAssignDialogProps) => {
     const { getPackageWiseLevels } = useInstituteDetailsStore();
+    const { enrollmentNotifications } = useCourseSettings();
+    const showNotifyLearners = enrollmentNotifications?.showNotifyLearners ?? true;
+    const showSendCredentials = enrollmentNotifications?.showSendCredentials ?? true;
 
     // Build initial selection from initialPackageSessionId
     const buildInitialSelection = (): SelectedPackageSession[] => {
@@ -84,8 +88,8 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
     }, [open, initialPackageSessionId]);
     const [options, setOptions] = useState<BulkEnrollOptions>({
         duplicateHandling: 'SKIP',
-        notifyLearners: true,
-        sendCredentials: true,
+        notifyLearners: false,
+        sendCredentials: false,
         transactionId: '',
         paymentDate: '',
     });
@@ -119,8 +123,11 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             })),
             options: {
                 duplicate_handling: options.duplicateHandling,
-                notify_learners: options.notifyLearners,
-                send_credentials: options.sendCredentials,
+                // When the course-setting visibility is off, the toggle is hidden in the
+                // dialog and the corresponding field is forced to false in the request —
+                // so a stale `true` from state can never reach the backend.
+                notify_learners: showNotifyLearners ? options.notifyLearners : false,
+                send_credentials: showSendCredentials ? options.sendCredentials : false,
                 transaction_id: options.transactionId || undefined,
                 payment_date: options.paymentDate || undefined,
                 dry_run: dryRun,
@@ -162,7 +169,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         setStep(0);
         setSelectedLearners([]);
         setSelectedPackageSessions(buildInitialSelection());
-        setOptions({ duplicateHandling: 'SKIP', notifyLearners: true, sendCredentials: true, transactionId: '', paymentDate: '' });
+        setOptions({ duplicateHandling: 'SKIP', notifyLearners: false, sendCredentials: false, transactionId: '', paymentDate: '' });
         setPreviewResponse(null);
         onOpenChange(false);
     };

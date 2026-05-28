@@ -58,6 +58,11 @@ export const StudentsListSection = () => {
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            // The student sidebar renders into a Radix portal at <body>, outside
+            // tableRef. Treat any click inside the portal as "inside" so internal
+            // taps (tabs, scroll, etc.) don't close the sheet — especially on touch.
+            if (target?.closest('[data-sidebar="sidebar"]')) return;
             if (
                 tableRef.current &&
                 !tableRef.current.contains(event.target as Node) &&

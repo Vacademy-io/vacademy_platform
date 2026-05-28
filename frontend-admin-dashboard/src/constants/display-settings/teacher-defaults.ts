@@ -40,8 +40,12 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                         label: sub.subItem,
                         route: sub.subItemLink || '#',
                         order: subIndex + 1,
-                        // Sub-org teams + notification hub are hidden by default for teachers — opt-in via settings.
-                        visible: subId !== 'suborg-teams' && subId !== 'notification-hub',
+                        // Sub-org teams + manage-institute-suborgs + notification hub
+                        // are hidden by default for teachers — opt-in via settings.
+                        visible:
+                            subId !== 'suborg-teams' &&
+                            subId !== 'manage-institute-suborgs' &&
+                            subId !== 'notification-hub',
                     };
                 }) || [],
         }));

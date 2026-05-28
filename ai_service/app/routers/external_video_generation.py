@@ -682,10 +682,6 @@ async def resume_video_external(
                         # Session-less repo — see note in _run_generation. Avoids
                         # idle-in-transaction kills across the long resume render.
                         repository=AiVideoRepository(),
-                        # Session-less repo — see note in _run_generation. Avoids
-                        # idle-in-transaction kills across the long resume render.
-                        repository=AiVideoRepository(),
-                        s3_service=S3Service(),
                     )
                     # Retrieve the original record to get prompt + settings
                     rec = bg_svc.repository.get_by_video_id(vid)

@@ -88,6 +88,73 @@ public class SubOrgController {
     }
 
     /**
+     * Update the admin permissions (FSPSSM access_permission CSV) for a sub-org. Body:
+     * {"admin_permissions": ["FULL","CREATE_COURSE"]} — pass an empty list to clear and
+     * fall back to the legacy "FULL" default. Existing FSPSSM rows are NOT rewritten;
+     * the new value only applies to admin users enrolled after this call (back-fill is
+     * a follow-up if the edit UX needs it).
+     */
+    @org.springframework.web.bind.annotation.PatchMapping("/{subOrgId}/admin-permissions")
+    public ResponseEntity<java.util.Map<String, Object>> updateAdminPermissions(
+            @org.springframework.web.bind.annotation.PathVariable String subOrgId,
+            @RequestParam String parentInstituteId,
+            @RequestBody java.util.Map<String, Object> body) {
+        Object raw = body != null ? body.get("admin_permissions") : null;
+        List<String> perms = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null) perms.add(String.valueOf(o));
+            }
+        }
+        List<String> saved = subOrgSubscriptionService
+                .updateAdminPermissions(subOrgId, parentInstituteId, perms);
+        java.util.Map<String, Object> out = new HashMap<>();
+        out.put("sub_org_id", subOrgId);
+        out.put("admin_permissions", saved);
+        return ResponseEntity.ok(out);
+    }
+
+    /**
+     * Re-runs the SUBORG_LEARNER mirror logic for every PS already linked to this sub-org's
+     * org-level invite. Idempotent — only creates invites for institute-wide PaymentOptions
+     * that aren't already mirrored. Surfaces a "Re-sync invites" button on the deep page so
+     * institute admins can pick up payment options added after the sub-org was created.
+     */
+    @org.springframework.web.bind.annotation.PostMapping("/{subOrgId}/resync-invites")
+    public ResponseEntity<java.util.Map<String, Object>> resyncSuborgLearnerInvites(
+            @org.springframework.web.bind.annotation.PathVariable String subOrgId,
+            @RequestParam String parentInstituteId) {
+        return ResponseEntity.ok(
+                subOrgSubscriptionService.resyncSuborgLearnerInvites(subOrgId, parentInstituteId));
+    }
+
+    /**
+     * Consolidated config edit for a sub-org. Each field is optional — only present fields
+     * are applied. Body shape:
+     * <pre>{
+     *   "auth_roles": ["TEACHER"],
+     *   "allowed_team_roles": ["Mentor"],
+     *   "admin_permissions": ["FULL"],
+     *   "member_count": 25,
+     *   "validity_in_days": 365
+     * }</pre>
+     * Returns the subset that was actually applied — so the FE can give precise toast feedback.
+     */
+    @org.springframework.web.bind.annotation.PatchMapping("/{subOrgId}/configuration")
+    public ResponseEntity<java.util.Map<String, Object>> updateSubOrgConfiguration(
+            @org.springframework.web.bind.annotation.PathVariable String subOrgId,
+            @RequestParam String parentInstituteId,
+            @RequestBody java.util.Map<String, Object> body) {
+        java.util.Map<String, Object> applied = subOrgSubscriptionService
+                .updateSubOrgConfiguration(subOrgId, parentInstituteId,
+                        body != null ? body : new HashMap<>());
+        java.util.Map<String, Object> out = new HashMap<>();
+        out.put("sub_org_id", subOrgId);
+        out.put("applied", applied);
+        return ResponseEntity.ok(out);
+    }
+
+    /**
      * Returns each ACTIVE invite for the sub-org enriched with the package sessions it
      * grants access to (package name + level name + session name). Earlier versions only
      * returned EnrollInviteDTO, which doesn't carry PS info — so the frontend couldn't
@@ -126,11 +193,15 @@ public class SubOrgController {
                             vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO.class);
                     if (parsed != null && parsed.getSetting() != null
                             && parsed.getSetting().getSubOrgSetting() != null) {
-                        row.put("allowed_team_roles",
-                                parsed.getSetting().getSubOrgSetting().getAllowedTeamRoles());
+                        var subSet = parsed.getSetting().getSubOrgSetting();
+                        row.put("allowed_team_roles", subSet.getAllowedTeamRoles());
+                        row.put("admin_permissions", subSet.getAdminPermissions());
+                        row.put("auth_roles", subSet.getAuthRoles());
+                        row.put("member_count_setting", subSet.getMemberCount());
                     }
                 }
             } catch (Exception ignored) { /* leave field absent on parse failure */ }
+            row.put("learner_access_days_top", invite.getLearnerAccessDays());
 
             List<PackageSessionLearnerInvitationToPaymentOption> links = pslipoService.findByInvite(invite);
             List<Map<String, Object>> psRows = new ArrayList<>();

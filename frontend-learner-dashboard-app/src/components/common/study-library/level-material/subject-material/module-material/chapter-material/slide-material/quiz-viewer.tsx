@@ -90,6 +90,56 @@ const formatQuestionTypeLabel = (type?: string) => {
     .join(" ");
 };
 
+type AnswerValue = string | number | string[] | undefined;
+
+const buildSelectedOptions = (
+  q: Question,
+  answer: AnswerValue,
+): Array<{ id: string; name: string }> => {
+  if (answer == null || (typeof answer === "string" && answer.trim() === "")) {
+    return [];
+  }
+  const lookup = (id: string) =>
+    q.options?.find((o) => o.id === id)?.text?.content ?? id;
+  if (Array.isArray(answer)) {
+    return answer.map((id) => ({ id, name: lookup(id) }));
+  }
+  if (typeof answer === "string" && q.options?.some((o) => o.id === answer)) {
+    return [{ id: answer, name: lookup(answer) }];
+  }
+  const stringified = String(answer);
+  return [{ id: stringified, name: stringified }];
+};
+
+const getCorrectOptionIds = (q: Question): string[] => {
+  if (!q.auto_evaluation_json) return [];
+  try {
+    const parsed = JSON.parse(q.auto_evaluation_json);
+    if (!Array.isArray(parsed.correctAnswers)) return [];
+    // Backend may store correct answers as option indices (numbers) OR option IDs (strings).
+    const first = parsed.correctAnswers[0];
+    if (typeof first === "number" && q.options?.length) {
+      return parsed.correctAnswers
+        .map((idx: number) => q.options?.[idx]?.id ?? String(idx))
+        .map(String);
+    }
+    return parsed.correctAnswers.map(String);
+  } catch {
+    return [];
+  }
+};
+
+const isAnswerCorrect = (q: Question, answer: AnswerValue): boolean => {
+  if (answer == null || (typeof answer === "string" && answer.trim() === "")) return false;
+  const correct = getCorrectOptionIds(q);
+  if (correct.length === 0) return false;
+  if (Array.isArray(answer)) {
+    const ans = answer.map(String);
+    return ans.length === correct.length && correct.every((c) => ans.includes(c));
+  }
+  return correct.includes(String(answer));
+};
+
 const getQuestionTypeDescription = (type?: string): string => {
   if (!type) {
     return BASE_QUESTION_TYPE_DESCRIPTIONS.MCQS;
@@ -505,12 +555,73 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     const displayedAttemptLogs = reAttemptCount != null && attemptLogsQuery.data
       ? attemptLogsQuery.data.slice(0, reAttemptCount)
       : attemptLogsQuery.data;
+    // Always prefer the backend's persisted answers (the source of truth) for
+    // the review, falling back to localStorage only when no backend data is
+    // available yet. This handles cross-device revisits and stale local
+    // storage. Supports both legacy `{answer:<id>}` and enriched
+    // `{selectedOptions:[{id,name}]}` payload shapes.
+    const backendAnswers: typeof answers = (() => {
+      type LogWithSides = {
+        end_time?: string | null;
+        start_time?: string | null;
+        quiz_sides?: Array<{
+          question_id: string;
+          response_json: string | null;
+        }>;
+      };
+      const logs = (attemptLogsQuery.data ?? []) as LogWithSides[];
+      // Backend ordering varies (asc vs desc). Pick the attempt with the
+      // latest timestamp AND non-empty quiz_sides — that's the one the
+      // learner expects to see in the review.
+      const ts = (l: LogWithSides) =>
+        new Date(l.end_time ?? l.start_time ?? 0).getTime();
+      const sorted = [...logs].sort((a, b) => ts(b) - ts(a));
+      const candidate = sorted.find((l) => (l.quiz_sides?.length ?? 0) > 0)
+        ?? sorted[0];
+      const sides = candidate?.quiz_sides;
+      if (!sides || sides.length === 0) return {};
+      const result: typeof answers = {};
+      sides.forEach((s) => {
+        if (!s.question_id || !s.response_json) return;
+        try {
+          const parsed = JSON.parse(s.response_json);
+          if (
+            Array.isArray(parsed.selectedOptions) &&
+            parsed.selectedOptions.length > 0
+          ) {
+            const ids = parsed.selectedOptions.map((o: { id: string }) =>
+              String(o.id),
+            );
+            result[s.question_id] = ids.length === 1 ? ids[0] : ids;
+          } else if (parsed.answer != null) {
+            result[s.question_id] = Array.isArray(parsed.answer)
+              ? parsed.answer.map(String)
+              : (parsed.answer as string | number);
+          }
+        } catch {
+          // ignore malformed entries
+        }
+      });
+      return result;
+    })();
+    const reconstructedAnswers: typeof answers =
+      Object.keys(backendAnswers).length > 0 ? backendAnswers : answers;
+    // Recompute the score whenever we don't already have one in component state
+    // (i.e. learner revisited after submission — fresh submissions still use the
+    // server-validated scoreCard).
+    const effectiveScoreCard = scoreCard
+      ?? (Object.keys(reconstructedAnswers).length > 0 ? computeScore(reconstructedAnswers) : undefined);
+    const effectivePassed =
+      passed
+      ?? (effectiveScoreCard && passPercentage != null && effectiveScoreCard.totalMarks > 0
+        ? (effectiveScoreCard.earned / effectiveScoreCard.totalMarks) * 100 >= passPercentage
+        : null);
     return <QuizReview
       questions={questions}
-      userAnswers={answers}
-      scoreCard={scoreCard ?? undefined}
+      userAnswers={reconstructedAnswers}
+      scoreCard={effectiveScoreCard}
       showCorrectAnswers={showReportAndCorrectAnswers}
-      passed={passed}
+      passed={effectivePassed}
       passPercentage={passPercentage}
       attemptNumber={displayedAttemptNumber}
       maxAttempts={reAttemptCount}
@@ -582,13 +693,41 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
           pause_count: 0,
           answer_times_in_seconds: [],
         },
-        quiz_sides: questions.map((q) => ({
-          id: uuidv4(),
-          response_json: JSON.stringify({ answer: finalAnswers[q.id] }),
-          response_status: "SUBMITTED",
-          activity_id: slideId,
-          question_id: q.id,
-        })),
+        quiz_sides: questions.map((q) => {
+          const answer = finalAnswers[q.id];
+          const questionName =
+            typeof q.text === "string"
+              ? q.text
+              : q.text_data?.content ?? q.text?.content ?? "";
+          const selectedOptions = buildSelectedOptions(q, answer);
+          const correctIds = getCorrectOptionIds(q);
+          const correctOptions = correctIds.map((id) => ({
+            id,
+            name: q.options?.find((o) => o.id === id)?.text?.content ?? id,
+          }));
+          const qMaxMarks = q.marks != null ? q.marks : marksPerQuestion;
+          const qNeg = q.negative_marking != null ? q.negative_marking : defaultNegativeMarking;
+          const isAnswered =
+            answer != null && !(typeof answer === "string" && answer.trim() === "");
+          const correct = isAnswered && isAnswerCorrect(q, answer);
+          const earnedMarks = correct ? qMaxMarks : isAnswered ? -qNeg : 0;
+          const responseStatus = !isAnswered ? "SKIPPED" : correct ? "CORRECT" : "WRONG";
+          return {
+            id: uuidv4(),
+            response_json: JSON.stringify({
+              questionName,
+              selectedOptions,
+              correctOptions,
+              marks: earnedMarks,
+              maxMarks: qMaxMarks,
+              isCorrect: correct,
+              questionType: q.question_type ?? "",
+            }),
+            response_status: responseStatus,
+            activity_id: slideId,
+            question_id: q.id,
+          };
+        }),
       };
 
       await submitQuizMutation.mutateAsync({

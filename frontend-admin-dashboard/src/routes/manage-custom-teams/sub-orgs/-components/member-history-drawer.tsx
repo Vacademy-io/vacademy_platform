@@ -6,14 +6,45 @@ import {
     SheetDescription,
 } from '@/components/ui/sheet';
 import { CpoInstallmentsEditor } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-payment-history/cpo-installments-editor';
-import { useQuery } from '@tanstack/react-query';
+// react-query imports consolidated below to avoid a duplicate-import lint.
 import {
     getInvoicesByUser,
     downloadInvoicePdf,
     buildInvoiceFilename,
+    triggerInvoiceReminderForSfp,
     type InvoiceSummary,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
+import { getInvoiceDownloadUrl } from '@/services/invoice-service';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Bell } from '@phosphor-icons/react';
 import { Download, ExternalLink, FileText, Lock } from 'lucide-react';
+
+/**
+ * Resolve a working URL for the invoice. Mirrors manage-students payment-history:
+ *  - if `pdf_url` is present, use it directly (already a presigned S3 link)
+ *  - otherwise, if `pdf_file_id` exists, fall back to the backend's download endpoint
+ *    which 302-redirects to a freshly-presigned URL
+ *  - returns null when neither is present (truly no PDF on this row)
+ */
+function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
+    const direct = inv.pdf_url || inv.pdfUrl;
+    if (direct) return direct;
+    const fileId = inv.pdf_file_id || inv.pdfFileId || inv.file_id || inv.fileId;
+    if (fileId) return getInvoiceDownloadUrl(inv.id);
+    // Synthetic SFP rows that link to a real Invoice expose its id on `inv.id` —
+    // call the canonical endpoint which regenerates the PDF when missing. Rows
+    // still keyed by "sfp:..." have no payment yet → leave as No PDF.
+    if (typeof inv.id === 'string' && !inv.id.startsWith('sfp:')) {
+        const status = String(inv.status || '').toUpperCase();
+        if (status === 'PAID' || status === 'PARTIAL' || status === 'PARTIAL_PAID') {
+            return getInvoiceDownloadUrl(inv.id);
+        }
+    }
+    return null;
+}
 
 interface Props {
     open: boolean;
@@ -103,10 +134,29 @@ export function MemberHistoryDrawer({
 }
 
 function InvoicesSection({ userId }: { userId: string }) {
+    const queryClient = useQueryClient();
     const { data: invoices = [], isLoading } = useQuery<InvoiceSummary[]>({
         queryKey: ['member-invoices', userId],
         queryFn: () => getInvoicesByUser(userId),
         enabled: !!userId,
+    });
+    const canRemind = !isCallerSubOrgAdmin();
+    const [remindingId, setRemindingId] = useState<string | null>(null);
+    const remindMutation = useMutation({
+        mutationFn: (sfpId: string) => triggerInvoiceReminderForSfp(sfpId),
+        onMutate: (sfpId) => setRemindingId(sfpId),
+        onSettled: () => setRemindingId(null),
+        onSuccess: (data) => {
+            toast.success(
+                data?.recipient_email
+                    ? `Reminder sent to ${data.recipient_email}`
+                    : 'Reminder fired'
+            );
+            queryClient.invalidateQueries({ queryKey: ['member-invoices', userId] });
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.message || 'Failed to send reminder');
+        },
     });
 
     if (isLoading) {
@@ -135,7 +185,18 @@ function InvoicesSection({ userId }: { userId: string }) {
                         inv.invoice_number || inv.invoiceNumber || inv.id;
                     const date = inv.invoice_date || inv.invoiceDate;
                     const amount = inv.total_amount ?? inv.totalAmount;
-                    const url = inv.pdf_url || inv.pdfUrl;
+                    const url = resolveInvoiceUrl(inv);
+                    const status = String(inv.status || '').toUpperCase();
+                    const isSfpRow = typeof inv.id === 'string' && inv.id.startsWith('sfp:');
+                    const sfpId = isSfpRow ? inv.id.slice('sfp:'.length) : null;
+                    const isRemindable =
+                        canRemind
+                        && !!sfpId
+                        && (status === 'PENDING'
+                            || status === 'UNPAID'
+                            || status === 'OVERDUE'
+                            || status === 'PARTIAL'
+                            || status === 'PARTIAL_PAID');
                     return (
                         <li
                             key={inv.id}
@@ -149,6 +210,18 @@ function InvoicesSection({ userId }: { userId: string }) {
                                 </p>
                             </div>
                             <span className="shrink-0 font-medium">{fmtMoney(amount)}</span>
+                            {isRemindable && sfpId && (
+                                <button
+                                    type="button"
+                                    onClick={() => remindMutation.mutate(sfpId)}
+                                    disabled={remindingId === sfpId}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                    title="Send installment-due reminder"
+                                >
+                                    <Bell className="size-3" />
+                                    {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                </button>
+                            )}
                             {url ? (
                                 <div className="flex shrink-0 items-center gap-1">
                                     <a

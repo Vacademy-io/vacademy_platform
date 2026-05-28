@@ -216,10 +216,10 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
 
     return (
         <FormProvider {...formMethods}>
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-3 sm:gap-6">
                 {picker}
-                <div className="flex items-center gap-10">
-                    <div className="flex flex-col gap-6">
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-10">
+                    <div className="flex flex-col gap-3 sm:gap-6">
                         <p className="text-title font-semibold text-primary-500">
                             {batch?.package_dto.package_name}
                         </p>

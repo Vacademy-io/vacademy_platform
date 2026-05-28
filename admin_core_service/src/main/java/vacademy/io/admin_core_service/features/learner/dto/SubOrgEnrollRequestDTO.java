@@ -84,4 +84,12 @@ public class SubOrgEnrollRequestDTO {
      * generateFeeBills → CpoEnrollmentConfigApplier.apply → FIFO allocate offline payment.
      */
     private CpoEnrollmentConfigDTO cpoConfig;
+
+    /**
+     * Optional per-enroll override for the FSPSSM access_permission CSV (e.g.
+     * "FULL,CREATE_COURSE"). Only consulted when the user is being enrolled as an
+     * ADMIN / ROOT_ADMIN. When null/blank, the sub-org's persisted ADMIN_PERMISSIONS
+     * setting is used; if that is also missing, falls back to "FULL".
+     */
+    private String accessPermission;
 }

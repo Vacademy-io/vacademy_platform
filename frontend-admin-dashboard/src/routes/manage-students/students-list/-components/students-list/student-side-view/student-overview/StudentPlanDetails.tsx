@@ -282,7 +282,7 @@ const PolicyDetailsSection = ({
                         </span>
                         <AutoRenewalBadge policy={policy} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                         {policy.on_expiry_policy?.final_expiry_date && (
                             <div className="flex items-center gap-1">
                                 <Calendar className="size-3 text-danger-500" />
@@ -436,7 +436,7 @@ const PlanCard = ({
                 </div>
             )}
 
-            <div className="grid grid-cols-2 gap-1.5 text-xs text-neutral-600">
+            <div className="grid grid-cols-1 gap-1.5 text-xs text-neutral-600 sm:grid-cols-2">
                 {plan.start_date && (
                     <div className="flex items-center gap-1">
                         <Calendar className="size-3 text-neutral-400" />

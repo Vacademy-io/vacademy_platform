@@ -22,6 +22,8 @@ import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { useNavigate } from '@tanstack/react-router';
+import { ArrowSquareOut } from '@phosphor-icons/react';
 import { getActiveWorkflowsQuery } from '@/services/workflow-service';
 import {
     getTerminology,
@@ -344,24 +346,6 @@ export const Step3EnrollConfig = ({
     );
 };
 
-/**
- * Trigger events scoped to a course/batch (event_applied_type=PACKAGE_SESSION).
- * A workflow is "linked to a course" when its trigger fires on one of these events
- * and either event_id matches the packageSessionId (specific) or event_id is null
- * (institute-global — runs for every batch enrollment in the institute).
- *
- * Kept in sync with WorkflowTriggerEvent.java and the PACKAGE_SESSION group in
- * EventAppliedType.java on the backend.
- */
-const PACKAGE_SESSION_TRIGGER_EVENTS = new Set<string>([
-    'LEARNER_BATCH_ENROLLMENT',
-    'GENERATE_ADMIN_LOGIN_URL_FOR_LEARNER_PORTAL',
-    'SEND_LEARNER_CREDENTIALS',
-    'SUB_ORG_MEMBER_ENROLLMENT',
-    'SUB_ORG_MEMBER_TERMINATION',
-    'LEARNER_RE_ENROLLMENT',
-]);
-
 interface LinkedWorkflowsSectionProps {
     instituteId: string;
     selectedPackageSessions: SelectedPackageSession[];
@@ -380,6 +364,7 @@ const LinkedWorkflowsSection = ({
     selectedPackageSessions,
 }: LinkedWorkflowsSectionProps) => {
     const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const navigate = useNavigate();
 
     const { data: workflows = [], isLoading } = useQuery({
         ...getActiveWorkflowsQuery(instituteId),
@@ -387,13 +372,14 @@ const LinkedWorkflowsSection = ({
     });
 
     const { perCourse, globalWorkflows } = useMemo(() => {
-        const packageScoped = workflows.filter((w) => {
-            const t = w.trigger;
-            return (
-                t?.trigger_event_name != null &&
-                PACKAGE_SESSION_TRIGGER_EVENTS.has(t.trigger_event_name)
-            );
-        });
+        // Filter on event_applied_type (set on the workflow_trigger row) rather
+        // than a hand-maintained whitelist of trigger event names — the backend
+        // is the source of truth for which events scope to a PACKAGE_SESSION,
+        // and a stale whitelist would silently hide workflows whose trigger
+        // event we missed.
+        const packageScoped = workflows.filter(
+            (w) => w.trigger?.event_applied_type === 'PACKAGE_SESSION'
+        );
 
         const globals = packageScoped.filter((w) => w.trigger?.event_id == null);
 
@@ -452,9 +438,25 @@ const LinkedWorkflowsSection = ({
                             <span className="text-xs text-neutral-500">
                                 Fires on every batch enrollment:
                             </span>
-                            <span className="text-xs font-medium text-neutral-700">
-                                {globalWorkflows.map((w) => w.name).join(', ')}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                {globalWorkflows.map((w, idx) => (
+                                    <span key={w.id} className="inline-flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                navigate({ to: `/workflow/${w.id}` as never })
+                                            }
+                                            className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline"
+                                        >
+                                            {w.name}
+                                            <ArrowSquareOut size={12} weight="duotone" />
+                                        </button>
+                                        {idx < globalWorkflows.length - 1 && (
+                                            <span className="text-xs text-neutral-400">,</span>
+                                        )}
+                                    </span>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -495,7 +497,21 @@ const LinkedWorkflowsSection = ({
                                                     weight="fill"
                                                     className="text-primary-500"
                                                 />
-                                                <span className="font-medium">{w.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        navigate({
+                                                            to: `/workflow/${w.id}` as never,
+                                                        })
+                                                    }
+                                                    className="inline-flex items-center gap-1 font-medium text-primary-600 hover:underline"
+                                                >
+                                                    {w.name}
+                                                    <ArrowSquareOut
+                                                        size={12}
+                                                        weight="duotone"
+                                                    />
+                                                </button>
                                                 {w.trigger?.trigger_event_name && (
                                                     <span className="font-mono text-caption text-neutral-400">
                                                         {w.trigger.trigger_event_name}

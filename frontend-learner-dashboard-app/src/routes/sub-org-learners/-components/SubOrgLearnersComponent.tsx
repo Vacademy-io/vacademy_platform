@@ -156,43 +156,58 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     let mobile_number = '';
     let username = '';
 
-    // Helper to find field by name (case-insensitive)
-    const findFieldByName = (names: string[]) => {
-      return instituteCustomFields.find(f => 
-        names.some(name => f.custom_field.fieldName.toLowerCase() === name.toLowerCase())
-      );
+    // Match core identity fields by `fieldKey` (the stable machine ID set at
+    // field creation by the backend's CustomFieldKeyGenerator) — NOT by the
+    // freeform display label `fieldName`, which admins can rename freely
+    // (e.g. "Full Name (First Name & Last Name)") and which breaks string match.
+    // Two key patterns coexist in production:
+    //   - Legacy seeded defaults:  "full_name" / "email" / "phone_number"
+    //   - Admin-created via UI:    "<slug>_inst_<instituteId>"
+    const matchKey = (prefix: string) => (f: InstituteCustomField) => {
+      const k = f.custom_field.fieldKey;
+      return k === prefix || k.startsWith(prefix + '_inst_');
     };
 
-    // Name field - could be 'name', 'Name', 'Full Name', 'full_name'
-    const nameField = findFieldByName(['name', 'full name', 'full_name']);
-    if (nameField) {
-      full_name = formData[nameField.custom_field.fieldKey] || '';
-    }
+    const nameField  = instituteCustomFields.find(matchKey('full_name'));
+    const emailField = instituteCustomFields.find(matchKey('email'));
+    const phoneField = instituteCustomFields.find(matchKey('phone_number'));
 
-    // If no single name field, try First Name + Last Name combination
+    if (nameField)  full_name     = formData[nameField.custom_field.fieldKey] || '';
+    if (emailField) email         = formData[emailField.custom_field.fieldKey] || '';
+    if (phoneField) mobile_number = formData[phoneField.custom_field.fieldKey] || '';
+
+    // Fallback for split-name forms (institutes using First Name + Last Name
+    // instead of a single combined Full Name field).
     if (!full_name) {
-      const firstNameField = findFieldByName(['first name', 'firstname']);
-      const lastNameField = findFieldByName(['last name', 'lastname']);
-      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] : '';
-      const lastName = lastNameField ? formData[lastNameField.custom_field.fieldKey] : '';
-      full_name = `${firstName || ''} ${lastName || ''}`.trim();
+      const firstNameField = instituteCustomFields.find(matchKey('first_name'));
+      const lastNameField  = instituteCustomFields.find(matchKey('last_name'));
+      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] || '' : '';
+      const lastName  = lastNameField ? formData[lastNameField.custom_field.fieldKey] || '' : '';
+      full_name = `${firstName} ${lastName}`.trim();
     }
 
-    // Email field - could be 'email', 'Email'
-    const emailField = findFieldByName(['email']);
-    email = emailField ? formData[emailField.custom_field.fieldKey] : '';
-
-    // Phone field - could be 'phone', 'Phone', 'Mobile', 'mobile_number'
-    const phoneField = findFieldByName(['phone', 'mobile', 'mobile_number']);
-    mobile_number = phoneField ? formData[phoneField.custom_field.fieldKey] : '';
-
-    // If standard fields form fallback (if custom fields didn't cover them or failed to load)
+    // Fallback for institutes whose invite form has no custom fields configured.
+    // The hardcoded Email/Full Name/Mobile inputs render in that branch (see the
+    // `instituteCustomFields.length === 0` body of the dialog below).
     if (!email && formData.email) email = formData.email;
     if (!full_name && formData.full_name) full_name = formData.full_name;
     if (!mobile_number && formData.mobile_number) mobile_number = formData.mobile_number;
 
     if (!email || !full_name) {
-      toast.error('Email and Name are required fields.');
+      // Distinguish "user left a visible input blank" from "this invite form
+      // has no recognizable email/name field configured" — the latter is an
+      // admin/config problem and needs a different message so the user doesn't
+      // think they're missing an input that doesn't exist.
+      const hasFormFields = instituteCustomFields.length > 0;
+      const isConfigProblem =
+        hasFormFields && (!emailField || (!nameField && !full_name));
+      if (isConfigProblem) {
+        toast.error(
+          "This institute's invite form is missing a recognizable Email or Full Name field. Ask an admin to verify the invite form configuration."
+        );
+      } else {
+        toast.error('Email and Name are required fields.');
+      }
       return;
     }
 

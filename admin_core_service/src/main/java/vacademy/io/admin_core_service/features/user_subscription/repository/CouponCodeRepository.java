@@ -48,11 +48,15 @@ public interface CouponCodeRepository extends JpaRepository<CouponCode, String> 
      * and won't appear here — V309 fixes this for existing rows; the product-page
      * createCoupon was patched to set it for new rows).
      */
+    // NOTE: :search is bound as an empty string (not null) when no search is
+    // requested — passing a typeless null into LOWER(CONCAT(…, :search, …))
+    // makes Postgres infer bytea and fail with `function lower(bytea) does not
+    // exist`. Service layer normalizes accordingly.
     @Query("""
         SELECT c FROM CouponCode c
         WHERE (:instituteId IS NULL OR c.instituteId = :instituteId)
           AND (:statuses IS NULL OR c.status IN :statuses)
-          AND (:search IS NULL OR LOWER(c.code) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND (:search = '' OR LOWER(c.code) LIKE LOWER(CONCAT('%', :search, '%')))
         """)
     Page<CouponCode> findForAdminList(
             @Param("instituteId") String instituteId,

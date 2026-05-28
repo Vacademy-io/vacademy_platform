@@ -174,7 +174,9 @@ public class CouponManagementService {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size),
                 Sort.by(Sort.Direction.DESC, "createdAt"));
         List<String> statusFilter = (statuses == null || statuses.isEmpty()) ? null : statuses;
-        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
+        // Always non-null so Hibernate binds it as a typed string parameter.
+        // Postgres otherwise infers `bytea` for a null inside LOWER(CONCAT(...)).
+        String normalizedSearch = (search == null || search.isBlank()) ? "" : search.trim();
 
         return couponCodeRepository.findForAdminList(instituteId, statusFilter, normalizedSearch, pageable)
                 .map(this::toSummary);

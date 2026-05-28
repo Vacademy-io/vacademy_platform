@@ -77,6 +77,23 @@ spec:
                   FROM (VALUES ('auth_service'),('admin_core_service'),('assessment_service'),('media_service'),('notification_service'),('community_service'),('ai_service')) AS t(cn)
                   ON CONFLICT (client_name) DO UPDATE SET secret_key=EXCLUDED.secret_key, updated_at=now();"
               done
+              # Course creation (POST /admin-core-service/course/v1/add-course) looks up
+              # rows with id='DEFAULT' in level/session/groups (the "default structure"
+              # path). Prod created these by hand; the schema-only baseline has no seed
+              # for them, so a fresh standalone DB throws "Level not found". BulkCourseService
+              # auto-creates the DEFAULT level, but CourseService doesn't — until that's
+              # fixed in code, seed the rows so single-course creation works out of the box.
+              echo "seeding DEFAULT level/session/groups (admin_core_service)..."
+              psql -h postgres -U "$PGUSER" -v ON_ERROR_STOP=1 -d admin_core_service -c "
+                INSERT INTO level (id, level_name, status, created_at, updated_at)
+                VALUES ('DEFAULT', 'Default', 'ACTIVE', now(), now())
+                ON CONFLICT (id) DO NOTHING;
+                INSERT INTO session (id, session_name, status, created_at, updated_at)
+                VALUES ('DEFAULT', 'Default', 'ACTIVE', now(), now())
+                ON CONFLICT (id) DO NOTHING;
+                INSERT INTO groups (id, group_name, created_at, updated_at)
+                VALUES ('DEFAULT', 'Default', now(), now())
+                ON CONFLICT (id) DO NOTHING;"
               echo "seed complete"
           volumeMounts:
             - name: baselines

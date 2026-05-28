@@ -346,6 +346,9 @@ export const GET_USER_DOC_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/
 export const GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/learner-video-question-activity-logs`;
 export const GET_QUESTION_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/question-slide-activity-logs`;
 export const GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
+export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
+export const GET_SLIDE_BY_ID = `${"http://localhost:8072"}/admin-core-service/slide/v1/slide`;
+export const SAVE_QUIZ_QUESTION_FEEDBACK = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;
@@ -770,6 +773,12 @@ export const SAVE_GENERIC_SETTING = `${BASE_URL}/admin-core-service/institute/v1
 export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white-label/v1/setup`;
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
+
+// Institute Payment Gateway Admin CRUD
+export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/payment-gateways?instituteId=${instituteId}`;
+export const INSTITUTE_PAYMENT_GATEWAY_BY_ID = (instituteId: string, mappingId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/payment-gateways/${mappingId}?instituteId=${instituteId}`;
 
 // Application Stage
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;

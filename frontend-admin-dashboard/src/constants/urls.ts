@@ -1,6 +1,9 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
+// Local admin-core override — kept for ad-hoc dev testing. Production callers
+// must use BASE_URL; flip specific URL constants to this only while testing locally.
+export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 

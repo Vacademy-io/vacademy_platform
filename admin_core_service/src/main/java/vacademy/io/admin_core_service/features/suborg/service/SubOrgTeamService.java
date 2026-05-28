@@ -85,6 +85,13 @@ public class SubOrgTeamService {
     @Autowired
     private JwtService jwtService;
 
+    // Used to resolve the FSPSSM access_permission CSV from the sub-org's settingJson
+    // (ADMIN_PERMISSIONS) so team members inherit the same permission set the parent
+    // institute admin picked at sub-org creation. Without this, the previous hardcoded
+    // "FULL" fallback masked CREATE_COURSE etc. that the admin had explicitly granted.
+    @Autowired
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
 
@@ -284,8 +291,17 @@ public class SubOrgTeamService {
         //    - One ENROLL_INVITE row per SUBORG_LEARNER invite linked to that PS via PSLIPO
         //      (mirrors syncFacultyMappingForSubOrgAdmin so team members get the same invite-
         //      scoped visibility their sub-org admin has).
-        String accessPermission = StringUtils.hasText(request.getAccessPermission())
-                ? request.getAccessPermission() : "FULL";
+        // Resolution order: explicit request override → sub-org's ADMIN_PERMISSIONS
+        // setting (e.g. "FULL,CREATE_COURSE") → legacy "FULL" fallback inside the
+        // resolver. Avoid hardcoding "FULL" here — that path silently dropped any
+        // granular permission the institute admin chose at sub-org creation.
+        String accessPermission;
+        if (StringUtils.hasText(request.getAccessPermission())) {
+            accessPermission = request.getAccessPermission();
+        } else {
+            accessPermission = subOrgSubscriptionService
+                    .resolveAdminPermissionCsv(request.getSubOrgId(), request.getInstituteId());
+        }
         int psGranted = 0;
         int inviteGranted = 0;
         Set<String> grantedInviteIds = new HashSet<>();

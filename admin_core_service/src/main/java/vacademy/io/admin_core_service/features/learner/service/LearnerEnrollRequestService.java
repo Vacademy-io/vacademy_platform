@@ -177,13 +177,15 @@ public class LearnerEnrollRequestService {
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
 
-            // Suppress credential email for PAID enrollments — will be sent after payment confirmation
+            // Suppress credential email for PAID enrollments — will be sent after payment
+            // confirmation
             if (sendCredentials && StringUtils.hasText(enrollDTO.getPaymentOptionId())) {
                 try {
                     PaymentOption earlyPaymentOption = paymentOptionService.findById(enrollDTO.getPaymentOptionId());
                     if (earlyPaymentOption != null
                             && !PaymentOptionType.FREE.name().equals(earlyPaymentOption.getType())) {
-                        log.info("Non-free enrollment detected (type={}). Suppressing credential email until payment confirmed.",
+                        log.info(
+                                "Non-free enrollment detected (type={}). Suppressing credential email until payment confirmed.",
                                 earlyPaymentOption.getType());
                         sendCredentials = false;
                     }
@@ -324,7 +326,8 @@ public class LearnerEnrollRequestService {
                 subOrgId);
 
         // B2B: After org-level UserPlan creation, create scoped FREE invites
-        // For FREE plans (status=ACTIVE), do it now. For PAID plans, webhook handles it.
+        // For FREE plans (status=ACTIVE), do it now. For PAID plans, webhook handles
+        // it.
         if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
                 && enrollInvite.getSubOrgId() != null
                 && UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
@@ -386,18 +389,18 @@ public class LearnerEnrollRequestService {
             if (!hasWorkflow) {
                 log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
                         learnerEnrollRequestDTO.getUser().getId());
-//                sendDynamicNotificationForEnrollment(
-//                        learnerEnrollRequestDTO.getInstituteId(),
-//                        learnerEnrollRequestDTO.getUser(),
-//                        paymentOption,
-//                        enrollInvite,
-//                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-//                );
-//
-//                sendReferralInvitationEmail(
-//                        learnerEnrollRequestDTO.getInstituteId(),
-//                        learnerEnrollRequestDTO.getUser(),
-//                        enrollInvite);
+                // sendDynamicNotificationForEnrollment(
+                // learnerEnrollRequestDTO.getInstituteId(),
+                // learnerEnrollRequestDTO.getUser(),
+                // paymentOption,
+                // enrollInvite,
+                // enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+                // );
+                //
+                // sendReferralInvitationEmail(
+                // learnerEnrollRequestDTO.getInstituteId(),
+                // learnerEnrollRequestDTO.getUser(),
+                // enrollInvite);
             } else {
                 log.info(
                         "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",
@@ -426,14 +429,14 @@ public class LearnerEnrollRequestService {
                                 // Layer 1: warn Sentry when phone is missing or too short to be valid
                                 if (rawPhone == null || rawPhone.isEmpty()
                                         || rawPhone.replaceAll("[^0-9]", "").length() < 10) {
-                                    SentryLogger.logWarning("WhatsApp enrollment skipped: invalid or missing phone number",
+                                    SentryLogger.logWarning(
+                                            "WhatsApp enrollment skipped: invalid or missing phone number",
                                             Map.of(
                                                     "user.id", learnerEnrollRequestDTO.getUser().getId(),
                                                     "phone", rawPhone != null ? rawPhone : "null",
                                                     "workflow.id", workflowId,
                                                     "package_session.id", packageSessionId,
-                                                    "layer", "1-enrollment-trigger"
-                                            ));
+                                                    "layer", "1-enrollment-trigger"));
                                 }
                                 userMap.put("name", learnerEnrollRequestDTO.getUser().getFullName());
                                 userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
@@ -481,8 +484,7 @@ public class LearnerEnrollRequestService {
                                                 "workflow.id", workflowId,
                                                 "user.id", learnerEnrollRequestDTO.getUser().getId(),
                                                 "package_session.id", packageSessionId,
-                                                "layer", "1-enrollment-trigger"
-                                        ));
+                                                "layer", "1-enrollment-trigger"));
                             }
                         }
                     }
@@ -553,8 +555,8 @@ public class LearnerEnrollRequestService {
 
         try {
             // 1. Update created SSIGM entries: set ROOT_ADMIN role and subOrg
-            List<StudentSessionInstituteGroupMapping> mappings =
-                    ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "ACTIVE");
+            List<StudentSessionInstituteGroupMapping> mappings = ssigmRepository
+                    .findByUserPlanIdAndStatus(userPlan.getId(), "ACTIVE");
             if (mappings.isEmpty()) {
                 // For PAID plans, mappings may be in INVITED status
                 mappings = ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "INVITED");
@@ -586,6 +588,11 @@ public class LearnerEnrollRequestService {
             }
 
             // 3. Create faculty mappings for each package session (admin portal access)
+            // Resolve the FSPSSM access_permission CSV once from the sub-org's settingJson
+            // (set at create-with-subscription time via admin_permissions). Falls back to
+            // "FULL" inside the service when the sub-org has no explicit ADMIN_PERMISSIONS.
+            String accessPermissionCsv = subOrgSubscriptionService
+                    .resolveAdminPermissionCsv(subOrgId, enrollInvite.getInstituteId());
             for (String packageSessionId : packageSessionIds) {
                 try {
                     // PACKAGE_SESSION entry
@@ -597,15 +604,16 @@ public class LearnerEnrollRequestService {
                             .userType("ROOT_ADMIN")
                             .accessType("PACKAGE_SESSION")
                             .accessId(packageSessionId)
-                            .accessPermission("FULL")
+                            .accessPermission(accessPermissionCsv)
                             .linkageType("SUB_ORG")
                             .suborgId(subOrgId)
                             .build();
                     facultyService.grantUserAccess(accessDTO);
-                    log.info("Created faculty mapping for user={} packageSession={} sub-org={}",
-                            userId, packageSessionId, subOrgId);
+                    log.info("Created faculty mapping for user={} packageSession={} sub-org={} perm={}",
+                            userId, packageSessionId, subOrgId, accessPermissionCsv);
 
-                    // Auto-discover invites with sub_org_id for this PS and create ENROLL_INVITE entries
+                    // Auto-discover invites with sub_org_id for this PS and create ENROLL_INVITE
+                    // entries
                     List<String> inviteIds = enrollInviteRepository
                             .findInviteIdsForSubOrgAndPackageSession(subOrgId, packageSessionId);
                     for (String inviteId : inviteIds) {
@@ -617,7 +625,7 @@ public class LearnerEnrollRequestService {
                                 .userType("ROOT_ADMIN")
                                 .accessType("ENROLL_INVITE")
                                 .accessId(inviteId)
-                                .accessPermission("FULL")
+                                .accessPermission(accessPermissionCsv)
                                 .linkageType("SUB_ORG")
                                 .suborgId(subOrgId)
                                 .build();
@@ -641,7 +649,8 @@ public class LearnerEnrollRequestService {
     /**
      * Validates seat limit for SUBORG_LEARNER enrollments.
      * Finds ROOT_ADMIN's UserPlan → PaymentPlan.memberCount for the sub-org + PS.
-     * Counts active learner members (excluding ROOT_ADMIN) and rejects if at capacity.
+     * Counts active learner members (excluding ROOT_ADMIN) and rejects if at
+     * capacity.
      * Each PS is validated independently.
      */
     private void validateSubOrgSeatLimit(String subOrgId, String packageSessionId) {
@@ -992,9 +1001,12 @@ public class LearnerEnrollRequestService {
     }
 
     /**
-     * Resolves the learner portal URL for the credential email's "Access Your Account" link.
-     * Priority: package.course_setting.LMS_SETTING.learndash_base_url → institute.learnerPortalBaseUrl → null.
-     * Kept in sync with the v3 path (BulkAssignmentService.resolveLearnerPortalUrl).
+     * Resolves the learner portal URL for the credential email's "Access Your
+     * Account" link.
+     * Priority: package.course_setting.LMS_SETTING.learndash_base_url →
+     * institute.learnerPortalBaseUrl → null.
+     * Kept in sync with the v3 path
+     * (BulkAssignmentService.resolveLearnerPortalUrl).
      */
     private String resolveLearnerPortalUrl(List<String> packageSessionIds, String instituteId) {
         String packageUrl = getLearndashBaseUrlFromPackage(packageSessionIds);

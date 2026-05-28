@@ -23,3 +23,11 @@ protobuf>=3.20,<5
 # -- Image indexing pipeline --
 Pillow>=10.0.0
 rembg>=2.0.50
+
+# -- PDF copy-check OCR (handwritten answer sheets) --
+# Pin tightly: 2.8 changed PaddleOCR's call signature (paddle.predict(...))
+# and result shape; the layout_ocr parser expects the 2.7 contract. Bump
+# version + parser together when we want a newer release.
+paddleocr>=2.7.0,<2.8.0
+paddlepaddle>=2.6.0,<2.7.0
+pymupdf>=1.24.0

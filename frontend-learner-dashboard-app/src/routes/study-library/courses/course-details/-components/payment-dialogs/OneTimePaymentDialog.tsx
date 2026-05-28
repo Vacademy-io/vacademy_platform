@@ -32,6 +32,9 @@ import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
 import { PaymentFailedDialog } from "./PaymentFailedDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -95,6 +98,31 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
 
   // Track if we already prefilled the email for this dialog open
   const hasPrefilledEmailRef = useRef<boolean>(false);
+
+  // Institute-level coupon toggle + checkout state. The applied discount is
+  // subtracted from `effectiveAmount` so the gateway charges the right amount,
+  // and the code is passed through to handlePaymentForEnrollment so the BE
+  // can atomically decrement usage_limit at UserPlan creation.
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      userEmail: email || null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
 
   // Helper function to get real user data from preferences
   const getRealUserData = useCallback(async () => {
@@ -437,12 +465,14 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         paymentGatewayData,
         selectedPaymentPlan,
         selectedPaymentOption,
-        amount: selectedPaymentPlan.actual_price,
+        amount: effectiveAmount,
         currency: selectedPaymentPlan.currency || enrollmentData.currency,
         description: `One-time payment for ${courseTitle}`,
         paymentType: "one-time",
         paymentMethod,
         returnUrl: window.location.origin + "/courses", // Default return URL
+        couponCode: couponCtx.state.appliedCode,
+        token,
       });
 
       console.log(
@@ -899,6 +929,31 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                       Edit
                     </MyButton>
                   </div>
+                </div>
+              )}
+
+              {/* Discount coupon — institute toggle gates whether visible. */}
+              {couponsEnabled && (
+                <div className="mb-4">
+                  <CouponInput
+                    state={couponCtx.state}
+                    onChange={couponCtx.setCode}
+                    onApply={couponCtx.apply}
+                    onClear={couponCtx.clear}
+                    currencySymbol={selectedPaymentPlan?.currency === "INR" ? "₹" : "$"}
+                  />
+                  {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                    <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                      <span className="text-gray-600">
+                        Subtotal{" "}
+                        {selectedPaymentPlan?.actual_price?.toFixed(2)} ·
+                        Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        You pay {effectiveAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 

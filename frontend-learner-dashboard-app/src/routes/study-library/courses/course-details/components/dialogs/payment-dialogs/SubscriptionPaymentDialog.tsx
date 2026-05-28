@@ -21,6 +21,9 @@ import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -76,6 +79,27 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [cardElementError, setCardElementError] = useState<string>('');
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
   const cardElementRef = useRef<HTMLDivElement>(null);
+
+  // Discount coupon — gated by institute toggle. Subscription: first payment only.
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
 
   const getCurrency = (): string => {
     return getCurrencyWithPriority(selectedPaymentPlan, selectedPaymentOption, enrollmentData);
@@ -259,11 +283,12 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         paymentGatewayData: paymentGatewayData!,
         selectedPaymentPlan,
         selectedPaymentOption,
-        amount: selectedPaymentPlan.actual_price,
+        amount: effectiveAmount,
         currency: getCurrency(),
         description: `Subscription for ${selectedPaymentPlan.name}`,
         paymentType: 'subscription',
         paymentMethod,
+        couponCode: couponCtx.state.appliedCode,
         token,
         returnUrl: window.location.origin + "/courses", // Default return URL
       });
@@ -482,11 +507,38 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 )}
               </div>
               
+              {/* Discount coupon — institute toggle gates visibility. */}
+              {couponsEnabled && (
+                <div>
+                  <CouponInput
+                    state={couponCtx.state}
+                    onChange={couponCtx.setCode}
+                    onApply={couponCtx.apply}
+                    onClear={couponCtx.clear}
+                    currencySymbol={selectedPaymentPlan?.currency === "INR" ? "₹" : "$"}
+                  />
+                  {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                    <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                      <span className="text-gray-600">
+                        First payment subtotal {selectedPaymentPlan?.actual_price?.toFixed(2)} ·
+                        Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        You pay {effectiveAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500">
+                    Discount applies to the first payment only.
+                  </p>
+                </div>
+              )}
+
               {/* Card Details */}
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-gray-900">💳 Secure Payment</h3>
                 <p className="text-gray-600 text-sm">Enter your card details below.</p>
-                
+
                 <div className={`border rounded-lg p-4 bg-white ${
                   cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
                 }`}>

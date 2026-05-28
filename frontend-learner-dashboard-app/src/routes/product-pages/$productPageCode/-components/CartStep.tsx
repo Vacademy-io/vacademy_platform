@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { validateCoupon } from '../-services/product-page-service';
 import { pushCartViewed, pushCouponApplied } from '@/components/common/enroll-by-invite/-utils/gtm';
+import { useCouponsEnabled } from '@/components/common/coupon/use-coupons-enabled';
 import { Tag, X, ArrowLeft, ArrowRight, CheckCircle, SpinnerGap } from "@phosphor-icons/react";
 import type { ProductPageData, ProductPageSettings, PageJson } from '../-types/product-page-types';
 
@@ -26,6 +27,9 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
         selectedPsOptionIds, couponCode, discountAmount,
         setCouponCode, applyCoupon, clearCoupon, totalPrice, finalPrice, toggleSelection, setSelection, utmParams,
     } = useProductPageStore();
+    // Institute-level kill switch (admin Settings → Coupons → "Enable coupon redemption").
+    // ANDed with the per-product-page settings.coupon.enabled flag below — both must be on.
+    const instituteCouponsEnabled = useCouponsEnabled();
 
     const removeFromCart = (id: string) =>
         setSelection(selectedPsOptionIds.filter((sid) => sid !== id));
@@ -198,7 +202,8 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
                     </div>
 
                     {/* ── Coupon card ────────────────────────────────────── */}
-                    {(settings.coupon?.enabled) && <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    {/* Gated by BOTH the per-page setting AND the institute-level toggle. */}
+                    {(settings.coupon?.enabled && instituteCouponsEnabled) && <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
                         <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-4">
                             <Tag className="size-4 text-gray-400" />
                             <span className="text-sm font-semibold text-gray-700">Coupon Code</span>

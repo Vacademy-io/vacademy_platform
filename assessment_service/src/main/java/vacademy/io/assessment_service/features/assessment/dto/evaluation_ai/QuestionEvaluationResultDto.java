@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
 
 @Data
 @Builder
@@ -41,6 +42,21 @@ public class QuestionEvaluationResultDto {
         // Only the criteria breakdown details (avoiding redundancy)
         @JsonProperty("evaluation_details_json")
         private JsonNode evaluationDetailsJson;
+
+        // copy-check fields — surfaced top-level for the FE annotation overlay.
+        // For legacy (non-copy-check) evaluations these stay null; the FE
+        // already reads from evaluation_details_json in that case.
+        @JsonProperty("annotations")
+        private List<JsonNode> annotations;
+
+        @JsonProperty("criteria_breakdown")
+        private List<JsonNode> criteriaBreakdown;
+
+        @JsonProperty("rubric_version")
+        private Integer rubricVersion;
+
+        @JsonProperty("confidence")
+        private Double confidence;
 
         // Timestamps
         @JsonProperty("started_at")

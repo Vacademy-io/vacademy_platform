@@ -45,6 +45,22 @@ interface PaymentLogEntry {
             id: string;
             name: string;
         } | null;
+        /** Snapshot persisted at enrollment time so we can show the discount even
+         *  if the coupon definition later expires/changes. Optional — null when
+         *  no coupon was applied. */
+        applied_coupon_discount_id?: string | null;
+        applied_coupon_discount_json?: string | null;
+        /** Structured projection of the snapshot, populated by the BE
+         *  (CouponSnapshotDTO). Prefer this over JSON.parse. Null when no
+         *  coupon was applied or the BE build is older than the structured
+         *  field rollout. */
+        applied_coupon?: {
+            coupon_code?: string | null;
+            discount_type?: string | null;
+            discount_point?: number | null;
+            max_discount_point?: number | null;
+            discount_source?: string | null;
+        } | null;
     };
     current_payment_status: string;
     user: {
@@ -75,6 +91,75 @@ const PAYMENT_STATUS_STYLES: Record<string, string> = {
     PAYMENT_PENDING: "bg-yellow-50 text-yellow-700",
     NOT_INITIATED: "bg-gray-100 text-gray-600",
     PENDING: "bg-yellow-50 text-yellow-700",
+};
+
+interface RawCouponSnapshot {
+    couponCode?: { code?: string } | null;
+    coupon_code?: { code?: string } | null;
+    name?: string;
+}
+
+/** Returns the code to show next to the price. Prefers the BE's structured
+ *  {@code applied_coupon.coupon_code} field; falls back to parsing the raw
+ *  JSON blob for older BE builds. Fail-closed: returns null when the snapshot
+ *  is malformed or no coupon was applied. */
+const getCouponCode = (entry: PaymentLogEntry): string | null => {
+    const structured = entry.user_plan?.applied_coupon?.coupon_code;
+    if (structured) return structured;
+    const json = entry.user_plan?.applied_coupon_discount_json;
+    if (!json || !entry.user_plan?.applied_coupon_discount_id) return null;
+    try {
+        const raw = JSON.parse(json) as RawCouponSnapshot;
+        return raw.couponCode?.code || raw.coupon_code?.code || raw.name || null;
+    } catch {
+        return null;
+    }
+};
+
+const getCurrencySymbol = (currency: string | undefined): string => {
+    switch ((currency || "").toUpperCase()) {
+        case "USD":
+            return "$";
+        case "EUR":
+            return "€";
+        case "GBP":
+            return "£";
+        case "INR":
+            return "₹";
+        case "JPY":
+            return "¥";
+        default:
+            return currency || "";
+    }
+};
+
+/** Inline "Paid ₹X · saved ₹Y with CODE" line. Shown when a coupon was used
+ *  AND the list price exceeded the paid amount. The widget is otherwise
+ *  shipping-focused but this is the only learner-side surface that has both
+ *  the list price (UserPlan.payment_plan_dto.actual_price) and the paid
+ *  amount (PaymentLog.payment_amount) in the same response. */
+const PaidWithCouponInline = ({ entry }: { entry: PaymentLogEntry }) => {
+    const code = getCouponCode(entry);
+    const listPrice = entry.user_plan?.payment_plan_dto?.actual_price ?? 0;
+    const paid = entry.payment_log?.payment_amount ?? 0;
+    const currency = entry.user_plan?.payment_plan_dto?.currency || entry.payment_log?.currency;
+    const symbol = getCurrencySymbol(currency);
+    const saved = Math.max(0, listPrice - paid);
+    if (paid <= 0 && !code) return null;
+    return (
+        <div className="text-caption text-muted-foreground mt-0.5 leading-tight">
+            <span className="font-medium text-foreground">
+                Paid {symbol}
+                {paid.toLocaleString()}
+            </span>
+            {code && saved > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 text-green-700">
+                    · saved {symbol}
+                    {saved.toLocaleString()} with <span className="font-mono font-semibold">{code}</span>
+                </span>
+            )}
+        </div>
+    );
 };
 
 const StatusBadge = ({ label, styles }: { label: string; styles: Record<string, string> }) => {
@@ -112,8 +197,11 @@ const OrderTableRow = ({
 
     return (
         <tr className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
-            <td className="py-2 px-3 text-xs font-medium text-foreground max-w-44 truncate">
-                {getBookName(entry)}
+            <td className="py-2 px-3 max-w-44">
+                <div className="text-xs font-medium text-foreground truncate">
+                    {getBookName(entry)}
+                </div>
+                <PaidWithCouponInline entry={entry} />
             </td>
             <td className="py-2 px-3 text-caption text-muted-foreground whitespace-nowrap">
                 {storeName || "—"}
@@ -175,6 +263,7 @@ const OrderCard = ({
                                 {storeName}
                             </p>
                         )}
+                        <PaidWithCouponInline entry={entry} />
                     </div>
                 </div>
                 <span className="text-caption text-muted-foreground whitespace-nowrap">

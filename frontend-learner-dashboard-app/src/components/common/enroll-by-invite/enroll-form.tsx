@@ -194,6 +194,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   const [referRequest, setReferRequest] = useState<ReferRequest | null>(null);
   // Ref to track the latest referRequest value (to avoid closure issues)
   const referRequestRef = useRef<ReferRequest | null>(null);
+  // Applied discount coupon code (resolved by CouponInput inside the review
+  // step). We persist just the string here — backend re-validates + fetches
+  // the AppliedCouponDiscount + atomically decrements at UserPlan creation.
+  const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -942,6 +946,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: currentReferRequest,
+          couponCode: appliedCouponCode,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
           // userId: submittedUserId || undefined,
@@ -1001,6 +1006,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
+          couponCode: appliedCouponCode,
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
@@ -1066,6 +1072,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
+          couponCode: appliedCouponCode,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
@@ -1184,6 +1191,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
+          couponCode: appliedCouponCode,
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
@@ -1278,6 +1286,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         ) || [""],
         allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
         referRequest: referRequest,
+        couponCode: appliedCouponCode,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         // userId: submittedUserId || undefined,
@@ -1348,6 +1357,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               ) || [""],
             allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
             referRequest: referRequest,
+            couponCode: appliedCouponCode,
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
@@ -1430,6 +1440,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequestRef.current,
+          couponCode: appliedCouponCode,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
@@ -1757,6 +1768,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               refCode={ref || ""}
               onUnappliedCodeChange={setHasUnappliedReferral}
               onReferralApplied={handleReferralApplied}
+              instituteId={instituteId}
+              enrollInviteId={inviteData?.id || ""}
+              userEmail={enrollmentData.registrationData?.email?.value as string | undefined}
+              onCouponChange={setAppliedCouponCode}
             />
           );
         }
@@ -1810,6 +1825,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             refCode={ref || ""}
             onUnappliedCodeChange={setHasUnappliedReferral}
             onReferralApplied={handleReferralApplied}
+            instituteId={instituteId}
+            enrollInviteId={inviteData?.id || ""}
+            userEmail={enrollmentData.registrationData?.email?.value as string | undefined}
+            onCouponChange={setAppliedCouponCode}
           />
         );
       case 3: {

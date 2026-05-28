@@ -17,12 +17,15 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.CouponCode;
 import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.CouponCodeRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.security.SecureRandom;
@@ -61,6 +64,9 @@ public class ProductPageService {
 
     @Autowired
     private AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    @Autowired
+    private CouponValidationService couponValidationService;
 
     // -------------------------------------------------------------------------
     // Admin CRUD
@@ -265,6 +271,9 @@ public class ProductPageService {
         couponCode.setStatus(STATUS_ACTIVE);
         couponCode.setSourceType(SOURCE_TYPE);
         couponCode.setSourceId(coursePageId);
+        // V309: product-page coupons are now institute-scoped too so they appear
+        // in the admin coupon list and the per-institute uniqueness constraint applies.
+        couponCode.setInstituteId(page.getInstituteId());
         couponCode.setTag(page.getName());
         couponCode.setRedeemStartDate(request.getRedeemStartDate() != null
                 ? java.sql.Date.valueOf(request.getRedeemStartDate().toLocalDate()) : null);
@@ -304,49 +313,25 @@ public class ProductPageService {
         ProductPage page = coursePageRepository.findByCode(coursePageCode)
                 .orElseThrow(() -> new VacademyException("Course page not found"));
 
-        Optional<CouponCode> couponOpt = couponCodeRepository.findByCode(couponCode.toUpperCase().trim());
-        if (couponOpt.isEmpty()) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Invalid coupon code").build();
-        }
-
-        CouponCode cc = couponOpt.get();
-
-        if (!SOURCE_TYPE.equals(cc.getSourceType()) || !page.getId().equals(cc.getSourceId())) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon not applicable to this page").build();
-        }
-
-        if (!STATUS_ACTIVE.equals(cc.getStatus())) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon is not active").build();
-        }
-
-        Date now = new Date();
-        if (cc.getRedeemStartDate() != null && cc.getRedeemStartDate().after(now)) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon is not yet valid").build();
-        }
-        if (cc.getRedeemEndDate() != null && cc.getRedeemEndDate().before(now)) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon has expired").build();
-        }
-
-        // Find the linked AppliedCouponDiscount
-        Optional<AppliedCouponDiscount> discountOpt = appliedCouponDiscountRepository
-                .findAppliedDiscountBySourceAndTag(page.getId(), SOURCE_TYPE, page.getName(),
-                        List.of(STATUS_ACTIVE), List.of(STATUS_ACTIVE));
-
-        if (discountOpt.isEmpty()) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Discount not configured for this coupon").build();
-        }
-
-        AppliedCouponDiscount discount = discountOpt.get();
-        double discountValue = computeDiscount(discount, totalAmount);
+        // Delegate to the generic validator. PRODUCT_PAGE-scoped legacy coupons
+        // are matched via product_page_code; the validator does the discount
+        // computation using the shared CouponDiscountUtil for identical math.
+        CouponValidateRequestDTO req = CouponValidateRequestDTO.builder()
+                .couponCode(couponCode)
+                .instituteId(page.getInstituteId())
+                .productPageCode(coursePageCode)
+                .totalAmount(totalAmount)
+                .build();
+        CouponValidateResponseDTO resp = couponValidationService.validate(req);
 
         return ProductPageCouponValidateResponse.builder()
-                .couponCodeId(cc.getId())
-                .appliedCouponDiscountId(discount.getId())
-                .discountType(discount.getDiscountType())
-                .discountValue(discountValue)
-                .maxDiscountValue(discount.getMaxDiscountPoint())
-                .valid(true)
-                .message("Coupon applied successfully")
+                .couponCodeId(resp.getCouponCodeId())
+                .appliedCouponDiscountId(resp.getAppliedCouponDiscountId())
+                .discountType(resp.getDiscountType())
+                .discountValue(resp.getDiscountValue())
+                .maxDiscountValue(resp.getMaxDiscountValue())
+                .valid(resp.isValid())
+                .message(resp.getMessage())
                 .build();
     }
 

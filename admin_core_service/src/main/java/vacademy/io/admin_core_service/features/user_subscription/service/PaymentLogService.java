@@ -936,6 +936,8 @@ public class PaymentLogService {
                     .paymentPlanId(userPlan.getPaymentPlanId())
                     .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
                     .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
+                    .appliedCoupon(vacademy.io.admin_core_service.features.user_subscription.dto.CouponSnapshotDTO
+                            .fromJson(userPlan.getAppliedCouponDiscountJson()))
                     .enrollInviteId(userPlan.getEnrollInviteId())
                     .paymentOptionId(userPlan.getPaymentOptionId())
                     .status(userPlan.getStatus())

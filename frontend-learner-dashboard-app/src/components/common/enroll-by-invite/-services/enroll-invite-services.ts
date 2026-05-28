@@ -103,6 +103,12 @@ interface EnrollLearnerForPaymentProps {
     referral_code: string;
     referral_option_id: string;
   } | null;
+  /**
+   * Discount coupon code the learner entered at checkout. BE re-validates via
+   * CouponValidationService + atomically decrements usage_limit at UserPlan
+   * creation (see backend V308 / V309). Null/blank = no coupon.
+   */
+  couponCode?: string | null;
   returnUrl?: string;
   // Eway-specific payment data
   ewayPaymentData?: {
@@ -383,6 +389,7 @@ export const handleEnrollLearnerForPayment = async ({
   paymentVendor = "STRIPE",
   isUsingInstituteCustomFields = false,
   userId,
+  couponCode,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, full name, and password using helper functions
   const email = getEmailField(registrationData);
@@ -475,6 +482,9 @@ export const handleEnrollLearnerForPayment = async ({
       payment_option_id: payment_option_id,
       enroll_invite_id: enrollInviteId,
       refer_request: referRequest,
+      // Backend re-validates this and runs the atomic decrement inside the
+      // UserPlan-creation transaction. Null = no coupon applied.
+      coupon_code: couponCode || null,
       payment_initiation_request: {
         vendor: paymentVendor,
         amount: enrollmentData.selectedPayment.amount,

@@ -844,3 +844,10 @@ export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFi
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;
+
+// Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
+// are admin-gated via JWT + clientId header (auto-injected by axiosInstance);
+// validate is a public endpoint used by all three learner checkout surfaces.
+export const COUPON_BASE = `${BASE_URL}/admin-core-service/v1/coupon`;
+export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
+export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;

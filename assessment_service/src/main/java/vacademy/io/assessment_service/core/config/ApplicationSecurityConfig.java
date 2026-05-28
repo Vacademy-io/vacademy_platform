@@ -41,7 +41,8 @@ public class ApplicationSecurityConfig {
 
             "/assessment-service/scheduler/test/**", "/assessment-service/health/**",
             "/assessment-service/assessment/evaluation-criteria/**",
-            "/assessment-service/assessment/evaluation-ai/**" };
+            "/assessment-service/assessment/evaluation-ai/**",
+            "/assessment-service/internal/copy-check/**" };
 
     @Autowired
     AssessmentJwtAuthFilter jwtAuthFilter;

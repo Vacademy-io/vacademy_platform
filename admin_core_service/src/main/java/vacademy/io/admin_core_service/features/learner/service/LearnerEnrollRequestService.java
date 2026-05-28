@@ -28,15 +28,20 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -83,6 +88,12 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private LearnerCouponService learnerCouponService;
+
+    @Autowired
+    private CouponValidationService couponValidationService;
+
+    @Autowired
+    private AppliedCouponDiscountRepository appliedCouponDiscountRepository;
 
     @Autowired
     private DynamicNotificationService dynamicNotificationService;
@@ -316,6 +327,8 @@ public class LearnerEnrollRequestService {
 
         UserPlan userPlan = createUserPlan(
                 learnerEnrollRequestDTO.getUser().getId(),
+                learnerEnrollRequestDTO.getInstituteId(),
+                learnerEnrollRequestDTO.getUser() != null ? learnerEnrollRequestDTO.getUser().getEmail() : null,
                 enrollDTO,
                 enrollInvite,
                 paymentOption,
@@ -693,6 +706,8 @@ public class LearnerEnrollRequestService {
 
     private UserPlan createUserPlan(
             String userId,
+            String instituteId,
+            String userEmail,
             LearnerPackageSessionsEnrollDTO enrollDTO,
             EnrollInvite enrollInvite,
             PaymentOption paymentOption,
@@ -719,10 +734,19 @@ public class LearnerEnrollRequestService {
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
         }
+
+        // Resolve discount coupon (if learner entered one at checkout) by
+        // re-running the validator. Do NOT trust FE-supplied IDs — the FE only
+        // sends the code string; the BE recomputes scope, plan-type fit, etc.
+        // and produces the AppliedCouponDiscount that UserPlanService then
+        // snapshots + atomically decrements via CouponRedemptionService.
+        AppliedCouponDiscount appliedCouponDiscount = resolveAppliedCoupon(
+                enrollDTO, instituteId, userEmail, paymentPlan);
+
         return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
-                null, // coupon can be handled later if needed
+                appliedCouponDiscount,
                 enrollInvite,
                 paymentOption,
                 enrollDTO.getPaymentInitiationRequest(),
@@ -730,6 +754,48 @@ public class LearnerEnrollRequestService {
                 source,
                 subOrgId,
                 enrollDTO.getStartDate());
+    }
+
+    /**
+     * Returns the AppliedCouponDiscount that the learner-supplied code resolves
+     * to, or {@code null} when no code was supplied. Throws when a code was
+     * supplied but failed validation — the message carries the stable error
+     * code from {@link vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationMessages}
+     * so the controller can surface a learner-friendly error.
+     */
+    private AppliedCouponDiscount resolveAppliedCoupon(
+            LearnerPackageSessionsEnrollDTO enrollDTO,
+            String instituteId,
+            String userEmail,
+            PaymentPlan paymentPlan) {
+        String code = enrollDTO.getCouponCode();
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+
+        String packageSessionId = (enrollDTO.getPackageSessionIds() != null
+                && !enrollDTO.getPackageSessionIds().isEmpty())
+                ? enrollDTO.getPackageSessionIds().get(0)
+                : null;
+        Double totalAmount = paymentPlan != null ? paymentPlan.getActualPrice() : 0.0;
+
+        CouponValidateRequestDTO req = CouponValidateRequestDTO.builder()
+                .couponCode(code)
+                .instituteId(instituteId)
+                .packageSessionId(packageSessionId)
+                .enrollInviteId(enrollDTO.getEnrollInviteId())
+                .paymentPlanId(paymentPlan != null ? paymentPlan.getId() : enrollDTO.getPlanId())
+                .userEmail(userEmail)
+                .totalAmount(totalAmount)
+                .build();
+
+        CouponValidateResponseDTO resp = couponValidationService.validate(req);
+        if (!resp.isValid()) {
+            throw new VacademyException(resp.getMessage());
+        }
+        return appliedCouponDiscountRepository.findById(resp.getAppliedCouponDiscountId())
+                .orElseThrow(() -> new VacademyException(
+                        "Resolved AppliedCouponDiscount missing: " + resp.getAppliedCouponDiscountId()));
     }
 
     private LearnerEnrollResponseDTO enrollLearnerToBatch(

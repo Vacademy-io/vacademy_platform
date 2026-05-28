@@ -30,6 +30,9 @@ import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
 import { PaymentFailedDialog } from "./PaymentFailedDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -94,6 +97,28 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // Track if we already prefilled the email for this dialog open
   const hasPrefilledEmailRef = useRef<boolean>(false);
+
+  // Discount-coupon plumbing. For SUBSCRIPTION plans the coupon applies to the
+  // first payment only (matches Stripe/Razorpay default; the BE's max_applicable_times
+  // column is dead code — see backend round-2 audit). Renewals run without the discount.
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPlan?.id ?? null,
+      userEmail: email || null,
+      totalAmount:
+        typeof selectedPlan?.actual_price === "number" ? selectedPlan.actual_price : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
 
   // Helper function to get real user data from preferences
   const getRealUserData = useCallback(async () => {
@@ -403,12 +428,14 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         paymentGatewayData: paymentGatewayData!,
         selectedPaymentPlan: selectedPlan,
         selectedPaymentOption,
-        amount: selectedPlan.actual_price,
+        amount: effectiveAmount,
         currency: getCurrency(),
         description: `Subscription for ${selectedPlan.name}`,
         paymentType: "subscription",
         paymentMethod,
         returnUrl: window.location.origin + "/courses", // Default return URL
+        couponCode: couponCtx.state.appliedCode,
+        token,
       });
 
       console.log(
@@ -958,6 +985,34 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                         Edit
                       </MyButton>
                     </div>
+                  </div>
+                )}
+
+                {/* Discount coupon — institute toggle gates visibility.
+                    For SUBSCRIPTION, applies to first payment only (matches Stripe/Razorpay default). */}
+                {couponsEnabled && (
+                  <div className="mb-4">
+                    <CouponInput
+                      state={couponCtx.state}
+                      onChange={couponCtx.setCode}
+                      onApply={couponCtx.apply}
+                      onClear={couponCtx.clear}
+                      currencySymbol={selectedPlan?.currency === "INR" ? "₹" : "$"}
+                    />
+                    {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                      <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                        <span className="text-gray-600">
+                          First payment subtotal {selectedPlan?.actual_price?.toFixed(2)} ·
+                          Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                        </span>
+                        <span className="font-semibold text-gray-900">
+                          You pay {effectiveAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-gray-500">
+                      Discount applies to the first payment only. Renewals are billed at the regular price.
+                    </p>
                   </div>
                 )}
 

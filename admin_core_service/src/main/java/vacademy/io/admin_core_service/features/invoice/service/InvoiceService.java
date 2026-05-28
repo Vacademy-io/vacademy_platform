@@ -121,6 +121,9 @@ public class InvoiceService {
     @Autowired
     private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
     @Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerPortalUrl;
 
@@ -130,6 +133,35 @@ public class InvoiceService {
     /** Type for institute invoice PDF layout templates (how line items, totals, etc. are shown in the PDF — like default_invoice.html). Not email templates. */
     private static final String INVOICE_TEMPLATE_TYPE = "INVOICE";
     private static final String INVOICE_STATUS_GENERATED = "GENERATED";
+
+    /**
+     * Builds the description text shown on a discount/coupon invoice line item.
+     * For COUPON-type rows we look up the actual coupon code (e.g. "SAVE20") via
+     * the line item's source_id (FK to AppliedCouponDiscount) so the receipt
+     * cites the redeemed code instead of a generic "Discount: coupon" label.
+     * Falls back to the legacy "Discount: <source>" string if anything is
+     * missing — we never want a malformed lookup to break invoice generation.
+     */
+    private String buildDiscountDescription(PaymentLogLineItem item) {
+        String source = item.getSource();
+        String type = item.getType();
+        boolean looksLikeCoupon = (type != null && type.toUpperCase().contains("COUPON"))
+                || (source != null && source.toLowerCase().contains("coupon"));
+        if (looksLikeCoupon && item.getSourceId() != null) {
+            try {
+                String code = appliedCouponDiscountRepository.findById(item.getSourceId())
+                        .map(acd -> acd.getCouponCode() != null ? acd.getCouponCode().getCode() : null)
+                        .orElse(null);
+                if (code != null && !code.isBlank()) {
+                    return "Coupon " + code;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to resolve coupon code for invoice line item {}: {}",
+                        item.getId(), e.getMessage());
+            }
+        }
+        return source != null ? "Discount: " + source : "Discount";
+    }
     private static final String INVOICE_STATUS_PENDING_PAYMENT = "PENDING_PAYMENT";
     private static final String INVOICE_STATUS_PAID = "PAID";
     private static final String DEFAULT_INVOICE_PREFIX = "INV";
@@ -615,7 +647,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
+                            .description(buildDiscountDescription(item))
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -888,7 +920,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
+                            .description(buildDiscountDescription(item))
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())

@@ -924,6 +924,12 @@ export const handlePaymentForEnrollment = async (params: {
   token: string;
   returnUrl?: string;
   userData?: UserData;
+  /**
+   * Discount coupon code the learner applied at checkout. BE re-validates
+   * via CouponValidationService + atomically decrements usage_limit at
+   * UserPlan creation (V308 / V309). Null/blank = no coupon.
+   */
+  couponCode?: string | null;
 }): Promise<any> => {
   const {
     userEmail,
@@ -942,6 +948,7 @@ export const handlePaymentForEnrollment = async (params: {
     paymentMethod,
     token,
     userData,
+    couponCode,
   } = params;
 
   // Validate and sanitize emails
@@ -1084,6 +1091,10 @@ export const handlePaymentForEnrollment = async (params: {
         plan_id: selectedPaymentPlan.id,
         payment_option_id: selectedPaymentOption.id,
         enroll_invite_id: enrollmentData.id,
+        // BE re-validates this via CouponValidationService then runs an
+        // atomic UPDATE-WHERE decrement of usage_limit inside the
+        // UserPlan-creation transaction. Null = no coupon applied.
+        coupon_code: couponCode || null,
         payment_initiation_request:
           paymentType === "free"
             ? null

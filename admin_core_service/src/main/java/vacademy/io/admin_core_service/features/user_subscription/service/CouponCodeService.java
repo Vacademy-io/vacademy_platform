@@ -183,8 +183,17 @@ public class CouponCodeService {
         return couponCodeRepository.findFirstBySourceIdAndSourceTypeOrderByCreatedAtDesc(sourceId, sourceType);
     }
 
-    public Optional<CouponCode> getCouponCodeByCode(String code) {
-        return couponCodeRepository.findByCode(code);
+    /**
+     * Institute-scoped lookup. V309 dropped the global uniqueness on {@code code},
+     * so {@code instituteId} is mandatory — without it we'd return the first
+     * matching coupon globally, which is a cross-tenant leak. Returns empty
+     * when the caller hasn't supplied an institute.
+     */
+    public Optional<CouponCode> getCouponCodeByCode(String code, String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) {
+            return Optional.empty();
+        }
+        return couponCodeRepository.findByInstituteIdAndCode(instituteId, code);
     }
 
     public CouponCode updateCouponCodeStatus(CouponCode couponCode, String status) {

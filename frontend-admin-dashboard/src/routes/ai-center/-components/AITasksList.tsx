@@ -1,6 +1,6 @@
 import { MyButton } from '@/components/design-system/button';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-import { useEffect, useMemo, useState } from 'react';
+import { Dispatch, SetStateAction, useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { handleGetListIndividualTopics } from '../-services/ai-center-service';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -94,8 +94,8 @@ async function handleDownload(url: string, file_name: string) {
 type TaskCardProps = {
     task: AITaskIndividualListInterface;
     heading: string;
-    openQuestionsPreview: boolean;
-    setOpenQuestionsPreview: React.Dispatch<React.SetStateAction<boolean>>;
+    openedTaskId: string | null;
+    setOpenedTaskId: Dispatch<SetStateAction<string | null>>;
     pollGenerateAssessment?: (prompt?: string, taskId?: string) => void;
     handleGenerateQuestionsForAssessment?: (
         pdfId?: string,
@@ -111,8 +111,8 @@ type TaskCardProps = {
 const TaskCard = ({
     task,
     heading,
-    openQuestionsPreview,
-    setOpenQuestionsPreview,
+    openedTaskId,
+    setOpenedTaskId,
     pollGenerateAssessment,
     handleGenerateQuestionsForAssessment,
     pollGenerateQuestionsFromText,
@@ -122,6 +122,15 @@ const TaskCard = ({
 }: TaskCardProps) => {
     const family = classifyFile(task.file_detail?.file_type);
     const display = taskDisplayName(task);
+
+    // Each card derives its own open state from the parent's openedTaskId so only
+    // the clicked card's preview auto-fetches — without this, every visible card's
+    // preview-effect fires when any one of them opens.
+    const isOpen = openedTaskId === task.id;
+    const setIsOpen: Dispatch<SetStateAction<boolean>> = (val) => {
+        const next = typeof val === 'function' ? val(isOpen) : val;
+        setOpenedTaskId(next ? task.id : null);
+    };
 
     return (
         <div className="group flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 transition-all hover:border-primary-200 hover:shadow-sm">
@@ -138,7 +147,7 @@ const TaskCard = ({
                     </span>
                 </div>
                 <span
-                    className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${statusStyles(
+                    className={`inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-caption font-medium ring-1 ring-inset ${statusStyles(
                         task.status
                     )}`}
                 >
@@ -146,26 +155,26 @@ const TaskCard = ({
                 </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 pl-[52px]">
+            <div className="flex flex-wrap items-center gap-2 pl-13">
                 {task.status !== 'PROGRESS' && heading === 'Vsmart Feedback' && (
                     <AIEvaluatePreview
                         task={task}
-                        openEvaluatePreview={openQuestionsPreview}
-                        setOpenEvaluatePreview={setOpenQuestionsPreview}
+                        openEvaluatePreview={isOpen}
+                        setOpenEvaluatePreview={setIsOpen}
                     />
                 )}
                 {task.status !== 'PROGRESS' && heading === 'Vsmart Lecturer' && (
                     <AIPlanLecturePreview
                         task={task}
-                        openPlanLecturePreview={openQuestionsPreview}
-                        setOpenPlanLecturePreview={setOpenQuestionsPreview}
+                        openPlanLecturePreview={isOpen}
+                        setOpenPlanLecturePreview={setIsOpen}
                     />
                 )}
                 {task.status !== 'PROGRESS' && heading === 'Vsmart Chat' && (
                     <AIChatWithPDFPreview
                         task={task}
-                        openAIPreview={openQuestionsPreview}
-                        setOpenAIPreview={setOpenQuestionsPreview}
+                        openAIPreview={isOpen}
+                        setOpenAIPreview={setIsOpen}
                     />
                 )}
                 {heading !== 'Vsmart Lecturer' &&
@@ -181,8 +190,8 @@ const TaskCard = ({
                             pollGenerateQuestionsFromText={pollGenerateQuestionsFromText}
                             pollGenerateQuestionsFromAudio={pollGenerateQuestionsFromAudio}
                             heading={heading}
-                            openQuestionsPreview={openQuestionsPreview}
-                            setOpenQuestionsPreview={setOpenQuestionsPreview}
+                            openQuestionsPreview={isOpen}
+                            setOpenQuestionsPreview={setIsOpen}
                             sectionsForm={sectionsForm}
                             currentSectionIndex={currentSectionIndex}
                         />
@@ -238,7 +247,7 @@ const AITasksList = ({
 }) => {
     const { isAIQuestionDialog9, setIsAIQuestionDialog9 } = useAIQuestionDialogStore();
 
-    const [openQuestionsPreview, setOpenQuestionsPreview] = useState(false);
+    const [openedTaskId, setOpenedTaskId] = useState<string | null>(null);
     const [allTasks, setAllTasks] = useState<AITaskIndividualListInterface[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -265,7 +274,7 @@ const AITasksList = ({
     const { mutate } = getAITasksIndividualListMutation;
 
     useEffect(() => {
-        if (isAIQuestionDialog9 && !openQuestionsPreview) {
+        if (isAIQuestionDialog9 && !openedTaskId) {
             let count = 0;
             const maxRuns = 5;
             const interval = setInterval(() => {
@@ -280,7 +289,7 @@ const AITasksList = ({
             return () => clearInterval(interval);
         }
         return () => {};
-    }, [mutate, heading, isAIQuestionDialog9, openQuestionsPreview]);
+    }, [mutate, heading, isAIQuestionDialog9, openedTaskId]);
 
     useEffect(() => {
         const fetchTasks = async () => {
@@ -406,7 +415,7 @@ const AITasksList = ({
             )}
             <DialogContent
                 onClick={(e) => e.stopPropagation()}
-                className="no-scrollbar !m-0 flex size-[90%] flex-col !gap-0 overflow-hidden !p-0"
+                className={/* design-lint-ignore: viewport-sized dialog has no spacing token */ 'no-scrollbar !m-0 flex h-[90vh] w-[90vw] max-w-none flex-col !gap-0 overflow-hidden !p-0'}
             >
                 <div className="sticky top-0 z-10 flex flex-col gap-4 border-b border-neutral-200 bg-white p-5">
                     <div className="flex items-center justify-between gap-4">
@@ -483,7 +492,7 @@ const AITasksList = ({
                                         >
                                             {f.label}
                                             <span
-                                                className={`inline-flex min-w-[20px] items-center justify-center rounded px-1 text-[10px] ${
+                                                className={`inline-flex min-w-5 items-center justify-center rounded px-1 text-caption ${
                                                     active
                                                         ? 'bg-primary-100 text-primary-700'
                                                         : 'bg-neutral-100 text-neutral-500'
@@ -540,7 +549,7 @@ const AITasksList = ({
                                         <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                                             {bucket}
                                         </h3>
-                                        <span className="text-[11px] text-neutral-400">
+                                        <span className="text-caption text-neutral-400">
                                             {tasks.length}
                                         </span>
                                     </div>
@@ -550,10 +559,8 @@ const AITasksList = ({
                                                 key={task.id}
                                                 task={task}
                                                 heading={heading}
-                                                openQuestionsPreview={openQuestionsPreview}
-                                                setOpenQuestionsPreview={
-                                                    setOpenQuestionsPreview
-                                                }
+                                                openedTaskId={openedTaskId}
+                                                setOpenedTaskId={setOpenedTaskId}
                                                 pollGenerateAssessment={
                                                     pollGenerateAssessment
                                                 }

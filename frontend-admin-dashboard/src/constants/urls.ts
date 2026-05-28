@@ -1,13 +1,6 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
-
-// LOCAL TESTING: admin-core-service running locally on port 8072.
-// Used to point the live-session + Zoom integration APIs at the local backend
-// while testing the new Zoom functionality. Override via VITE_LOCAL_ADMIN_CORE_BASE.
-// NOTE: revert these endpoints to ${BASE_URL} before shipping.
-export const LOCAL_ADMIN_CORE_BASE =
-    import.meta.env.VITE_LOCAL_ADMIN_CORE_BASE || 'http://localhost:8072';
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 
@@ -471,46 +464,46 @@ export const GET_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/by-use
 export const DUPLICATE_STUDY_MATERIAL_FROM_SESSION = `${BASE_URL}/admin-core-service/sessions/v1/copy-study-material`;
 
 // Live sessions
-export const CREATE_LIVE_SESSION_STEP_1 = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/v1/create/step1`;
-export const CREATE_LIVE_SESSION_STEP_2 = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/v1/create/step2`;
-export const CREATE_LIVE_SESSION_BULK = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/v1/create/bulk`;
-export const GET_LIVE_SESSIONS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/live`;
-export const DELETE_LIVE_SESSION = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/v1/delete`;
-export const GET_UPCOMING_SESSIONS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/upcoming`;
-export const GET_PAST_SESSIONS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/past`;
-export const GET_DRAFT_SESSIONS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/draft`;
-export const SEARCH_SESSIONS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/search`;
-export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/by-schedule-id`;
+export const CREATE_LIVE_SESSION_STEP_1 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step1`;
+export const CREATE_LIVE_SESSION_STEP_2 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step2`;
+export const CREATE_LIVE_SESSION_BULK = `${BASE_URL}/admin-core-service/live-sessions/v1/create/bulk`;
+export const GET_LIVE_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/live`;
+export const DELETE_LIVE_SESSION = `${BASE_URL}/admin-core-service/live-sessions/v1/delete`;
+export const GET_UPCOMING_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/upcoming`;
+export const GET_PAST_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/past`;
+export const GET_DRAFT_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/draft`;
+export const SEARCH_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/search`;
+export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
 
 // export const GET_SESSION_BY_SESSION_ID = `http://localhost:8072/admin-core-service/get-sessions/by-session-id`;
-export const GET_SESSION_BY_SESSION_ID = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/get-sessions/by-session-id`;
-export const LIVE_SESSION_REPORT_BY_SESSION_ID = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/by-session-id`;
-export const ADMIN_MARK_ATTENDANCE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session/admin-mark-attendance`;
-export const CREATE_PROVIDER_MEETING = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/create`;
-export const GET_SCHEDULE_RECORDINGS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/recordings`;
-export const SYNC_RECORDINGS_FROM_BBB = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
+export const GET_SESSION_BY_SESSION_ID = `${BASE_URL}/admin-core-service/get-sessions/by-session-id`;
+export const LIVE_SESSION_REPORT_BY_SESSION_ID = `${BASE_URL}/admin-core-service/live-session-report/by-session-id`;
+export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
+export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
+export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
+export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).
 // Phase 1: account CRUD + test-connection. Meeting create/join/webhook endpoints
 // land in later phases per docs/zoomintegration/zoom-integration-plan.md.
-export const ZOOM_ACCOUNTS_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/zoom/accounts`;
+export const ZOOM_ACCOUNTS_BASE = `${BASE_URL}/admin-core-service/live-sessions/provider/zoom/accounts`;
 
 // Meeting SDK signature for embedded host/participant join. The admin "Start as
 // Host" flow calls this with role=1 to get a signed JWT + ZAK, then mounts the
 // Web Meeting SDK inline instead of bouncing to Zoom's hosted start_url.
-export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/zoom-sdk-signature`;
+export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/zoom-sdk-signature`;
 
 // "Process Recording" / "Transcript Ready" flow — kicks off Whisper
 // transcription for a specific BBB recording and polls for terminal state.
 // Path-keyed by scheduleId + recordingId so admin-core can locate the
 // recording in O(1).
 export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/transcribe`;
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/transcribe`;
 
 // Layer 3 — Create Assessment from a completed recording transcript.
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
 
 // Persist LLM-generated study notes (Markdown) so the next dialog open
 // can show them without re-running the LLM. POST body: { markdown: string }.
@@ -518,14 +511,14 @@ export const RECORDING_STUDY_NOTES = (scheduleId: string, recordingId: string) =
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/study-notes`;
 
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
 
 // Publish a previously-generated assessment artifact to assessment_service.
 // Body: PublishAssessmentOverridesDto (title, schedule, marking, attempts,
 // preview time, visibility — all optional, fall back to stored generation
 // params when absent).
 export const RECORDING_PUBLISH_ASSESSMENT = (recordingId: string, artifactId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/recording/${recordingId}/assessment/${artifactId}/publish`;
+    `${BASE_URL}/admin-core-service/live-sessions/recording/${recordingId}/assessment/${artifactId}/publish`;
 
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
@@ -599,10 +592,10 @@ export const ANALYTICS_ENGAGEMENT_TRENDS = `${BASE_URL}/auth-service/v1/analytic
 export const ANALYTICS_MOST_ACTIVE_USERS = `${BASE_URL}/auth-service/v1/analytics/users/most-active`;
 export const ANALYTICS_CURRENTLY_ACTIVE_USERS = `${BASE_URL}/auth-service/v1/analytics/users/currently-active`;
 
-export const STUDENT_ATTENDANCE_REPORT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/student-report`;
-export const PUBLIC_REGISTRATION_REPORT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/publicregistration`;
-export const BATCH_SESSION_ATTENDANCE_REPORT = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/by-batch-session`;
-export const LIVE_SESSION_ALL_ATTENDANCE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-session-report/all-attendance`;
+export const STUDENT_ATTENDANCE_REPORT = `${BASE_URL}/admin-core-service/live-session-report/student-report`;
+export const PUBLIC_REGISTRATION_REPORT = `${BASE_URL}/admin-core-service/live-session-report/publicregistration`;
+export const BATCH_SESSION_ATTENDANCE_REPORT = `${BASE_URL}/admin-core-service/live-session-report/by-batch-session`;
+export const LIVE_SESSION_ALL_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session-report/all-attendance`;
 
 // Referral
 export const REFERRAL_API_BASE = `${BASE_URL}/admin-core-service/v1/referral-option`;

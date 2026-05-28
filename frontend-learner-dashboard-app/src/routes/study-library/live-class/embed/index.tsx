@@ -22,7 +22,7 @@ import { useLiveSessions } from "../-hooks/useLiveSessions";
 import { getAllPackageSessionIds } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { DefaultClassCard } from "../-components/DefaultClassCard";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { LOCAL_ADMIN_CORE_BASE } from "@/constants/urls";
+import { BASE_URL } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 
@@ -126,7 +126,7 @@ function EmbedComponent() {
     setBbbLoading(true);
 
     authenticatedAxiosInstance
-      .get(`${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/provider/meeting/join`, {
+      .get(`${BASE_URL}/admin-core-service/live-sessions/provider/meeting/join`, {
         params: { scheduleId: sessionId, role: "VIEWER" },
       })
       .then((response) => {

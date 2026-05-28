@@ -6,7 +6,7 @@ import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, processRecording, getTranscriptionStatus } from '../-services/utils';
-import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus } from '../-services/utils';
+import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
@@ -1687,6 +1687,11 @@ function RecordingTranscribeAction({
     const [errorMessage, setErrorMessage] = useState<string | undefined>(rec.transcriptionError);
     const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
     const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
+    // When the teacher reuses a past paper from the Transcript dialog, we
+    // stash the artifact here and pass it as `initialArtifact` so the
+    // assessment modal opens straight into Preview state — skipping the
+    // form + LLM call.
+    const [reuseArtifact, setReuseArtifact] = useState<AssessmentArtifact | null>(null);
     const [sourceTextUrl, setSourceTextUrl] = useState<string | undefined>();
     const [englishTextUrl, setEnglishTextUrl] = useState<string | undefined>();
     // Cached LLM-generated study notes. Populated from the transcription
@@ -1836,20 +1841,34 @@ function RecordingTranscribeAction({
                         setSavedNotesGeneratedAt(generatedAt);
                     }}
                     onCreateAssessment={() => {
+                        setReuseArtifact(null);
                         setTranscriptModalOpen(false);
+                        setAssessmentModalOpen(true);
+                    }}
+                    onOpenArtifact={(artifact) => {
+                        setReuseArtifact(artifact);
                         setAssessmentModalOpen(true);
                     }}
                 />
 
                 <CreateAssessmentFromRecordingModal
                     open={assessmentModalOpen}
-                    onOpenChange={setAssessmentModalOpen}
+                    onOpenChange={(next) => {
+                        setAssessmentModalOpen(next);
+                        if (!next) {
+                            // Clear the reuse artifact on close so the next
+                            // "Create Assessment" click lands in the empty
+                            // form state, not Preview with stale data.
+                            setReuseArtifact(null);
+                        }
+                    }}
                     scheduleId={rec.scheduleId}
                     recordingId={rec.recordingId}
                     detectedLanguage={detectedLanguage}
                     batches={batches}
                     sourceTextUrl={sourceTextUrl}
                     englishTextUrl={englishTextUrl}
+                    initialArtifact={reuseArtifact}
                 />
             </>
         );

@@ -112,9 +112,15 @@ export const StudentSidebar = ({
     /** Open the Lead Profile tab by default each time a lead is opened (lead lists). */
     defaultLeadProfile?: boolean;
 }) => {
-    const { state } = useSidebar();
+    const { state, setOpen, setOpenMobile } = useSidebar();
     const [category, setCategory] = useState('overview');
-    const { toggleSidebar } = useSidebar();
+    // Explicitly close both desktop + mobile sidebar state. Using `toggleSidebar`
+    // hit a stale-closure case where `isMobile` could be wrong post-hydration,
+    // so the X click flipped the wrong state on touch viewports.
+    const closeSidebar = () => {
+        setOpen(false);
+        setOpenMobile(false);
+    };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
     const { selectedStudent } = useStudentSidebar();
@@ -217,7 +223,11 @@ export const StudentSidebar = ({
     }, [category]);
 
     return (
-        <Sidebar side="right" className={cn('!top-14 md:!top-20', className)}>
+        <Sidebar
+            side="right"
+            preventOutsideClose
+            className={cn('!top-14 md:!top-20', className)}
+        >
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
@@ -262,7 +272,11 @@ export const StudentSidebar = ({
                             )}
 
                             <button
-                                onClick={toggleSidebar}
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    closeSidebar();
+                                }}
                                 className="group shrink-0 rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
                                 aria-label="Close"
                             >
@@ -322,13 +336,17 @@ export const StudentSidebar = ({
                                         return (
                                             <button
                                                 key={tabId}
+                                                type="button"
                                                 ref={category === tabId ? activeTabRef : null}
                                                 className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
                                                     category === tabId
                                                         ? 'bg-white text-primary-500 shadow-sm'
                                                         : 'text-neutral-600 hover:text-neutral-800'
                                                 }`}
-                                                onClick={() => setCategory(tabId)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCategory(tabId);
+                                                }}
                                             >
                                                 {label}
                                             </button>
@@ -339,13 +357,17 @@ export const StudentSidebar = ({
                                         student belongs to one — it has no settings flag of its own. */}
                                     {selectedStudent?.sub_org_name && (
                                         <button
+                                            type="button"
                                             ref={category === 'subOrg' ? activeTabRef : null}
                                             className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
                                                 category === 'subOrg'
                                                     ? 'bg-white text-primary-500 shadow-sm'
                                                     : 'text-neutral-600 hover:text-neutral-800'
                                             }`}
-                                            onClick={() => setCategory('subOrg')}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCategory('subOrg');
+                                            }}
                                         >
                                             SubOrg
                                         </button>

@@ -137,7 +137,7 @@ export const TestReportDialog = ({
                         />
                     </div>
 
-                    <div className="grid grid-cols-3 text-body">
+                    <div className="grid grid-cols-1 text-body sm:grid-cols-3">
                         <div>
                             Subject:{' '}
                             {getSubjectNameById(
@@ -381,7 +381,7 @@ export const TestReportDialog = ({
                                             <div>Student answer:</div>
                                             <div className="flex w-full items-center justify-between">
                                                 <div
-                                                    className={`flex w-[644px] items-center rounded-lg p-4 ${
+                                                    className={`flex w-full max-w-2xl items-center rounded-lg p-4 ${
                                                         review.answer_status == 'CORRECT'
                                                             ? 'bg-success-50'
                                                             : review.answer_status == 'INCORRECT'
@@ -426,7 +426,7 @@ export const TestReportDialog = ({
                                                 <div>Correct answer:</div>
                                                 <div className="flex w-full items-center justify-between">
                                                     <div
-                                                        className={`flex w-[644px] rounded-lg bg-success-50 p-4`}
+                                                        className={`flex w-full max-w-2xl rounded-lg bg-success-50 p-4`}
                                                     >
                                                         <div>
                                                             {renderOptions(

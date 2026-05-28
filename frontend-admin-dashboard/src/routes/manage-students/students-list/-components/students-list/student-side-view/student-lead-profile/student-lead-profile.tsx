@@ -1214,7 +1214,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             </div>
 
             {/* ── Stat grid ── */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <StatCard
                     icon={<Megaphone size={18} />}
                     label="Campaigns"

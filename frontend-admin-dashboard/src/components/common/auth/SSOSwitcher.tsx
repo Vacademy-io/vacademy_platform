@@ -1,7 +1,8 @@
 import React from 'react';
+import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, GraduationCap } from 'lucide-react';
+import { ArrowSquareOut, GraduationCap, Student } from '@phosphor-icons/react';
 import {
     getUserRoles,
     getTokenFromCookie,
@@ -9,7 +10,6 @@ import {
     canAccessLearnerPlatform,
 } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import { Student } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface SSOSwitcherProps {
@@ -65,7 +65,7 @@ export function SSOSwitcher({ variant = 'button', className = '' }: SSOSwitcherP
                     >
                         <GraduationCap className="mr-1 size-3" />
                         Switch to Learner
-                        <ExternalLink className="ml-1 size-3" />
+                        <ArrowSquareOut className="ml-1 size-3" />
                     </Button>
                 )}
             </div>
@@ -76,11 +76,17 @@ export function SSOSwitcher({ variant = 'button', className = '' }: SSOSwitcherP
         return (
             <div className={className}>
                 {showLearnerSwitch && (
-                    <Button variant="outline" onClick={switchToLearnerPlatform} className="text-xs">
-                        <Student className="mr-1 size-3" />
-                        Switch to Learner
-                        <ExternalLink className="ml-1 size-3" />
-                    </Button>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={switchToLearnerPlatform}
+                        aria-label="Switch to Learner"
+                        className="gap-1.5 px-2.5 sm:px-3"
+                    >
+                        <Student className="size-4 shrink-0" weight="bold" />
+                        <span className="hidden sm:inline">Switch to Learner</span>
+                        <ArrowSquareOut className="size-3.5 shrink-0" />
+                    </MyButton>
                 )}
             </div>
         );
@@ -89,7 +95,15 @@ export function SSOSwitcher({ variant = 'button', className = '' }: SSOSwitcherP
     if (variant === 'dropdown') {
         return (
             <div className={className}>
-                <span onClick={switchToLearnerPlatform}>Switch to Learner</span>
+                <button
+                    type="button"
+                    onClick={switchToLearnerPlatform}
+                    className="flex w-full items-center gap-2 text-left text-sm text-neutral-700"
+                >
+                    <Student className="size-4 shrink-0 text-primary-500" weight="bold" />
+                    <span className="flex-1">Switch to Learner</span>
+                    <ArrowSquareOut className="size-3.5 shrink-0 text-neutral-400" />
+                </button>
             </div>
         );
     }

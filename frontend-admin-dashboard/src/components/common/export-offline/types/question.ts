@@ -25,6 +25,14 @@ export interface Question {
     section_id: string;
     question_duration: number;
     question_order: number;
+    /**
+     * Optional per-question rationale shown only in answer-key exports
+     * (QuestionComponent's `showAnswers` mode). The question-papers flow
+     * doesn't populate this today; flows that generate questions with
+     * accompanying explanations (e.g. AI assessment from a lecture
+     * transcript) set it so the answer-key PDF carries them.
+     */
+    explanation_text?: string;
 }
 
 export type CustomFieldType = 'blank' | 'blocks' | 'input' | 'checkbox';

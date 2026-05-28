@@ -77,22 +77,33 @@ spec:
                   FROM (VALUES ('auth_service'),('admin_core_service'),('assessment_service'),('media_service'),('notification_service'),('community_service'),('ai_service')) AS t(cn)
                   ON CONFLICT (client_name) DO UPDATE SET secret_key=EXCLUDED.secret_key, updated_at=now();"
               done
-              # Course creation (POST /admin-core-service/course/v1/add-course) looks up
-              # rows with id='DEFAULT' in level/session/groups (the "default structure"
-              # path). Prod created these by hand; the schema-only baseline has no seed
-              # for them, so a fresh standalone DB throws "Level not found". BulkCourseService
-              # auto-creates the DEFAULT level, but CourseService doesn't — until that's
-              # fixed in code, seed the rows so single-course creation works out of the box.
-              echo "seeding DEFAULT level/session/groups (admin_core_service)..."
+              # Sentinel rows the course-create flow references by literal id:
+              #
+              #   DEFAULT - the "no level / no session" fallback. BulkCourseService
+              #             auto-creates this; CourseService does NOT, so without the
+              #             row it throws "Level not found" on single-course create.
+              #
+              #   INVITED - every new course/package gets a placeholder PackageSession
+              #             with level_id='INVITED' / session_id='INVITED' (see
+              #             PackageSessionService.addInvitedPackageSessionForPackage and
+              #             BulkCourseService.createInvitedPackageSession). Without the
+              #             row, Postgres rejects the FK insert with "Key (level_id)=
+              #             (INVITED) is not present in table level".
+              #
+              # Prod has both rows from manual seed-time inserts; the schema-only baseline
+              # doesn't, so we seed them here. Idempotent (ON CONFLICT id DO NOTHING).
+              echo "seeding DEFAULT + INVITED sentinel level/session (and DEFAULT group) — admin_core_service..."
               psql -h postgres -U "$PGUSER" -v ON_ERROR_STOP=1 -d admin_core_service -c "
-                INSERT INTO level (id, level_name, status, created_at, updated_at)
-                VALUES ('DEFAULT', 'Default', 'ACTIVE', now(), now())
+                INSERT INTO level (id, level_name, status, created_at, updated_at) VALUES
+                  ('DEFAULT', 'Default', 'ACTIVE', now(), now()),
+                  ('INVITED', 'Invited', 'ACTIVE', now(), now())
                 ON CONFLICT (id) DO NOTHING;
-                INSERT INTO session (id, session_name, status, created_at, updated_at)
-                VALUES ('DEFAULT', 'Default', 'ACTIVE', now(), now())
+                INSERT INTO session (id, session_name, status, created_at, updated_at) VALUES
+                  ('DEFAULT', 'Default', 'ACTIVE', now(), now()),
+                  ('INVITED', 'Invited', 'ACTIVE', now(), now())
                 ON CONFLICT (id) DO NOTHING;
-                INSERT INTO groups (id, group_name, created_at, updated_at)
-                VALUES ('DEFAULT', 'Default', now(), now())
+                INSERT INTO groups (id, group_name, created_at, updated_at) VALUES
+                  ('DEFAULT', 'Default', now(), now())
                 ON CONFLICT (id) DO NOTHING;"
               echo "seed complete"
           volumeMounts:

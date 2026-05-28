@@ -11,6 +11,8 @@ import vacademy.io.admin_core_service.features.slide.dto.ScormTrackingDTO;
 import vacademy.io.admin_core_service.features.slide.entity.ScormLearnerProgress;
 import vacademy.io.admin_core_service.features.slide.repository.ScormLearnerProgressRepository;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.Optional;
 
@@ -30,6 +32,7 @@ public class ScormTrackingService {
                 .findTopByUserIdAndSlideIdOrderByAttemptNumberDesc(userId, slideId);
 
         ScormLearnerProgress progress;
+        boolean isResume;
         if (progressOpt.isPresent()) {
             progress = progressOpt.get();
             // Optional: Logic to decide if we need a new attempt (e.g., if previous was
@@ -37,6 +40,7 @@ public class ScormTrackingService {
             // For simplicity, we reuse the attempt if not strictly completed/finalized, or
             // create new if needed.
             // Here we just return the latest state to resume.
+            isResume = true;
         } else {
             // Create first attempt
             progress = new ScormLearnerProgress();
@@ -47,9 +51,30 @@ public class ScormTrackingService {
             progress.setCompletionStatus("not attempted");
             progress.setSuccessStatus("unknown");
             progress = scormLearnerProgressRepository.save(progress);
+            isResume = false;
         }
 
-        return mapToDTO(progress);
+        ScormTrackingDTO dto = mapToDTO(progress);
+        // Inject cmi.entry per SCORM 2004 spec. Tells the lesson runtime
+        // whether to treat this launch as a fresh attempt (ab-initio) or a
+        // continuation that should attempt to restore cmi.suspend_data /
+        // cmi.location. Without this, well-authored packages that strictly
+        // check cmi.entry before reading suspend_data start fresh on every
+        // launch — even when valid resume state exists on the server.
+        //
+        // Permissive interpretation: emit "resume" whenever an existing row
+        // is found, regardless of the previous cmi.exit value. Strict spec
+        // would require cmi.exit == "suspend"; in practice many lessons
+        // never set cmi.exit on close (tab close, navigation away), so
+        // strict mode would miss the common case. Packages that don't write
+        // suspend_data themselves will see "resume" but have nothing to
+        // restore — they fall back to fresh start. No harm.
+        Map<String, Object> cmi = dto.getCmiJson() != null
+                ? new HashMap<>(dto.getCmiJson())
+                : new HashMap<>();
+        cmi.put("cmi.entry", isResume ? "resume" : "ab-initio");
+        dto.setCmiJson(cmi);
+        return dto;
     }
 
     @Transactional

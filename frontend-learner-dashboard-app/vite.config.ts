@@ -82,8 +82,21 @@ export default defineConfig({
                         return 'pyodide';
                     }
 
-                    // Quill editor - rich text editing
-                    if (id.includes('react-quill') || id.includes('quill')) {
+                    // Quill editor - rich text editing.
+                    // IMPORTANT: only match Quill *node_modules* — never src
+                    // paths. The src/components/quill/* files transitively
+                    // import axios (via use-file-upload → upload_file), and a
+                    // bare `id.includes('quill')` was hoisting axios into the
+                    // quill chunk, making *every* axios call drag in Quill +
+                    // mathquill + jquery and triggering a circular-init
+                    // ("Cannot access 'B' before initialization") on app load.
+                    if (
+                        id.includes('node_modules/react-quill-new') ||
+                        id.includes('node_modules/quill/') ||
+                        id.includes('node_modules/quill-delta') ||
+                        id.includes('node_modules/mathquill4quill') ||
+                        id.includes('node_modules/@edtr-io/mathquill')
+                    ) {
                         return 'quill-editor';
                     }
 

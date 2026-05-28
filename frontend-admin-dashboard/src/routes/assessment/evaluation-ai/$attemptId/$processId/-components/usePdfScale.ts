@@ -111,7 +111,7 @@ function mapsAreEqual(a: PageScaleMap, b: PageScaleMap): boolean {
     for (const k of aKeys) {
         const av = a[k];
         const bv = b[k];
-        if (!bv) return false;
+        if (!av || !bv) return false;
         if (
             av.renderedWidth !== bv.renderedWidth ||
             av.renderedHeight !== bv.renderedHeight ||

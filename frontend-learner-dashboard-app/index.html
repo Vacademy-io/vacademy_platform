@@ -83,6 +83,13 @@
       rel="stylesheet"
     />
 
+    <!-- jQuery must load before any module code: MathQuill (used inside the
+         lazy quill-editor chunk) reads window.jQuery at module-eval time, and
+         that chunk is a static dep of the entry, so it evaluates BEFORE the
+         entry body. A classic <script> tag self-installs window.jQuery via
+         jQuery's UMD wrapper, beating the ES-module graph. -->
+    <script src="/vendor/jquery.min.js"></script>
+
     <!-- Eway eCrypt Library for Client-Side Encryption -->
     <!-- Official Documentation: https://eway.io/api-v3/#client-side-encryption -->
     <script src="https://secure.ewaypayments.com/scripts/eCrypt.min.js"></script>

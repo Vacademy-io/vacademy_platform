@@ -109,9 +109,12 @@ const formatDateForInput = (iso: string | null | undefined): string => {
     if (!iso) return '';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
-    // datetime-local expects 'YYYY-MM-DDTHH:mm'
+    // <input type="date"> expects 'YYYY-MM-DD'. Coupons are day-granular —
+    // CouponValidationService treats the end date as end-of-day, so we don't
+    // need a time picker (and the native datetime-local widget silently
+    // blanks the form value when the seconds/AM-PM portion is incomplete).
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
 const scopeFromDetail = (editing?: CouponDetail | null): CouponScopeValue => {
@@ -489,7 +492,7 @@ export const CouponFormDialog = ({
                                             <FormControl>
                                                 <Input
                                                     {...field}
-                                                    type="datetime-local"
+                                                    type="date"
                                                     disabled={isFrozen}
                                                 />
                                             </FormControl>
@@ -504,7 +507,7 @@ export const CouponFormDialog = ({
                                         <FormItem>
                                             <FormLabel>End date</FormLabel>
                                             <FormControl>
-                                                <Input {...field} type="datetime-local" />
+                                                <Input {...field} type="date" />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>

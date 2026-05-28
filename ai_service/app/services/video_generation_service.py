@@ -1945,7 +1945,32 @@ class VideoGenerationService:
                         except _queue.Empty:
                             break
                     outputs = await _pipeline_future
-                
+
+                    # Pin the CONCRETE voice actually used by TTS so per-shot /
+                    # per-sentence re-narration reproduces the SAME voice
+                    # (fixes "regenerated audio uses a different voice"). The
+                    # pipeline stamps these once synthesis resolves a real voice
+                    # name — including a premium auto-pick or a mid-synth
+                    # edge→google fallback. Best-effort; never breaks generation.
+                    try:
+                        _rv_voice = getattr(pipeline, "_tts_voice_id_resolved", None)
+                        _rv_provider = getattr(pipeline, "_tts_provider_resolved", None)
+                        if _rv_voice:
+                            _vrec_rv = self.repository.get_by_video_id(video_id)
+                            _emeta_rv = dict((_vrec_rv.extra_metadata or {}) if _vrec_rv else {})
+                            _emeta_rv["resolved_voice"] = {
+                                "provider": _rv_provider,
+                                "voice_id": _rv_voice,
+                                "gender": voice_gender,
+                                "language": language,
+                            }
+                            self.repository.update_metadata(video_id, _emeta_rv)
+                    except Exception:
+                        logger.warning(
+                            "[VideoGenService] failed to persist resolved_voice for %s",
+                            video_id, exc_info=True,
+                        )
+
                 # Record token usage per stage.
                 #
                 # Use a FRESH session — the request-scoped `db_session` may have
@@ -3587,14 +3612,28 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             prior_intent = existing_thumbs.get("intent")
             prior_orientation = existing_thumbs.get("orientation")
 
+            # The user_selections snapshot carries the original avatar pick.
+            # We pull it once and reuse for both orientation fallback and the
+            # avatar-face thread-through below — saves loading the dict twice.
+            _meta = dict(record.extra_metadata or {})
+            _sel = _meta.get("user_selections") or {}
+
             # Best-effort: derive orientation from prior thumbnails, else fall
             # back to the user_selections snapshot the pipeline writes to meta.
             orientation = prior_orientation
             if not orientation:
-                _meta = dict(record.extra_metadata or {})
-                _sel = _meta.get("user_selections") or {}
                 orientation = _sel.get("orientation") or "landscape"
             orientation = "portrait" if orientation == "portrait" else "landscape"
+
+            # Carry the host face into regenerate. First-time generation pulls
+            # this from self._current_avatar_image_url; regenerate has no
+            # pipeline instance, so we read the snapshot the original run
+            # persisted to user_selections.avatar_image_url. Without this the
+            # regenerated thumbnail loses the host identity, which is exactly
+            # the regression the first-run fix was meant to close.
+            _avatar_face_url = _sel.get("avatar_image_url") if isinstance(_sel, dict) else None
+            if not isinstance(_avatar_face_url, str) or not _avatar_face_url.strip():
+                _avatar_face_url = None
 
             # Title comes from the user's original prompt. We deliberately
             # don't try to recover the script_plan's polished title here —
@@ -3641,6 +3680,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 director_plan=director_plan,
                 orientation=orientation,
                 subjects_list=[],
+                avatar_face_url=_avatar_face_url,
                 original_prompt=(record.prompt or "").strip() or None,
                 llm_chat=None,
             )

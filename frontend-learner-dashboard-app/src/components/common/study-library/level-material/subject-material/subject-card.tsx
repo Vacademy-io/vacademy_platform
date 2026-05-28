@@ -51,11 +51,11 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
   }, [subject.thumbnail_id]);
 
   return (
-    <div onClick={handleCardClick} className="cursor-pointer w-full h-[280px]">
+    <div onClick={handleCardClick} className="cursor-pointer w-full h-reg-280">
       <div
         className={`group h-full relative flex flex-col items-center justify-center gap-3 border rounded-xl border-neutral-200 bg-gradient-to-br from-white to-neutral-50/50 hover:from-primary-50/30 hover:to-blue-50/40 hover:border-primary-200/60 transition-all duration-200 px-4 py-3 w-full hover:shadow-sm hover:scale-[1.02]`}
       >
-        <div className="h-[65%] w-full">
+        <div className="h-[65%] w-full"> {/* design-lint-ignore: decorative positioning */}
           {imageUrl ? (
             <img
               src={imageUrl}

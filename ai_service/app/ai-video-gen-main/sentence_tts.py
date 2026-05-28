@@ -60,6 +60,11 @@ class TtsResult:
     audio_path: Path
     duration: float
     words: List[Dict[str, Any]]   # [{"word": str, "start": float, "end": float}]
+    # The provider/voice synthesis ACTUALLY used (after any silent fallback,
+    # e.g. premium Sarvam → Edge). Lets callers detect a voice downgrade and
+    # refuse to bake a mismatched voice. None when the pipeline didn't report it.
+    resolved_provider: Optional[str] = None
+    resolved_voice_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +124,15 @@ def synthesize_one_sentence(
                 words = []
 
         duration = _probe_duration(output_path)
-        return TtsResult(audio_path=output_path, duration=duration, words=words)
+        return TtsResult(
+            audio_path=output_path,
+            duration=duration,
+            words=words,
+            # `_synthesize_voice` stamps the concrete provider/voice it used
+            # (incl. a silent premium→edge fallback) onto the result dict.
+            resolved_provider=result.get("resolved_provider"),
+            resolved_voice_id=result.get("resolved_voice_id"),
+        )
 
 
 # ---------------------------------------------------------------------------

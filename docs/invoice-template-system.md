@@ -56,6 +56,15 @@ When Category is set to INVOICE or INVOICE_EMAIL, these merge tags appear in the
 | `{{payment_method}}` | Payment method used |
 | `{{transaction_id}}` | Transaction ID |
 | `{{payment_date}}` | Payment date |
+| `{{country}}` | Operating country name (from `INVOICE_SETTING.country`) |
+| `{{country_code}}` | ISO country code, uppercased (e.g. `IN`) |
+| `{{tax_registration_number}}` | Institute's tax registration number (GSTIN / VAT no.) |
+| `{{hsn_code}}` | HSN/SAC code (SAC for services such as courses) |
+| `{{tax_components}}` | HTML table of tax components (label, rate %, computed amount). Computed **per line item by package type** and summed across the invoice — see "Per-package-type tax" below |
+| `{{tax_label}}` | Tax line label from settings (e.g. `GST`) |
+| `{{tax_rate}}` | Default tax rate % from settings |
+
+> These country/tax values are configured in **Settings → Invoice Settings → Country & Tax Details** and resolved in `InvoiceService.replaceTemplatePlaceholders`.
 
 **Additional placeholders in the Invoice Email body:**
 
@@ -148,14 +157,40 @@ The email is only sent if the institute has enabled it:
 // Institute settings JSON → INVOICE_SETTING object
 {
   "sendInvoiceEmail": true,    // Must be true (default: false)
+  "generateInvoiceOnManualEnroll": false, // invoice on manual/bulk enroll
   "taxIncluded": false,
   "taxRate": 18.0,
   "taxLabel": "GST",
-  "currency": "INR"
+  "currency": "INR",
+  "country": {
+    "code": "in",
+    "name": "India",
+    "taxRegistrationNumber": "22AAAAA0000A1Z5",
+    "hsnSacCode": "999293",   // SAC for education services
+    "taxComponents": [        // default components (fallback)
+      { "label": "CGST", "rate": 9 },
+      { "label": "SGST", "rate": 9 }
+    ],
+    "taxComponentsByPackageType": {   // optional per-package-type overrides
+      "PRODUCT": [ { "label": "GST", "rate": 18 } ],
+      "COURSE":  []                   // empty -> falls back to default
+    }
+  }
 }
 ```
 
-This is configured in **Institute Settings → INVOICE_SETTING**.
+### Per-package-type tax
+
+When `taxComponents` or `taxComponentsByPackageType` is configured, invoice tax is
+computed **per line item by the line's package type** (`COURSE`, `PRODUCT`, `SERVICE`,
+`MEMBERSHIP`, `DELIVERY_CHARGE`, `SECURITY_DEPOSIT`), each line using its type's
+components or the default set, then summed across the invoice. `{{tax_components}}`
+renders the aggregated breakdown. The package type is resolved via
+UserPlan → EnrollInvite → PackageSession → PackageEntity.packageType. When **no**
+components are configured, the legacy single-`taxRate` computation runs unchanged.
+
+This is configured in **Settings → Invoice Settings** (admin dashboard), which also lists
+the INVOICE / INVOICE_EMAIL templates with shortcuts to create one of each type.
 
 ### Template Lookup Priority
 

@@ -441,8 +441,8 @@ export function CourseDetailsRatingsComponent({
             "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md",
             // Play Styles — solid, bold, Duolingo-style
-            "[.ui-play_&]:bg-[#235390] [.ui-play_&]:border-[#1a3d6d] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white",
-            "[.ui-play_&]:shadow-[0_4px_0_#1a3d6d]"
+            "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white",
+            "[.ui-play_&]:shadow-play-4d-navy"
         )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
@@ -458,7 +458,7 @@ export function CourseDetailsRatingsComponent({
                         "p-1 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-md shadow-sm",
                         "[.ui-vibrant_&]:bg-yellow-500/20 [.ui-vibrant_&]:text-yellow-600",
                         // Play Styles
-                        "[.ui-play_&]:bg-[#ffc800] [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_#e6b400]"
+                        "[.ui-play_&]:bg-play-gold [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-2d-gold"
                     )}>
                         <Star
                             size={14}
@@ -470,7 +470,7 @@ export function CourseDetailsRatingsComponent({
                         <h1 className="text-sm font-bold text-gray-900 tracking-tight leading-tight">
                             Ratings & Reviews
                         </h1>
-                        <p className="text-[11px] text-gray-600 flex items-center gap-1">
+                        <p className="text-caption text-gray-600 flex items-center gap-1">
                             <ChatCircle
                                 size={10}
                                 className="text-primary-500"
@@ -518,7 +518,7 @@ export function CourseDetailsRatingsComponent({
                                 />
                             </button>
                         ))}
-                        <span className="ml-1 text-[11px] text-neutral-500">
+                        <span className="ml-1 text-caption text-neutral-500">
                             {selectedRating
                                 ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
                                 : ""}
@@ -551,8 +551,8 @@ export function CourseDetailsRatingsComponent({
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-amber-50/50 dark:[.ui-vibrant_&]:bg-amber-950/20",
                             "[.ui-vibrant_&]:border-amber-200/50 dark:[.ui-vibrant_&]:border-amber-800/30",
                             // Play Styles — solid, bold, Duolingo-style
-                            "[.ui-play_&]:bg-[#ffc800] [.ui-play_&]:border-[#e6b400] [.ui-play_&]:rounded-2xl [.ui-play_&]:text-[#3c3c3c] [.ui-play_&]:font-bold",
-                            "[.ui-play_&]:shadow-[0_3px_0_#e6b400]"
+                            "[.ui-play_&]:bg-play-gold [.ui-play_&]:border-play-gold-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
+                            "[.ui-play_&]:shadow-play-3d-gold"
                         )}>
                             {/* Background pattern */}
                             <div className={cn(
@@ -623,7 +623,7 @@ export function CourseDetailsRatingsComponent({
                                                 key={stars}
                                                 className="flex items-center gap-2 sm:gap-3 group/bar"
                                             >
-                                                <div className="flex items-center space-x-1 text-xs font-medium text-gray-700 min-w-[50px]">
+                                                <div className="flex items-center space-x-1 text-xs font-medium text-gray-700 min-w-12">
                                                     <Star
                                                         size={12}
                                                         className="text-yellow-500"
@@ -637,7 +637,7 @@ export function CourseDetailsRatingsComponent({
                                                         className="h-1.5 bg-gray-200 rounded-full overflow-hidden group-hover/bar:h-2 transition-all duration-300"
                                                     />
                                                 </div>
-                                                <span className="text-xs font-bold text-gray-900 min-w-[40px] text-right">
+                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-right">
                                                     {percent}%
                                                 </span>
                                             </div>
@@ -691,7 +691,7 @@ export function CourseDetailsRatingsComponent({
                                 <h3 className="text-sm font-bold text-gray-900 mb-0.5">
                                     No reviews yet
                                 </h3>
-                                <p className="text-gray-600 text-[11px]">
+                                <p className="text-gray-600 text-caption">
                                     Be the first to share your experience with
                                     this course
                                 </p>

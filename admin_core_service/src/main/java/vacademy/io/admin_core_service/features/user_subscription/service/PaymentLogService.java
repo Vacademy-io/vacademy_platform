@@ -29,6 +29,8 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoicePaymentLogMappingRepository;
+import vacademy.io.admin_core_service.features.invoice.entity.InvoicePaymentLogMapping;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -92,6 +94,9 @@ public class PaymentLogService {
     @Autowired
     @Lazy
     private PaymentLogService self;
+
+    @Autowired
+    private InvoicePaymentLogMappingRepository invoicePaymentLogMappingRepository;
 
     @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
@@ -231,8 +236,14 @@ public class PaymentLogService {
         handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
 
         if (paymentLog.getUserPlan() == null) {
-            log.info("Payment marked as PAID for donation (sync path), sending donation confirmation notification");
-            handleDonationPaymentConfirmation(paymentLog, instituteId);
+            // Admin-created invoice: mark invoice as PAID
+            if (invoicePaymentLogMappingRepository.findFirstByPaymentLogId(paymentLog.getId()).isPresent()) {
+                log.info("Admin invoice payment PAID (sync path) for paymentLogId={}", paymentLog.getId());
+                invoiceService.markAdminInvoicePaidByPaymentLog(paymentLog.getId(), instituteId);
+            } else {
+                log.info("Payment marked as PAID for donation (sync path), sending donation confirmation notification");
+                handleDonationPaymentConfirmation(paymentLog, instituteId);
+            }
             return;
         }
 
@@ -256,15 +267,29 @@ public class PaymentLogService {
      * post-payment logic).
      */
     private String resolveInstituteIdForPaymentLog(PaymentLog paymentLog) {
-        if (paymentLog == null || paymentLog.getUserPlan() == null) {
+        if (paymentLog == null) return null;
+
+        // Normal enrollment path: resolve via UserPlan → EnrollInvite
+        if (paymentLog.getUserPlan() != null) {
+            try {
+                if (paymentLog.getUserPlan().getEnrollInvite() != null) {
+                    return paymentLog.getUserPlan().getEnrollInvite().getInstituteId();
+                }
+            } catch (Exception e) {
+                log.debug("Could not get instituteId from payment log {}: {}", paymentLog.getId(), e.getMessage());
+            }
             return null;
         }
+
+        // Admin-invoice path: resolve via InvoicePaymentLogMapping → Invoice.instituteId
         try {
-            if (paymentLog.getUserPlan().getEnrollInvite() != null) {
-                return paymentLog.getUserPlan().getEnrollInvite().getInstituteId();
-            }
+            return invoicePaymentLogMappingRepository
+                    .findFirstByPaymentLogId(paymentLog.getId())
+                    .map(m -> m.getInvoice().getInstituteId())
+                    .orElse(null);
         } catch (Exception e) {
-            log.debug("Could not get instituteId from payment log {}: {}", paymentLog.getId(), e.getMessage());
+            log.debug("Could not get instituteId via invoice mapping for payment log {}: {}",
+                    paymentLog.getId(), e.getMessage());
         }
         return null;
     }
@@ -435,11 +460,15 @@ public class PaymentLogService {
         // Handle payment success - mark ABANDONED_CART as DELETED
         handlePaymentSuccessEntryCleanup(paymentLog, instituteId);
 
-        // Check if this is a donation (null user plan ID)
+        // Check if this is an admin-invoice payment or donation (both have null userPlan)
         if (paymentLog.getUserPlan() == null) {
-            log.info("Payment marked as PAID for donation, sending donation confirmation notification");
-            // Handle donation payment confirmation
-            handleDonationPaymentConfirmation(paymentLog, instituteId);
+            if (invoicePaymentLogMappingRepository.findFirstByPaymentLogId(paymentLog.getId()).isPresent()) {
+                log.info("Admin invoice payment PAID (webhook path) for paymentLogId={}", paymentLog.getId());
+                invoiceService.markAdminInvoicePaidByPaymentLog(paymentLog.getId(), instituteId);
+            } else {
+                log.info("Payment marked as PAID for donation, sending donation confirmation notification");
+                handleDonationPaymentConfirmation(paymentLog, instituteId);
+            }
         } else {
             log.info("Payment marked as PAID, triggering applyOperationsOnFirstPayment for userPlan ID={}",
                     paymentLog.getUserPlan().getId());
@@ -727,8 +756,6 @@ public class PaymentLogService {
 
         validateFilter(filterDTO);
 
-        Sort sort = resolveSort(filterDTO);
-        Pageable pageable = PageRequest.of(pageNo, pageSize, sort);
         List<String> paymentStatuses = safeList(filterDTO.getPaymentStatuses());
         List<String> enrollInviteIds = safeList(filterDTO.getEnrollInviteIds());
         List<String> packageSessionIds = safeList(filterDTO.getPackageSessionIds());
@@ -738,19 +765,50 @@ public class PaymentLogService {
         LocalDateTime startDate = resolveStartDate(filterDTO);
         LocalDateTime endDate = resolveEndDate(filterDTO);
         String userId = StringUtils.hasText(filterDTO.getUserId()) ? filterDTO.getUserId() : null;
-        Page<PaymentLog> paymentLogsPage = paymentLogRepository.findPaymentLogIdsWithFilters(
+
+        // Boolean flags tell the query which IN clauses to skip (PostgreSQL can't type-infer NULL lists).
+        // When a filter is inactive, pass a sentinel list so JDBC binding always succeeds.
+        boolean noPaymentStatusFilter = paymentStatuses.isEmpty();
+        boolean noUserPlanStatusFilter = userPlanStatuses.isEmpty();
+        boolean noSourceFilter = sources.isEmpty();
+        boolean noEnrollInviteFilter = enrollInviteIds.isEmpty();
+        boolean noPackageSessionFilter = packageSessionIds.isEmpty();
+        // Invoice-path logs only appear when no user-plan-specific filter is active.
+        boolean includeInvoiceLogs = noUserPlanStatusFilter && noSourceFilter && noEnrollInviteFilter && noPackageSessionFilter;
+
+        List<String> SENTINEL = List.of("__none__");
+        List<String> paymentStatusesBound = noPaymentStatusFilter ? SENTINEL : paymentStatuses;
+        List<String> userPlanStatusesBound = noUserPlanStatusFilter ? SENTINEL : userPlanStatuses;
+        List<String> sourcesBound = noSourceFilter ? SENTINEL : sources;
+        List<String> enrollInviteIdsBound = noEnrollInviteFilter ? SENTINEL : enrollInviteIds;
+        List<String> packageSessionIdsBound = noPackageSessionFilter ? SENTINEL : packageSessionIds;
+
+        // Use unsorted pageable — ORDER BY is hardcoded in the native query (created_at DESC)
+        Pageable pageable = PageRequest.of(pageNo, pageSize);
+
+        Page<String> idsPage = paymentLogRepository.findCombinedPaymentLogIdsPaginated(
                 filterDTO.getInstituteId(),
                 startDate,
                 endDate,
-                paymentStatuses,
-                userPlanStatuses,
-                sources,
-                enrollInviteIds,
-                packageSessionIds,
+                paymentStatusesBound,
+                noPaymentStatusFilter,
+                userPlanStatusesBound,
+                noUserPlanStatusFilter,
+                sourcesBound,
+                noSourceFilter,
+                enrollInviteIdsBound,
+                noEnrollInviteFilter,
+                packageSessionIdsBound,
+                noPackageSessionFilter,
                 userId,
+                includeInvoiceLogs,
                 pageable);
 
-        List<PaymentLog> paymentLogs = paymentLogsPage.getContent();
+        List<String> ids = idsPage.getContent();
+        List<PaymentLog> paymentLogs = ids.isEmpty()
+                ? Collections.emptyList()
+                : paymentLogRepository.findPaymentLogsWithRelationshipsByIds(ids);
+
         Map<String, UserDTO> userMap = fetchUsers(paymentLogs);
         Map<String, Institute> instituteMap = fetchInstitutes(paymentLogs);
 
@@ -758,7 +816,7 @@ public class PaymentLogService {
                 .map(pl -> mapEntityToDTO(pl, userMap, instituteMap))
                 .collect(Collectors.toList());
 
-        return new PageImpl<>(content, pageable, paymentLogsPage.getTotalElements());
+        return new PageImpl<>(content, pageable, idsPage.getTotalElements());
     }
 
     // -------------------- Helper Methods --------------------

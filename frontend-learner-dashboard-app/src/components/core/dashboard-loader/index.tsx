@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component<
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-[400px] flex-col items-center justify-center rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-orange-50 px-6 py-12 text-center">
+        <div className="flex min-h-reg-400 flex-col items-center justify-center rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-orange-50 px-6 py-12 text-center">
           <div className="mb-6 rounded-full bg-red-100 p-4">
             <Warning className="size-12 text-red-600" />
           </div>
@@ -99,12 +99,12 @@ const VacademyLogoSVG = ({ className = "" }: { className?: string }) => (
     xmlns="http://www.w3.org/2000/svg"
   >
     <title>Loading</title>
-    <circle cx="40" cy="40" r="32" fill="#F8FAFC" />
+    <circle cx="40" cy="40" r="32" fill="#F8FAFC" /> {/* design-lint-ignore: SVG illustration fill */}
     <circle
       cx="40"
       cy="40"
       r="28"
-      stroke="#E2E8F0"
+      stroke="#E2E8F0" // design-lint-ignore: SVG illustration stroke
       strokeWidth="4"
       strokeDasharray="4 12"
       strokeLinecap="round"
@@ -114,13 +114,13 @@ const VacademyLogoSVG = ({ className = "" }: { className?: string }) => (
       cx="40"
       cy="40"
       r="28"
-      stroke="#6366F1"
+      stroke="#6366F1" // design-lint-ignore: SVG illustration stroke
       strokeWidth="4"
       strokeLinecap="round"
       strokeDasharray="60 110"
       transform="rotate(-90 40 40)"
     />
-    <circle cx="40" cy="40" r="6" fill="#6366F1" opacity="0.6" />
+    <circle cx="40" cy="40" r="6" fill="#6366F1" opacity="0.6" /> {/* design-lint-ignore: SVG illustration fill */}
   </svg>
 );
 

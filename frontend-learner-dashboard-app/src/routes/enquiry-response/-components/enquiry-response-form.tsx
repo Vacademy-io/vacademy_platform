@@ -610,7 +610,6 @@ const AudienceResponseForm = ({
                     placeholder="123 456 7890"
                     name="parentMobile"
                     control={form.control}
-                    country="in"
                     required={true}
                   />
 
@@ -795,7 +794,7 @@ const AudienceResponseForm = ({
                     scale="large"
                     layoutVariant="default"
                     disabled={loading}
-                    className="min-w-[120px]"
+                    className="min-w-32"
                   >
                     {loading ? "Submitting..." : "Submit Response"}
                   </MyButton>

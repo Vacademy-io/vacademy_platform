@@ -18,6 +18,8 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRespo
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceCommunication;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceCommunicationRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
+import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -65,6 +67,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.Random;
 import java.util.stream.Collectors;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.common.exceptions.VacademyException;
 
 /**
@@ -148,6 +151,24 @@ public class AudienceService {
     @Autowired
     private vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository leadScoreRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository userLeadProfileRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.repository.LeadStatusRepository leadStatusRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.counselor_pool.service.CounselorAssignmentService counselorAssignmentService;
+
+    @Autowired
+    private UserLeadProfileService userLeadProfileService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
+
+    @Autowired
+    private LeadFollowupRepository leadFollowupRepository;
+
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
 
@@ -183,7 +204,7 @@ public class AudienceService {
      * not need to pass it.
      */
     private void saveInstituteCustomFields(String audienceId, String instituteId,
-                                           List<InstituteCustomFieldDTO> dtos) {
+            List<InstituteCustomFieldDTO> dtos) {
         if (!StringUtils.hasText(audienceId) || !StringUtils.hasText(instituteId)) {
             return;
         }
@@ -274,6 +295,9 @@ public class AudienceService {
         if (StringUtils.hasText(audienceDTO.getSettingJson())) {
             audience.setSettingJson(audienceDTO.getSettingJson());
         }
+        // Allow explicit null to clear the floor; only update when the field is present
+        // in the request
+        audience.setDefaultInitialScore(audienceDTO.getDefaultInitialScore());
 
         Audience updated = audienceRepository.save(audience);
 
@@ -314,6 +338,7 @@ public class AudienceService {
                 .sendRespondentEmail(audience.getSendRespondentEmail())
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
+                .defaultInitialScore(audience.getDefaultInitialScore())
                 .createdByUserId(audience.getCreatedByUserId())
                 .instituteCustomFields(customFields)
                 .build();
@@ -322,7 +347,8 @@ public class AudienceService {
     /**
      * Get all campaigns for an institute with filters.
      *
-     * <p>Caller-level access scoping mirrors {@link #getLeads}: a user whose
+     * <p>
+     * Caller-level access scoping mirrors {@link #getLeads}: a user whose
      * effective access is {@code AUDIENCE_LIST} only sees the campaigns they
      * were granted; admins / root see everything. {@code COUNSELOR} mode does
      * not narrow the campaign list (counselors still see all campaign cards but
@@ -380,6 +406,7 @@ public class AudienceService {
                 .sendRespondentEmail(audience.getSendRespondentEmail())
                 .sessionId(audience.getSessionId())
                 .settingJson(audience.getSettingJson())
+                .defaultInitialScore(audience.getDefaultInitialScore())
                 .createdByUserId(audience.getCreatedByUserId())
                 .build());
     }
@@ -433,11 +460,13 @@ public class AudienceService {
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId) // Set user_id if created successfully
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                        .initialScore(audience.getDefaultInitialScore())
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);
                 logger.info("Saved audience response with ID: {} and user_id: {}",
                         savedResponse.getId(), userId != null ? userId : "null");
+                logLeadSubmitted(savedResponse);
 
                 // 3. Save custom field values
                 if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
@@ -459,12 +488,44 @@ public class AudienceService {
                             savedResponse.getAudienceId(),
                             instituteId,
                             savedResponse.getSourceType(),
-                            savedResponse.getEnquiryId()
-                    );
+                            savedResponse.getEnquiryId());
                 } catch (Exception e) {
                     logger.error("Failed to calculate initial lead score for response {}: {}",
                             savedResponse.getId(), e.getMessage());
                     // Non-blocking — lead is still saved even if scoring fails
+                }
+
+                // 3c. Counselor pool auto-assignment. If the audience belongs to a pool, the
+                // pool's mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this
+                // lead and writes that to user_lead_profile.assigned_counselor_id. MANUAL pools
+                // and audiences not in any pool return Optional.empty() and we leave the lead
+                // unassigned. The full_name lookup mirrors what the manual-assign UI does so
+                // the Counsellor column on lead-list pages renders the name (the UI checks
+                // assigned_counselor_name; an id-without-name shows up as Unassigned).
+                // Non-blocking — submission still succeeds if routing fails.
+                final String leadUserIdForAssignment = userId;
+                final String instituteIdForAssignment = instituteId;
+                try {
+                    counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+                            .ifPresent(counselorUserId -> {
+                                String counselorName = null;
+                                try {
+                                    List<UserDTO> fetched = authService
+                                            .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+                                    if (!fetched.isEmpty() && fetched.get(0) != null) {
+                                        counselorName = fetched.get(0).getFullName();
+                                    }
+                                } catch (Exception nameLookupFailure) {
+                                    logger.warn("Could not fetch counselor name for {}: {}",
+                                            counselorUserId, nameLookupFailure.getMessage());
+                                }
+                                userLeadProfileService.assignCounselor(
+                                        leadUserIdForAssignment, instituteIdForAssignment,
+                                        counselorUserId, counselorName);
+                            });
+                } catch (Exception e) {
+                    logger.error("Failed to auto-assign counselor for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
                 }
 
                 // 4. Build custom field map for email
@@ -541,7 +602,8 @@ public class AudienceService {
                     contextData.put("audience", audienceDTO);
                     contextData.put("audienceId", requestDTO.getAudienceId());
                     contextData.put("instituteId", instituteId);
-                    contextData.put("instituteName", instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
+                    contextData.put("instituteName",
+                            instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
                     contextData.put("customFields", customFieldsForEmail);
                     contextData.put("submissionTime", submissionTime);
                     contextData.put("responseId", savedResponse.getId());
@@ -671,7 +733,8 @@ public class AudienceService {
                         adminEmailRequest.setBody(adminEmailBody);
 
                         try {
-                            notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest, instituteIdForNotification);
+                            notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest,
+                                    instituteIdForNotification);
                             logger.info("Sent default admin notification to: {}", trimmedEmail);
                         } catch (Exception ex) {
                             logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
@@ -737,11 +800,13 @@ public class AudienceService {
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId)
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                        .initialScore(audience.getDefaultInitialScore())
                         .build();
 
                 AudienceResponse savedResponse = audienceResponseRepository.save(response);
                 logger.info("[V2] Saved audience response with ID: {} and user_id: {}",
                         savedResponse.getId(), userId);
+                logLeadSubmitted(savedResponse);
 
                 // 3. Save custom field values
                 if (!CollectionUtils.isEmpty(requestDTO.getCustomFieldValues())) {
@@ -761,8 +826,7 @@ public class AudienceService {
                             savedResponse.getAudienceId(),
                             instituteId,
                             savedResponse.getSourceType(),
-                            savedResponse.getEnquiryId()
-                    );
+                            savedResponse.getEnquiryId());
                 } catch (Exception e) {
                     logger.error("[V2] Failed to calculate initial lead score for response {}: {}",
                             savedResponse.getId(), e.getMessage());
@@ -829,7 +893,8 @@ public class AudienceService {
                 contextData.put("audience", audienceDTO); // Audience details
                 contextData.put("audienceId", requestDTO.getAudienceId());
                 contextData.put("instituteId", instituteId);
-                contextData.put("instituteName", instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
+                contextData.put("instituteName",
+                        instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
                 contextData.put("customFields", customFieldsForEmail); // Map of custom field name -> value
                 contextData.put("submissionTime", submissionTime);
                 contextData.put("responseId", savedResponse.getId());
@@ -898,7 +963,7 @@ public class AudienceService {
      */
     @Transactional
     public SubmitLeadWithEnquiryResponseDTO submitWalkIn(WalkInRegistrationDTO walkInDTO,
-                                                          vacademy.io.common.auth.model.CustomUserDetails user) {
+            vacademy.io.common.auth.model.CustomUserDetails user) {
         logger.info("Registering walk-in lead for audience: {}", walkInDTO.getAudienceId());
 
         // Build parent UserDTO
@@ -970,6 +1035,7 @@ public class AudienceService {
                             .percentileRank(score.getPercentileRank())
                             .scoringFactors(factors)
                             .lastCalculatedAt(score.getLastCalculatedAt())
+                            .isManualOverride(Boolean.TRUE.equals(score.getIsManualOverride()))
                             .build();
                 })
                 .orElse(LeadScoreDTO.builder()
@@ -977,6 +1043,115 @@ public class AudienceService {
                         .rawScore(0)
                         .tier("COLD")
                         .build());
+    }
+
+    /**
+     * Manually set the score for a lead. Pass null to clear the override and
+     * restore calculated score.
+     * Writes directly to raw_score so the score propagates everywhere (badges,
+     * lists, profile).
+     */
+    @Transactional
+    public LeadScoreDTO setManualScore(String responseId, Integer score, String actorId, String actorName) {
+        if (score != null && (score < 0 || score > 100)) {
+            throw new IllegalArgumentException("Score must be between 0 and 100");
+        }
+        LeadScore leadScore = leadScoreRepository.findByAudienceResponseId(responseId)
+                .orElseThrow(() -> new RuntimeException("Lead score not found for response: " + responseId));
+
+        Integer oldScore = leadScore.getRawScore();
+
+        if (score != null) {
+            // Distribute the manual score proportionally across all 4 factors (uniform
+            // factor score = target),
+            // then apply largest-remainder so contributions sum exactly to the target
+            // score.
+            int[] weights = { 25, 30, 25, 20 };
+            String[] keys = { "source_quality", "profile_completeness", "recency", "engagement" };
+            int[] contributions = new int[4];
+            double[] remainders = new double[4];
+            int floorSum = 0;
+            for (int i = 0; i < 4; i++) {
+                double exact = score * weights[i] / 100.0;
+                contributions[i] = (int) exact;
+                remainders[i] = exact - contributions[i];
+                floorSum += contributions[i];
+            }
+            Integer[] order = { 0, 1, 2, 3 };
+            java.util.Arrays.sort(order, (a, b) -> Double.compare(remainders[b], remainders[a]));
+            int leftover = score - floorSum;
+            for (int i = 0; i < leftover; i++)
+                contributions[order[i]]++;
+
+            java.util.Map<String, Object> factors = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < 4; i++) {
+                factors.put(keys[i], java.util.Map.of(
+                        "score", score,
+                        "weight", weights[i],
+                        "contribution", contributions[i]));
+            }
+            String factorsJson = null;
+            try {
+                factorsJson = new ObjectMapper().writeValueAsString(factors);
+            } catch (Exception e) {
+                logger.warn("Failed to serialize manual scoring factors for response={}", responseId, e);
+            }
+
+            leadScore.setRawScore(score);
+            leadScore.setScoringFactorsJson(factorsJson);
+            leadScore.setIsManualOverride(true);
+            leadScore.setLastCalculatedAt(new java.sql.Timestamp(System.currentTimeMillis()));
+            leadScoreRepository.save(leadScore);
+        } else {
+            // Clear override — unlock auto-recalculation and immediately restore the
+            // computed score.
+            leadScore.setIsManualOverride(false);
+            leadScoreRepository.save(leadScore);
+            leadScoringService.recalculateScore(responseId);
+        }
+
+        // Rebuild UserLeadProfile so best_score / lead_tier propagate to all displays.
+        AudienceResponse response = null;
+        try {
+            response = audienceResponseRepository.findById(responseId).orElse(null);
+            if (response != null) {
+                String userId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+                if (userId != null) {
+                    userLeadProfileService.buildOrUpdateProfile(userId, leadScore.getInstituteId());
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to rebuild user_lead_profile after manual score update for response={}", responseId, e);
+        }
+
+        // Log the manual score override as a journey event.
+        try {
+            String title = score != null
+                    ? "Score manually set to " + score
+                    : "Manual score override cleared";
+            java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
+            if (oldScore != null)
+                meta.put("old_score", oldScore);
+            if (score != null)
+                meta.put("new_score", score);
+            meta.put("override_active", score != null);
+            if (actorName != null)
+                meta.put("actor_name", actorName);
+            timelineEventService.logJourneyEvent(
+                    "AUDIENCE_RESPONSE", responseId,
+                    LeadJourneyActionType.MANUAL_SCORE_UPDATE,
+                    "ADMIN", actorId, actorName,
+                    title, null,
+                    meta,
+                    response != null
+                            ? (response.getUserId() != null ? response.getUserId() : response.getStudentUserId())
+                            : null);
+        } catch (Exception e) {
+            logger.warn("Failed to log MANUAL_SCORE_UPDATE journey event for response={}: {}", responseId,
+                    e.getMessage(), e);
+        }
+
+        return getLeadScore(responseId);
     }
 
     /**
@@ -1105,12 +1280,13 @@ public class AudienceService {
                 .parentMobile(requestDTO.getParentMobile())
                 .overallStatus("ENQUIRY")
                 .dedupeKey(dedupeKey)
+                .initialScore(audience.getDefaultInitialScore())
                 .build();
 
         // Check for duplicate within this campaign
         if (dedupeKey != null) {
-            java.util.Optional<AudienceResponse> existingPrimary =
-                    leadDeduplicationService.findDuplicate(requestDTO.getAudienceId(), dedupeKey);
+            java.util.Optional<AudienceResponse> existingPrimary = leadDeduplicationService
+                    .findDuplicate(requestDTO.getAudienceId(), dedupeKey);
             if (existingPrimary.isPresent()) {
                 leadDeduplicationService.markDuplicate(response, existingPrimary.get(), requestDTO.getSourceType());
                 logger.info("Duplicate lead detected for campaign {}, primary={}",
@@ -1121,6 +1297,7 @@ public class AudienceService {
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
         logger.info("Saved audience response with ID: {} linked to enquiry: {} with parent user_id: {}",
                 savedResponse.getId(), enquiryId, parentUserId);
+        logLeadSubmitted(savedResponse);
 
         // STEP 4b: Calculate initial lead score (real-time)
         try {
@@ -1129,8 +1306,7 @@ public class AudienceService {
                     savedResponse.getAudienceId(),
                     instituteId,
                     savedResponse.getSourceType(),
-                    savedResponse.getEnquiryId()
-            );
+                    savedResponse.getEnquiryId());
         } catch (Exception e) {
             logger.error("Failed to calculate initial lead score for response {}: {}",
                     savedResponse.getId(), e.getMessage());
@@ -1213,8 +1389,7 @@ public class AudienceService {
                 parentUserId,
                 childUserId,
                 enquiryId != null ? enquiryId.toString() : null,
-                requestDTO.getSourceType()
-        );
+                requestDTO.getSourceType());
 
         // STEP 9: Build and return response
         return SubmitLeadWithEnquiryResponseDTO.builder()
@@ -1294,6 +1469,26 @@ public class AudienceService {
                 enquiryRepository.save(enquiry);
 
                 logger.info("Successfully linked counselor {} to enquiry {}", finalCounsellorId, enquiry.getId());
+                emitLeadAssigned(instituteId, audienceId, enquiry.getId().toString(), finalCounsellorId);
+
+                // Log journey event — covers both manual and pool-based (auto) assignments
+                try {
+                    String assignmentSource = StringUtils.hasText(counsellorId) ? "MANUAL" : "AUTO";
+                    timelineEventService.logJourneyEvent(
+                            "ENQUIRY", enquiry.getId().toString(),
+                            LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                            StringUtils.hasText(counsellorId) ? "ADMIN" : "SYSTEM",
+                            finalCounsellorId, null,
+                            "Counselor assigned",
+                            "Counselor assigned via " + assignmentSource,
+                            Map.of("counselor_id", finalCounsellorId,
+                                    "assignment_source", assignmentSource,
+                                    "audience_id", audienceId != null ? audienceId : ""),
+                            null);
+                } catch (Exception e) {
+                    logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
+                            enquiry.getId(), e.getMessage());
+                }
             } else {
                 logger.warn("Counselor validation failed for counselorId: {}", finalCounsellorId);
                 enquiry.setAssignedUserId(false);
@@ -1373,7 +1568,8 @@ public class AudienceService {
 
     /**
      * @deprecated Replaced by {@link LeadDistributionService#selectCounselor}.
-     * Kept for backward compatibility — remove after confirming no external callers.
+     *             Kept for backward compatibility — remove after confirming no
+     *             external callers.
      */
     @Deprecated
     private String selectRandomCounselor(List<String> counsellorIds) {
@@ -1455,13 +1651,13 @@ public class AudienceService {
      * <p>
      * Caller-level access scoping (Phase 1 of role-based filtering):
      * <ul>
-     *   <li>ADMIN / root user → sees every lead, may explicitly filter by
-     *       {@code assignedCounselorId} or by lead tier.</li>
-     *   <li>COUNSELOR (without ADMIN) → automatically scoped to leads where the
-     *       linked counselor is the caller, regardless of what the request body
-     *       sent for {@code assignedCounselorId}.</li>
-     *   <li>Any other role → unchanged (no auto-scoping); per-resource list
-     *       access will land in a later phase.</li>
+     * <li>ADMIN / root user → sees every lead, may explicitly filter by
+     * {@code assignedCounselorId} or by lead tier.</li>
+     * <li>COUNSELOR (without ADMIN) → automatically scoped to leads where the
+     * linked counselor is the caller, regardless of what the request body
+     * sent for {@code assignedCounselorId}.</li>
+     * <li>Any other role → unchanged (no auto-scoping); per-resource list
+     * access will land in a later phase.</li>
      * </ul>
      */
     @Transactional(readOnly = true)
@@ -1472,7 +1668,8 @@ public class AudienceService {
 
         // Convert list filters to comma-separated strings for native query
         String overallStatusStr = filterDTO.getOverallStatuses() != null && !filterDTO.getOverallStatuses().isEmpty()
-                ? String.join(",", filterDTO.getOverallStatuses()) : null;
+                ? String.join(",", filterDTO.getOverallStatuses())
+                : null;
 
         // Caller-level access scoping driven by the institute's
         // AUDIENCE_ROLE_ACCESS setting. Admin / root resolve to DEFAULT;
@@ -1528,6 +1725,18 @@ public class AudienceService {
             }
         }
 
+        // Resolve the institute's tatHours up-front so the SLA-state filter can derive
+        // the deadline live as `submitted_at + tatHours`. Needs to happen BEFORE the
+        // repo call because the predicate is bound at query time. Returns null when
+        // the institute hasn't enabled TAT — SQL guards with `:tatHours IS NOT NULL`.
+        Integer filterTatHours = resolveFilterTatHours(
+                filterDTO.getInstituteId() != null && !filterDTO.getInstituteId().isBlank()
+                        ? filterDTO.getInstituteId()
+                        : (filterDTO.getAudienceId() != null
+                            ? audienceRepository.findById(filterDTO.getAudienceId())
+                                    .map(Audience::getInstituteId).orElse(null)
+                            : null));
+
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
         // view.
@@ -1537,6 +1746,7 @@ public class AudienceService {
                 && !filterDTO.getInstituteId().isBlank()) {
             Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
                     filterDTO.getInstituteId(),
+                    filterDTO.getLeadStatusId(),
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
@@ -1545,8 +1755,10 @@ public class AudienceService {
                     filterDTO.getAssignedCounselorId(),
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
+                    filterDTO.getSlaFilter(),
+                    filterTatHours,
                     pageable);
-            return mapResponsesToLeadDetails(all);
+            return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
 
         // Serialize dropdown filters to a JSON array string the native query
@@ -1556,6 +1768,7 @@ public class AudienceService {
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
+                filterDTO.getLeadStatusId(),
                 filterDTO.getSourceType(),
                 filterDTO.getSourceId(),
                 filterDTO.getSubmittedFromLocal(),
@@ -1571,11 +1784,23 @@ public class AudienceService {
                 overallStatusStr,
                 customFieldFiltersJson,
                 conversionStatusFilter,
+                filterDTO.getSlaFilter(),
+                filterTatHours,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 pageable);
 
-        return mapResponsesToLeadDetails(responses);
+        // Resolve the institute for SLA-deadline computation: the filter usually
+        // carries it, else
+        // derive it from the campaign's audience (all leads here belong to one audience
+        // → one institute).
+        String campaignInstituteId = filterDTO.getInstituteId();
+        if ((campaignInstituteId == null || campaignInstituteId.isBlank())
+                && filterDTO.getAudienceId() != null) {
+            campaignInstituteId = audienceRepository.findById(filterDTO.getAudienceId())
+                    .map(Audience::getInstituteId).orElse(null);
+        }
+        return mapResponsesToLeadDetails(responses, campaignInstituteId);
     }
 
     private String serializeCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
@@ -1600,7 +1825,28 @@ public class AudienceService {
         }
     }
 
-    private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses) {
+    /**
+     * Reads the institute's TAT hours from LEAD_SETTING for use in the SLA-state filter
+     * (the predicate derives `tat_due_at = submitted_at + tatHours` live so it matches
+     * the row-level badge regardless of scheduler timing). Returns null when the institute
+     * has no setting, TAT is disabled, or any read failure — the SQL guards with
+     * `:tatHours IS NOT NULL` so a null safely turns the predicate off.
+     */
+    private Integer resolveFilterTatHours(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return null;
+        try {
+            vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla =
+                    leadSlaConfigService.getSchedulerConfig(instituteId);
+            if (sla != null && sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
+                return sla.getTatReminder().getTatHours();
+            }
+        } catch (Exception ex) {
+            logger.warn("Failed to read TAT hours for SLA filter (institute={}): {}", instituteId, ex.getMessage());
+        }
+        return null;
+    }
+
+    private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses, String instituteId) {
         List<AudienceResponse> content = responses.getContent();
 
         // Batch fetch UserDTOs
@@ -1615,9 +1861,71 @@ public class AudienceService {
 
         // Batch fetch lead scores
         List<String> responseIds = content.stream().map(AudienceResponse::getId).collect(Collectors.toList());
-        Map<String, LeadScore> scoreByResponseId =
-                leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
-                        .collect(Collectors.toMap(LeadScore::getAudienceResponseId, s -> s, (a, b) -> a));
+        Map<String, LeadScore> scoreByResponseId = leadScoreRepository.findByAudienceResponseIdIn(responseIds).stream()
+                .collect(Collectors.toMap(LeadScore::getAudienceResponseId, s -> s, (a, b) -> a));
+
+        // SLA deadlines: read the institute's TAT / follow-up config once. tatHours /
+        // followUpSlaHours
+        // stay null when the institute hasn't enabled that SLA, so we don't show a
+        // meaningless deadline.
+        Integer tatHours = null;
+        Integer followUpSlaHours = null;
+        if (instituteId != null && !instituteId.isBlank()) {
+            try {
+                vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla = leadSlaConfigService
+                        .getSchedulerConfig(instituteId);
+                if (sla != null) {
+                    if (sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
+                        tatHours = sla.getTatReminder().getTatHours();
+                    }
+                    if (sla.getFollowUp() != null && sla.getFollowUp().isEnabled()) {
+                        followUpSlaHours = sla.getFollowUp().getFollowUpSlaHours();
+                    }
+                }
+            } catch (Exception ex) {
+                logger.warn("Failed to read SLA config for institute {}: {}", instituteId, ex.getMessage());
+            }
+        }
+        // Counsellor activity drives BOTH TAT and follow-up displays — single source of
+        // truth.
+        // firstActionAt = MIN(timeline_event by assigned counsellor) → "Reach out by →
+        // ✓ Responded"
+        // lastActionAt = MAX(timeline_event by assigned counsellor) → follow-up
+        // deadline
+        // TAT is now strictly "time the counsellor took to log their first
+        // note/call/activity";
+        // status changes by admins no longer count. Fetch when
+        // EITHER TAT or follow-up SLA is on.
+        final Integer followUpSlaHoursFinal = followUpSlaHours;
+        final Integer tatHoursFinal = tatHours;
+        final List<vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection> counselorActions = ((tatHours != null
+                || followUpSlaHours != null) && !responseIds.isEmpty())
+                        ? audienceResponseRepository.findCounselorActionsByResponseIds(responseIds)
+                        : Collections.emptyList();
+        final Map<String, Timestamp> firstActionByResponseId = counselorActions.stream()
+                .filter(p -> p.getLeadId() != null && p.getFirstActionAt() != null)
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getFirstActionAt,
+                        (a, b) -> a));
+        final Map<String, Timestamp> lastActionByResponseId = counselorActions.stream()
+                .filter(p -> p.getLeadId() != null && p.getLastActionAt() != null)
+                .collect(Collectors.toMap(
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
+                        vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLastActionAt,
+                        (a, b) -> a));
+
+        // Counsellor-scheduled callbacks override the SLA-derived deadline in the "Follow up at"
+        // column. We pick the earliest OPEN row per lead — that is the next callback the counsellor
+        // promised. If nothing is scheduled, we fall back to lastAction + followUpSlaHours (and
+        // ultimately to null → the cell shows the em-dash placeholder).
+        final Map<String, Timestamp> scheduledFollowupByResponseId = !responseIds.isEmpty()
+                ? leadFollowupRepository.findOpenByAudienceResponseIds(responseIds).stream()
+                        .collect(Collectors.toMap(
+                                LeadFollowup::getAudienceResponseId,
+                                LeadFollowup::getScheduleTime,
+                                (a, b) -> a.before(b) ? a : b))
+                : Collections.emptyMap();
 
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
         List<String> enquiryIds = content.stream()
@@ -1627,6 +1935,39 @@ public class AudienceService {
         Map<String, String> enquiryIdToCounselor = enquiryIds.isEmpty() ? Collections.emptyMap()
                 : linkedUsersRepository.findBySourceAndSourceIdIn("ENQUIRY", enquiryIds).stream()
                         .collect(Collectors.toMap(LinkedUsers::getSourceId, LinkedUsers::getUserId, (a, b) -> a));
+
+        // Lead status (= user's conversion_status) + first_response_at both come from
+        // user_lead_profile.
+        // first_response_at is set the first time the lead's status moves off the
+        // default 'LEAD'
+        // (admin- or counselor-initiated), which is what the leads-table "Reach out by
+        // → ✓ Responded
+        // in N" display reads. Keep the full profile entity so we can read both fields
+        // per row.
+        Map<String, vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile> userIdToProfile = userIds
+                .isEmpty() ? Collections.emptyMap()
+                        : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
+                                .collect(Collectors.toMap(
+                                        vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
+                                        p -> p,
+                                        (a, b) -> a));
+
+        // Pipeline status: prefer the lead's lead_status_id (set from the leads UI via
+        // the
+        // lead-status API) resolved to its catalog key; fall back to conversion_status
+        // for
+        // legacy leads never moved onto the new status system.
+        List<String> leadStatusIds = content.stream()
+                .map(AudienceResponse::getLeadStatusId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        Map<String, String> leadStatusIdToKey = leadStatusIds.isEmpty() ? Collections.emptyMap()
+                : leadStatusRepository.findAllById(leadStatusIds).stream()
+                        .collect(Collectors.toMap(
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getId,
+                                vacademy.io.admin_core_service.features.audience.entity.LeadStatus::getStatusKey,
+                                (a, b) -> a));
 
         // Batch fetch all custom field values for these responses
         List<CustomFieldValues> allCfValues = customFieldValuesRepository
@@ -1690,7 +2031,32 @@ public class AudienceService {
 
             var score = scoreByResponseId.get(response.getId());
             String counselorId = response.getEnquiryId() != null
-                    ? enquiryIdToCounselor.get(response.getEnquiryId()) : null;
+                    ? enquiryIdToCounselor.get(response.getEnquiryId())
+                    : null;
+
+            // Reach-out deadline = submitted_at + tatHours (computed live when TAT is on;
+            // else the
+            // scheduler-stamped value, which may be null). Follow-up deadline = last
+            // counselor action
+            // + followUpSlaHours (null until the counselor has acted at least once).
+            Timestamp computedTatDueAt = (tatHoursFinal != null && response.getSubmittedAt() != null)
+                    ? Timestamp.from(response.getSubmittedAt().toInstant().plusSeconds(tatHoursFinal * 3600L))
+                    : response.getTatDueAt();
+            Timestamp lastAction = lastActionByResponseId.get(response.getId());
+            // "Follow up at" = ONLY a counsellor-explicitly-scheduled callback (a row in
+            // `lead_followup`). Do NOT auto-fill from the SLA deadline (last action +
+            // followUpSlaHours) — the cell is about "when did the counsellor promise to call
+            // back", not "when does the SLA reminder fire". The SLA breach is surfaced
+            // separately via tat_reminder_stage / follow_up_overdue.
+            Timestamp computedFollowUpDueAt = scheduledFollowupByResponseId.get(response.getId());
+            // First-response timestamp powers the "Reach out by → ✓ Responded" display.
+            // Strict TAT definition: first counsellor activity (timeline_event by assigned
+            // counsellor)
+            // minus submitted_at. Status changes by admins do NOT count — only real
+            // activity.
+            vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile profile = response
+                    .getUserId() != null ? userIdToProfile.get(response.getUserId()) : null;
+            Timestamp firstResponseAt = firstActionByResponseId.get(response.getId());
 
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
@@ -1709,16 +2075,32 @@ public class AudienceService {
                     .overallStatus(response.getOverallStatus())
                     .conversionStatus(response.getConversionStatus())
                     .enquiryId(response.getEnquiryId())
+                    .leadStatus(
+                            response.getLeadStatusId() != null
+                                    && leadStatusIdToKey.containsKey(response.getLeadStatusId())
+                                            ? leadStatusIdToKey.get(response.getLeadStatusId())
+                                            : (profile != null ? profile.getConversionStatus() : null))
                     .parentName(response.getParentName())
                     .parentEmail(response.getParentEmail())
                     .parentMobile(response.getParentMobile())
                     .leadScore(score != null ? score.getRawScore() : null)
                     .leadTier(score != null ? score.getTier() : null)
                     .percentileRank(score != null && score.getPercentileRank() != null
-                            ? score.getPercentileRank().doubleValue() : null)
+                            ? score.getPercentileRank().doubleValue()
+                            : null)
                     .assignedCounselorId(counselorId)
                     .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
-                            ? sourceAudienceIdToName.get(response.getSourceId()) : null)
+                            ? sourceAudienceIdToName.get(response.getSourceId())
+                            : null)
+                    .tatDueAt(computedTatDueAt)
+                    .firstResponseAt(firstResponseAt)
+                    .followUpDueAt(computedFollowUpDueAt)
+                    .tatReminderStage(response.getTatReminderStage())
+                    .tatOverdue(LeadTriggerContextBuilder.STAGE_TAT_OVERDUE.equals(response.getTatReminderStage()))
+                    .followUpOverdue(
+                            LeadTriggerContextBuilder.STAGE_FOLLOW_UP_OVERDUE.equals(response.getTatReminderStage()))
+                    .tatDueSoon(LeadTriggerContextBuilder.STAGE_TAT_BEFORE.equals(response.getTatReminderStage())
+                            || LeadTriggerContextBuilder.STAGE_FOLLOW_UP_DUE.equals(response.getTatReminderStage()))
                     .build();
         });
     }
@@ -2374,10 +2756,12 @@ public class AudienceService {
                 .sourceId(formProvider + "_WEBHOOK")
                 .userId(userId)
                 .workflowActivateDayAt(workflowActivateDayAt)
+                .initialScore(audience.getDefaultInitialScore())
                 .build();
 
         AudienceResponse savedResponse = audienceResponseRepository.save(response);
         logger.info("Saved audience response: responseId={}, userId={}", savedResponse.getId(), userId);
+        logLeadSubmitted(savedResponse);
 
         // 3. Map field_name to custom_field_id and save custom field values
         if (processedData.getFormFields() != null && !processedData.getFormFields().isEmpty()) {
@@ -2443,7 +2827,8 @@ public class AudienceService {
         contextData.put("audience", audienceDTO);
         contextData.put("audienceId", audienceId);
         contextData.put("instituteId", instituteId);
-        contextData.put("instituteName", instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
+        contextData.put("instituteName",
+                instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
         contextData.put("customFields", customFieldsForEmail);
         contextData.put("submissionTime", submissionTime);
         contextData.put("responseId", savedResponse.getId());
@@ -2723,20 +3108,23 @@ public class AudienceService {
                             .leadScore(leadScore != null ? leadScore.getRawScore() : null)
                             .leadTier(leadScore != null ? leadScore.getTier() : null)
                             .percentileRank(leadScore != null && leadScore.getPercentileRank() != null
-                                    ? leadScore.getPercentileRank().doubleValue() : null)
+                                    ? leadScore.getPercentileRank().doubleValue()
+                                    : null)
                             .build();
                 })
                 .collect(Collectors.toList());
 
-        // Post-fetch: filter by lead tier (requires lead_score join not available in JPQL query)
+        // Post-fetch: filter by lead tier (requires lead_score join not available in
+        // JPQL query)
         String leadTier = filterDTO.getLeadTier();
         List<EnquiryWithResponseDTO> filteredDtos = dtos;
         if (leadTier != null && !leadTier.isBlank()) {
             filteredDtos = dtos.stream().filter(dto -> {
                 Integer score = dto.getLeadScore();
-                if (score == null) return false;
+                if (score == null)
+                    return false;
                 return switch (leadTier.toUpperCase()) {
-                    case "HOT"  -> score >= 80;
+                    case "HOT" -> score >= 80;
                     case "WARM" -> score >= 50 && score < 80;
                     case "COLD" -> score < 50;
                     default -> true;
@@ -3066,6 +3454,23 @@ public class AudienceService {
 
                         updatedCounsellorId = requestDTO.getCounsellorId();
                         logger.info("Updated counselor assignment to: {}", updatedCounsellorId);
+                        emitLeadAssigned(instituteId, response.getAudienceId(),
+                                response.getEnquiryId(), updatedCounsellorId);
+
+                        try {
+                            timelineEventService.logJourneyEvent(
+                                    "ENQUIRY", response.getEnquiryId(),
+                                    LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                                    "ADMIN", updatedCounsellorId, null,
+                                    "Counselor reassigned",
+                                    "Counselor manually reassigned",
+                                    Map.of("counselor_id", updatedCounsellorId,
+                                            "assignment_source", "MANUAL"),
+                                    null);
+                        } catch (Exception e) {
+                            logger.warn("Failed to log COUNSELOR_ASSIGNED journey event for enquiry {}: {}",
+                                    response.getEnquiryId(), e.getMessage());
+                        }
                     } else {
                         logger.warn("Counselor validation failed for ID: {}, skipping counselor update",
                                 requestDTO.getCounsellorId());
@@ -3284,8 +3689,10 @@ public class AudienceService {
     /**
      * Bulk submit leads with enquiry (CSV import-friendly).
      * <p>
-     * This endpoint loops through rows and delegates the actual persistence to the existing
-     * single-row {@link #submitLeadWithEnquiry(SubmitLeadWithEnquiryRequestDTO)} method.
+     * This endpoint loops through rows and delegates the actual persistence to the
+     * existing
+     * single-row {@link #submitLeadWithEnquiry(SubmitLeadWithEnquiryRequestDTO)}
+     * method.
      * It returns per-row results so that one failing row does not block the others.
      */
     public BulkSubmitLeadWithEnquiryResponseDTO bulkSubmitLeadWithEnquiry(
@@ -3354,7 +3761,8 @@ public class AudienceService {
 
             // Lightweight normalization only (no extra required-field checks).
             // Mandatory fields (ensured by frontend team):
-            // - child_user_dto.full_name, child_user_dto.gender, child_user_dto.date_of_birth
+            // - child_user_dto.full_name, child_user_dto.gender,
+            // child_user_dto.date_of_birth
             // - parent_name, parent_email, parent_mobile
             row.setParentName(row.getParentName().trim());
             row.setParentEmail(row.getParentEmail().trim().toLowerCase());
@@ -3437,13 +3845,13 @@ public class AudienceService {
             }
         }
 
-        BulkSubmitLeadWithEnquiryResponseDTO.SummaryDTO summary =
-                BulkSubmitLeadWithEnquiryResponseDTO.SummaryDTO.builder()
-                        .totalRequested(results.size())
-                        .successful(success)
-                        .failed(failed)
-                        .skipped(skipped)
-                        .build();
+        BulkSubmitLeadWithEnquiryResponseDTO.SummaryDTO summary = BulkSubmitLeadWithEnquiryResponseDTO.SummaryDTO
+                .builder()
+                .totalRequested(results.size())
+                .successful(success)
+                .failed(failed)
+                .skipped(skipped)
+                .build();
 
         return BulkSubmitLeadWithEnquiryResponseDTO.builder()
                 .summary(summary)
@@ -3452,15 +3860,18 @@ public class AudienceService {
     }
 
     /**
-     * Send a message (WhatsApp, Email, Push, or System Alert) to leads in an audience campaign.
-     * Resolves per-recipient template variables from system fields and custom field values.
+     * Send a message (WhatsApp, Email, Push, or System Alert) to leads in an
+     * audience campaign.
+     * Resolves per-recipient template variables from system fields and custom field
+     * values.
      */
     public SendAudienceMessageResponseDTO sendAudienceMessage(SendAudienceMessageRequestDTO request) {
         // 1. Validate audience exists
         Audience audience = audienceRepository.findById(request.getAudienceId())
                 .orElseThrow(() -> new VacademyException("Audience not found: " + request.getAudienceId()));
 
-        // 2. Fetch all leads for this audience (TODO: apply filters from request.getFilters())
+        // 2. Fetch all leads for this audience (TODO: apply filters from
+        // request.getFilters())
         List<AudienceResponse> allResponses = audienceResponseRepository.findByAudienceId(request.getAudienceId());
         if (CollectionUtils.isEmpty(allResponses)) {
             throw new VacademyException("No leads found for audience: " + request.getAudienceId());
@@ -3468,7 +3879,8 @@ public class AudienceService {
 
         String channel = request.getChannel();
 
-        // 3. Batch-fetch user details for leads that have a userId (needed for contact resolution)
+        // 3. Batch-fetch user details for leads that have a userId (needed for contact
+        // resolution)
         List<String> userIds = allResponses.stream()
                 .map(AudienceResponse::getUserId)
                 .filter(StringUtils::hasText)
@@ -3485,7 +3897,8 @@ public class AudienceService {
                     }
                 }
             } catch (Exception e) {
-                logger.warn("Failed to fetch user details for audience message, proceeding without: {}", e.getMessage());
+                logger.warn("Failed to fetch user details for audience message, proceeding without: {}",
+                        e.getMessage());
             }
         }
 
@@ -3631,7 +4044,8 @@ public class AudienceService {
         try {
             sendResponse = notificationService.sendUnified(sendRequest);
         } catch (Exception e) {
-            logger.error("Failed to send audience message for audience {}: {}", request.getAudienceId(), e.getMessage(), e);
+            logger.error("Failed to send audience message for audience {}: {}", request.getAudienceId(), e.getMessage(),
+                    e);
             throw new VacademyException("Failed to send message: " + e.getMessage());
         }
 
@@ -3685,21 +4099,25 @@ public class AudienceService {
      * Resolve a single variable from the variableMapping source descriptor.
      */
     private String resolveVariable(String source, AudienceResponse response, UserDTO userDTO,
-                                   Map<String, String> customFields, Audience audience) {
-        if (source == null) return null;
+            Map<String, String> customFields, Audience audience) {
+        if (source == null)
+            return null;
 
         if (source.startsWith("system:")) {
             String field = source.substring("system:".length());
             switch (field) {
                 case "full_name":
                     return userDTO != null && StringUtils.hasText(userDTO.getFullName())
-                            ? userDTO.getFullName() : response.getParentName();
+                            ? userDTO.getFullName()
+                            : response.getParentName();
                 case "email":
                     return userDTO != null && StringUtils.hasText(userDTO.getEmail())
-                            ? userDTO.getEmail() : response.getParentEmail();
+                            ? userDTO.getEmail()
+                            : response.getParentEmail();
                 case "mobile_number":
                     return userDTO != null && StringUtils.hasText(userDTO.getMobileNumber())
-                            ? userDTO.getMobileNumber() : response.getParentMobile();
+                            ? userDTO.getMobileNumber()
+                            : response.getParentMobile();
                 case "city":
                     return userDTO != null ? userDTO.getCity() : null;
                 case "region":
@@ -3882,13 +4300,12 @@ public class AudienceService {
             }
         }
 
-        BulkSubmitLeadResponseDTO.SummaryDTO summary =
-                BulkSubmitLeadResponseDTO.SummaryDTO.builder()
-                        .totalRequested(results.size())
-                        .successful(success)
-                        .failed(failed)
-                        .skipped(skipped)
-                        .build();
+        BulkSubmitLeadResponseDTO.SummaryDTO summary = BulkSubmitLeadResponseDTO.SummaryDTO.builder()
+                .totalRequested(results.size())
+                .successful(success)
+                .failed(failed)
+                .skipped(skipped)
+                .build();
 
         return BulkSubmitLeadResponseDTO.builder()
                 .summary(summary)
@@ -3947,5 +4364,54 @@ public class AudienceService {
             sb.append(chars.charAt(random.nextInt(chars.length())));
         }
         return sb.toString();
+    }
+
+    /**
+     * Log a LEAD_SUBMITTED journey event after any audience response is first
+     * persisted.
+     * Called from all submit paths (v1, v2, with-enquiry, webhook) so the journey
+     * timeline
+     * always starts with this event regardless of how the lead was captured.
+     * Best-effort — failures do not block the submission.
+     */
+    private void emitLeadAssigned(String instituteId, String audienceId, String enquiryId, String counsellorId) {
+        if (instituteId == null || instituteId.isBlank())
+            return;
+        try {
+            Map<String, Object> ctx = new java.util.HashMap<>();
+            ctx.put("audience_id", audienceId != null ? audienceId : "");
+            ctx.put("enquiry_id", enquiryId != null ? enquiryId : "");
+            ctx.put("counsellor_id", counsellorId != null ? counsellorId : "");
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(),
+                    enquiryId, instituteId, ctx);
+        } catch (Exception e) {
+            logger.warn("[LeadTrigger] Failed to emit LEAD_ASSIGNED_TO_COUNSELOR for enquiry={}: {}",
+                    enquiryId, e.getMessage());
+        }
+    }
+
+    private void logLeadSubmitted(AudienceResponse savedResponse) {
+        try {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("source_type", savedResponse.getSourceType() != null ? savedResponse.getSourceType() : "");
+            if (savedResponse.getAudienceId() != null)
+                metadata.put("audience_id", savedResponse.getAudienceId());
+            if (savedResponse.getSourceId() != null)
+                metadata.put("source_id", savedResponse.getSourceId());
+
+            timelineEventService.logJourneyEvent(
+                    "AUDIENCE_RESPONSE", savedResponse.getId(),
+                    LeadJourneyActionType.LEAD_SUBMITTED,
+                    "SYSTEM", null, "System",
+                    "Lead submitted",
+                    "Lead captured from "
+                            + (savedResponse.getSourceType() != null ? savedResponse.getSourceType() : "UNKNOWN"),
+                    metadata,
+                    savedResponse.getUserId() != null ? savedResponse.getUserId() : savedResponse.getStudentUserId());
+        } catch (Exception e) {
+            logger.warn("Failed to log LEAD_SUBMITTED journey event for response {}: {}",
+                    savedResponse.getId(), e.getMessage(), e);
+        }
     }
 }

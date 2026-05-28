@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { CheckCircle, XCircle, ArrowsClockwise } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { formatCurrency } from "@/utils/currency";
 
@@ -100,7 +100,7 @@ export const DonationSuccessStep = ({
             buttonType="primary"
             layoutVariant="default"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <ArrowsClockwise className="w-4 h-4 mr-2" />
             Try Again
           </MyButton>
         )}

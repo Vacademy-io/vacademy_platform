@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 
 interface Props {

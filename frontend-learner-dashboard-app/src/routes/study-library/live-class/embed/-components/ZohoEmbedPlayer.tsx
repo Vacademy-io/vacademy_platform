@@ -15,7 +15,7 @@ const ZohoEmbedPlayer: React.FC<ZohoEmbedPlayerProps> = ({
     // If we have the providerHostUrl (statelessStart with frameOrigin), embed it directly
     if (providerHostUrl) {
         return (
-            <div className="relative w-full h-full flex-1 min-h-[400px] bg-black rounded-lg overflow-hidden">
+            <div className="relative w-full h-full flex-1 min-h-96 bg-black rounded-lg overflow-hidden">
                 <iframe
                     title="Zoho Meeting AV SDK"
                     src={providerHostUrl}
@@ -37,7 +37,7 @@ const ZohoEmbedPlayer: React.FC<ZohoEmbedPlayerProps> = ({
     }
 
     return (
-        <div className="relative w-full h-full flex-1 min-h-[400px] flex flex-col items-center justify-center gap-4 bg-neutral-950 rounded-lg">
+        <div className="relative w-full h-full flex-1 min-h-96 flex flex-col items-center justify-center gap-4 bg-neutral-950 rounded-lg">
             <div className="flex flex-col items-center gap-3 text-center px-6">
                 <div className="w-16 h-16 rounded-full bg-primary-500/10 flex items-center justify-center">
                     <ArrowSquareOut size={32} className="text-primary-400" />

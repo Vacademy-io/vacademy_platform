@@ -61,4 +61,28 @@ public class ProductPageController {
             @PathVariable("couponCodeId") String couponCodeId) {
         return ResponseEntity.ok(coursePageService.deleteCoupon(couponCodeId));
     }
+
+    @PostMapping("/{productPageId}/custom-fields/add")
+    public ResponseEntity<ProductPageResponse> addCustomField(
+            @PathVariable("productPageId") String productPageId,
+            @RequestParam("customFieldId") String customFieldId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(coursePageService.addCustomFieldToPage(productPageId, customFieldId, instituteId));
+    }
+
+    @PostMapping("/{productPageId}/custom-fields/create")
+    public ResponseEntity<ProductPageResponse> createCustomField(
+            @PathVariable("productPageId") String productPageId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestBody ProductPageCustomFieldCreateRequest request) {
+        return ResponseEntity.ok(coursePageService.createAndLinkCustomFieldToPage(productPageId, request, instituteId));
+    }
+
+    @DeleteMapping("/{productPageId}/custom-fields/{customFieldId}")
+    public ResponseEntity<ProductPageResponse> removeCustomField(
+            @PathVariable("productPageId") String productPageId,
+            @PathVariable("customFieldId") String customFieldId,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(coursePageService.removeCustomFieldFromPage(productPageId, customFieldId, instituteId));
+    }
 }

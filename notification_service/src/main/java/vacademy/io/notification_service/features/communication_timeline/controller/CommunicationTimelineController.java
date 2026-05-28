@@ -9,7 +9,7 @@ import vacademy.io.notification_service.features.communication_timeline.dto.Comm
 import vacademy.io.notification_service.features.communication_timeline.dto.UnifiedCommunicationDTO;
 import vacademy.io.notification_service.features.communication_timeline.service.CommunicationTimelineService;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -47,8 +47,8 @@ public class CommunicationTimelineController {
                     .size(size)
                     .channels(channels)
                     .direction(direction)
-                    .fromDate(fromDate != null ? LocalDateTime.parse(fromDate) : null)
-                    .toDate(toDate != null ? LocalDateTime.parse(toDate) : null)
+                    .fromDate(fromDate != null ? Instant.parse(fromDate) : null)
+                    .toDate(toDate != null ? Instant.parse(toDate) : null)
                     .build();
 
             Page<UnifiedCommunicationDTO> response = communicationTimelineService.getUserCommunications(request);
@@ -91,8 +91,8 @@ public class CommunicationTimelineController {
                     .size(size)
                     .channels(channels)
                     .direction(direction)
-                    .fromDate(fromDate != null ? LocalDateTime.parse(fromDate) : null)
-                    .toDate(toDate != null ? LocalDateTime.parse(toDate) : null)
+                    .fromDate(fromDate != null ? Instant.parse(fromDate) : null)
+                    .toDate(toDate != null ? Instant.parse(toDate) : null)
                     .build();
 
             Page<UnifiedCommunicationDTO> response = communicationTimelineService.getUserCommunicationsByChannel(request);

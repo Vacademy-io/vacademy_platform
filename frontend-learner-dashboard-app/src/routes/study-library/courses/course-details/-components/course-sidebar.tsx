@@ -362,8 +362,8 @@ export const CourseSidebar = ({
                     "[.ui-vibrant_&]:bg-indigo-600 [.ui-vibrant_&]:hover:bg-indigo-700 [.ui-vibrant_&]:text-white",
                     "[.ui-vibrant_&]:shadow-md",
                     // Play Styles — solid, bold, Duolingo-style
-                    "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:hover:bg-[#46a302] [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
-                    "[.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_4px_0_#46a302] [.ui-play_&]:hover:shadow-[0_2px_0_#46a302] [.ui-play_&]:active:shadow-none",
+                    "[.ui-play_&]:bg-play-success [.ui-play_&]:hover:bg-play-success-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
+                    "[.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-4d-success [.ui-play_&]:hover:shadow-play-2d-success [.ui-play_&]:active:shadow-none",
                   )}
                   onClick={onEnrollmentClick}
                 >
@@ -385,11 +385,11 @@ export const CourseSidebar = ({
                 ? "[.ui-vibrant_&]:bg-emerald-50/50 dark:[.ui-vibrant_&]:bg-emerald-950/20 [.ui-vibrant_&]:border-emerald-200/50 dark:[.ui-vibrant_&]:border-emerald-800/30"
                 : "[.ui-vibrant_&]:bg-blue-50/50 dark:[.ui-vibrant_&]:bg-blue-950/20 [.ui-vibrant_&]:border-blue-200/50 dark:[.ui-vibrant_&]:border-blue-800/30",
               "[.ui-vibrant_&]:shadow-md",
-              // Play Styles — solid, bold, Duolingo-style
-              "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:font-bold",
+              // Play Styles — solid hero card with soft layered shadow
+              "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-transparent [.ui-play_&]:font-bold",
               percentageCompleted === 100
-                ? "[.ui-play_&]:bg-[#58cc02] [.ui-play_&]:border-[#46a302] [.ui-play_&]:text-white [.ui-play_&]:shadow-[0_4px_0_#46a302]"
-                : "[.ui-play_&]:bg-[#1cb0f6] [.ui-play_&]:border-[#1899d6] [.ui-play_&]:text-white [.ui-play_&]:shadow-[0_4px_0_#1899d6]",
+                ? "[.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:shadow-play-glow-success-lg"
+                : "[.ui-play_&]:bg-play-info [.ui-play_&]:text-white [.ui-play_&]:shadow-play-glow-info",
             )}
           >
             <CardHeader

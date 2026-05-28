@@ -38,4 +38,36 @@ public interface UserLeadProfileRepository extends JpaRepository<UserLeadProfile
      */
     @Query("SELECT p.userId FROM UserLeadProfile p WHERE p.instituteId = :instituteId")
     List<String> findUserIdsByInstituteId(@Param("instituteId") String instituteId);
+
+    /**
+     * Find the user_ids of OPEN leads (conversion_status = 'LEAD') currently
+     * assigned to {@code fromCounselorId} within a pool's scope. A lead is
+     * "in this pool" if its user has any audience_response row whose audience
+     * belongs to the pool — so a counselor inactivated in pool A doesn't
+     * touch leads tied only to pool B's audiences.
+     *
+     * Returns user_ids rather than profiles because the caller loops and
+     * routes each one through UserLeadProfileService.assignCounselor — that
+     * keeps the workflow trigger emission + timeline-event logging
+     * consistent with the manual reassign endpoint instead of bypassing
+     * them with a bulk UPDATE.
+     *
+     * Native SQL because the scoping join goes through two tables
+     * (audience_response, counselor_pool_audience) that aren't worth
+     * modeling as JPA associations for this one query.
+     */
+    @Query(value = "SELECT ulp.user_id FROM user_lead_profile ulp " +
+                   " WHERE ulp.assigned_counselor_id = :fromCounselorId " +
+                   "   AND ulp.institute_id = :instituteId " +
+                   "   AND ulp.conversion_status = 'LEAD' " +
+                   "   AND EXISTS (" +
+                   "       SELECT 1 FROM audience_response ar " +
+                   "         JOIN counselor_pool_audience cpa ON cpa.audience_id = ar.audience_id " +
+                   "        WHERE ar.user_id = ulp.user_id " +
+                   "          AND cpa.pool_id = :poolId" +
+                   "   )",
+           nativeQuery = true)
+    List<String> findOpenLeadUserIdsForCounselorInPool(@Param("poolId") String poolId,
+                                                       @Param("fromCounselorId") String fromCounselorId,
+                                                       @Param("instituteId") String instituteId);
 }

@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import {
@@ -28,7 +28,7 @@ export const ChipsWrapper = ({ children, className }: ChipsWrapperProps) => {
         <div
             className={cn(
                 'inline-flex flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-300 font-regular text-neutral-600',
-                isCompact ? 'h-6 px-1.5 py-0.5 text-xs' : 'h-8 px-3 py-[6px] text-body',
+                isCompact ? 'h-6 px-1.5 py-0.5 text-xs' : 'h-8 px-3 py-1.5 text-body',
                 className
             )}
         >
@@ -50,7 +50,7 @@ const Chips = ({
         <ChipsWrapper
             className={cn(
                 avatarAddress ? 'rounded-full' : 'rounded-lg',
-                'active:bg-[#f5e6d1]',
+                'active:bg-primary-100',
                 disabled
                     ? 'border-neutral-100'
                     : selected
@@ -62,7 +62,7 @@ const Chips = ({
             {leadingIcon &&
                 React.createElement(leadingIcon, {
                     className: cn(
-                        'size-[18px]',
+                        'size-4',
                         disabled ? 'text-neutral-300' : 'text-neutral-600'
                     ),
                 })}
@@ -76,7 +76,7 @@ const Chips = ({
             {label && (
                 <div
                     className={cn(
-                        'flex items-center text-[14px] leading-[22px]',
+                        'flex items-center text-body',
                         disabled ? 'text-neutral-300' : 'text-neutral-600'
                     )}
                 >
@@ -106,19 +106,29 @@ export const FilterChips = ({
     onSearchChange,
     shouldFilter = true,
     onOpenChange,
+    closeOnSelect = false,
 }: FilterChipsProps & {
     onSearchChange?: (value: string) => void;
     shouldFilter?: boolean;
     onOpenChange?: (open: boolean) => void;
+    // When true, the popover closes after each item selection. Opt-in so existing
+    // multi-select call sites that rely on the popover staying open are unaffected.
+    closeOnSelect?: boolean;
 }) => {
     const { isCompact } = useCompactMode();
+    const [open, setOpen] = useState(false);
 
     useEffect(() => {
         if (clearFilters) handleClearFilters && handleClearFilters();
     }, [clearFilters]);
 
+    const handleOpenChange = (next: boolean) => {
+        setOpen(next);
+        onOpenChange && onOpenChange(next);
+    };
+
     return (
-        <Popover onOpenChange={onOpenChange}>
+        <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger className="flex items-center">
                 <button>
                     <ChipsWrapper
@@ -133,14 +143,14 @@ export const FilterChips = ({
                         <div className="flex items-center gap-2">
                             {React.createElement(PlusCircle, {
                                 className: cn(
-                                    isCompact ? 'size-3.5' : 'size-[18px]',
+                                    isCompact ? 'size-3.5' : 'size-4',
                                     disabled ? 'text-neutral-300' : 'text-neutral-600'
                                 ),
                             })}
                             <div
                                 className={cn(
-                                    'flex items-center leading-[22px]',
-                                    isCompact ? 'text-xs' : 'text-[14px]',
+                                    'flex items-center',
+                                    isCompact ? 'text-xs' : 'text-body',
                                     disabled ? 'text-neutral-300' : 'text-neutral-600'
                                 )}
                             >
@@ -166,7 +176,7 @@ export const FilterChips = ({
                     </ChipsWrapper>
                 </button>
             </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0" align="start">
+            <PopoverContent className="w-52 p-0" align="start">
                 <Command shouldFilter={shouldFilter}>
                     <CommandInput
                         placeholder="Search"
@@ -178,7 +188,10 @@ export const FilterChips = ({
                             {filterList?.map((option) => (
                                 <CommandItem
                                     key={option.id}
-                                    onSelect={() => handleSelect && handleSelect(option)}
+                                    onSelect={() => {
+                                        handleSelect && handleSelect(option);
+                                        if (closeOnSelect) setOpen(false);
+                                    }}
                                 >
                                     <div
                                         className={cn(
@@ -250,7 +263,7 @@ export const StatusChips = ({
             <div className="flex items-center gap-1">
                 {showIcon && (
                     <StatusIcon
-                        className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-[18px]')}
+                        className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-4')}
                         weight="fill"
                     />
                 )}
@@ -276,7 +289,7 @@ export const PaymentStatusChips = ({ status }: { status: string }) => {
     return (
         <ChipsWrapper className={cn(statusData.color.bg, '')}>
             <div className="flex items-center gap-1">
-                <StatusIcon className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-[18px]')} weight="fill" />
+                <StatusIcon className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-4')} weight="fill" />
                 <div className={cn('capitalize text-neutral-600', isCompact ? 'text-xs' : 'text-body')}>{status}</div>
             </div>
         </ChipsWrapper>

@@ -18,7 +18,7 @@ export const SplashScreen = ({ children }: SplashScreenProps) => {
     <div className="fixed flex flex-col w-screen h-screen bg-white items-center justify-start z-50">
       {/* Fading Background */}
       <motion.div
-        initial={{ backgroundColor: "#FDEDD7" }}
+        initial={{ backgroundColor: "hsl(var(--primary-50))" }}
         animate={{ backgroundColor: "rgba(255, 255, 255, 0)" }}
         transition={{
           duration: 2,

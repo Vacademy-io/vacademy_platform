@@ -24,15 +24,15 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import {
-  ChevronLeft,
-  ChevronRight,
+  CaretLeft,
+  CaretRight,
   Check,
-  Save,
-  Send,
-  AlertCircle,
-  Loader2,
+  FloppyDisk,
+  PaperPlaneTilt,
+  WarningCircle,
+  SpinnerGap,
   CreditCard,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 
 interface RegistrationModuleProps {
   child: ChildProfile;
@@ -219,7 +219,7 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
       <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
         <Card className="shadow-sm">
           <CardContent className="py-12 text-center">
-            <AlertCircle
+            <WarningCircle
               size={28}
               className="mx-auto text-muted-foreground/40 mb-3"
             />
@@ -269,7 +269,7 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
               {isCompleted ? (
                 <Check size={12} className="shrink-0" />
               ) : (
-                <span className="w-4 h-4 rounded-full border text-center text-[10px] leading-4 shrink-0">
+                <span className="w-4 h-4 rounded-full border text-center text-caption leading-4 shrink-0">
                   {idx + 1}
                 </span>
               )}
@@ -322,7 +322,7 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
           disabled={currentSection === 0}
           className="gap-1.5 text-xs h-9"
         >
-          <ChevronLeft size={14} />
+          <CaretLeft size={14} />
           Previous
         </Button>
 
@@ -335,9 +335,9 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
             className="gap-1.5 text-xs h-9"
           >
             {saveMutation.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
+              <SpinnerGap size={12} className="animate-spin" />
             ) : (
-              <Save size={12} />
+              <FloppyDisk size={12} />
             )}
             Save Progress
           </Button>
@@ -348,7 +348,7 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
               className="gap-1.5 text-xs h-9"
             >
               Continue
-              <ChevronRight size={14} />
+              <CaretRight size={14} />
             </Button>
           ) : (
             <Button
@@ -357,9 +357,9 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
               className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700"
             >
               {submitMutation.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
+                <SpinnerGap size={12} className="animate-spin" />
               ) : (
-                <Send size={12} />
+                <PaperPlaneTilt size={12} />
               )}
               Submit Application
             </Button>
@@ -395,7 +395,7 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
               className="gap-2"
             >
               {initiatePaymentMutation.isPending ? (
-                <Loader2 size={16} className="animate-spin" />
+                <SpinnerGap size={16} className="animate-spin" />
               ) : (
                 <CreditCard size={16} />
               )}
@@ -410,9 +410,9 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed bottom-20 lg:bottom-4 right-4 text-[11px] text-muted-foreground bg-card/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-1.5"
+          className="fixed bottom-20 lg:bottom-4 right-4 text-caption text-muted-foreground bg-card/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-1.5"
         >
-          <Loader2 size={10} className="animate-spin" />
+          <SpinnerGap size={10} className="animate-spin" />
           Auto‑saving...
         </motion.p>
       )}
@@ -464,7 +464,7 @@ function FormField({ field, value, onChange, error }: FormFieldProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
-          className="w-full min-h-[80px] rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y"
+          className="w-full min-h-20 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y"
         />
       ) : field.type === "date" ? (
         <Input
@@ -496,8 +496,8 @@ function FormField({ field, value, onChange, error }: FormFieldProps) {
       )}
 
       {error && (
-        <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
-          <AlertCircle size={10} />
+        <p className="text-caption text-destructive mt-1 flex items-center gap-1">
+          <WarningCircle size={10} />
           {error}
         </p>
       )}

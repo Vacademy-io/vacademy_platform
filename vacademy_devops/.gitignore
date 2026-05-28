@@ -1,0 +1,7 @@
+# Generated client secrets — never commit
+vacademy-services/values.secret.yaml
+# Local DB backups
+backups/
+# Helm packaging artifacts
+vacademy-services/charts/
+*.tgz

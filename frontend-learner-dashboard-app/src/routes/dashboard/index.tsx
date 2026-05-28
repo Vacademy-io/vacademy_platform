@@ -46,8 +46,10 @@ import {
   MinusCircle,
   Hourglass,
   TrendUp,
+  CaretRight,
+  Sparkle,
+  VideoCamera,
 } from "@phosphor-icons/react";
-import { ChevronRight, Sparkles, Video } from "lucide-react";
 import { SessionDetails } from "../study-library/live-class/-types/types";
 import { useMarkAttendance } from "../study-library/live-class/-hooks/useMarkAttendance";
 import { SessionStreamingServiceType } from "../register/live-class/-types/enum";
@@ -482,7 +484,7 @@ export function DashboardComponent() {
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+              <h1 className="text-h2 sm:text-h1 tracking-tight text-foreground">
                 {isLoading ? (
                   <Skeleton className="h-8 w-48" />
                 ) : (
@@ -499,7 +501,7 @@ export function DashboardComponent() {
               <p className="text-muted-foreground mt-1 flex items-center space-x-2">
                 {showForInstitutes([HOLISTIC_INSTITUTE_ID]) ? (
                   <>
-                    <Sparkles size={16} className="text-primary" />
+                    <Sparkle size={16} className="text-primary" />
                     <span>Ready for today's yoga journey?</span>
                   </>
                 ) : (
@@ -514,7 +516,7 @@ export function DashboardComponent() {
 
           <div className="flex items-center gap-2">
             {isPlayTheme && <XpHeaderPill />}
-            <div className="bg-card border rounded-lg px-4 py-2 shadow-sm">
+            <div className="dashboard-date-pill bg-card border rounded-lg px-4 py-2 shadow-sm">
               <div className="flex items-center text-muted-foreground gap-2">
                 <Calendar weight="duotone" size={16} className="text-primary" />
                 <span className="font-medium text-sm">
@@ -559,7 +561,7 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/courses" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:!bg-[#5B9BD5] [.ui-play_&]:!shadow-[0_5px_0_#3D7AB5] [.ui-play_&]:text-white"
+                      className="stat-card-courses [.ui-vibrant_&]:bg-sky-50 [.ui-vibrant_&]:border-sky-200 dark:[.ui-vibrant_&]:bg-sky-950/30 dark:[.ui-vibrant_&]:border-sky-800/50 [.ui-play_&]:text-white"
                       iconClassName="[.ui-vibrant_&]:text-sky-600 dark:[.ui-vibrant_&]:text-sky-300 [.ui-vibrant_&]:bg-sky-100 dark:[.ui-vibrant_&]:bg-sky-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
                       illustration={playIllustrations.Course}
                     />
@@ -577,7 +579,7 @@ export function DashboardComponent() {
                         navigate({ to: "/study-library/live-class" })
                       }
                       isLoading={isLoadingLiveSessions}
-                      className="[.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:!bg-[#E91E63] [.ui-play_&]:!shadow-[0_5px_0_#AD1457] [.ui-play_&]:text-white"
+                      className="stat-card-live [.ui-vibrant_&]:bg-rose-50 [.ui-vibrant_&]:border-rose-200 dark:[.ui-vibrant_&]:bg-rose-950/30 dark:[.ui-vibrant_&]:border-rose-800/50 [.ui-play_&]:text-white"
                       iconClassName="[.ui-vibrant_&]:text-rose-600 dark:[.ui-vibrant_&]:text-rose-300 [.ui-vibrant_&]:bg-rose-100 dark:[.ui-vibrant_&]:bg-rose-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
                       illustration={playIllustrations.LiveClass}
                     />
@@ -599,7 +601,7 @@ export function DashboardComponent() {
                         navigate({ to: "/assessment/examination" });
                       }}
                       isLoading={isLoading}
-                      className="[.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:!bg-[#8E44AD] [.ui-play_&]:!shadow-[0_5px_0_#6C3483] [.ui-play_&]:text-white"
+                      className="stat-card-assessments [.ui-vibrant_&]:bg-amber-50 [.ui-vibrant_&]:border-amber-200 dark:[.ui-vibrant_&]:bg-amber-950/30 dark:[.ui-vibrant_&]:border-amber-800/50 [.ui-play_&]:text-white"
                       iconClassName="[.ui-vibrant_&]:text-amber-600 dark:[.ui-vibrant_&]:text-amber-300 [.ui-vibrant_&]:bg-amber-100 dark:[.ui-vibrant_&]:bg-amber-500/20 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
                       illustration={playIllustrations.Certificate}
                     />
@@ -661,7 +663,7 @@ export function DashboardComponent() {
                             }}
                             className="w-full justify-between"
                           >
-                            Open <ChevronRight size={14} />
+                            Open <CaretRight size={14} />
                           </Button>
                         )}
                       </CardContent>
@@ -748,7 +750,7 @@ export function DashboardComponent() {
                     }}
                   >
                     Explore Memberships
-                    <ChevronRight size={14} />
+                    <CaretRight size={14} />
                   </Button>
                 )}
                 {isWidgetVisible("myBooks") && (
@@ -763,7 +765,7 @@ export function DashboardComponent() {
                     }}
                   >
                     Explore Books
-                    <ChevronRight size={14} />
+                    <CaretRight size={14} />
                   </Button>
                 )}
               </div>
@@ -777,11 +779,11 @@ export function DashboardComponent() {
               {/* Hero Section */}
               <div className="lg:col-span-8">
                 <Card className="h-full overflow-hidden border-0 shadow-sm relative bg-white">
-                  <CardContent className="p-0 relative h-full flex items-center justify-center min-h-[300px]">
+                  <CardContent className="p-0 relative h-full flex items-center justify-center min-h-72">
                     <img
                       src="/yoga-dashboard.png"
                       alt="Yoga illustration"
-                      className="object-contain max-h-[280px]"
+                      className="object-contain max-h-72"
                     />
                   </CardContent>
                 </Card>
@@ -862,7 +864,7 @@ export function DashboardComponent() {
                                 className={colorClass}
                                 weight="duotone"
                               />
-                              <span className="text-[10px] font-medium text-muted-foreground truncate w-full">
+                              <span className="text-caption font-medium text-muted-foreground truncate w-full">
                                 {dayData.day}
                               </span>
                             </div>
@@ -904,7 +906,7 @@ export function DashboardComponent() {
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-600 dark:text-green-400">
-                    <Video size={18} />
+                    <VideoCamera size={18} />
                   </div>
                   <div className="space-y-0.5">
                     <CardTitle className="text-base">My Classes</CardTitle>
@@ -918,7 +920,7 @@ export function DashboardComponent() {
                   size="sm"
                   onClick={() => navigate({ to: "/study-library/live-class" })}
                 >
-                  View All <ChevronRight size={14} className="ml-1" />
+                  View All <CaretRight size={14} className="ml-1" />
                 </Button>
               </CardHeader>
               <CardContent>
@@ -947,7 +949,7 @@ export function DashboardComponent() {
                       >
                         <div className="flex items-center gap-3 overflow-hidden">
                           <div className="p-2 bg-green-100 rounded-lg text-green-700">
-                            <Video size={16} />
+                            <VideoCamera size={16} />
                           </div>
                           <div>
                             <h4 className="font-semibold text-sm truncate">

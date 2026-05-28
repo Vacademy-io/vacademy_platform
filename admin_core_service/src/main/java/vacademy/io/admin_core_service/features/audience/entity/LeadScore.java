@@ -45,6 +45,11 @@ public class LeadScore {
     @Column(name = "scoring_factors_json", columnDefinition = "TEXT")
     private String scoringFactorsJson;
 
+    /** True when raw_score was set manually; auto-recalculation is skipped while this is true. */
+    @Column(name = "is_manual_override")
+    @Builder.Default
+    private Boolean isManualOverride = false;
+
     @Column(name = "last_calculated_at", nullable = false)
     @Builder.Default
     private Timestamp lastCalculatedAt = new Timestamp(System.currentTimeMillis());
@@ -55,9 +60,6 @@ public class LeadScore {
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Timestamp updatedAt;
 
-    /**
-     * Returns the lead tier based on raw score.
-     */
     public String getTier() {
         if (rawScore >= 80) return "HOT";
         if (rawScore >= 50) return "WARM";

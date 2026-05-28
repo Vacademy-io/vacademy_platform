@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { CaretDown, CaretUp } from "@phosphor-icons/react";
-import { VscError } from "react-icons/vsc";
+import { CaretDown, CaretUp, XCircle } from "@phosphor-icons/react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -30,9 +29,9 @@ export const MyDropdown = ({
         return (
             <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
                 <span>
-                    <VscError />
+                    <XCircle />
                 </span>
-                <span className="mt-[3px]">{errorMessage}</span>
+                <span className="mt-0.5">{errorMessage}</span>
             </div>
         );
     };
@@ -88,14 +87,14 @@ export const MyDropdown = ({
                             {currentValue || placeholder}
                         </div>
                         <div className="ml-2 flex-shrink-0">
-                            <CaretDown className={`${isOpen ? "hidden" : "visible"} size-[18px]`} />
-                            <CaretUp className={`${isOpen ? "visible" : "hidden"} size-[18px]`} />
+                            <CaretDown className={`${isOpen ? "hidden" : "visible"} size-5`} />
+                            <CaretUp className={`${isOpen ? "visible" : "hidden"} size-5`} />
                         </div>
                     </DropdownMenuTrigger>
                 )}
                 <DropdownMenuPortal container={document.getElementById("portal-root")}>
                     <DropdownMenuContent
-                        className="z-[9999] mt-2 min-w-60 w-[var(--radix-dropdown-menu-trigger-width)] rounded-lg bg-white py-2 shadow focus:outline-none"
+                        className="z-50 mt-2 min-w-60 w-[var(--radix-dropdown-menu-trigger-width)] rounded-lg bg-white py-2 shadow focus:outline-none" /* design-lint-ignore: radix internal */
                         sideOffset={5}
                         align="start"
                     >

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pin, Clock, User, X, Loader2, AlertCircle, Trash2 } from 'lucide-react';
+import { PushPin, Clock, User, X, SpinnerGap, WarningCircle, Trash } from "@phosphor-icons/react";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -140,7 +140,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Pin className="h-5 w-5 text-blue-600" />
+              <PushPin className="h-5 w-5 text-blue-600" />
               Important Updates
             </CardTitle>
             <div className="flex items-center gap-2">
@@ -153,7 +153,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       disabled={loading}
                     >
-                      <Trash2 className="h-4 w-4 mr-1" />
+                      <Trash className="h-4 w-4 mr-1" />
                       Clear All
                     </Button>
                   </AlertDialogTrigger>
@@ -183,7 +183,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                 onClick={refresh}
                 disabled={loading}
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+                {loading ? <SpinnerGap className="h-4 w-4 animate-spin" /> : 'Refresh'}
               </Button>
             </div>
           </div>
@@ -192,14 +192,14 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
         <CardContent className="pt-0">
           {error && (
             <div className="flex items-center gap-2 text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-md">
-              <AlertCircle className="h-4 w-4" />
+              <WarningCircle className="h-4 w-4" />
               {error}
             </div>
           )}
           
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
               <span className="ml-2 text-sm text-gray-500">Loading pins...</span>
             </div>
           ) : (
@@ -281,7 +281,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
       {/* Full Content Modal */}
       {selectedPin && showFullContent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-2xl max-h-[80vh] overflow-hidden">
+          <Card className="w-full max-w-2xl max-h-screen-80 overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">

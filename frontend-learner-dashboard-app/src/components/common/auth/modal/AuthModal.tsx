@@ -408,7 +408,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
 
     const modalContent = (
         <div
-            className={`fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 transition-all duration-200 modal-backdrop ${
+            className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 transition-all duration-200 modal-backdrop ${
                 isVisible
                     ? 'bg-gray-200 bg-opacity-50'
                     : 'bg-opacity-0'
@@ -439,7 +439,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                     isVisible
                         ? 'scale-100 opacity-100 translate-y-0'
                         : 'scale-95 opacity-0 translate-y-4'
-                } scrollbar-hide auth-modal-content w-full max-w-[500px] mx-4 sm:mx-6`}
+                } scrollbar-hide auth-modal-content w-full max-w-reg-500 mx-4 sm:mx-6`}
                 style={{
                     padding: '16px',
                     maxHeight: '90vh',

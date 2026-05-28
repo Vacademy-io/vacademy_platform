@@ -56,6 +56,28 @@ export function getCachedPreferredCountries(): string[] {
     }
 }
 
+/**
+ * Fallback country picker order used when the institute hasn't configured any.
+ * India ('in') is first so an empty/null `commaSeparatedPreferredCountry`
+ * defaults phone inputs to India.
+ */
+export const DEFAULT_PREFERRED_COUNTRIES = ['in', 'us', 'gb', 'au'];
+
+/**
+ * Resolves the default selected country and the ordered country-picker list for
+ * phone inputs from the institute's configured preferred countries, falling back
+ * to {@link DEFAULT_PREFERRED_COUNTRIES} (India default) when nothing is
+ * configured. The first entry is the default; the full list orders the picker.
+ */
+export function getPreferredPhoneCountries(): {
+    defaultCountry: string;
+    preferredCountries: string[];
+} {
+    const cached = getCachedPreferredCountries();
+    const list = cached.length > 0 ? cached : DEFAULT_PREFERRED_COUNTRIES;
+    return { defaultCountry: list[0] ?? 'in', preferredCountries: list };
+}
+
 export async function resolveInstituteForCurrentHost(): Promise<DomainResolveResponse | null> {
     try {
         const hostname = window.location.hostname;

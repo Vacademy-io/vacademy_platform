@@ -1,5 +1,4 @@
-import type { LucideIcon } from "lucide-react";
-import { Mail, MessageCircle } from "lucide-react";
+import { Envelope, ChatCircle, type Icon } from "@phosphor-icons/react";
 
 import type { UnsubscribeRequest } from "@/services/unsubscribe/unsubscribe-service";
 
@@ -9,7 +8,7 @@ export interface ChannelDescriptor {
   key: ChannelKey;
   label: string;
   channel: UnsubscribeRequest["channel"];
-  icon: LucideIcon;
+  icon: Icon;
 }
 
 export const SUPPORT_EMAIL = "support@vacademy.com";
@@ -19,13 +18,13 @@ const CHANNEL_CONFIG: Record<ChannelKey, ChannelDescriptor> = {
     key: "em",
     label: "Email",
     channel: "EMAIL",
-    icon: Mail,
+    icon: Envelope,
   },
   wp: {
     key: "wp",
     label: "WhatsApp",
     channel: "WHATSAPP",
-    icon: MessageCircle,
+    icon: ChatCircle,
   },
 };
 

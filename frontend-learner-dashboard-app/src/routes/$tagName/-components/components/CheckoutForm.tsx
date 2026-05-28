@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
-import { Loader2, User, Mail, Phone, ChevronRight, CheckCircle2 } from "lucide-react";
+import { SpinnerGap, User, Envelope, Phone, CaretRight, CheckCircle } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
@@ -603,7 +603,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                         contact: phone,
                     },
                     theme: {
-                        color: "#4F46E5",
+                        color: "#4F46E5", // design-lint-ignore: page-builder default color
                     },
                     modal: {
                         ondismiss: function() {
@@ -645,8 +645,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     return (
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
-                <DialogPrimitive.Overlay className="fixed inset-0 z-[10000] bg-black/50 backdrop-blur-sm" />
-                <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[10001] w-[95%] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-0 shadow-2xl focus:outline-none overflow-hidden flex flex-col max-h-[90vh]">
+                <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
+                <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-pct-95 max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-0 shadow-2xl focus:outline-none overflow-hidden flex flex-col max-h-screen-90">
 
                     {/* Compact Header */}
                     <div className="bg-primary-600 px-5 py-2 text-white flex justify-between items-center shrink-0">
@@ -665,7 +665,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     <div className="p-4 space-y-4 overflow-y-auto scrollbar-hide flex-1">
                         {isInitializing ? (
                             <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                                <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
+                                <SpinnerGap className="h-8 w-8 text-primary-500 animate-spin" />
                                 <p className="text-sm text-gray-500 font-medium">Preparing checkout...</p>
                             </div>
                         ) : (
@@ -687,7 +687,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                     <>
                                         {/* Name */}
                                         <div className="space-y-1">
-                                            <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
+                                            <label className="text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5">
                                                 <User className="h-3 w-3" /> Full Name
                                             </label>
                                     <input
@@ -697,13 +697,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${nameError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
                                         placeholder="Enter your name"
                                     />
-                                    {nameError && <p className="text-red-500 text-[10px] font-semibold">{nameError}</p>}
+                                    {nameError && <p className="text-red-500 text-caption font-semibold">{nameError}</p>}
                                 </div>
 
                                 {/* Email */}
                                 <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                        <Mail className="h-3 w-3" /> Email Address
+                                    <label className="text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5">
+                                        <Envelope className="h-3 w-3" /> Email Address
                                     </label>
                                     <input
                                         type="email"
@@ -712,12 +712,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                         className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 text-sm font-medium ${emailError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
                                         placeholder="email@example.com"
                                     />
-                                    {emailError && <p className="text-red-500 text-[10px] font-semibold">{emailError}</p>}
+                                    {emailError && <p className="text-red-500 text-caption font-semibold">{emailError}</p>}
                                 </div>
 
                                 {/* Phone */}
                                 <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
+                                    <label className="text-caption font-bold text-gray-900 uppercase flex items-center gap-1.5">
                                         <Phone className="h-3 w-3" /> Phone Number (WhatsApp)
                                     </label>
                                     <div className="flex gap-2">
@@ -732,27 +732,27 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                     setPhone(value);
                                                     if (phoneOtpSent) setPhoneOtpSent(false);
                                                 }}
-                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-[38px] !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
+                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-10 !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
                                                 containerClass="!w-full"
                                                 buttonClass={`!rounded-l-lg !border-gray-200 !bg-gray-50 !w-10 ${isPhoneVerified ? "!bg-green-50/50 !border-green-200" : ""}`}
                                                 dropdownClass="!rounded-lg !shadow-xl"
                                             />
-                                            {isPhoneVerified && <CheckCircle2 className="absolute right-2.5 top-2.5 h-4 w-4 text-green-500 z-10" />}
+                                            {isPhoneVerified && <CheckCircle className="absolute right-2.5 top-2.5 h-4 w-4 text-green-500 z-10" />}
                                         </div>
                                         {!isPhoneVerified && (
                                             <MyButton
                                                 buttonType="secondary"
                                                 scale="small"
                                                 layoutVariant="default"
-                                                className="h-[38px] px-3 text-xs font-bold"
+                                                className="h-10 px-3 text-xs font-bold"
                                                 onClick={handleSendPhoneOTP}
                                                 disabled={isLoadingPhoneOtp || !phone || phoneOtpSent}
                                             >
-                                                {isLoadingPhoneOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : phoneOtpSent ? "Sent" : "Verify"}
+                                                {isLoadingPhoneOtp ? <SpinnerGap className="h-3.5 w-3.5 animate-spin" /> : phoneOtpSent ? "Sent" : "Verify"}
                                             </MyButton>
                                         )}
                                     </div>
-                                    {phoneError && <p className="text-red-500 text-[10px] font-semibold ml-1">{phoneError}</p>}
+                                    {phoneError && <p className="text-red-500 text-caption font-semibold ml-1">{phoneError}</p>}
 
                                     {/* OTP Input for Phone */}
                                     {phoneOtpSent && !isPhoneVerified && (
@@ -762,7 +762,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 type="text"
                                                 value={otp}
                                                 onChange={(e) => setOtp(e.target.value)}
-                                                className="flex-1 px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm font-bold tracking-[0.2em] text-center focus:ring-2 focus:ring-primary-50"
+                                                className="flex-1 px-3 py-1.5 bg-white border border-primary-300 rounded-lg text-sm font-bold tracking-wider-2 text-center focus:ring-2 focus:ring-primary-50"
                                                 placeholder="------"
                                                 maxLength={6}
                                                 autoFocus
@@ -771,11 +771,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                 buttonType="primary"
                                                 scale="small"
                                                 layoutVariant="default"
-                                                className="h-[34px] px-4 text-xs font-bold"
+                                                className="h-9 px-4 text-xs font-bold"
                                                 onClick={handleVerifyPhoneOTP}
                                                 disabled={isVerifyingPhoneOtp || otp.length < 4}
                                             >
-                                                {isVerifyingPhoneOtp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Verify OTP"}
+                                                {isVerifyingPhoneOtp ? <SpinnerGap className="h-3.5 w-3.5 animate-spin" /> : "Verify OTP"}
                                             </MyButton>
                                         </div>
                                     )}
@@ -803,19 +803,19 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                             </div>
                                         ))}
                                         <div className="flex justify-between items-center pt-1.5 border-t border-gray-200">
-                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
+                                            <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
                                             <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(2)}</span>
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between">
                                         <div className="flex flex-col">
-                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
+                                            <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
                                             <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(0)}</span>
                                         </div>
                                         <div className="text-right">
-                                            <span className="text-[10px] text-gray-400 font-medium block">{items.length} Items</span>
-                                            <span className="text-[10px] text-green-600 font-bold flex items-center justify-end gap-1">
+                                            <span className="text-caption text-gray-400 font-medium block">{items.length} Items</span>
+                                            <span className="text-caption text-green-600 font-bold flex items-center justify-end gap-1">
                                                 <span className="w-1 h-1 bg-green-500 rounded-full" /> Secure
                                             </span>
                                         </div>
@@ -836,16 +836,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                             disabled={loading || isInitializing || !isPhoneVerified}
                         >
                             {loading ? (
-                                <Loader2 className="animate-spin h-5 w-5" />
+                                <SpinnerGap className="animate-spin h-5 w-5" />
                             ) : (
                                 <>
                                     <span>Proceed to Payment</span>
-                                    <ChevronRight className="h-4 w-4" />
+                                    <CaretRight className="h-4 w-4" />
                                 </>
                             )}
                         </MyButton>
                         {!isPhoneVerified && (
-                            <p className="text-center text-[9px] text-red-400 mt-2 font-bold">WhatsApp verification required to continue</p>
+                            <p className="text-center text-caption text-red-400 mt-2 font-bold">WhatsApp verification required to continue</p>
                         )}
                     </div>
                 </DialogPrimitive.Content>

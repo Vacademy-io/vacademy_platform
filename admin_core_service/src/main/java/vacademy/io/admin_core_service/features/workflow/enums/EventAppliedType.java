@@ -8,5 +8,8 @@ public enum EventAppliedType {
     PAYMENT,
     USER_PLAN,
     INSTITUTE,
-    ASSESSMENT
+    ASSESSMENT,
+    // Counselor-pool scope: eventId holds the pool's id. A trigger of this type fires for
+    // any lead whose audience belongs to that pool, in addition to institute-level triggers.
+    POOL
 }

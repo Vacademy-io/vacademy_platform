@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { FileText, Upload, CheckCircle, Clock, XCircle, Trash2, Camera, Image, File, AlertTriangle, ShieldCheck, FileType } from "lucide-react";
+import { FileText, UploadSimple, CheckCircle, Clock, XCircle, Trash, Camera, Image, File, Warning, ShieldCheck, FileDashed } from "@phosphor-icons/react";
 
 interface Props { child: ChildProfile; docData: DocumentsResponse }
 
@@ -52,22 +52,22 @@ function DocCard({ doc }: { doc: DocumentRequirement }) {
         <div className="flex items-start gap-3">
           <div className={`p-2 rounded-lg shrink-0 ${cfg.iconBg}`}>{cfg.icon}</div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5"><p className="text-sm font-semibold truncate">{doc.document_name}</p>{doc.is_required && <Badge variant="outline" className="text-[9px] shrink-0">Required</Badge>}</div>
+            <div className="flex items-center gap-2 mb-0.5"><p className="text-sm font-semibold truncate">{doc.document_name}</p>{doc.is_required && <Badge variant="outline" className="text-caption shrink-0">Required</Badge>}</div>
             {doc.description && <p className="text-xs text-muted-foreground mb-2">{doc.description}</p>}
-            <Badge className={`${cfg.badgeBg} ${cfg.badgeText} text-[10px] mb-2`}>{cfg.label}</Badge>
+            <Badge className={`${cfg.badgeBg} ${cfg.badgeText} text-caption mb-2`}>{cfg.label}</Badge>
             {uploaded && doc.uploaded_file_name && (
               <div className="flex items-center gap-2 mt-2 p-2 rounded-lg bg-muted/30 border border-border/50">
                 <FIcon name={doc.uploaded_file_name} />
-                <div className="flex-1 min-w-0"><p className="text-xs font-medium truncate">{doc.uploaded_file_name}</p>{doc.uploaded_at && <p className="text-[10px] text-muted-foreground">Uploaded {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>}</div>
-                {!approved && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => toast.info("Delete (demo)")}><Trash2 size={12} /></Button>}
+                <div className="flex-1 min-w-0"><p className="text-xs font-medium truncate">{doc.uploaded_file_name}</p>{doc.uploaded_at && <p className="text-caption text-muted-foreground">Uploaded {new Date(doc.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>}</div>
+                {!approved && <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => toast.info("Delete (demo)")}><Trash size={12} /></Button>}
               </div>
             )}
-            {rejected && doc.rejection_reason && (<div className="mt-2 p-2 rounded-lg bg-destructive/5 border border-destructive/20"><p className="text-xs text-destructive flex items-start gap-1.5"><AlertTriangle size={12} className="shrink-0 mt-0.5" />{doc.rejection_reason}</p></div>)}
+            {rejected && doc.rejection_reason && (<div className="mt-2 p-2 rounded-lg bg-destructive/5 border border-destructive/20"><p className="text-xs text-destructive flex items-start gap-1.5"><Warning size={12} className="shrink-0 mt-0.5" />{doc.rejection_reason}</p></div>)}
             {(!uploaded || rejected) && (<div className="flex items-center gap-2 mt-3">
               <input ref={ref} type="file" className="hidden" accept={doc.allowed_formats.map(f => `.${f}`).join(",")} onChange={() => toast.success("File selected (demo)")} />
-              <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => ref.current?.click()}><Upload size={12} />{rejected ? "Re-upload" : "Upload"}</Button>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => ref.current?.click()}><UploadSimple size={12} />{rejected ? "Re-upload" : "Upload"}</Button>
               <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs text-muted-foreground" onClick={() => toast.info("Camera capture (demo)")}><Camera size={12} />Camera</Button>
-              <span className="text-[10px] text-muted-foreground ml-auto">Max {doc.max_size_mb}MB • {doc.allowed_formats.join(", ").toUpperCase()}</span>
+              <span className="text-caption text-muted-foreground ml-auto">Max {doc.max_size_mb}MB • {doc.allowed_formats.join(", ").toUpperCase()}</span>
             </div>)}
           </div>
         </div>
@@ -78,14 +78,14 @@ function DocCard({ doc }: { doc: DocumentRequirement }) {
 
 function FIcon({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase();
-  if (ext === "pdf") return <FileType size={16} className="text-red-500 shrink-0" />;
+  if (ext === "pdf") return <FileDashed size={16} className="text-red-500 shrink-0" />;
   if (["jpg","jpeg","png","webp"].includes(ext||"")) return <Image size={16} className="text-blue-500 shrink-0" />;
   return <File size={16} className="text-muted-foreground shrink-0" />;
 }
 
 function statusCfg(status: string) {
   const m: Record<string, { label: string; icon: React.ReactNode; iconBg: string; badgeBg: string; badgeText: string }> = {
-    NOT_UPLOADED: { label: "Not Uploaded", icon: <Upload size={18} className="text-muted-foreground" />, iconBg: "bg-muted", badgeBg: "bg-gray-100 dark:bg-gray-800", badgeText: "text-gray-600 dark:text-gray-300" },
+    NOT_UPLOADED: { label: "Not Uploaded", icon: <UploadSimple size={18} className="text-muted-foreground" />, iconBg: "bg-muted", badgeBg: "bg-gray-100 dark:bg-gray-800", badgeText: "text-gray-600 dark:text-gray-300" },
     UPLOADED: { label: "Uploaded", icon: <FileText size={18} className="text-blue-600" />, iconBg: "bg-blue-100 dark:bg-blue-900/30", badgeBg: "bg-blue-100 dark:bg-blue-900/30", badgeText: "text-blue-700 dark:text-blue-300" },
     UNDER_REVIEW: { label: "Under Review", icon: <Clock size={18} className="text-amber-600" />, iconBg: "bg-amber-100 dark:bg-amber-900/30", badgeBg: "bg-amber-100 dark:bg-amber-900/30", badgeText: "text-amber-700 dark:text-amber-300" },
     APPROVED: { label: "Verified", icon: <CheckCircle size={18} className="text-emerald-600" />, iconBg: "bg-emerald-100 dark:bg-emerald-900/30", badgeBg: "bg-emerald-100 dark:bg-emerald-900/30", badgeText: "text-emerald-700 dark:text-emerald-300" },

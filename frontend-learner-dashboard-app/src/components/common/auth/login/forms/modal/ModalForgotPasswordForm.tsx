@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, ArrowLeft, Key, Shield, CheckCircle, RefreshCw } from "lucide-react";
+import { Envelope, ArrowLeft, Key, Shield, CheckCircle, ArrowsClockwise } from "@phosphor-icons/react";
 
 type FormValues = z.infer<typeof forgotPasswordSchema>;
 
@@ -157,7 +157,7 @@ export function ModalForgotPasswordForm({
                                                         {...field}
                                                         className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                                     />
-                                                    <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                                    <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                                                 </div>
                                             </FormControl>
                                         </FormItem>
@@ -178,13 +178,13 @@ export function ModalForgotPasswordForm({
                                                 animate={{ rotate: 360 }}
                                                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                                             >
-                                                <RefreshCw className="w-4 h-4" />
+                                                <ArrowsClockwise className="w-4 h-4" />
                                             </motion.div>
                                             <span className="text-sm">Sending...</span>
                                         </div>
                                     ) : (
                                         <div className="flex items-center justify-center space-x-2">
-                                            <Mail className="w-4 h-4" />
+                                            <Envelope className="w-4 h-4" />
                                             <span className="text-sm">Send Credentials</span>
                                         </div>
                                     )}

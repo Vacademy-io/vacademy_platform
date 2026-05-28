@@ -3,7 +3,7 @@ import axios from "axios";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { CartComponentProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { Trash2, Plus, Minus, X } from "lucide-react";
+import { Trash, Plus, Minus, X } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { getMembershipPlans, MembershipPlan } from "../../-services/membership-plan-service";
 import { INSTITUTE_ID } from "@/constants/urls";
@@ -87,10 +87,10 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
   }, [imageUrl, item.image]);
 
   return (
-    <div className="w-full max-w-[950px] mx-auto flex flex-row gap-2.5 sm:gap-3 p-2.5 sm:p-3 border border-gray-200 rounded-lg bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 active:scale-[0.99]">
+    <div className="w-full max-w-page mx-auto flex flex-row gap-2.5 sm:gap-3 p-2.5 sm:p-3 border border-gray-200 rounded-lg bg-white hover:shadow-md hover:border-gray-300 transition-all duration-200 active:scale-[0.99]">
       {/* Item Image - Compact on mobile */}
       {showItemImage && (
-        <div className="flex-shrink-0 w-[85px] h-[125px] sm:w-[110px] sm:h-[170px] bg-gray-100 rounded-lg overflow-hidden shadow-sm">
+        <div className="flex-shrink-0 w-20 h-32 sm:w-28 sm:h-44 bg-gray-100 rounded-lg overflow-hidden shadow-sm">
           {imageLoading ? (
             <div className="w-full h-full bg-gray-200 animate-pulse flex items-center justify-center">
               <div className="text-gray-400 text-xs">...</div>
@@ -173,7 +173,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
               onClick={() => item.enrollInviteId && onRemove(item.enrollInviteId)}
               disabled={!item.enrollInviteId}
             >
-              <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform group-hover:scale-110" />
+              <Trash className="h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform group-hover:scale-110" />
               <span className="text-xs font-medium hidden sm:inline">Remove</span>
             </button>
           )}
@@ -255,16 +255,16 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
           <div className="flex flex-col gap-0.5 sm:gap-1">
             {/* Max books at one time */}
             <div className="flex items-center gap-1">
-              <span className="text-[10px] sm:text-xs text-gray-500">Books at once:</span>
-              <span className={`font-semibold text-gray-700 ${numberOfBooks ? 'text-[10px] sm:text-xs' : 'text-sm sm:text-base'}`}>
+              <span className="text-caption sm:text-xs text-gray-500">Books at once:</span>
+              <span className={`font-semibold text-gray-700 ${numberOfBooks ? 'text-caption sm:text-xs' : 'text-sm sm:text-base'}`}>
                 {numberOfBooks ?? '∞'}
               </span>
             </div>
 
             {/* Max books in period - always show */}
             <div className="flex items-center gap-1">
-              <span className="text-[10px] sm:text-xs text-gray-500">Books in period:</span>
-              <span className={`font-semibold text-gray-700 ${maxSeats ? 'text-[10px] sm:text-xs' : 'text-sm sm:text-base'}`}>
+              <span className="text-caption sm:text-xs text-gray-500">Books in period:</span>
+              <span className={`font-semibold text-gray-700 ${maxSeats ? 'text-caption sm:text-xs' : 'text-sm sm:text-base'}`}>
                 {maxSeats ?? '∞'}
               </span>
             </div>
@@ -274,7 +274,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
         {/* Select Button */}
         <button
           className={`
-            w-full mt-1.5 sm:mt-2 py-1.5 sm:py-2 px-2 rounded-md text-[10px] sm:text-xs font-semibold transition-all duration-200 active:scale-95
+            w-full mt-1.5 sm:mt-2 py-1.5 sm:py-2 px-2 rounded-md text-caption sm:text-xs font-semibold transition-all duration-200 active:scale-95
             ${isSelected
               ? 'bg-primary-600 text-white font-bold shadow-sm hover:bg-primary-700'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -627,7 +627,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
   const padding = styles.padding || "10px";
   const roundedEdges = styles.roundedEdges ? "rounded-lg" : "";
-  const backgroundColor = styles.backgroundColor || "#ffffff";
+  const backgroundColor = styles.backgroundColor || "white";
 
   // Buy-mode additional charges (shipping). Rent mode is intentionally excluded —
   // security deposit / rent-mode shipping is a separate piece of work.
@@ -707,7 +707,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
               {items.map((item) => (
                 <div
                   key={item.enrollInviteId || item.id}
-                  className="flex-shrink-0 w-[130px] sm:w-[140px] snap-start flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 relative group active:scale-[0.98]"
+                  className="flex-shrink-0 w-32 sm:w-36 snap-start flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 relative group active:scale-[0.98]"
                 >
                   {/* Delete Button - Overlay Top Right */}
                   {showRemoveButton && (
@@ -718,12 +718,12 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                         if (item.enrollInviteId) handleRemove(item.enrollInviteId);
                       }}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash className="h-3.5 w-3.5" />
                     </button>
                   )}
 
                   {/* Image */}
-                  <div className="w-full h-[170px] sm:h-[180px] bg-gray-100 relative overflow-hidden">
+                  <div className="w-full h-44 sm:h-44 bg-gray-100 relative overflow-hidden">
                     <SimpleImage
                       src={item.enrollInviteId ? imageUrls[item.enrollInviteId] : undefined}
                       fallbackSrc={item.image}
@@ -734,7 +734,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                   {/* Minimal Details */}
                   <div className="p-2.5 flex flex-col gap-1">
                     {showItemTitle && (
-                      <h3 className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-2 leading-tight min-h-[2.5em]">
+                      <h3 className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-2 leading-tight min-h-10">
                         {item.title}
                       </h3>
                     )}

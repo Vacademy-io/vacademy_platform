@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Share2, Copy, Check, Loader2 } from "lucide-react";
+import { ShareNetwork, Copy, Check, SpinnerGap } from "@phosphor-icons/react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -79,9 +79,9 @@ export const ShareButton: React.FC<ShareButtonProps> = ({
                     aria-label="Share book"
                 >
                     {loading ? (
-                        <Loader2 className={`${iconSize} animate-spin text-gray-500`} />
+                        <SpinnerGap className={`${iconSize} animate-spin text-gray-500`} />
                     ) : (
-                        <Share2 className={`${iconSize} text-gray-600`} />
+                        <ShareNetwork className={`${iconSize} text-gray-600`} />
                     )}
                 </button>
             </PopoverTrigger>

@@ -536,7 +536,7 @@ function EmbedComponent() {
   if (!isSafetyVerified) {
     return (
       <LayoutContainer>
-        <div className="w-full h-[calc(100vh-64px)] flex items-center justify-center">
+        <div className="w-full h-nav-offset flex items-center justify-center">
           <SafetyWarningModal
             open={true}
             onAccept={() => setIsSafetyVerified(true)}
@@ -598,7 +598,7 @@ function EmbedComponent() {
         />
       </Helmet>
 
-      <div className="flex flex-col h-[calc(100vh-64px)]">
+      <div className="flex flex-col h-nav-offset">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold text-center mb-6">
             {sessionDetails?.title || getTerminology(ContentTerms.Session, SystemTerms.Session)}

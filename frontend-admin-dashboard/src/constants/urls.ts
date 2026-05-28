@@ -66,6 +66,11 @@ export const VIMOTION_REQUEST_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion
 export const VIMOTION_VERIFY_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/verify-signup-otp`;
 export const VIMOTION_SIGNUP = `${BASE_URL}/auth-service/v1/vimotion/signup`;
 export const VIMOTION_LOGIN = `${BASE_URL}/auth-service/v1/vimotion/login`;
+export const VIMOTION_VALIDATE_INVITE_CODE = `${BASE_URL}/auth-service/v1/vimotion/invite-codes/validate`;
+export const VIMOTION_CONFIG = `${BASE_URL}/auth-service/v1/vimotion/config`;
+export const VIMOTION_WAITLIST_JOIN = `${BASE_URL}/auth-service/v1/vimotion/waitlist/join`;
+export const VIMOTION_WAITLIST_STATUS = `${BASE_URL}/auth-service/v1/vimotion/waitlist/status`;
+export const VIMOTION_WAITLIST_COUNT = `${BASE_URL}/auth-service/v1/vimotion/waitlist/count`;
 
 // Vimotion brand kits + studio avatars (admin_core_service, JWT-auth)
 export const VIMOTION_BRAND_KITS = `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits`;
@@ -94,10 +99,17 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+// Lead Reports endpoints — pinned to localhost:8072 for local dev (swap to ${BASE_URL} for stage/prod).
+export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
+export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
+export const GET_LEAD_SCORE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score`;
+export const SET_MANUAL_LEAD_SCORE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/score/manual`;
 export const GET_USER_LEAD_PROFILES_BATCH = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profiles/batch`;
 export const MARK_LEAD_CONVERTED = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/mark-converted`;
 export const UPDATE_LEAD_STATUS = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/update-status`;
@@ -107,6 +119,15 @@ export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/us
 export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
 export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
+export const GET_ALL_LEAD_EVENTS = (studentUserId: string) =>
+    `${BASE_URL}/admin-core-service/timeline/v1/student/${studentUserId}/all`;
+const FOLLOWUP_BASE = `${BASE_URL}/admin-core-service/v1/lead-followup`;
+export const GET_LEAD_FOLLOWUPS = (audienceResponseId: string) =>
+    `${FOLLOWUP_BASE}/${audienceResponseId}`;
+export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
+export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
+export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
@@ -117,6 +138,27 @@ export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/cus
 
 // Field Mapping
 export const FIELD_MAPPING_BASE_URL = `${BASE_URL}/admin-core-service/common/field-mapping`;
+
+// Counselor Pool & Auto-Assignment
+export const COUNSELOR_POOL_BASE = `${BASE_URL}/admin-core-service/v1/counselor-pool`;
+export const COUNSELOR_POOL_BY_ID = (poolId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}`;
+export const COUNSELOR_POOL_AUDIENCE = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}`;
+export const COUNSELOR_POOL_AUDIENCE_ORDER = (poolId: string, audienceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/audiences/${audienceId}/order`;
+export const COUNSELOR_POOL_COUNSELOR = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}`;
+export const COUNSELOR_POOL_COUNSELOR_STATUS = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}/status`;
+export const COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS = (counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/memberships`;
+export const COUNSELOR_POOL_COUNSELOR_STATUS_MULTI = (counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/status-multi`;
+export const COUNSELOR_POOL_COUNSELOR_MONTHLY_TARGET = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}/monthly-target`;
+export const COUNSELOR_POOL_SCHEDULE = (poolId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/schedule`;
 
 // urls
 export const LOGIN_URL = `${BASE_URL}/auth-service/v1/login-root`;
@@ -470,6 +512,11 @@ export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
     `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
 
+// Persist LLM-generated study notes (Markdown) so the next dialog open
+// can show them without re-running the LLM. POST body: { markdown: string }.
+export const RECORDING_STUDY_NOTES = (scheduleId: string, recordingId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/study-notes`;
+
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
     `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
 
@@ -646,9 +693,15 @@ export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/su
 export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
 // Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
 export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
-// Invoices (per user) — used by the sub-org analytics dashboard
+// Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
+export const GET_INVOICES_BY_INSTITUTE = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/institute/${instituteId}`;
+export const GET_INVOICE_DOWNLOAD_URL = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/download`;
+export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/create`;
+export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot
 export const INSTRUCTOR_COPILOT_BASE = `${BASE_URL}/admin-core-service/instructor-copilot/v1`;
@@ -803,3 +856,9 @@ export const CREATE_PRODUCT_PAGE_COUPON = (coursePageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/create?coursePageId=${coursePageId}`;
 export const DELETE_PRODUCT_PAGE_COUPON = (couponCodeId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/${couponCodeId}`;
+export const ADD_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/add`;
+export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
+export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;

@@ -1,0 +1,1 @@
+ALTER TABLE lead_score ADD COLUMN IF NOT EXISTS is_manual_override BOOLEAN DEFAULT FALSE;

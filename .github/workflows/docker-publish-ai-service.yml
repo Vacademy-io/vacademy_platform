@@ -1,6 +1,16 @@
 name: Deploy AI Service to LKE
 
 on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: main
+      image_tag:
+        description: "Image tag to push (use a UNIQUE tag for branch builds, e.g. the branch name, so you don't overwrite main's :latest)"
+        required: true
+        default: latest
   push:
     branches:
       - main
@@ -13,6 +23,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
@@ -32,7 +44,7 @@ jobs:
         working-directory: ./ai_service
         env:
           ECR_REGISTRY: public.ecr.aws/e0x1f4p4
-          IMAGE_TAG: latest
+          IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
           REPOSITORY: ai-service/ai-service-repo
         run: |
           docker build -t $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG .
@@ -40,6 +52,7 @@ jobs:
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
       - name: Connect to LKE kubernetes cluster
+        if: github.event_name == 'push'
         id: connect-to-k8s-cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
@@ -47,6 +60,7 @@ jobs:
           kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
 
       - name: Restart deployment if it exists
+        if: github.event_name == 'push'
         env:
           DEPLOYMENT_NAME: ai-service
           NAMESPACE: default

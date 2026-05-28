@@ -6,9 +6,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, Lock } from "lucide-react";
+import { SpinnerGap, Lock } from "@phosphor-icons/react";
 import { EnvelopeSimple } from "@phosphor-icons/react";
-import { SiStripe } from "react-icons/si";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand logo (Simple Icons; no Phosphor equivalent)
 import { Preferences } from "@capacitor/preferences";
 import {
   fetchEnrollmentDetails,
@@ -291,16 +291,16 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             style: {
               base: {
                 fontSize: "16px",
-                color: "#374151",
+                color: "#374151", // design-lint-ignore: payment SDK element style
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 "::placeholder": {
-                  color: "#9CA3AF",
+                  color: "#9CA3AF", // design-lint-ignore: payment SDK element style
                 },
                 padding: "8px 0",
               },
               invalid: {
-                color: "#DC2626",
+                color: "#DC2626", // design-lint-ignore: payment SDK element style
               },
             },
             hidePostalCode: true,
@@ -569,7 +569,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading payment options...</p>
             </div>
           </div>
@@ -599,7 +599,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-screen-90 overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-center">
               One-Time Payment
@@ -710,7 +710,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 >
                   {processingPayment ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
                       Processing...
                     </>
                   ) : (
@@ -910,7 +910,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 </div>
 
                 <div
-                  className={`border rounded p-3 text-sm w-full min-h-[48px] ${
+                  className={`border rounded p-3 text-sm w-full min-h-12 ${
                     cardElementError
                       ? "border-red-500 bg-red-50"
                       : "border-gray-300"
@@ -918,7 +918,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 >
                   {!cardElementReady && (
                     <div className="flex items-center justify-center h-full text-gray-500">
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
                       Loading payment form...
                     </div>
                   )}
@@ -944,7 +944,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 >
                   {processingPayment ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <SpinnerGap className="w-4 h-4 animate-spin" />
                       Processing...
                     </>
                   ) : (

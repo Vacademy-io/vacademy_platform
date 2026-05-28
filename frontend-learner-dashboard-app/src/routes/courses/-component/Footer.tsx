@@ -1,5 +1,5 @@
 import React, { ChangeEvent, FormEvent } from "react";
-import { FaTwitter, FaFacebookF, FaInstagram, FaYoutube } from "react-icons/fa";
+import { FaTwitter, FaFacebookF, FaInstagram, FaYoutube } from "react-icons/fa"; // design-lint-ignore: social brand logos (no Phosphor equivalent)
 import { Preferences } from "@capacitor/preferences";
 
 const Footer: React.FC = () => {
@@ -116,7 +116,7 @@ const Footer: React.FC = () => {
         </div>
       </div>
 
-      <div className="border-t-2 border-gray-700 h-[80px] flex flex-col items-center justify-center text-sm text-white gap-2">
+      <div className="border-t-2 border-gray-700 h-20 flex flex-col items-center justify-center text-sm text-white gap-2">
         <p>© 2025 Codecircle.org. All rights reserved</p>
         <p className="flex gap-2">
           <button

@@ -71,6 +71,7 @@ const PUBLIC_ROUTES = [
   "/un", // Public unsubscribe links
   "/m", // Public media hosting page
   "/admission/payment", // Public admission payment links shared by institutes
+  "/pay/invoice", // Shareable invoice payment links
 ];
 
 const isAuthenticated = async () => {
@@ -841,7 +842,7 @@ export const Route = createRootRouteWithContext<{
           if (deepLinkRedirectUrl && /\/(login|signup|register|institute-selection)/i.test(redirectPath)) {
             throw redirect({
               to: redirectPath as never,
-              search: { redirect: deepLinkRedirectUrl },
+              search: { redirect: deepLinkRedirectUrl } as never,
             });
           }
 
@@ -877,7 +878,7 @@ export const Route = createRootRouteWithContext<{
       const redirectUrl = location.href;
       throw redirect({
         to: "/login",
-        search: { redirect: redirectUrl },
+        search: { redirect: redirectUrl } as never,
       });
     }
   },

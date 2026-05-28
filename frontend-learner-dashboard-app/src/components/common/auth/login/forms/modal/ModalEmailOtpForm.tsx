@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
 import { motion } from "framer-motion";
-import { Mail, ArrowLeft, RefreshCw, Shield, CheckCircle2 } from "lucide-react";
+import { Envelope, ArrowLeft, ArrowsClockwise, Shield, CheckCircle } from "@phosphor-icons/react";
 
 import { TokenKey } from "@/constants/auth/tokens";
 import {
@@ -523,7 +523,7 @@ export function ModalEmailLogin({
                         }}
                         className="w-12 h-12 bg-gray-100 rounded-md mx-auto flex items-center justify-center"
                     >
-                        <Mail className="w-6 h-6 text-gray-700" />
+                        <Envelope className="w-6 h-6 text-gray-700" />
                     </motion.div>
                     <div className="space-y-1">
                         <h3 className="text-lg font-semibold text-gray-900">
@@ -538,7 +538,7 @@ export function ModalEmailLogin({
                             transition={{ delay: 0.3 }}
                             className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-1"
                         >
-                            <CheckCircle2 className="w-3 h-3 text-gray-600" />
+                            <CheckCircle className="w-3 h-3 text-gray-600" />
                             <span className="text-sm font-medium text-gray-800">
                                 {email}
                             </span>
@@ -676,7 +676,7 @@ export function ModalEmailLogin({
                                                  ease: "linear",
                                              }}
                                          >
-                                             <RefreshCw className="w-4 h-4" />
+                                             <ArrowsClockwise className="w-4 h-4" />
                                          </motion.div>
                                          <span className="text-sm">
                                              Verifying...
@@ -779,7 +779,7 @@ export function ModalEmailLogin({
                                             ease: "linear",
                                         }}
                                     >
-                                        <RefreshCw className="w-4 h-4" />
+                                        <ArrowsClockwise className="w-4 h-4" />
                                     </motion.div>
                                     <span className="text-sm">
                                         Sending code...
@@ -787,7 +787,7 @@ export function ModalEmailLogin({
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-center space-x-2">
-                                    <Mail className="w-4 h-4" />
+                                    <Envelope className="w-4 h-4" />
                                     <span className="text-sm">
                                         Send Verification Code
                                     </span>

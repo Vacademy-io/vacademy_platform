@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Clock, CheckCircle } from "lucide-react";
+import { Clock, CheckCircle } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 
 interface EnrollmentPendingDialogProps {

@@ -61,6 +61,15 @@ export interface LiveSessionSettings {
      * empty.
      */
     descriptionEnabled: boolean;
+    /**
+     * Whether the "Process Recording" entry point appears next to each BBB
+     * recording. When `false`, admins/teachers don't see the transcribe
+     * button (and so can't kick off Whisper jobs). Existing transcripts on
+     * already-processed recordings remain viewable — only the *new*
+     * processing entry point is hidden. Default is OFF so transcription
+     * stays an opt-in feature an admin has to explicitly enable.
+     */
+    recordingTranscriptionEnabled: boolean;
 }
 
 export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
@@ -82,6 +91,7 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultTimeZone: '',
     defaultDailyAttendanceCounting: false,
     descriptionEnabled: true,
+    recordingTranscriptionEnabled: false,
 };
 
 const getInstituteId = (): string => {

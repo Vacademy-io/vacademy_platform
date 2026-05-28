@@ -10,9 +10,9 @@ import {
   OtpVerificationForm,
 } from "./reusable";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
-import { FcGoogle } from "react-icons/fc";
+import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: brand logo, no phosphor equivalent
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from "@phosphor-icons/react";
 import {
   LOGIN_URL_GOOGLE_GITHUB,
   LIVE_SESSION_REQUEST_OTP,

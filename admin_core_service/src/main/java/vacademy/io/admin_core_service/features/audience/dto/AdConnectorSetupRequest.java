@@ -24,6 +24,11 @@ public class AdConnectorSetupRequest {
     /** Platform form ID (Meta: Lead Gen Form ID) */
     private String platformFormId;
 
+    /** Human-readable form name shown in the connector list (e.g.
+     *  "Wakad_leadform_2026"). Captured from the form-selection dropdown so
+     *  the backend can persist it without re-querying Meta. */
+    private String platformFormName;
+
     /** Platform page name for display */
     private String platformPageName;
 
@@ -50,4 +55,10 @@ public class AdConnectorSetupRequest {
 
     /** Google-specific: the static key that will be embedded in the webhook URL */
     private String googleKey;
+
+    /**
+     * Optional JSON object of per-connector default values stamped onto every
+     * lead (e.g. {"Center Name":"Wakad"}). Form values always take precedence.
+     */
+    private String defaultValuesJson;
 }

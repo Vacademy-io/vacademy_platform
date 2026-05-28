@@ -24,7 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { BookOpen, Code, Gamepad2 } from "lucide-react";
+import { BookOpen, Code, GameController } from "@phosphor-icons/react";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import { useEffect, useState } from "react";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
@@ -222,7 +222,7 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
         case "JUPYTER":
           return <BookOpen className={`${iconClass} text-purple-500`} />;
         case "SCRATCH":
-          return <Gamepad2 className={`${iconClass} text-orange-500`} />;
+          return <GameController className={`${iconClass} text-orange-500`} />;
         default:
           return (
             <FileText
@@ -558,16 +558,13 @@ const SlideItem = ({
             }}
           >
             <div
-              className={`
-                flex w-full items-center gap-2 rounded-md py-2
-                transition-all duration-150
-                [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary-100 [.ui-play_&]:my-1.5 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))] [.ui-play_&]:transition-all [.ui-play_&]:hover:border-primary-200 [.ui-play_&]:hover:shadow-[0_3px_0_hsl(var(--primary-200))]
-                ${
-                  isActive
-                    ? "pl-1 pr-2 text-primary-700 bg-primary-50 border border-primary-200/60 border-l-4 border-l-primary-500 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]"
-                    : "px-2 bg-white text-gray-700 hover:bg-gray-50 border border-transparent"
-                }
-              `}
+              className={[
+                "flex w-full items-center gap-2 rounded-md py-2 transition-all duration-150",
+                "[.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary-100 [.ui-play_&]:my-1.5 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))] [.ui-play_&]:transition-all [.ui-play_&]:hover:border-primary-200 [.ui-play_&]:hover:shadow-play-3-primary", // design-lint-ignore: custom shadow (primary-100 variant, no token)
+                isActive
+                  ? "pl-1 pr-2 text-primary-700 bg-primary-50 border border-primary-200/60 border-l-4 border-l-primary-500 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]" // design-lint-ignore: custom shadow (primary-300 variant, no token)
+                  : "px-2 bg-white text-gray-700 hover:bg-gray-50 border border-transparent",
+              ].join(" ")}
             >
               {/* Slide Number */}
               <div
@@ -605,7 +602,7 @@ const SlideItem = ({
                       : getSlideTypeDisplay(slide)}
                   </span>
                   {getContentDetails(slide) && (
-                    <span className="text-[10px] text-gray-400">
+                    <span className="text-3xs text-gray-400">
                       {getContentDetails(slide)}
                     </span>
                   )}
@@ -618,7 +615,7 @@ const SlideItem = ({
                   <LockedBadge size="sm" unlockMessage={unlockMessage} className="[.ui-play_&]:rounded-full [.ui-play_&]:bg-gray-200" />
                 ) : slide.percentage_completed != null && !isCompleted ? (
                   <span
-                    className={`text-[10px] font-semibold [.ui-play_&]:font-black ${
+                    className={`text-3xs font-semibold [.ui-play_&]:font-black ${
                       isActive ? "text-primary-600" : "text-gray-400"
                     }`}
                   >
@@ -627,7 +624,7 @@ const SlideItem = ({
                 ) : null}
                 {!isLocked && isCompleted ? (
                   <CheckCircle
-                    className="w-4 h-4 text-success-600 [.ui-play_&]:text-[#58CC02]"
+                    className="w-4 h-4 text-success-600 [.ui-play_&]:text-[#58CC02]" // design-lint-ignore: play-theme brand green (Duolingo-style gamification color)
                     weight="fill"
                   />
                 ) : (
@@ -644,11 +641,11 @@ const SlideItem = ({
         </TooltipTrigger>
         <TooltipContent
           side="right"
-          className="max-w-[220px] border border-gray-200 bg-white text-gray-700 shadow-sm z-[9999] px-2.5 py-1.5"
+          className="max-w-reg-200 border border-gray-200 bg-white text-gray-700 shadow-sm z-50 px-2.5 py-1.5"
           sideOffset={4}
         >
           <p className="font-medium text-xs leading-snug">{getSlideTitle()}</p>
-          <p className="text-[10px] text-gray-400 mt-0.5">
+          <p className="text-3xs text-gray-400 mt-0.5">
             {getSlideTypeDisplay(slide)}
             {getContentDetails(slide) && ` · ${getContentDetails(slide)}`}
             {slide.percentage_completed != null && ` · ${slide.percentage_completed.toFixed(0)}%`}

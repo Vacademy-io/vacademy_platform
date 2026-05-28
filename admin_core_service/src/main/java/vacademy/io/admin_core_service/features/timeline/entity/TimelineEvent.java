@@ -5,12 +5,16 @@ import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
+import vacademy.io.admin_core_service.features.timeline.enums.TimelineCategory;
 
 import java.sql.Timestamp;
 
 /**
  * Entity representing an event in a timeline for an enquiry, applicant, or
  * student.
+ *
+ * category = JOURNEY → automated lead-lifecycle events (status changes, submission, score updates).
+ * category = ACTIVITY → manual admin interactions (notes, call logs, meetings).
  */
 @Entity
 @Table(name = "timeline_event")
@@ -61,6 +65,15 @@ public class TimelineEvent {
         /** Student user ID for cross-stage note continuity (query all notes for a student regardless of stage) */
         @Column(name = "student_user_id")
         private String studentUserId;
+
+        /**
+         * Separates automated lifecycle events (JOURNEY) from manual admin interactions (ACTIVITY).
+         * Defaults to ACTIVITY so all existing notes/calls rows are unaffected.
+         */
+        @Enumerated(EnumType.STRING)
+        @Column(name = "category", nullable = false, length = 20)
+        @Builder.Default
+        private TimelineCategory category = TimelineCategory.ACTIVITY;
 
         @Column(name = "created_at", insertable = false, updatable = false)
         private Timestamp createdAt;

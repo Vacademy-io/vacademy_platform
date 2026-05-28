@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { IntroPage } from '../-types/course-catalogue-types';
-import { ChevronLeftIcon, ChevronRightIcon, X } from 'lucide-react';
+import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import { useDomainRouting } from '@/hooks/use-domain-routing';
 import { getPublicUrlWithoutLogin } from '@/services/upload_file';
 
@@ -147,10 +147,10 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
     const baseClasses = 'px-6 py-3 rounded-lg font-semibold transition-colors duration-200';
     const themeColor = domainRouting.instituteThemeCode ? 
       `hsl(var(--primary))` : 
-      '#3b82f6';
+      '#3b82f6'; // design-lint-ignore: page-builder default color
     const themeColorHover = domainRouting.instituteThemeCode ? 
       `hsl(var(--primary) / 0.9)` : 
-      '#2563eb';
+      '#2563eb'; // design-lint-ignore: page-builder default color
     
     switch (style) {
       case 'primary':
@@ -167,10 +167,10 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
   const getButtonStyles = (style: string) => {
     const themeColor = domainRouting.instituteThemeCode ? 
       `hsl(var(--primary))` : 
-      '#3b82f6';
+      '#3b82f6'; // design-lint-ignore: page-builder default color
     const themeColorHover = domainRouting.instituteThemeCode ? 
       `hsl(var(--primary) / 0.9)` : 
-      '#2563eb';
+      '#2563eb'; // design-lint-ignore: page-builder default color
     
     switch (style) {
       case 'primary':
@@ -307,14 +307,14 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
               }`}
               title="Previous image"
             >
-              <ChevronLeftIcon className="w-8 h-8" />
+              <CaretLeft className="w-8 h-8" />
             </button>
             <button
               onClick={nextImage}
               className="hidden md:block absolute right-4 top-1/2 transform -translate-y-1/2 transition-colors p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Next image"
             >
-              <ChevronRightIcon className="w-8 h-8" />
+              <CaretRight className="w-8 h-8" />
             </button>
           </>
         )}
@@ -452,7 +452,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                   }}
                   className="px-6 py-3 rounded-lg font-semibold transition-colors duration-200 text-white hover:opacity-90"
                   style={{
-                    backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                    backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                   }}
                 >
                   Next
@@ -475,7 +475,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                   <span 
                     className="underline"
                     style={{
-                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                     }}
                   >
                     Login
@@ -489,7 +489,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom */}
       {!showLeadForm && (
-        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
+        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-60 bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
           <div className="flex flex-col gap-3">
             {/* Next Button - Full width on mobile */}
             {processedImages.length > 1 && (
@@ -505,7 +505,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                 }}
                 className="w-full px-4 py-2 text-white font-medium hover:opacity-90 rounded-md transition-colors"
                 style={{
-                  backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                  backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                 }}
               >
                 Next
@@ -523,7 +523,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                   <span 
                     className="underline"
                     style={{
-                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      color: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                     }}
                   >
                     Login

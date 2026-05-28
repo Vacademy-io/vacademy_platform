@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +17,9 @@ import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepo
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.enquiry.entity.Enquiry;
 import vacademy.io.admin_core_service.features.enquiry.repository.EnquiryRepository;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.admin_core_service.features.timeline.repository.TimelineEventRepository;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -80,6 +83,11 @@ public class LeadScoringService {
     @Autowired
     private UserLeadProfileService userLeadProfileService;
 
+    // @Lazy breaks cycle: LeadScoringService → TimelineEventService → UserLeadProfileService → (lazy) LeadScoringService
+    @Autowired
+    @Lazy
+    private TimelineEventService timelineEventService;
+
     /**
      * Calculate and persist lead score for an AudienceResponse.
      * Called in real-time on lead creation and lead events.
@@ -95,6 +103,13 @@ public class LeadScoringService {
                                             String instituteId, String sourceType,
                                             String enquiryId) {
         logger.debug("Calculating lead score for response: {}", audienceResponseId);
+
+        // Skip recalculation if a manual override is active — preserve the admin-set score.
+        LeadScore existingForCheck = leadScoreRepository.findByAudienceResponseId(audienceResponseId).orElse(null);
+        if (existingForCheck != null && Boolean.TRUE.equals(existingForCheck.getIsManualOverride())) {
+            logger.debug("Skipping recalculation — manual score override active for response: {}", audienceResponseId);
+            return existingForCheck;
+        }
 
         // Pre-fetch the response so engagement can also count cross-stage events
         // (notes/calls logged from the lead-profile drawer carry student_user_id but
@@ -119,25 +134,53 @@ public class LeadScoringService {
         // Factor 4: Engagement (0-100)
         int engagementScore = calculateEngagementScore(enquiryId, audienceResponseId, userIdForEngagement);
 
-        // Weighted sum
-        int rawScore = (sourceScore * DEFAULT_SOURCE_WEIGHT
+        // Weighted sum (single division avoids rounding errors in the final score)
+        int baseScore = (sourceScore * DEFAULT_SOURCE_WEIGHT
                 + completenessScore * DEFAULT_COMPLETENESS_WEIGHT
                 + recencyScore * DEFAULT_RECENCY_WEIGHT
                 + engagementScore * DEFAULT_ENGAGEMENT_WEIGHT) / 100;
 
         // Clamp to 0-100
-        rawScore = Math.max(0, Math.min(100, rawScore));
+        baseScore = Math.max(0, Math.min(100, baseScore));
+
+        // Add the snapshotted initial score (set at lead creation) on top of calculated score, capped at 100.
+        // Null means the lead predates this feature → treated as 0.
+        Integer initialScore = (responseForScoring != null) ? responseForScoring.getInitialScore() : null;
+        int rawScore = (initialScore != null) ? Math.min(100, baseScore + initialScore) : baseScore;
+
+        // Distribute baseScore exactly across factors using largest-remainder so contributions always sum to baseScore.
+        int[] scores  = { sourceScore, completenessScore, recencyScore, engagementScore };
+        int[] weights = { DEFAULT_SOURCE_WEIGHT, DEFAULT_COMPLETENESS_WEIGHT, DEFAULT_RECENCY_WEIGHT, DEFAULT_ENGAGEMENT_WEIGHT };
+        int[] contributions = new int[4];
+        double[] remainders = new double[4];
+        int floorSum = 0;
+        for (int i = 0; i < 4; i++) {
+            double exact = scores[i] * weights[i] / 100.0;
+            contributions[i] = (int) exact;
+            remainders[i] = exact - contributions[i];
+            floorSum += contributions[i];
+        }
+        // Give the leftover points to the factors with the largest remainders
+        int leftover = baseScore - floorSum;
+        Integer[] order = { 0, 1, 2, 3 };
+        Arrays.sort(order, (a, b) -> Double.compare(remainders[b], remainders[a]));
+        for (int i = 0; i < leftover; i++) {
+            contributions[order[i]]++;
+        }
 
         // Build scoring factors breakdown for UI
         Map<String, Object> factors = new LinkedHashMap<>();
         factors.put("source_quality", Map.of("score", sourceScore, "weight", DEFAULT_SOURCE_WEIGHT,
-                "contribution", sourceScore * DEFAULT_SOURCE_WEIGHT / 100));
+                "contribution", contributions[0]));
         factors.put("profile_completeness", Map.of("score", completenessScore, "weight", DEFAULT_COMPLETENESS_WEIGHT,
-                "contribution", completenessScore * DEFAULT_COMPLETENESS_WEIGHT / 100));
+                "contribution", contributions[1]));
         factors.put("recency", Map.of("score", recencyScore, "weight", DEFAULT_RECENCY_WEIGHT,
-                "contribution", recencyScore * DEFAULT_RECENCY_WEIGHT / 100));
+                "contribution", contributions[2]));
         factors.put("engagement", Map.of("score", engagementScore, "weight", DEFAULT_ENGAGEMENT_WEIGHT,
-                "contribution", engagementScore * DEFAULT_ENGAGEMENT_WEIGHT / 100));
+                "contribution", contributions[3]));
+        if (initialScore != null) {
+            factors.put("initial_score", Map.of("value", initialScore));
+        }
 
         String factorsJson;
         try {
@@ -155,6 +198,9 @@ public class LeadScoringService {
                         .instituteId(instituteId)
                         .build());
 
+        // Capture old score before overwrite — used to decide whether to log SCORE_UPDATED.
+        Integer oldRawScore = leadScore.getId() != null ? leadScore.getRawScore() : null;
+
         leadScore.setRawScore(rawScore);
         leadScore.setScoringFactorsJson(factorsJson);
         leadScore.setLastCalculatedAt(new Timestamp(System.currentTimeMillis()));
@@ -162,6 +208,30 @@ public class LeadScoringService {
         LeadScore saved = leadScoreRepository.save(leadScore);
         logger.info("Lead score calculated: response={}, score={}, tier={}",
                 audienceResponseId, rawScore, saved.getTier());
+
+        // Log SCORE_UPDATED whenever the score is set or changes (including initial calculation).
+        if (!Integer.valueOf(rawScore).equals(oldRawScore)) {
+            try {
+                String title = oldRawScore == null
+                        ? "Lead score calculated"
+                        : "Lead score updated";
+                String desc = oldRawScore == null
+                        ? "Initial score: " + rawScore
+                        : "Score changed from " + oldRawScore + " to " + rawScore;
+                timelineEventService.logJourneyEvent(
+                        "AUDIENCE_RESPONSE", audienceResponseId,
+                        LeadJourneyActionType.SCORE_UPDATED,
+                        "SYSTEM", null, "System",
+                        title, desc,
+                        Map.of("old_score", oldRawScore != null ? oldRawScore : 0,
+                               "new_score", rawScore,
+                               "tier", saved.getTier() != null ? saved.getTier() : ""),
+                        responseForScoring != null ? responseForScoring.getStudentUserId() : null
+                );
+            } catch (Exception e) {
+                logger.warn("Failed to log SCORE_UPDATED journey event for response={}: {}", audienceResponseId, e.getMessage());
+            }
+        }
 
         // Asynchronously update the user-level lead profile
         try {
@@ -349,4 +419,5 @@ public class LeadScoringService {
         if (eventCount <= 4) return 70;
         return 100; // 5+ events
     }
+
 }

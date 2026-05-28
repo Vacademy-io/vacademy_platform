@@ -305,5 +305,11 @@ export const mergeWithDefaults = (settings: Partial<CourseSettingsData>): Course
             enabled: settings.offerPricing?.enabled ?? false,
             rounding: settings.offerPricing?.rounding ?? 'NONE',
         },
+        enrollmentNotifications: {
+            showNotifyLearners:
+                settings.enrollmentNotifications?.showNotifyLearners ?? true,
+            showSendCredentials:
+                settings.enrollmentNotifications?.showSendCredentials ?? true,
+        },
     };
 };

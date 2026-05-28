@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 
 import java.nio.charset.StandardCharsets;
@@ -73,11 +74,11 @@ public class LeadDeduplicationService {
         duplicateResponse.setIsDuplicate(true);
         duplicateResponse.setPrimaryResponseId(primaryResponse.getId());
 
-        // Log a timeline event on the primary response
-        timelineEventService.logEvent(
+        // Log a JOURNEY event on the primary response — duplicate merges are lifecycle milestones
+        timelineEventService.logJourneyEvent(
                 "AUDIENCE_RESPONSE",
                 primaryResponse.getId(),
-                "DUPLICATE_MERGED",
+                LeadJourneyActionType.DUPLICATE_MERGED,
                 "SYSTEM",
                 null,
                 "System",
@@ -87,7 +88,8 @@ public class LeadDeduplicationService {
                 Map.of(
                         "duplicate_response_id", duplicateResponse.getId() != null ? duplicateResponse.getId() : "",
                         "source_type", sourceType != null ? sourceType : "UNKNOWN"
-                )
+                ),
+                primaryResponse.getStudentUserId()
         );
 
         logger.info("Marked response as duplicate of primary={}, source={}",

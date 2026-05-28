@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle } from "@phosphor-icons/react";
 import { getCurrencySymbol } from "./payment-selection-step";
 import { SelectedPayment } from "./types";
 import { ReferralCodeComponent, ReferralBenefit } from "./apply-referral";

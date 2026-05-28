@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Gamepad2, ExternalLink } from "lucide-react";
+import { GameController, ArrowSquareOut } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
@@ -497,7 +497,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <div className="bg-red-50 rounded-full p-4">
-            <Gamepad2 size={32} className="text-red-500" />
+            <GameController size={32} className="text-red-500" />
           </div>
           <div className="text-red-500">
             {error || "Failed to load project"}
@@ -516,7 +516,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
     <div className="h-full p-1 relative">
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -582,7 +582,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="bg-orange-100 rounded-lg p-2">
-                <Gamepad2 size={20} className="text-orange-600" />
+                <GameController size={20} className="text-orange-600" />
               </div>
               <div className="flex flex-col">
                 <h3 className="text-sm font-medium text-neutral-900">
@@ -604,7 +604,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
                 }}
                 className="flex items-center gap-1.5"
               >
-                <ExternalLink size={14} />
+                <ArrowSquareOut size={14} />
                 Open in Scratch
               </Button>
               <Button
@@ -616,7 +616,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
                 }}
                 className="flex items-center gap-1.5"
               >
-                <ExternalLink size={14} />
+                <ArrowSquareOut size={14} />
                 Edit in Scratch
               </Button>
             </div>

@@ -10,7 +10,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "notification_log")
@@ -42,17 +42,16 @@ public class NotificationLog {
     private String userId;
 
     @Column(name = "notification_date")
-    private LocalDateTime notificationDate;
+    private Instant notificationDate;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
-    // Add to your existing NotificationLog class
     @Column(name = "sender_business_channel_id")
     private String senderBusinessChannelId;
 
@@ -61,4 +60,7 @@ public class NotificationLog {
 
     @Column(name = "sender_name")
     private String senderName;
+
+    @Column(name = "institute_id", length = 255)
+    private String instituteId;
 }

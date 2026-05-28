@@ -1,0 +1,3 @@
+ALTER TABLE scorm_learner_progress
+    ADD COLUMN IF NOT EXISTS score_scaled DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS progress_measure DOUBLE PRECISION;

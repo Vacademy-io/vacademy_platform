@@ -1,17 +1,23 @@
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
     ArrowRight,
     CheckCircle2,
     Clapperboard,
     Clock,
+    Copy,
     PlayCircle,
+    RefreshCw,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { VimotionLoader } from '../brand/VimotionLoader';
 import { getInstituteId } from '@/constants/helper';
 import {
     getRemoteHistory,
+    REUSE_SETTINGS_HANDOFF_KEY,
+    buildReuseSettingsPayload,
     type HistoryItem,
 } from '@/routes/video-api-studio/-services/video-generation';
 import { cn } from '@/lib/utils';
@@ -21,6 +27,80 @@ import type { BrandKit } from '@/features/vimotion/api/dashboardTypes';
 import { ThumbnailRenderer } from './ThumbnailRenderer';
 
 const PAGE_SIZE = 20;
+
+// Lazily-captured original title. Set by the first flash that fires,
+// cleared by the first restore. We can't capture at module load because
+// `useVimotionDocumentChrome` (in DashboardLayout) sets the title to
+// "Vimotion" via a useEffect that runs AFTER this module is imported —
+// so a module-time capture would snapshot the bootloader title from
+// index.html ("Vacademy Admin"), and restoring would clobber the
+// Vimotion-set title.
+let flashOriginalTitle: string | null = null;
+
+/**
+ * Update the tab title to alert a user who's currently on another tab/window.
+ * Auto-restores on tab focus or after 30 s — whichever first.
+ *
+ * Safe under stacking (multiple flashes in quick succession) and under
+ * external title changes (e.g. route nav that runs `useVimotionDocumentChrome`'s
+ * cleanup): the first flash captures the real title, subsequent flashes reuse
+ * it, and the restore only fires when the current title still looks like one
+ * of our flashes — otherwise we leave whatever external code set in place.
+ */
+function flashTabTitle(text: string) {
+    if (typeof document === 'undefined') return;
+    if (flashOriginalTitle === null) {
+        flashOriginalTitle = document.title;
+    }
+    document.title = text;
+    const restore = () => {
+        const current = document.title;
+        const isStillAFlash = current.startsWith('✅') || current.startsWith('⚠️');
+        if (isStillAFlash && flashOriginalTitle !== null) {
+            document.title = flashOriginalTitle;
+        }
+        flashOriginalTitle = null;
+        window.removeEventListener('focus', restore);
+    };
+    window.addEventListener('focus', restore);
+    window.setTimeout(restore, 30_000);
+}
+
+/**
+ * Fire the three-stack notification when a video transitions to a terminal
+ * status (completed | failed):
+ *   1. `document.title` flash — wakes the user when on another tab
+ *   2. Browser Notification — only when the user has already granted
+ *      permission. We never prompt — that's a dark pattern in this context.
+ *   3. In-app `toast` — visible when the dashboard tab IS focused.
+ */
+function fireCompletionNotification(item: HistoryItem) {
+    const success = item.status === 'completed';
+    const label = (item.prompt || '').trim().slice(0, 80) || 'Untitled video';
+
+    flashTabTitle(`${success ? '✅' : '⚠️'} Video ${success ? 'ready' : 'failed'}`);
+
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+            // eslint-disable-next-line no-new -- the browser owns lifecycle once created
+            new Notification(success ? 'Vimotion: video ready' : 'Vimotion: generation failed', {
+                body: label,
+                // Vimotion-branded icon (matches what useVimotionDocumentChrome
+                // wires up for the tab favicon). SVG support in Notification
+                // icons is browser-dependent; failure falls back to the OS
+                // default icon — purely cosmetic, no functional impact.
+                icon: '/vimotion-favicon.svg',
+                tag: `vimotion-${item.id}`, // dedupe if effect re-fires
+            });
+        } catch {
+            // Some browsers throw on insecure contexts / unsupported configs.
+            // Failure here is non-critical — the toast still fires below.
+        }
+    }
+
+    const toastFn = success ? toast.success : toast.error;
+    toastFn(success ? 'Video ready' : 'Generation failed', { description: label });
+}
 
 export function RecentTab() {
     const instituteId = getInstituteId();
@@ -53,8 +133,41 @@ export function RecentTab() {
     });
     const brandKit = brandKitQuery.data ?? null;
 
+    // Detect in-flight → terminal transitions across polling cycles and fire
+    // a 3-stack notification (title flash + browser Notification + toast).
+    //
+    // Caveat: if the user navigates away from Recent mid-generation, this ref
+    // resets on remount and we'll miss the transition for that one video.
+    // Acceptable trade-off — the user will see the green badge when they
+    // return. Persisting across mounts would need sessionStorage and isn't
+    // worth the complexity for this edge case.
+    const prevStatusesRef = useRef<Map<string, HistoryItem['status']>>(new Map());
+    useEffect(() => {
+        if (!history.data) return;
+        const prev = prevStatusesRef.current;
+        const next = new Map(history.data.map((it) => [it.id, it.status]));
+        if (prev.size > 0) {
+            for (const item of history.data) {
+                const prevStatus = prev.get(item.id);
+                if (!prevStatus) continue; // brand-new item, not a transition
+                const wasInFlight = prevStatus !== 'completed' && prevStatus !== 'failed';
+                const isNowTerminal = item.status === 'completed' || item.status === 'failed';
+                if (wasInFlight && isNowTerminal) {
+                    fireCompletionNotification(item);
+                }
+            }
+        }
+        prevStatusesRef.current = next;
+    }, [history.data]);
+
     if (apiKey.isError) {
-        return <ErrorState message="Could not connect to the video service. Please try again." />;
+        return (
+            <ErrorState
+                message="Could not connect to the video service."
+                onRetry={() => apiKey.refetch()}
+                isRetrying={apiKey.isFetching}
+            />
+        );
     }
 
     if (apiKey.isLoading || history.isLoading) {
@@ -62,7 +175,13 @@ export function RecentTab() {
     }
 
     if (history.isError) {
-        return <ErrorState message="Could not load your recent videos. Please refresh." />;
+        return (
+            <ErrorState
+                message="Could not load your recent videos."
+                onRetry={() => history.refetch()}
+                isRetrying={history.isFetching}
+            />
+        );
     }
 
     const items = history.data ?? [];
@@ -87,14 +206,20 @@ function HistoryCard({ item, brandKit }: { item: HistoryItem; brandKit: BrandKit
     // PipelineLayout polling /status, failed → halted banner with Retry.
     // Only the play-button hover overlay is gated to `completed` since
     // that's specifically a "play video" cue.
+    const navigate = useNavigate();
     const canOpen = !!item.video_id;
+    const isFailed = item.status === 'failed';
     const isPlayable = item.status === 'completed' && !!item.html_url;
     const ts = formatTimestamp(item.created_at);
     const title = (item.prompt || '').trim() || 'Untitled video';
 
     const cardClasses = cn(
-        'group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white transition-colors',
-        canOpen ? 'hover:border-neutral-300' : 'cursor-default'
+        'group relative flex flex-col overflow-hidden rounded-xl border bg-white transition-colors',
+        isFailed
+            ? 'border-red-200'
+            : canOpen
+              ? 'border-neutral-200 hover:border-neutral-300'
+              : 'border-neutral-200 cursor-default'
     );
 
     // Pick the selected thumbnail (or fall back to the first option if the
@@ -136,14 +261,70 @@ function HistoryCard({ item, brandKit }: { item: HistoryItem; brandKit: BrandKit
         </>
     );
 
+    // Failed cards get a dedicated Retry footer. The whole card is still a
+    // link to the production view (where the canonical Retry banner sits) —
+    // the footer just makes the next-action visible from the grid, so users
+    // don't blow fresh credits re-prompting from scratch.
+    const failedFooter = isFailed && canOpen && (
+        <div className="border-t border-red-100 bg-red-50 px-3 py-2">
+            <button
+                type="button"
+                onClick={() =>
+                    navigate({
+                        to: '/vim/dashboard',
+                        search: { videoId: item.video_id },
+                    })
+                }
+                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 ring-1 ring-red-200 transition-colors hover:bg-red-100"
+            >
+                <RefreshCw className="size-3.5" />
+                Retry generation
+            </button>
+        </div>
+    );
+
+    // Reuse-settings overlay — sibling of the Link (not nested), absolutely
+    // positioned so it doesn't add vertical space to the card. Hover-revealed.
+    // Only on completed cards: failed cards already have the dedicated Retry
+    // affordance below, and in-flight states have no settings yet to reuse.
+    const handleReuse = () => {
+        try {
+            const payload = buildReuseSettingsPayload(item.prompt || '', item.options);
+            sessionStorage.setItem(REUSE_SETTINGS_HANDOFF_KEY, JSON.stringify(payload));
+            navigate({ to: '/vim/dashboard', search: { tab: 'create' } });
+        } catch (err) {
+            console.error('Failed to stage reuse-settings handoff', err);
+            toast.error('Could not copy settings — please try again.');
+        }
+    };
+    const reuseOverlay = item.status === 'completed' && canOpen && (
+        <button
+            type="button"
+            onClick={handleReuse}
+            title="Use these settings for a new video"
+            className="absolute right-3 top-3 z-10 inline-flex items-center gap-1 rounded-md bg-white/95 px-2 py-1 text-[10px] font-medium text-neutral-700 opacity-0 shadow-sm ring-1 ring-neutral-200 backdrop-blur-sm transition-opacity hover:text-neutral-900 hover:ring-neutral-300 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 group-hover:opacity-100"
+        >
+            <Copy className="size-3" />
+            Reuse settings
+        </button>
+    );
+
     if (!canOpen) {
         return <div className={cardClasses}>{inner}</div>;
     }
 
     return (
-        <Link to="/vim/dashboard" search={{ videoId: item.video_id }} className={cardClasses}>
-            {inner}
-        </Link>
+        <div className={cardClasses}>
+            <Link
+                to="/vim/dashboard"
+                search={{ videoId: item.video_id }}
+                className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+            >
+                {inner}
+            </Link>
+            {reuseOverlay}
+            {failedFooter}
+        </div>
     );
 }
 
@@ -211,12 +392,33 @@ function EmptyState() {
     );
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({
+    message,
+    onRetry,
+    isRetrying,
+}: {
+    message: string;
+    onRetry?: () => void;
+    isRetrying?: boolean;
+}) {
     return (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-            <div className="flex items-center gap-2 font-medium">
-                <AlertCircle className="size-4" />
-                {message}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 font-medium">
+                    <AlertCircle className="size-4" />
+                    {message}
+                </div>
+                {onRetry && (
+                    <button
+                        type="button"
+                        onClick={onRetry}
+                        disabled={isRetrying}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-red-700 ring-1 ring-red-200 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <RefreshCw className={cn('size-3.5', isRetrying && 'animate-spin')} />
+                        {isRetrying ? 'Reconnecting…' : 'Try again'}
+                    </button>
+                )}
             </div>
         </div>
     );

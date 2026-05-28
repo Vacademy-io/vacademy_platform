@@ -13,12 +13,14 @@ import { CouponManager } from './CouponManager';
 import { ProductPagePreview } from './ProductPagePreview';
 import { MyButton } from '@/components/design-system/button';
 import { PageDesignEditor } from './PageDesignEditor';
+import { ProductPageCustomFieldsManager } from './ProductPageCustomFieldsManager';
 
 const TABS = [
     { id: 'design', label: 'Page Design' },
     { id: 'courses', label: 'Courses' },
     { id: 'settings', label: 'Settings' },
     { id: 'coupons', label: 'Coupons' },
+    { id: 'custom-fields', label: 'Custom Fields' },
     { id: 'preview', label: 'Preview' },
 ] as const;
 
@@ -241,6 +243,15 @@ export const ProductPageEditor = () => {
                     {activeTab === 'coupons' && (
                         <div className="mx-auto max-w-2xl">
                             <CouponManager productPageId={productPageId} />
+                        </div>
+                    )}
+
+                    {activeTab === 'custom-fields' && (
+                        <div className="mx-auto max-w-2xl">
+                            <ProductPageCustomFieldsManager
+                                productPageId={productPageId}
+                                instituteId={instituteId}
+                            />
                         </div>
                     )}
 

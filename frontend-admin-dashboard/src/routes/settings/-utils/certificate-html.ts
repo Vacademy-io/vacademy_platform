@@ -22,7 +22,7 @@ export const certificateHtml = `<!DOCTYPE html>
             /* A4 height */
             margin: 0 auto;
             background: #fff;
-            border: 10px solid #1e4fa1;
+            border: 10px solid {{INSTITUTE_THEME_COLOR}};
             /* blue border */
             box-sizing: border-box;
             padding: 25mm;
@@ -34,7 +34,7 @@ export const certificateHtml = `<!DOCTYPE html>
             position: absolute;
             width: 260px;
             height: 260px;
-            background: linear-gradient(135deg, #1e4fa1 50%, transparent 50%);
+            background: linear-gradient(135deg, {{INSTITUTE_THEME_COLOR}} 50%, transparent 50%);
             opacity: 0.1;
         }
 
@@ -68,7 +68,7 @@ export const certificateHtml = `<!DOCTYPE html>
         .title {
             font-size: 20pt;
             font-weight: bold;
-            color: #1e4fa1;
+            color: {{INSTITUTE_THEME_COLOR}};
             margin-bottom: 14px;
             letter-spacing: 1px;
         }

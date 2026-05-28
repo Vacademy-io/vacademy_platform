@@ -120,6 +120,22 @@ function DashboardShell() {
             <div className="flex min-w-0 flex-1 flex-col">
                 <Topbar instituteId={instituteId} activeTab={tab} />
 
+                {/* Onboarding banner sits between Topbar and main on every tab
+                    EXCEPT the production view (where the user is already deep
+                    in a specific video). It self-hides once a default brand
+                    kit exists or the user has dismissed it.
+                    `empty:hidden` on the inner wrapper collapses it to zero
+                    height when OnboardingBanner returns null — otherwise the
+                    `pt-*` would reserve 16–24px of empty space for the ~95%
+                    of users who have a kit / have dismissed. */}
+                {!isProductionView && (
+                    <div className="shrink-0 px-4 sm:px-6 lg:px-8">
+                        <div className="mx-auto max-w-5xl pt-4 empty:hidden sm:pt-6">
+                            <OnboardingBanner />
+                        </div>
+                    </div>
+                )}
+
                 {isFullBleed ? (
                     <main className="min-h-0 flex-1 overflow-hidden">
                         {isProductionView ? (
@@ -141,7 +157,6 @@ function DashboardShell() {
                 ) : (
                     <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
                         <div className="mx-auto max-w-5xl space-y-6">
-                            <OnboardingBanner />
                             {tab === 'recent' && <RecentTab />}
                             {tab === 'reels' && <ReelsTab />}
                             {tab === 'assets' && <AssetsTab />}

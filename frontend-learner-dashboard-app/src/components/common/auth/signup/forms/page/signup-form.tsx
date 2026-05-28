@@ -4,11 +4,11 @@ import {
     Shield,
     BookOpen,
     Users,
-    Award,
-    Sparkles,
+    Medal,
+    Sparkle,
     CheckCircle,
     Star,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { ModularDynamicSignupContainer } from "../../components/ModularDynamicSignupContainer";
 // Removed unused imports - using ModularDynamicSignupContainer instead
@@ -73,7 +73,7 @@ export function SignUpForm({
 
     return (
         <div
-            className={`${finalType ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
+            className={`${finalType ? "h-reg-400 overflow-auto" : "min-h-screen overflow-hidden"}  bg-gray-50 relative `}
         >
             {/* Subtle Background Pattern (gradients removed) */}
             <div className="absolute inset-0 -z-10" />
@@ -147,7 +147,7 @@ export function SignUpForm({
                             whileHover={{ scale: 1.05 }}
                             className="flex flex-col items-center text-center p-4 bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200/50"
                         >
-                            <Award className="w-6 h-6 text-gray-700 mb-2" />
+                            <Medal className="w-6 h-6 text-gray-700 mb-2" />
                             <span className="text-sm font-medium text-gray-700">Earn Certificates</span>
                         </motion.div>
                     </motion.div>
@@ -171,7 +171,7 @@ export function SignUpForm({
                                 desc: "Connect with fellow learners and mentors"
                             },
                             {
-                                icon: Award,
+                                icon: Medal,
                                 title: "Earn Certificates",
                                 desc: "Get recognized for your achievements"
                             }
@@ -223,7 +223,7 @@ export function SignUpForm({
 
                                 <div className="flex items-center space-x-2">
 
-                                    <Sparkles className="w-4 h-4" />
+                                    <Sparkle className="w-4 h-4" />
 
                                     <span>99.9% Uptime</span>
 

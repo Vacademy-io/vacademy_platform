@@ -21,6 +21,7 @@ export interface UserActivity {
     userId: string;
     fullName: string;
     reviewStatus?: ReviewStatus | null;
+    lateSubmission?: boolean | null;
 }
 
 export interface PaginatedResponse {

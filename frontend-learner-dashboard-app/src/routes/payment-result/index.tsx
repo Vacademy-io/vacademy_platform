@@ -6,7 +6,7 @@ import { getPaymentCompletionStatus } from "@/components/common/enroll-by-invite
 import { getCashfreePaymentStatus } from "@/services/cashfree-payment";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, SpinnerGap } from "@phosphor-icons/react";
 import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 
 const paymentResultSearchSchema = z.object({
@@ -15,6 +15,7 @@ const paymentResultSearchSchema = z.object({
   instituteId: z.string().optional(),
   institute_id: z.string().optional(), // snake_case fallback
   status: z.enum(["success", "failed", "cancelled"]).optional(),
+  source: z.string().optional(), // "invoice" skips gateway-specific status polling
 });
 
 export const Route = createFileRoute("/payment-result/")({
@@ -34,12 +35,15 @@ function PaymentResultPage() {
     instituteId: instituteIdParam,
     institute_id: instituteIdSnake,
     status: queryStatus,
+    source,
   } = search;
   // Prefer orderId (payment log ID) from our return URL; order_id may be Cashfree's ID
   const orderId = orderIdParam ?? orderIdSnake ?? "";
   const instituteId = instituteIdParam ?? instituteIdSnake;
   const validInstituteId = isValidInstituteId(instituteId) ? instituteId : undefined;
-  const isCashfreeFlow = !!orderId && !!validInstituteId;
+  // Invoice payments must not use the Cashfree user-plan status endpoint
+  const isInvoicePayment = source === "invoice";
+  const isCashfreeFlow = !!orderId && !!validInstituteId && !isInvoicePayment;
   const hasRedirectedRef = useRef(false);
 
   // Extract status from various backend response shapes (payment_status, status, paymentStatus, nested)
@@ -228,7 +232,7 @@ function PaymentResultPage() {
         ) : isPaid ? (
           <div className="w-full flex flex-col items-center justify-center text-center px-6">
             <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-10 h-10 text-green-600" />
+              <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
               Payment Successful!
@@ -274,7 +278,7 @@ function PaymentResultPage() {
         ) : (
           <div className="w-full flex flex-col items-center justify-center text-center px-6">
             <div className="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <SpinnerGap className="w-10 h-10 text-blue-600 animate-spin" />
             </div>
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
               Processing Payment...

@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.invoice.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -7,8 +8,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.invoice.dto.AdminCreateInvoiceRequestDTO;
+import vacademy.io.admin_core_service.features.invoice.dto.AdminInvoicePaymentLinkResponseDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,8 +38,10 @@ public class InvoiceController {
      * Get invoices by user ID
      */
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<InvoiceDTO>> getInvoicesByUser(@PathVariable String userId) {
-        List<InvoiceDTO> invoices = invoiceService.getInvoicesByUserId(userId);
+    public ResponseEntity<List<InvoiceDTO>> getInvoicesByUser(
+            @PathVariable String userId,
+            @RequestParam(required = false) String instituteId) {
+        List<InvoiceDTO> invoices = invoiceService.getInvoicesByUserId(userId, instituteId);
         return ResponseEntity.ok(invoices);
     }
 
@@ -72,6 +79,41 @@ public class InvoiceController {
         Page<InvoiceDTO> invoices = invoiceService.getInvoicesByInstituteId(
                 instituteId, userId, status, startDate, endDate, page, size);
         return ResponseEntity.ok(invoices);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admin invoice endpoints
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Admin creates invoices for one or multiple users.
+     * No package session / enroll invite required.
+     * Returns one entry per userId with a shareable payment link.
+     *
+     * POST /admin-core-service/v1/invoices/admin/create
+     */
+    @PostMapping("/admin/create")
+    public ResponseEntity<List<AdminInvoicePaymentLinkResponseDTO>> createAdminInvoices(
+            @Valid @RequestBody AdminCreateInvoiceRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        List<AdminInvoicePaymentLinkResponseDTO> result = invoiceService.createAdminInvoices(request);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Initiates gateway payment for an admin-created invoice.
+     * Called when the user opens the payment link and clicks "Pay Now".
+     * Returns gateway order/session details for the frontend to complete payment.
+     *
+     * POST /admin-core-service/v1/invoices/{invoiceId}/initiate-payment?instituteId=xxx
+     */
+    @PostMapping("/{invoiceId}/initiate-payment")
+    public ResponseEntity<PaymentResponseDTO> initiatePaymentForAdminInvoice(
+            @PathVariable String invoiceId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails);
+        return ResponseEntity.ok(response);
     }
 
     /**

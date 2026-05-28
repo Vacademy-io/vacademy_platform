@@ -5,7 +5,7 @@ import { getInstituteId } from "@/constants/helper";
 import { GET_BATCH_LIST, urlPublicCourseDetails, urlInstituteDetails } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
-import { Crown, BookOpen } from "lucide-react";
+import { Crown, BookOpen } from "@phosphor-icons/react";
 
 interface MyMembershipWidgetProps {
     className?: string;
@@ -161,13 +161,13 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                     <h3 className="font-bold text-base text-foreground truncate">
                                         {membership.package_name}
                                     </h3>
-                                    <span className="text-[10px] text-primary/70 font-bold uppercase tracking-widest mt-0.5 inline-block">Plan Active</span>
+                                    <span className="text-caption text-primary/70 font-bold uppercase tracking-widest mt-0.5 inline-block">Plan Active</span>
                                 </div>
-                                <div className="flex flex-col items-center justify-center min-w-[50px] p-1.5 rounded-md bg-primary/5 border border-primary/10">
+                                <div className="flex flex-col items-center justify-center min-w-12 p-1.5 rounded-md bg-primary/5 border border-primary/10">
                                     <span className="text-lg font-bold text-primary leading-none">
                                         {membership.validity_in_days || 0}
                                     </span>
-                                    <span className="text-[8px] font-bold text-primary/70 uppercase">Days Remaining</span>
+                                    <span className="text-caption font-bold text-primary/70 uppercase">Days Remaining</span>
                                 </div>
                             </div>
 
@@ -177,7 +177,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                                     {membership.child_packages.map((child: any, cidx: number) => (
                                         <div key={child.id || cidx} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-secondary/50 border border-border">
                                             <BookOpen className="w-3 h-3 text-muted-foreground" />
-                                            <span className="text-[11px] font-medium text-foreground truncate max-w-[120px]">
+                                            <span className="text-caption font-medium text-foreground truncate max-w-32">
                                                 {child.package_name}
                                             </span>
                                         </div>

@@ -493,8 +493,38 @@ export function NodeConfigPanel() {
                     );
                 })()}
 
-                {/* WhatsApp node config — upgraded with template dropdown + dynamic params */}
-                {data.nodeType === 'SEND_WHATSAPP' && (
+                {/* WhatsApp node config — upgraded with template dropdown + smart recipients */}
+                {data.nodeType === 'SEND_WHATSAPP' && (() => {
+                    // Auto-detect data sources with a mobile number from upstream nodes
+                    const upstreamNodes = nodes.filter((n) =>
+                        edges.some((e) => e.target === selectedNode.id && e.source === n.id)
+                    );
+                    const whatsappDataSources: Array<{ label: string; value: string; description: string }> = [];
+                    for (const upstream of upstreamNodes) {
+                        const uType = upstream.data?.nodeType;
+                        const uConfig = upstream.data?.config as Record<string, unknown> | undefined;
+                        if (uType === 'TRIGGER') {
+                            whatsappDataSources.push({
+                                label: 'Lead submitter (from trigger)',
+                                value: "{#ctx['user']}",
+                                description: 'The single user who submitted the form — their mobileNumber is used',
+                            });
+                        }
+                        if (uType === 'QUERY') {
+                            const queryKey = uConfig?.prebuiltKey as string;
+                            if (queryKey === 'fetch_audience_responses_filtered') {
+                                whatsappDataSources.push({ label: 'Audience leads (from query)', value: "#ctx['leads']", description: 'Leads with phone in custom fields' });
+                            } else if (queryKey === 'fetch_batch_attendance_report' || queryKey === 'fetch_students_by_batch') {
+                                whatsappDataSources.push({ label: 'Students (from query)', value: "#ctx['students']", description: 'Students with mobileNumber' });
+                            } else if (queryKey === 'fetch_ssigm_by_package' || queryKey === 'getSSIGMByStatusAndPackageSessionIds') {
+                                whatsappDataSources.push({ label: 'Enrolled students (from query)', value: "#ctx['ssigm_list']", description: 'Enrolled students with mobileNumber' });
+                            } else if (queryKey) {
+                                whatsappDataSources.push({ label: `Query results (${queryKey})`, value: "#ctx['queryResult']", description: 'Results from the query node' });
+                            }
+                        }
+                    }
+                    const currentOn = (data.config.on as string) ?? '';
+                    return (
                     <>
                         <div>
                             <Label className="text-xs">WhatsApp Template</Label>
@@ -525,19 +555,53 @@ export function NodeConfigPanel() {
                             </select>
                         </div>
                         <div>
-                            <Label className="text-xs">Recipients (list expression)</Label>
-                            <VariablePicker
-                                value={(data.config.on as string) ?? ''}
-                                onChange={(v) => {
-                                    updateNodeConfig(selectedNode.id, {
-                                        ...data.config,
-                                        on: v,
-                                        forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
-                                    });
-                                }}
-                                placeholder="Pick a list of recipients..."
-                                nodeId={selectedNode.id}
-                            />
+                            <Label className="text-xs">Send WhatsApp to</Label>
+                            {whatsappDataSources.length > 0 ? (
+                                <>
+                                    <select
+                                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={currentOn}
+                                        onChange={(e) => {
+                                            updateNodeConfig(selectedNode.id, {
+                                                ...data.config,
+                                                on: e.target.value,
+                                                forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
+                                            });
+                                        }}
+                                    >
+                                        <option value="">Select recipients...</option>
+                                        {whatsappDataSources.map((ds) => (
+                                            <option key={ds.value} value={ds.value}>{ds.label}</option>
+                                        ))}
+                                    </select>
+                                    {currentOn && (() => {
+                                        const selected = whatsappDataSources.find((ds) => ds.value === currentOn);
+                                        return selected ? (
+                                            <p className="mt-1 text-[10px] text-gray-400">{selected.description}</p>
+                                        ) : (
+                                            <p className="mt-1 text-[10px] text-gray-400 font-mono">{currentOn}</p>
+                                        );
+                                    })()}
+                                </>
+                            ) : (
+                                <>
+                                    <p className="mt-1 text-[10px] text-gray-400 mb-1.5">
+                                        Connect a Trigger or Query node upstream to auto-detect recipients.
+                                    </p>
+                                    <VariablePicker
+                                        value={currentOn}
+                                        onChange={(v) => {
+                                            updateNodeConfig(selectedNode.id, {
+                                                ...data.config,
+                                                on: v,
+                                                forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
+                                            });
+                                        }}
+                                        placeholder="Pick a list of recipients..."
+                                        nodeId={selectedNode.id}
+                                    />
+                                </>
+                            )}
                         </div>
                         {/* Dynamic template parameters */}
                         {data.config._templateParams && typeof data.config._templateParams === 'object' && (
@@ -560,7 +624,8 @@ export function NodeConfigPanel() {
                             </div>
                         )}
                     </>
-                )}
+                    );
+                })()}
 
                 {/* HTTP Request config */}
                 {data.nodeType === 'HTTP_REQUEST' && (() => {

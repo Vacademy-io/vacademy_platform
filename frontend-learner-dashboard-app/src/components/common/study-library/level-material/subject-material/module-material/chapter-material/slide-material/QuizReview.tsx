@@ -147,7 +147,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   const getOptionLabel = (idx: number) => String.fromCharCode(97 + idx) + ") ";
 
   return (
-    <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
+    <div className="w-full min-h-screen-80 bg-white rounded-xl shadow-lg p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>

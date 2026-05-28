@@ -186,7 +186,7 @@ export function SessionFilter({
                 {isActive && (
                     <button
                         onClick={clearAll}
-                        className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors whitespace-nowrap"
+                        className="text-caption font-medium text-neutral-500 dark:text-neutral-400 hover:text-red-500 dark:hover:text-red-400 transition-colors whitespace-nowrap"
                     >
                         Clear Filter
                     </button>
@@ -197,7 +197,7 @@ export function SessionFilter({
                     variant="outline"
                     size="sm"
                     onClick={() => setOpen((v) => !v)}
-                    className={`h-8 pl-2.5 pr-2 text-[13px] font-medium rounded-lg transition-all duration-200 gap-1.5 ${isActive
+                    className={`h-8 pl-2.5 pr-2 text-body font-medium rounded-lg transition-all duration-200 gap-1.5 ${isActive
                             ? "border-primary-200 bg-primary-50 text-primary-500 shadow-sm hover:bg-primary-100"
                             : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                         }`}
@@ -213,7 +213,7 @@ export function SessionFilter({
 
             {/* ── Dropdown panel ──────────────────────────────────────────────── */}
             <div
-                className={`absolute z-30 mt-2 w-[calc(100vw-2rem)] sm:w-[320px] origin-top-${alignment} transition-all duration-250 ease-out ${alignment === "left" ? "left-0" : "right-0"
+                className={`absolute z-30 mt-2 w-[calc(100vw-2rem)] sm:w-80 origin-top-${alignment} transition-all duration-250 ease-out ${alignment === "left" ? "left-0" : "right-0" /* design-lint-ignore: viewport math */
                     } ${open
                         ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
                         : "opacity-0 scale-95 -translate-y-1 pointer-events-none"
@@ -222,7 +222,7 @@ export function SessionFilter({
                 <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-lg shadow-black/8 dark:shadow-black/30 overflow-hidden">
                     {/* ── Preset pills ─────────────────────────────────────────── */}
                     <div className="p-3 pb-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500 mb-2 px-0.5">
+                        <p className="text-3xs font-bold uppercase tracking-wide-08 text-neutral-400 dark:text-neutral-500 mb-2 px-0.5">
                             Show sessions in next
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -230,7 +230,7 @@ export function SessionFilter({
                                 <button
                                     key={key}
                                     onClick={() => applyPreset(key)}
-                                    className={`px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-all duration-150 whitespace-nowrap ${preset === key
+                                    className={`px-3 py-1.5 rounded-lg text-body font-medium border transition-all duration-150 whitespace-nowrap ${preset === key
                                             ? "bg-primary-500 text-white border-primary-500 shadow-sm"
                                             : "bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-600 hover:border-primary-300 hover:text-primary-500"
                                         }`}
@@ -245,7 +245,7 @@ export function SessionFilter({
                     <div className="px-3 pb-3">
                         <button
                             onClick={() => applyPreset("custom")}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium border transition-all duration-150 ${preset === "custom"
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-body font-medium border transition-all duration-150 ${preset === "custom"
                                     ? "bg-primary-50 text-primary-500 border-primary-200"
                                     : "bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-600 hover:border-primary-300 hover:text-primary-500"
                                 }`}
@@ -263,13 +263,13 @@ export function SessionFilter({
                         {/* ── Date pickers (animated reveal) ─────────────────────── */}
                         <div
                             className={`overflow-hidden transition-all duration-300 ease-out ${preset === "custom"
-                                    ? "max-h-[180px] opacity-100 mt-2"
+                                    ? "max-h-reg-180 opacity-100 mt-2"
                                     : "max-h-0 opacity-0 mt-0"
                                 }`}
                         >
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1 px-0.5">
+                                    <label className="block text-3xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1 px-0.5">
                                         From
                                     </label>
                                     <Input
@@ -281,7 +281,7 @@ export function SessionFilter({
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1 px-0.5">
+                                    <label className="block text-3xs font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-1 px-0.5">
                                         To
                                     </label>
                                     <Input

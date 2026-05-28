@@ -8,8 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, Lock } from "lucide-react";
-import { SiStripe } from "react-icons/si";
+import { SpinnerGap, CheckCircle, Lock } from "@phosphor-icons/react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: brand logo, no phosphor equivalent
 import {
   fetchEnrollmentDetails,
   getPaymentOptions,
@@ -156,15 +156,15 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             style: {
               base: {
                 fontSize: '16px',
-                color: '#374151',
+                color: '#374151', // design-lint-ignore: Stripe SDK element style data
                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 '::placeholder': {
-                  color: '#9CA3AF',
+                  color: '#9CA3AF', // design-lint-ignore: Stripe SDK element style data
                 },
                 padding: '8px 0',
               },
               invalid: {
-                color: '#DC2626',
+                color: '#DC2626', // design-lint-ignore: Stripe SDK element style data
               },
             },
             hidePostalCode: true,
@@ -314,7 +314,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading payment options...</p>
             </div>
           </div>
@@ -346,7 +346,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-w-2xl max-h-screen-90 overflow-y-auto p-0">
           {/* Header */}
           <div className="bg-primary-50 px-6 py-4 rounded-t-lg">
             <div className="flex items-center gap-3">
@@ -545,7 +545,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                   }`}>
                     {!cardElementReady && (
                       <div className="flex items-center justify-center h-12 text-gray-500">
-                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
                         Loading payment form...
                       </div>
                     )}
@@ -571,7 +571,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                     >
                       {processingPayment ? (
                         <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <SpinnerGap className="w-5 h-5 animate-spin" />
                           Processing Payment...
                         </>
                       ) : (

@@ -134,15 +134,26 @@ interface SettingsPopoverProps {
 /**
  * Settings keys whose divergence from {@link DEFAULT_OPTIONS} we surface as the
  * badge count on the ⚙ trigger. We intentionally **exclude**:
- *  - `model` — auto-selected by quality_tier; not a user-driven choice
+ *  - `model` — legacy top-level field, auto-selected by quality_tier (admin)
+ *    or undefined in vimMode. Per-stage overrides are tracked separately
+ *    below via `model_overrides`.
  *  - `voice_id` — undefined by default; gets populated automatically when the
  *    voice list loads, which would inflate the badge for everyone
  *  - `visual_style` — deprecated; kept for historical metadata
  *  - `target_audience` — almost always edited per institute; setting it once
  *    shouldn't read as "active"
+ *  - `brand_kit_id` — in vimMode, auto-populated to the institute's default
+ *    kit by VimBrandKitSelect; not a per-session user choice
  *
- * `sub_shots_enabled` isn't in DEFAULT_OPTIONS (optional with implicit default
- * false), so it's tracked separately. `reviewModeEnabled` lives outside options.
+ * Tracked separately (not in DEFAULT_OPTIONS or computed from helpers):
+ *  - `sub_shots_enabled` (optional with implicit default false)
+ *  - `ai_video_enabled` (DEFAULT_OPTIONS has it as false but we count it
+ *    because flipping it on materially changes pipeline + cost)
+ *  - `host` (undefined by default; truthy means user opted into avatar/raw)
+ *  - `visual_preferences` (use shared helper that ignores `auto`/`null`)
+ *  - `model_overrides` (undefined by default; truthy with non-empty default
+ *    or non-empty per_stage = power-user override worth surfacing)
+ *  - `reviewModeEnabled` (lives outside the options object)
  */
 const TRACKED_KEYS = [
     'content_type',
@@ -156,6 +167,16 @@ const TRACKED_KEYS = [
     'html_quality',
 ] as const;
 
+/** Returns true when model_overrides carries any actual override (not just an empty shell). */
+function hasActiveModelOverrides(
+    overrides: Omit<GenerateVideoRequest, 'prompt'>['model_overrides']
+): boolean {
+    if (!overrides) return false;
+    if (overrides.default) return true;
+    if (overrides.per_stage && Object.keys(overrides.per_stage).length > 0) return true;
+    return false;
+}
+
 /** Count options that diverge from defaults — surfaced as a badge on the trigger. */
 function computeNonDefaultCount(
     options: Omit<GenerateVideoRequest, 'prompt'>,
@@ -165,8 +186,12 @@ function computeNonDefaultCount(
     for (const key of TRACKED_KEYS) {
         if (options[key] !== DEFAULT_OPTIONS[key]) n++;
     }
-    if (options.sub_shots_enabled) n++; // implicit default is false
-    if (reviewModeEnabled) n++; // implicit default is false
+    if (options.sub_shots_enabled) n++;
+    if (options.ai_video_enabled) n++;
+    if (options.host) n++;
+    if (hasActiveVisualPreferences(options.visual_preferences)) n++;
+    if (hasActiveModelOverrides(options.model_overrides)) n++;
+    if (reviewModeEnabled) n++;
     return n;
 }
 
@@ -257,28 +282,36 @@ function SettingsBody({
             {/* OUTPUT — Type, Orientation, Duration, Quality, Model         */}
             {/* ============================================================ */}
             <TabsContent value="output" className="mt-3 space-y-3">
-                <Field icon={<Layers className="size-3.5" />} label="Content type">
-                    <Select
-                        value={options.content_type || 'VIDEO'}
-                        onValueChange={(v) => update('content_type', v as ContentType)}
-                    >
-                        <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-80">
-                            {CONTENT_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value} className="text-xs">
-                                    <div className="flex flex-col">
-                                        <span>{t.label}</span>
-                                        <span className="text-[10px] text-muted-foreground">
-                                            {t.description}
-                                        </span>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </Field>
+                {/* Content type is admin-only. Vimotion is a video product —
+                    QUIZ / STORYBOOK / SLIDES / etc. don't have well-defined
+                    brand-kit / host-avatar semantics, and exposing them in the
+                    selector confuses studio users. The request body still
+                    carries content_type='VIDEO' (defaulted in DEFAULT_OPTIONS),
+                    so no BE change is needed. */}
+                {!vimMode && (
+                    <Field icon={<Layers className="size-3.5" />} label="Content type">
+                        <Select
+                            value={options.content_type || 'VIDEO'}
+                            onValueChange={(v) => update('content_type', v as ContentType)}
+                        >
+                            <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-80">
+                                {CONTENT_TYPES.map((t) => (
+                                    <SelectItem key={t.value} value={t.value} className="text-xs">
+                                        <div className="flex flex-col">
+                                            <span>{t.label}</span>
+                                            <span className="text-[10px] text-muted-foreground">
+                                                {t.description}
+                                            </span>
+                                        </div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </Field>
+                )}
 
                 <Field
                     icon={
@@ -377,32 +410,49 @@ function SettingsBody({
                     </Select>
                 </Field>
 
-                <Field
-                    icon={<Wand2 className="size-3.5" />}
-                    label="Model override"
-                    helper="Pinned automatically by tier; override only if needed."
-                >
-                    <Select value={options.model || ''} onValueChange={(v) => update('model', v)}>
-                        <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Auto (recommended)" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60">
-                            {models.map((m) => (
-                                <SelectItem key={m.model_id} value={m.model_id} className="text-xs">
-                                    <span>{m.name}</span>
-                                    {m.is_free && (
-                                        <Badge
-                                            variant="outline"
-                                            className="ml-1 h-3.5 px-1 text-[9px]"
-                                        >
-                                            Free
-                                        </Badge>
-                                    )}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </Field>
+                {/* Top-level Model override is admin-only. The Advanced-tab
+                    ModelOverridesPanel is the canonical V200 entry point for
+                    per-stage overrides — it's visible in vimMode too (power
+                    users can reach it via Advanced). This Output-tab dropdown
+                    is the legacy single-model knob; keeping it admin-only
+                    avoids two competing override surfaces on a primary tab.
+                    The auto-select effect in Composer.tsx is also gated on
+                    !vimMode so `options.model` doesn't ship as a ghost field. */}
+                {!vimMode && (
+                    <Field
+                        icon={<Wand2 className="size-3.5" />}
+                        label="Model override"
+                        helper="Pinned automatically by tier; override only if needed."
+                    >
+                        <Select
+                            value={options.model || ''}
+                            onValueChange={(v) => update('model', v)}
+                        >
+                            <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Auto (recommended)" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                                {models.map((m) => (
+                                    <SelectItem
+                                        key={m.model_id}
+                                        value={m.model_id}
+                                        className="text-xs"
+                                    >
+                                        <span>{m.name}</span>
+                                        {m.is_free && (
+                                            <Badge
+                                                variant="outline"
+                                                className="ml-1 h-3.5 px-1 text-[9px]"
+                                            >
+                                                Free
+                                            </Badge>
+                                        )}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </Field>
+                )}
             </TabsContent>
 
             {/* ============================================================ */}
@@ -561,23 +611,32 @@ function SettingsBody({
                     ) : null}
                 </div>
 
-                <Field icon={<Users className="size-3.5" />} label="Audience">
-                    <Select
-                        value={options.target_audience}
-                        onValueChange={(v) => update('target_audience', v)}
-                    >
-                        <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {TARGET_AUDIENCES.map((a) => (
-                                <SelectItem key={a} value={a} className="text-xs">
-                                    {a}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </Field>
+                {/* Target audience exists as a planner hint for the edtech
+                    parent product (Class 1-2 → Graduate / Professional). For
+                    Vimotion (studios, agencies, individuals making brand /
+                    marketing / promo videos) this field is a confusing edtech
+                    artifact — the planner can infer audience from the prompt
+                    directly. Hidden in vimMode; the default value still
+                    ships in the request via DEFAULT_OPTIONS. */}
+                {!vimMode && (
+                    <Field icon={<Users className="size-3.5" />} label="Audience">
+                        <Select
+                            value={options.target_audience}
+                            onValueChange={(v) => update('target_audience', v)}
+                        >
+                            <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {TARGET_AUDIENCES.map((a) => (
+                                    <SelectItem key={a} value={a} className="text-xs">
+                                        {a}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </Field>
+                )}
             </TabsContent>
 
             {/* ============================================================ */}
@@ -988,10 +1047,23 @@ function SettingsBody({
                     }}
                 />
 
+                {/* Per-stage model overrides — visible in Advanced for ALL
+                    modes (admin and vimMode). The Output-tab top-level dropdown
+                    stays admin-only because it duplicates this panel; this
+                    panel is the modern V200 entry point and is already gracefully
+                    tiered (one default dropdown up front, per-stage controls
+                    behind an "advanced" expander). Vimotion power users who
+                    want to swap the per-shot-HTML model find it here. */}
                 <ModelOverridesPanel
                     overrides={options.model_overrides}
                     onChange={(next) => update('model_overrides', next)}
                 />
+
+                {/* Top-level `options.model` (legacy single-model knob) is
+                    still suppressed in vimMode — it overlaps with the panel
+                    above and the auto-select effect that populates it is
+                    skipped in vimMode (see Composer.tsx). Power users get
+                    one canonical override surface, not two. */}
 
                 <VisualPreferencesPanel
                     prefs={options.visual_preferences}
@@ -2096,17 +2168,15 @@ function ModelOverridesPanel({
                 </Label>
             </div>
             <p className="pl-5 text-[10px] text-muted-foreground">
-                Pick a model for the LLM stages of this run. Leave blank to use system
-                defaults. Vision review and small utility prompts always use system
-                defaults to protect quality and cost.
+                Pick a model for the LLM stages of this run. Leave blank to use system defaults.
+                Vision review and small utility prompts always use system defaults to protect
+                quality and cost.
             </p>
             <div className="space-y-1.5 pl-5">
                 <Label className="text-[10px] text-muted-foreground">Default model</Label>
                 <Select
                     value={defaultModel || SYSTEM_DEFAULT_VALUE}
-                    onValueChange={(v) =>
-                        setDefault(v === SYSTEM_DEFAULT_VALUE ? undefined : v)
-                    }
+                    onValueChange={(v) => setDefault(v === SYSTEM_DEFAULT_VALUE ? undefined : v)}
                     disabled={isLoading}
                 >
                     <SelectTrigger className="h-8 text-xs">
@@ -2134,9 +2204,7 @@ function ModelOverridesPanel({
                 className="flex w-full items-center gap-1 pl-5 text-[10px] text-muted-foreground hover:text-foreground"
             >
                 <ChevronRightIcon
-                    className={`size-3 transition-transform ${
-                        advancedOpen ? 'rotate-90' : ''
-                    }`}
+                    className={`size-3 transition-transform ${advancedOpen ? 'rotate-90' : ''}`}
                 />
                 Customize per stage (advanced)
             </button>
@@ -2210,6 +2278,27 @@ export function SettingsPopover(props: SettingsPopoverProps) {
     const [open, setOpen] = useState(false);
     const count = computeNonDefaultCount(props.options, props.reviewModeEnabled);
 
+    // Reset options + reviewMode back to fresh defaults. Doesn't touch the
+    // prompt or attachments — those are the user's "work".
+    //
+    // vimMode caveat: DEFAULT_OPTIONS.model is `''`, but in vimMode we want
+    // the legacy top-level model field to stay absent from the wire payload
+    // (P2-12 sunset). Setting `model: undefined` makes JSON.stringify drop
+    // the key entirely. The two-step cast is needed because GenerateVideoRequest
+    // types `model: string` as required; making it optional would propagate
+    // through every call site — see "P2-12 follow-up" note in the plan file.
+    const handleResetToDefaults = () => {
+        if (props.vimMode) {
+            props.onOptionsChange({
+                ...DEFAULT_OPTIONS,
+                model: undefined,
+            } as unknown as Omit<GenerateVideoRequest, 'prompt'>);
+        } else {
+            props.onOptionsChange(DEFAULT_OPTIONS);
+        }
+        props.onReviewModeChange?.(false);
+    };
+
     // Settings render in a slide-up Sheet rather than a Popover. Popovers were
     // getting clipped because the trigger sits low on the page and the panel
     // is tall (4 tabs × multiple fields). A Sheet from the bottom always has
@@ -2239,8 +2328,18 @@ export function SettingsPopover(props: SettingsPopoverProps) {
                 side="bottom"
                 className="flex max-h-[85vh] flex-col gap-0 rounded-t-xl p-0"
             >
-                <SheetTitle className="border-b px-4 py-3 text-sm font-semibold">
-                    Generation settings
+                <SheetTitle className="flex items-center justify-between gap-3 border-b px-4 py-3 text-sm font-semibold">
+                    <span>Generation settings</span>
+                    {count > 0 && (
+                        <button
+                            type="button"
+                            onClick={handleResetToDefaults}
+                            className="text-xs font-normal text-muted-foreground transition-colors hover:text-foreground"
+                            title="Reset all settings to defaults (prompt and attachments are kept)"
+                        >
+                            Reset to defaults
+                        </button>
+                    )}
                 </SheetTitle>
                 <div className="mx-auto w-full max-w-[520px] flex-1 overflow-y-auto p-4">
                     <SettingsBody {...props} />

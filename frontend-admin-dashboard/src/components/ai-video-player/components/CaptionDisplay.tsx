@@ -60,7 +60,21 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
         const fontSize = CAPTION_FONT_SIZES[settings.fontSize];
 
         if (settings.style === 'karaoke') {
-            // Karaoke style: highlight current word within the stable phrase
+            // Karaoke style: highlight current word within the stable phrase.
+            //
+            // Must stay in lockstep with the editor's `karaokeWordSpans` and
+            // the render server's per-frame karaoke loop in
+            // generate_video.py:
+            //   - current word: `highlightColor`, weight = base + 200 (capped 900)
+            //   - past word:    `textColor`, opacity 0.5, base weight
+            //   - upcoming:     `textColor`, opacity 1.0, base weight
+            //
+            // The previous version hardcoded `rgba(255,255,255,0.5)` for
+            // past words and `600`/`400` for weight, which diverged from
+            // the editor + MP4 when the user picked a non-white textColor
+            // or a non-default fontWeight.
+            const baseWeight = settings.fontWeight ?? 400;
+            const heavyWeight = Math.min(900, baseWeight + 200);
             return (
                 <span
                     style={{
@@ -72,7 +86,6 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
                     {displayWords.map((word, index) => {
                         const isCurrentWord = audioTime >= word.start && audioTime < word.end;
                         const isPastWord = audioTime >= word.end;
-                        const isUpcoming = audioTime < word.start;
 
                         return (
                             <span
@@ -80,13 +93,11 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
                                 style={{
                                     color: isCurrentWord
                                         ? settings.highlightColor
-                                        : isPastWord
-                                          ? 'rgba(255, 255, 255, 0.5)'
-                                          : isUpcoming
-                                            ? settings.textColor
-                                            : settings.textColor,
-                                    fontWeight: isCurrentWord ? 600 : 400,
-                                    transition: 'color 0.2s ease-out, font-weight 0.2s ease-out',
+                                        : settings.textColor,
+                                    opacity: isPastWord ? 0.5 : 1,
+                                    fontWeight: isCurrentWord ? heavyWeight : baseWeight,
+                                    transition:
+                                        'color 0.2s ease-out, opacity 0.2s ease-out, font-weight 0.2s ease-out',
                                     display: 'inline',
                                 }}
                             >
@@ -134,6 +145,35 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
             ? { top: '3.7%', bottom: 'auto' }
             : { bottom: '7.4%', top: 'auto' };
 
+    // Resolve `fontFamily` enum to a CSS family with system fallback. Mirrors
+    // `resolveCaptionFontFamily` in the editor's caption-rendering.ts so the
+    // post-gen preview matches the editor preview and the rendered MP4.
+    const SYSTEM_STACK =
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+    const fontFamily =
+        settings.fontFamily === 'inter'
+            ? `'Inter', ${SYSTEM_STACK}`
+            : settings.fontFamily === 'montserrat'
+              ? `'Montserrat', ${SYSTEM_STACK}`
+              : settings.fontFamily === 'noto-sans'
+                ? `'Noto Sans', ${SYSTEM_STACK}`
+                : settings.fontFamily === 'fira-code'
+                  ? `'Fira Code', ui-monospace, monospace`
+                  : SYSTEM_STACK;
+
+    // Text stroke (outline). Player-display pixels — caller's container
+    // is variable size, so we treat `textStrokeWidth` as CSS px directly
+    // rather than scaling by 1920w like the canvas/render paths do.
+    const innerStyle: React.CSSProperties = {
+        display: 'inline-block',
+        textShadow: '0 1px 3px rgba(0, 0, 0, 0.4)',
+    };
+    if (settings.textStrokeWidth > 0) {
+        innerStyle.WebkitTextStrokeWidth = `${settings.textStrokeWidth}px`;
+        innerStyle.WebkitTextStrokeColor = settings.textStrokeColor;
+        innerStyle.paintOrder = 'stroke fill';
+    }
+
     return (
         <div
             data-caption-container
@@ -146,8 +186,8 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
                 borderRadius: '8px',
                 background: `rgba(0, 0, 0, ${settings.backgroundOpacity})`,
                 textAlign: 'center',
-                fontFamily:
-                    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+                fontFamily,
+                fontWeight: settings.fontWeight,
                 zIndex: 15,
                 pointerEvents: 'none',
                 // Smooth fade transitions when phrases change
@@ -161,15 +201,7 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
                 ...positionStyles,
             }}
         >
-            <div
-                style={{
-                    // Inner container for text - prevents reflow
-                    display: 'inline-block',
-                    textShadow: '0 1px 3px rgba(0, 0, 0, 0.4)',
-                }}
-            >
-                {captionContent}
-            </div>
+            <div style={innerStyle}>{captionContent}</div>
         </div>
     );
 };

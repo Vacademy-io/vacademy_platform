@@ -8,13 +8,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.chatbot_flow.engine.provider.CombotMessageProvider;
+import vacademy.io.notification_service.features.combot.repository.ChannelToInstituteMappingRepository;
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.common.logging.SentryLogger;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -35,6 +36,7 @@ public class WhatsAppService {
     private final ObjectMapper objectMapper;
     private final CombotMessageProvider combotMessageProvider;
     private final NotificationLogRepository notificationLogRepository;
+    private final ChannelToInstituteMappingRepository channelMappingRepository;
     private final InstituteInternalService internalService;
     private final WatiService watiService; // kept for WATI bulk sends (WatiMessageProvider is single-message)
 
@@ -42,11 +44,13 @@ public class WhatsAppService {
     public WhatsAppService(CombotMessageProvider combotMessageProvider,
                            WatiService watiService,
                            InstituteInternalService internalService,
-                           NotificationLogRepository notificationLogRepository) {
+                           NotificationLogRepository notificationLogRepository,
+                           ChannelToInstituteMappingRepository channelMappingRepository) {
         this.combotMessageProvider = combotMessageProvider;
         this.watiService = watiService;
         this.internalService = internalService;
         this.notificationLogRepository = notificationLogRepository;
+        this.channelMappingRepository = channelMappingRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
     }
@@ -473,9 +477,16 @@ public class WhatsAppService {
                 notifLog.setSource("whatsapp-service");
                 notifLog.setSourceId(templateName);
                 notifLog.setUserId(userId);
-                notifLog.setNotificationDate(LocalDateTime.now());
+                notifLog.setNotificationDate(Instant.now());
                 notifLog.setMessagePayload(payloadJson);
                 notifLog.setSenderBusinessChannelId(senderBusinessChannelId);
+                // Resolve institute_id from the WABA channel mapping. This is the same lookup the
+                // Hub's WA Inbox previously did at read time — doing it here once at write makes
+                // the inbox query a simple institute_id filter.
+                if (senderBusinessChannelId != null) {
+                    channelMappingRepository.findById(senderBusinessChannelId)
+                            .ifPresent(m -> notifLog.setInstituteId(m.getInstituteId()));
+                }
 
                 logs.add(notifLog);
             }

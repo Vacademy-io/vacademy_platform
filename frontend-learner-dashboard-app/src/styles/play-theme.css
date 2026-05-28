@@ -8,7 +8,8 @@
 .ui-play {
   --play-gold: 45 100% 50%;       /* #FFD700 — XP / points */
   --play-fire: 14 100% 57%;       /* #FF4B1F — streaks (bolder red-orange) */
-  --play-green: 145 63% 42%;      /* #27AE60 — progress / completion */
+  --play-green: 87 97% 40%;       /* #58CC02 — progress / Duolingo-bright */
+  --play-green-deep: 87 97% 30%;  /* #46a302 — paired darker tone */
   --play-purple: 271 76% 53%;     /* #8E44AD — achievements */
   --play-blue: 217 89% 61%;       /* #5B9BD5 — info / levels */
   --play-pink: 340 82% 52%;       /* #E91E63 — hearts / accents */
@@ -16,6 +17,39 @@
   --play-radius-card: 20px;
   --play-radius-btn: 14px;
   --play-radius-badge: 999px;
+
+  /* Gamification surface + 3D press-shadow pairs (promoted from hardcoded hex).
+     Kept as hex to preserve exact gamified shades; referenced via var() in widgets. */
+  --play-xp-bg: #FFB800;
+  --play-xp-shadow: #CC9300;
+  --play-streak-bg: #FF6B35;
+  --play-streak-shadow: #CC4A1A;
+  --play-streak-bg-idle: #FF8C42;
+  --play-streak-shadow-idle: #CC6A2A;
+  --play-achievement-bg: #8E44AD;
+  --play-achievement-shadow: #6C3483;
+
+  /* Duolingo-style play palette (role -> base + deep "3D" shade). Promoted from
+     scattered arbitrary hex; exposed to Tailwind as the `play-*` color + shadow tokens. */
+  --play-c-success: #58CC02;
+  --play-c-success-deep: #46a302;
+  --play-c-info: #1CB0F6;
+  --play-c-info-deep: #1899d6;
+  --play-c-danger: #FF4B4B;
+  --play-c-danger-deep: #cc3c3c;
+  --play-c-warn: #FF9600;
+  --play-c-warn-deep: #e08600;
+  --play-c-accent: #CE82FF;
+  --play-c-accent-deep: #a866cc;
+  --play-c-muted: #AFAFAF;
+  --play-c-muted-deep: #8e8e8e;
+  --play-c-surface: #E5E5E5;
+  --play-c-highlight: #FFF3CD;
+  --play-c-gold: #ffc800;
+  --play-c-gold-deep: #e6b400;
+  --play-c-navy: #235390;
+  --play-c-navy-deep: #1a3d6d;
+  --play-c-ink: #3c3c3c;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
@@ -60,20 +94,24 @@
 /* ── Global Rounding & Solidity ───────────────────────────────────── */
 @layer components {
 
-  /* Cards: extra rounded, solid feel, thick bottom shadow (3D press) */
+  /* Cards: rounded, soft layered drop shadow (modern elevation) */
   .ui-play .card,
   .ui-play .Card {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
-    box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
-    transition: transform 150ms ease, box-shadow 150ms ease;
+    border: 1px solid hsl(var(--primary-100)) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--primary-300) / 0.06),
+      0 8px 24px -10px hsl(var(--primary-400) / 0.14) !important;
+    transition: transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
     background: white !important;
   }
 
   .ui-play .card:hover,
   .ui-play .Card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 0 hsl(var(--primary-200)) !important;
+    box-shadow:
+      0 2px 4px hsl(var(--primary-300) / 0.08),
+      0 16px 32px -10px hsl(var(--primary-400) / 0.2) !important;
   }
 
   /* Badges: always pill, solid */
@@ -83,7 +121,7 @@
   .ui-play .course-tag {
     border-radius: var(--play-radius-badge) !important;
     font-weight: 700;
-    border-width: 2px !important;
+    border-width: 1px !important;
   }
 
   .ui-play .course-tag {
@@ -132,8 +170,9 @@
 
   /* ── Navbar ─────────────────────────────────────────────────────── */
   .ui-play .navbar {
-    border-bottom: 3px solid hsl(var(--primary-200)) !important;
+    border-bottom: 1px solid hsl(var(--primary-100)) !important;
     background: white !important;
+    box-shadow: 0 1px 0 hsl(var(--primary-100) / 0.6);
   }
 
   .ui-play .navbar .text-base {
@@ -144,7 +183,7 @@
   /* Sidebar: basic container only (detailed overrides are OUTSIDE @layer below) */
   .ui-play .sidebar-content {
     background: white !important;
-    border-right: 3px solid hsl(var(--primary-300)) !important;
+    border-right: 1px solid hsl(var(--primary-100)) !important;
   }
 
   .ui-play .sidebar-content .shadow-sm,
@@ -156,14 +195,18 @@
   .ui-play .stat-card-inner {
     border-radius: var(--play-radius-card) !important;
     border: none !important;
-    box-shadow: 0 5px 0 rgba(0, 0, 0, 0.15) !important;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.06),
+      0 14px 28px -12px rgba(0, 0, 0, 0.22) !important;
     color: white !important;
-    transition: transform 150ms ease, box-shadow 150ms ease;
+    transition: transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
   }
 
   .ui-play .stat-card-inner:hover {
     transform: translateY(-3px);
-    box-shadow: 0 8px 0 rgba(0, 0, 0, 0.15) !important;
+    box-shadow:
+      0 2px 4px rgba(0, 0, 0, 0.08),
+      0 24px 40px -12px rgba(0, 0, 0, 0.28) !important;
   }
 
   .ui-play .stat-card-inner .text-gray-900,
@@ -178,39 +221,21 @@
     color: rgba(255, 255, 255, 0.8) !important;
   }
 
-  /* Per-category stat card SOLID colors */
-  .ui-play .dashboard-container .stat-card--courses .stat-card-inner {
+  /* Per-category stat cards — semantic classes added to dashboard JSX.
+     Shadow inherited from .ui-play .card; bg-color set per category. */
+  .ui-play .stat-card-courses {
     background-color: hsl(var(--play-blue)) !important;
-    box-shadow: 0 5px 0 hsl(217 89% 48%) !important;
+    border-color: transparent !important;
   }
 
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner {
-    background-color: hsl(var(--play-gold)) !important;
-    box-shadow: 0 5px 0 hsl(45 100% 40%) !important;
-    color: hsl(var(--play-dark)) !important;
-  }
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-900,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-800,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-700,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-gray-600,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-foreground,
-  .ui-play .dashboard-container .stat-card--assignments .stat-card-inner .text-muted-foreground {
-    color: hsl(var(--play-dark)) !important;
-  }
-
-  .ui-play .dashboard-container .stat-card--evaluations .stat-card-inner {
-    background-color: hsl(var(--play-purple)) !important;
-    box-shadow: 0 5px 0 hsl(271 76% 40%) !important;
-  }
-
-  .ui-play .dashboard-container .stat-card--attendance .stat-card-inner {
-    background-color: hsl(var(--play-green)) !important;
-    box-shadow: 0 5px 0 hsl(145 63% 32%) !important;
-  }
-
-  .ui-play .dashboard-container .stat-card--live .stat-card-inner {
+  .ui-play .stat-card-live {
     background-color: hsl(var(--play-pink)) !important;
-    box-shadow: 0 5px 0 hsl(340 82% 40%) !important;
+    border-color: transparent !important;
+  }
+
+  .ui-play .stat-card-assessments {
+    background-color: hsl(var(--play-purple)) !important;
+    border-color: transparent !important;
   }
 
   /* Stat card icon: white circle on solid bg */
@@ -237,12 +262,70 @@
   }
 
   /* ── Continue Learning Card ─────────────────────────────────────── */
+  /* No `color: white !important` here — that would cascade into the
+     CTA button and make its text invisible. Per-element [.ui-play_&]:text-white
+     classes in the JSX handle text color where needed. */
   .ui-play .continue-learning-card {
     background-color: hsl(var(--play-blue)) !important;
-    border-color: hsl(var(--play-blue)) !important;
-    color: white !important;
+    border-color: transparent !important;
     border-radius: var(--play-radius-card) !important;
-    box-shadow: 0 5px 0 hsl(217 89% 48%) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-blue) / 0.18),
+      0 16px 32px -12px hsl(var(--play-blue) / 0.4) !important;
+  }
+
+  .ui-play .continue-learning-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 2px 4px hsl(var(--play-blue) / 0.22),
+      0 24px 44px -14px hsl(var(--play-blue) / 0.5) !important;
+  }
+
+  /* Upcoming Live Classes widget: solid pink hero */
+  .ui-play .upcoming-live-card {
+    background-color: hsl(var(--play-pink)) !important;
+    border-color: transparent !important;
+    border-radius: var(--play-radius-card) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-pink) / 0.22),
+      0 16px 32px -12px hsl(var(--play-pink) / 0.45) !important;
+  }
+
+  .ui-play .upcoming-live-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 2px 4px hsl(var(--play-pink) / 0.28),
+      0 22px 40px -14px hsl(var(--play-pink) / 0.55) !important;
+  }
+
+  /* Notification card (new state): solid blue hero */
+  .ui-play .notification-card-new {
+    background-color: hsl(var(--play-blue)) !important;
+    border-color: transparent !important;
+    border-radius: var(--play-radius-card) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-blue) / 0.18),
+      0 12px 28px -10px hsl(var(--play-blue) / 0.4) !important;
+  }
+
+  .ui-play .notification-card-new:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 2px 4px hsl(var(--play-blue) / 0.22),
+      0 18px 36px -12px hsl(var(--play-blue) / 0.5) !important;
+  }
+
+  /* Continue Learning empty state — green hero. Text color set on
+     individual elements (heading/paragraph) via [.ui-play_&]:text-white
+     so the CTA button can still use its own colors. */
+  .ui-play .continue-learning-card-empty {
+    background-color: hsl(var(--play-green)) !important;
+    border-color: transparent !important;
+    border-style: solid !important;
+    border-radius: var(--play-radius-card) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-green-deep) / 0.22),
+      0 16px 32px -12px hsl(var(--play-green) / 0.4) !important;
   }
 
   .ui-play .continue-learning-card .text-muted-foreground {
@@ -259,7 +342,7 @@
   }
 
   .ui-play .level-badge {
-    border-width: 2px !important;
+    border-width: 1px !important;
     border-radius: var(--play-radius-badge) !important;
     font-weight: 800;
     text-transform: uppercase;
@@ -268,9 +351,9 @@
 
   .ui-play .course-stats {
     background: hsl(var(--primary-50));
-    border-color: hsl(var(--primary-200));
+    border-color: hsl(var(--primary-100));
     border-radius: var(--play-radius-btn);
-    border-width: 2px;
+    border-width: 1px;
   }
 
   /* ── Chips ──────────────────────────────────────────────────────── */
@@ -299,6 +382,75 @@
     background-color: white !important;
   }
 
+  /* Dashboard surface: subtle dot pattern over a neutral warm tint —
+     stays out of the way so green/blue/pink hero cards can pop. */
+  .ui-play .dashboard-container {
+    background-color: hsl(220 14% 97%) !important; /* warm neutral */
+    background-image:
+      radial-gradient(circle at 1px 1px,
+        hsl(220 14% 80% / 0.5) 1px,
+        transparent 0);
+    background-size: 24px 24px;
+    background-position: 0 0;
+  }
+
+  /* Looser vertical rhythm — Tailwind space-y-4 (16px) feels cramped
+     once cards have softer shadows. Bump to 20px in Play. */
+  .ui-play .dashboard-container .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1.25rem !important;
+  }
+
+  /* Bump grid gap to match. */
+  .ui-play .dashboard-container .grid.gap-3,
+  .ui-play .dashboard-container .grid.sm\:gap-4 {
+    gap: 1.25rem !important;
+  }
+
+  /* ── Dashboard Header Typography ────────────────────────────────── */
+  /* Welcome heading: fluid display size, dark text — primary brand color
+     reserved for accents (icon, sparkle) so heading reads as friendly,
+     not monotone. */
+  .ui-play .dashboard-container h1 {
+    font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem) !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.02em !important;
+    line-height: 1.1 !important;
+    color: hsl(220 26% 18%) !important; /* near-black, friendly */
+  }
+
+  .ui-play .dashboard-container h1 + p {
+    font-size: 0.9375rem !important;
+    font-weight: 500 !important;
+    color: hsl(220 9% 46%) !important; /* slate-500 — muted */
+    margin-top: 0.375rem !important;
+  }
+
+  .ui-play .dashboard-container h1 + p .text-primary {
+    color: hsl(var(--play-gold)) !important;
+  }
+
+  /* Header avatar: gold ring like .dashboard-user-avatar but for the
+     default Avatar in the header (no class on it). */
+  .ui-play .dashboard-container > div > div > div > .flex.items-center > [class*="Avatar"]:first-child,
+  .ui-play .dashboard-container .flex.items-center.space-x-3 > span:first-child {
+    border: 2px solid hsl(var(--play-gold)) !important;
+    box-shadow: 0 0 0 3px hsl(var(--play-gold) / 0.22),
+                0 4px 12px hsl(var(--play-gold) / 0.25) !important;
+  }
+
+  /* ── Dashboard Date Pill (header) ───────────────────────────────── */
+  .ui-play .dashboard-date-pill {
+    border-radius: var(--play-radius-badge) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
+    background: white !important;
+    box-shadow: 0 2px 8px hsl(var(--primary-300) / 0.12) !important;
+    padding: 0.5rem 1rem !important;
+  }
+
+  .ui-play .dashboard-date-pill .text-muted-foreground {
+    color: hsl(var(--primary-500)) !important;
+  }
+
   /* ── Dashboard User Avatar ──────────────────────────────────────── */
   .ui-play .dashboard-user-avatar {
     border: 3px solid hsl(var(--play-gold)) !important;
@@ -309,14 +461,18 @@
   /* ── Course Detail Page ─────────────────────────────────────────── */
   .ui-play .group.flex.w-full.items-center.justify-between.rounded-lg {
     border-radius: var(--play-radius-card) !important;
-    border-width: 2px !important;
-    box-shadow: 0 3px 0 hsl(var(--primary-200));
-    transition: transform 150ms ease, box-shadow 150ms ease;
+    border-width: 1px !important;
+    box-shadow:
+      0 1px 2px hsl(var(--primary-300) / 0.06),
+      0 6px 16px -8px hsl(var(--primary-400) / 0.12);
+    transition: transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
   }
 
   .ui-play .group.flex.w-full.items-center.justify-between.rounded-lg:hover {
     transform: translateY(-2px);
-    box-shadow: 0 5px 0 hsl(var(--primary-200));
+    box-shadow:
+      0 2px 4px hsl(var(--primary-300) / 0.08),
+      0 12px 28px -10px hsl(var(--primary-400) / 0.2);
   }
 
   .ui-play [class*="border"][class*="rounded-lg"][class*="hover:bg-accent"] {
@@ -345,7 +501,7 @@
   .ui-play [role="tablist"] {
     border-radius: var(--play-radius-btn) !important;
     background: hsl(var(--primary-50)) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
     padding: 4px !important;
   }
 
@@ -362,7 +518,7 @@
   .ui-play [role="tab"][aria-selected="true"] {
     background: hsl(var(--primary-400)) !important;
     color: white !important;
-    box-shadow: 0 3px 0 hsl(var(--primary-500)) !important;
+    box-shadow: 0 2px 6px hsl(var(--primary-400) / 0.4) !important;
   }
 
   /* ── Inputs & Select (forms across all pages) ───────────────────── */
@@ -375,7 +531,7 @@
   .ui-play select,
   .ui-play [role="combobox"] {
     border-radius: var(--play-radius-btn) !important;
-    border-width: 2px !important;
+    border-width: 1px !important;
     border-color: hsl(var(--primary-200)) !important;
     font-weight: 600 !important;
     transition: border-color 150ms ease, box-shadow 150ms ease !important;
@@ -386,7 +542,7 @@
   .ui-play select:focus,
   .ui-play [role="combobox"]:focus {
     border-color: hsl(var(--primary-400)) !important;
-    box-shadow: 0 0 0 3px hsl(var(--primary-200) / 0.4) !important;
+    box-shadow: 0 0 0 3px hsl(var(--primary-200) / 0.5) !important;
   }
 
   /* ── Tables (attendance, reports, progress) ─────────────────────── */
@@ -425,15 +581,18 @@
   .ui-play [role="dialog"] > div,
   .ui-play [role="alertdialog"] > div {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
-    box-shadow: 0 8px 0 hsl(var(--primary-200) / 0.5) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
+    box-shadow:
+      0 4px 16px hsl(var(--primary-300) / 0.12),
+      0 24px 56px -16px hsl(var(--primary-400) / 0.28) !important;
   }
 
   /* ── Tooltips ───────────────────────────────────────────────────── */
   .ui-play [role="tooltip"] {
     border-radius: var(--play-radius-btn) !important;
     font-weight: 700 !important;
-    border: 2px solid hsl(var(--primary-300)) !important;
+    border: 1px solid hsl(var(--primary-200)) !important;
+    box-shadow: 0 4px 12px hsl(var(--primary-400) / 0.18) !important;
   }
 
   /* ── Dropdowns / Popovers ───────────────────────────────────────── */
@@ -441,8 +600,10 @@
   .ui-play [role="listbox"],
   .ui-play [cmdk-list] {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
-    box-shadow: 0 6px 0 hsl(var(--primary-200) / 0.3) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
+    box-shadow:
+      0 4px 12px hsl(var(--primary-300) / 0.1),
+      0 16px 32px -10px hsl(var(--primary-400) / 0.2) !important;
   }
 
   .ui-play [role="option"] {
@@ -479,8 +640,11 @@
   .ui-play [role="alert"],
   .ui-play [data-sonner-toast] {
     border-radius: var(--play-radius-card) !important;
-    border-width: 2px !important;
+    border-width: 1px !important;
     font-weight: 600 !important;
+    box-shadow:
+      0 4px 12px hsl(var(--primary-300) / 0.12),
+      0 16px 32px -12px hsl(var(--primary-400) / 0.2) !important;
   }
 
   /* ── Skeleton loaders ───────────────────────────────────────────── */
@@ -498,15 +662,19 @@
   .ui-play [class*="assessment"] .card,
   .ui-play [class*="Assessment"] {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
-    box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
-    transition: transform 150ms ease, box-shadow 150ms ease;
+    border: 1px solid hsl(var(--primary-100)) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--primary-300) / 0.06),
+      0 8px 24px -10px hsl(var(--primary-400) / 0.14) !important;
+    transition: transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
   }
 
   .ui-play .assessment-card:hover,
   .ui-play [class*="assessment"] .card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 0 hsl(var(--primary-200)) !important;
+    box-shadow:
+      0 2px 4px hsl(var(--primary-300) / 0.08),
+      0 16px 32px -10px hsl(var(--primary-400) / 0.2) !important;
   }
 
   /* Exam interface: question navigator sidebar */
@@ -557,7 +725,7 @@
   .ui-play [class*="slide"] button[class*="next"],
   .ui-play .slide-nav-btn {
     border-radius: 50% !important;
-    box-shadow: 0 3px 0 hsl(var(--primary-300)) !important;
+    box-shadow: 0 4px 12px hsl(var(--primary-400) / 0.2) !important;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -568,7 +736,7 @@
   .ui-play [class*="search"] input,
   .ui-play [class*="Search"] input {
     border-radius: var(--play-radius-badge) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
+    border: 1px solid hsl(var(--primary-200)) !important;
     padding-left: 16px !important;
     font-weight: 600 !important;
   }
@@ -577,7 +745,7 @@
   .ui-play [class*="filter"] button,
   .ui-play [class*="Filter"] button {
     border-radius: var(--play-radius-badge) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
+    border: 1px solid hsl(var(--primary-200)) !important;
     font-weight: 700 !important;
     transition: all 150ms ease;
   }
@@ -599,7 +767,7 @@
   .ui-play [class*="pagination"] button,
   .ui-play nav[aria-label*="pagination"] button {
     border-radius: 50% !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
     font-weight: 800 !important;
     min-width: 36px;
     min-height: 36px;
@@ -611,45 +779,95 @@
     background: hsl(var(--primary-400)) !important;
     color: white !important;
     border-color: hsl(var(--primary-400)) !important;
-    box-shadow: 0 3px 0 hsl(var(--primary-500)) !important;
+    box-shadow: 0 2px 6px hsl(var(--primary-400) / 0.45) !important;
   }
 
   /* ══════════════════════════════════════════════════════════════════
      ATTENDANCE PAGE
      ══════════════════════════════════════════════════════════════════ */
 
+  /* Attendance dashboard widget — bright green hero with soft elevation.
+     Targets the semantic class added to AttendanceWidget Card (the old
+     :has([class*="ChartBar"]) selector didn't match phosphor's rendered
+     icon classes). */
+  .ui-play .attendance-widget-card {
+    background-color: hsl(var(--play-green)) !important;
+    border-color: transparent !important;
+    border-radius: var(--play-radius-card) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-green-deep) / 0.25),
+      0 18px 36px -14px hsl(var(--play-green) / 0.45) !important;
+  }
+
+  .ui-play .attendance-widget-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 2px 4px hsl(var(--play-green-deep) / 0.3),
+      0 24px 44px -14px hsl(var(--play-green) / 0.55) !important;
+  }
+
   /* Attendance dashboard widget: force all text to white on green bg */
-  .ui-play .card:has([class*="ChartBar"]) .text-foreground,
-  .ui-play .card:has([class*="ChartBar"]) .text-2xl,
-  .ui-play .card:has([class*="ChartBar"]) .text-muted-foreground,
-  .ui-play .card:has([class*="ChartBar"]) .text-emerald-600,
-  .ui-play .card:has([class*="ChartBar"]) .text-red-600,
-  .ui-play .card:has([class*="ChartBar"]) .text-orange-500,
-  .ui-play .card:has([class*="ChartBar"]) .text-slate-300,
-  .ui-play .card:has([class*="ChartBar"]) [class*="text-"] {
+  .ui-play .attendance-widget-card .text-foreground,
+  .ui-play .attendance-widget-card .text-2xl,
+  .ui-play .attendance-widget-card .text-muted-foreground,
+  .ui-play .attendance-widget-card .text-emerald-600,
+  .ui-play .attendance-widget-card .text-red-600,
+  .ui-play .attendance-widget-card .text-orange-500,
+  .ui-play .attendance-widget-card .text-slate-300,
+  .ui-play .attendance-widget-card [class*="text-"] {
     color: white !important;
   }
 
   /* Attendance period buttons: white pill on green */
-  .ui-play .card:has([class*="ChartBar"]) button {
+  .ui-play .attendance-widget-card button {
     color: rgba(255, 255, 255, 0.7) !important;
     background: transparent !important;
   }
 
-  .ui-play .card:has([class*="ChartBar"]) button[class*="bg-emerald"] {
+  .ui-play .attendance-widget-card button[class*="bg-emerald"] {
     color: white !important;
     background: rgba(255, 255, 255, 0.2) !important;
     border-radius: var(--play-radius-badge) !important;
   }
 
-  /* Attendance weekly dots: white bg */
-  .ui-play .card:has([class*="ChartBar"]) .bg-emerald-100 {
-    background-color: rgba(255, 255, 255, 0.2) !important;
+  /* Attendance weekly day dots: uniform translucent white pills so
+     red/slate variants don't clash with the green hero bg. Status is
+     still readable via the glyph (✓ ✕ ? • –). */
+  .ui-play .attendance-widget-card .bg-emerald-100,
+  .ui-play .attendance-widget-card .bg-red-100,
+  .ui-play .attendance-widget-card .bg-slate-100,
+  .ui-play .attendance-widget-card .bg-slate-50 {
+    background-color: rgba(255, 255, 255, 0.22) !important;
   }
 
-  /* Icon container: white bg with green icon */
-  .ui-play .card:has([class*="ChartBar"]) .bg-emerald-100.p-1\.5 {
-    background-color: rgba(255, 255, 255, 0.25) !important;
+  .ui-play .attendance-widget-card [class*="ring-emerald"],
+  .ui-play .attendance-widget-card [class*="ring-red"],
+  .ui-play .attendance-widget-card [class*="ring-slate"] {
+    --tw-ring-color: rgba(255, 255, 255, 0.35) !important;
+  }
+
+  .ui-play .attendance-widget-card .text-emerald-700,
+  .ui-play .attendance-widget-card .text-red-700,
+  .ui-play .attendance-widget-card .text-slate-400,
+  .ui-play .attendance-widget-card .text-slate-300 {
+    color: white !important;
+  }
+
+  /* Inner icon container (ChartBar pill at top): more visible */
+  .ui-play .attendance-widget-card .bg-emerald-100.p-1\.5 {
+    background-color: rgba(255, 255, 255, 0.28) !important;
+  }
+
+  /* Progress bar inside attendance card: thicker, white-tinted track */
+  .ui-play .attendance-widget-card .bg-slate-100.rounded-full {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    height: 0.5rem !important;
+  }
+
+  .ui-play .attendance-widget-card [class*="bg-emerald-500"],
+  .ui-play .attendance-widget-card [class*="bg-amber-500"],
+  .ui-play .attendance-widget-card [class*="bg-red-500"] {
+    background-color: white !important;
   }
 
   /* Attendance status dots */
@@ -673,7 +891,7 @@
   .ui-play [class*="calendar"],
   .ui-play [role="grid"] {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
   }
 
   .ui-play [role="gridcell"] button {
@@ -684,7 +902,7 @@
   .ui-play [role="gridcell"] button[aria-selected="true"] {
     background: hsl(var(--primary-400)) !important;
     color: white !important;
-    box-shadow: 0 2px 0 hsl(var(--primary-500));
+    box-shadow: 0 2px 6px hsl(var(--primary-400) / 0.4);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -695,8 +913,10 @@
   .ui-play [class*="LiveClass"] .card,
   .ui-play [class*="session"] .card {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--play-pink) / 0.3) !important;
-    box-shadow: 0 4px 0 hsl(var(--play-pink) / 0.2) !important;
+    border: 1px solid hsl(var(--play-pink) / 0.18) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-pink) / 0.08),
+      0 12px 28px -10px hsl(var(--play-pink) / 0.25) !important;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -712,8 +932,10 @@
   .ui-play [class*="profile"] .card,
   .ui-play [class*="Profile"] .card {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--primary-200)) !important;
-    box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
+    border: 1px solid hsl(var(--primary-100)) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--primary-300) / 0.06),
+      0 8px 24px -10px hsl(var(--primary-400) / 0.14) !important;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -723,8 +945,10 @@
   .ui-play [class*="referral"] .card,
   .ui-play [class*="Referral"] .card {
     border-radius: var(--play-radius-card) !important;
-    border: 2px solid hsl(var(--play-gold) / 0.3) !important;
-    box-shadow: 0 4px 0 hsl(var(--play-gold) / 0.2) !important;
+    border: 1px solid hsl(var(--play-gold) / 0.22) !important;
+    box-shadow:
+      0 1px 2px hsl(var(--play-gold) / 0.1),
+      0 12px 28px -10px hsl(var(--play-gold) / 0.3) !important;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -807,19 +1031,23 @@
   transform: scale(1.02);
 }
 
-/* Active: SOLID primary bg, white text, 3D shadow */
+/* Active: SOLID primary bg, white text, soft elevated shadow */
 .ui-play [data-sidebar="menu-button"][data-active="true"] {
   background-color: hsl(var(--primary-400)) !important;
   color: white !important;
   font-weight: 800 !important;
   border-radius: 14px !important;
-  box-shadow: 0 4px 0 hsl(var(--primary-500)) !important;
+  box-shadow:
+    0 1px 2px hsl(var(--primary-500) / 0.18),
+    0 8px 20px -6px hsl(var(--primary-400) / 0.45) !important;
 }
 
 .ui-play [data-sidebar="menu-button"][data-active="true"]:hover {
   background-color: hsl(var(--primary-400)) !important;
   transform: translateY(-1px);
-  box-shadow: 0 5px 0 hsl(var(--primary-500)) !important;
+  box-shadow:
+    0 2px 4px hsl(var(--primary-500) / 0.22),
+    0 12px 24px -8px hsl(var(--primary-400) / 0.55) !important;
 }
 
 .ui-play [data-sidebar="menu-button"][data-active="true"] svg {
@@ -848,8 +1076,8 @@
 .ui-play [data-sidebar="header"] [data-sidebar="menu-button"] {
   border-radius: 16px !important;
   background-color: hsl(var(--primary-50)) !important;
-  border: 2px solid hsl(var(--primary-200)) !important;
-  box-shadow: 0 3px 0 hsl(var(--primary-200)) !important;
+  border: 1px solid hsl(var(--primary-100)) !important;
+  box-shadow: 0 2px 8px hsl(var(--primary-300) / 0.1) !important;
   margin: 8px !important;
   padding: 12px !important;
   min-height: auto !important;
@@ -858,7 +1086,7 @@
 .ui-play [data-sidebar="header"] [data-sidebar="menu-button"]:hover {
   background-color: hsl(var(--primary-100)) !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 0 hsl(var(--primary-200)) !important;
+  box-shadow: 0 4px 12px hsl(var(--primary-300) / 0.18) !important;
 }
 
 .ui-play [data-sidebar="footer"] {

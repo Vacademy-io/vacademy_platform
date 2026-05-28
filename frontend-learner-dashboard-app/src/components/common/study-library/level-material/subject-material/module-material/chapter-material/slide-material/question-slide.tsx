@@ -626,7 +626,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                             value={inputValue}
                             onChange={handleInputChange}
                             placeholder="Type your answer..."
-                            className="min-h-[150px] sm:min-h-[200px] text-base border-gray-300 focus:border-gray-600 focus:ring-gray-600"
+                            className="min-h-reg-150 sm:min-h-reg-200 text-base border-gray-300 focus:border-gray-600 focus:ring-gray-600"
                             onCopy={(e) => e.preventDefault()}
                             onCut={(e) => e.preventDefault()}
                             onPaste={(e) => e.preventDefault()}

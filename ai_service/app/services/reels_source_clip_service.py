@@ -171,27 +171,54 @@ def _even(n: int) -> int:
 _FACE_CENTER_NEIGHBOR_S = 5.0
 _FACE_CENTER_NEIGHBOR_WEIGHT = 0.25
 
+# Bimodal-cluster detection. If the speaker physically moves from one
+# side of the source frame to the other inside a single reel window (e.g.
+# left→right between shots, or sat down vs stood up), naive overlap-
+# weighted averaging lands the crop in the MIDDLE — where the speaker
+# never is. When the cx range across in-window segments exceeds this
+# threshold, partition by the midpoint and pick the cluster with the most
+# total coverage (audit 2026-05-21, reel-b38b5c302e8c).
+_BIMODAL_CX_SPREAD = 0.30
+
+
+def _weighted_center(
+    weighted_centers: list[tuple[float, float, float]],
+) -> tuple[float, float]:
+    """Compute the duration-weighted (cx, cy) from `(weight, cx, cy)` triples."""
+    total_w = sum(w for w, _, _ in weighted_centers)
+    if total_w <= 0:
+        return 0.5, 0.5
+    sum_cx = sum(w * cx for w, cx, _ in weighted_centers)
+    sum_cy = sum(w * cy for w, _, cy in weighted_centers)
+    return sum_cx / total_w, sum_cy / total_w
+
 
 def _compute_face_center(
     face_segments: list[dict],
     win_t_start: float,
     win_t_end: float,
 ) -> tuple[float, float]:
-    """Average face-bbox center across segments overlapping the window,
-    weighted by overlap duration. Falls back to image center (0.5, 0.5)
-    if no face data is available.
+    """Pick a stable (cx, cy) crop center for the window.
 
-    For sparse-coverage windows (indexing pipeline only densely sampled
-    the highlight), also pulls in segments within ±5s of the window edges
-    at reduced weight, so the static center remains anchored on the
-    speaker even when in-window coverage is thin.
+    Steps:
+      1. Collect (weight, cx, cy) triples from segments overlapping the
+         window (full weight) + segments within ±NEIGHBOR_S of the window
+         edges (reduced weight) — neighborhood expansion is the
+         sparse-coverage fix.
+      2. If the in-window cx range exceeds _BIMODAL_CX_SPREAD, the speaker
+         physically moved across the frame. Partition the centers by the
+         midpoint and keep only the higher-coverage cluster — averaging
+         left + right lands the crop on neither (production audit 2026-05-21
+         reel-b38b5c302e8c showed exactly this failure: speaker started on
+         the right, moved to the left half-way through, mean cx=0.56 → crop
+         landed on the slide in between).
+      3. Falls back to image center (0.5, 0.5) when no face data exists.
     """
     if not face_segments:
         return 0.5, 0.5
 
-    total_w = 0.0
-    sum_cx = 0.0
-    sum_cy = 0.0
+    in_window: list[tuple[float, float, float]] = []  # (overlap, cx, cy)
+    neighborhood: list[tuple[float, float, float]] = []
     nbr_start = win_t_start - _FACE_CENTER_NEIGHBOR_S
     nbr_end = win_t_end + _FACE_CENTER_NEIGHBOR_S
     for seg in face_segments:
@@ -208,30 +235,45 @@ def _compute_face_center(
             cy = float(bbox[1]) + float(bbox[3]) / 2.0
         except (TypeError, ValueError):
             continue
-        # Full-weight overlap with window
         ov_start = max(ss, win_t_start)
         ov_end = min(se, win_t_end)
         overlap = max(0.0, ov_end - ov_start)
         if overlap > 0:
-            sum_cx += cx * overlap
-            sum_cy += cy * overlap
-            total_w += overlap
+            in_window.append((overlap, cx, cy))
             continue
-        # Reduced-weight overlap with neighborhood (segment lies outside
-        # window but within ±NEIGHBOR_S — useful when in-window coverage
-        # is sparse).
         nbr_ov_start = max(ss, nbr_start)
         nbr_ov_end = min(se, nbr_end)
         nbr_overlap = max(0.0, nbr_ov_end - nbr_ov_start)
         if nbr_overlap > 0:
-            w = nbr_overlap * _FACE_CENTER_NEIGHBOR_WEIGHT
-            sum_cx += cx * w
-            sum_cy += cy * w
-            total_w += w
+            neighborhood.append(
+                (nbr_overlap * _FACE_CENTER_NEIGHBOR_WEIGHT, cx, cy)
+            )
 
-    if total_w <= 0:
-        return 0.5, 0.5
-    return sum_cx / total_w, sum_cy / total_w
+    # Bimodal-cluster detection on in-window cxs only. Neighborhood
+    # segments are anchors when in-window coverage is THIN, not signal
+    # about which side the speaker primarily occupies during this window.
+    if in_window:
+        cxs = [cx for _, cx, _ in in_window]
+        spread = max(cxs) - min(cxs)
+        if spread > _BIMODAL_CX_SPREAD:
+            midpoint = (max(cxs) + min(cxs)) / 2.0
+            left = [t for t in in_window if t[1] < midpoint]
+            right = [t for t in in_window if t[1] >= midpoint]
+            left_coverage = sum(w for w, _, _ in left)
+            right_coverage = sum(w for w, _, _ in right)
+            dominant = right if right_coverage >= left_coverage else left
+            # Keep neighborhood anchors only if they fall in the dominant
+            # cluster's half — otherwise they'd pull the center back toward
+            # the rejected side.
+            cluster_min = min(cx for _, cx, _ in dominant)
+            cluster_max = max(cx for _, cx, _ in dominant)
+            kept_nbr = [
+                t for t in neighborhood
+                if cluster_min - 0.10 <= t[1] <= cluster_max + 0.10
+            ]
+            return _weighted_center(dominant + kept_nbr)
+
+    return _weighted_center(in_window + neighborhood)
 
 
 # ---------------------------------------------------------------------------
@@ -518,6 +560,27 @@ class ReelsSourceClipService:
         source_w = int(source_resolution[0])
         source_h = int(source_resolution[1])
         face_segments = context.get("face_segments") or []
+
+        # Issue 2C — on-demand dense face detection when indexer coverage
+        # is thin. The indexer samples at 1fps over the WHOLE video so its
+        # 2s-min-segment threshold drops short head-turns. For a 40s reel
+        # window we may end up with 5 sparse segments + 18s of untracked
+        # gaps. _densify re-runs FaceMesh at 5fps on JUST the window when
+        # in-window coverage < 70%; sub-50ms gap → dense segments. Returns
+        # None if dense run produced nothing useful → we keep the sparse
+        # data and the existing crop fallback handles it. ~5-15s of CPU
+        # cost per render when it fires.
+        from .reels_face_densify_service import densify_face_segments
+        dense_segments = densify_face_segments(
+            source_url=source_url,
+            win_t_start=win_t_start,
+            win_t_end=win_t_end,
+            existing_segments=face_segments,
+        )
+        if dense_segments is not None:
+            face_segments = dense_segments
+            ctx.extra_metadata["face_densify_fired"] = True
+            ctx.extra_metadata["face_segments_count"] = len(dense_segments)
 
         # Static crop center is used for sizing the crop box (size is FIXED
         # for the whole reel — only position varies over time). Centered on

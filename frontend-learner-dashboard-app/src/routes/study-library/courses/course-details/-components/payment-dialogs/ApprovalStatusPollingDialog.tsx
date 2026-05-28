@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
-import { Loader2, Clock, CheckCircle, XCircle } from "lucide-react";
+import { SpinnerGap, Clock, CheckCircle, XCircle } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { fetchUserPlanStatus } from "@/services/payment-status-api";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
@@ -200,7 +200,7 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
                 <Clock className="w-10 h-10 text-yellow-600" />
               </div>
               <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
-                <Loader2 className="w-3 h-3 text-white animate-spin" />
+                <SpinnerGap className="w-3 h-3 text-white animate-spin" />
               </div>
             </div>
           </div>
@@ -319,9 +319,9 @@ export const ApprovalStatusPollingDialog: React.FC<ApprovalStatusPollingDialogPr
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
           <DialogPrimitive.Title className="sr-only">Approval Status</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">

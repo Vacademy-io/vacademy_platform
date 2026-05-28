@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/design-lint.mjs --hook",
+            "statusMessage": "Checking Vacademy design system…",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

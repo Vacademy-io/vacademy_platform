@@ -764,7 +764,7 @@ function RouteComponent() {
 
     return (
       <Dialog open={dayModalOpen} onOpenChange={setDayModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-screen-80 overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-neutral-800 dark:text-neutral-100">
               Classes on {formatDate(selectedDayData.date)}
@@ -1180,7 +1180,7 @@ function RouteComponent() {
   if (isLoading) {
     return (
       <LayoutContainer>
-        <div className="flex items-center justify-center min-h-[200px]">
+        <div className="flex items-center justify-center min-h-52">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
             <div className="text-neutral-600 dark:text-neutral-300">

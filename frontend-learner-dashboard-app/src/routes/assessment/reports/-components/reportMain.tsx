@@ -283,14 +283,14 @@ const AssessmentReportList = ({
 
                 <div className="w-full md:w-auto mt-2 md:mt-0  flex flex-col md:flex-row gap-2">
                   <MyButton
-                    className="w-full md:w-auto min-w-[120px]"
+                    className="w-full md:w-auto min-w-32"
                     onClick={() => handleViewAIReport(report)}
                   >
                     View AI Report
                   </MyButton>
                   <Button
                     variant="outline"
-                    className="w-full md:w-auto min-w-[120px]"
+                    className="w-full md:w-auto min-w-32"
                     onClick={() => handleViewComparison(report)}
                   >
                     Report

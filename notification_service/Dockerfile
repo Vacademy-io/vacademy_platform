@@ -26,6 +26,11 @@ RUN mvn -s settings.xml clean install -DskipTests -Dsentry.authToken=$SENTRY_AUT
 # Stage 2: Package the application into the final image
 FROM amazoncorretto:17-alpine
 
+# Pin JVM + container TZ to UTC so LocalDateTime.now() and Instant.now() agree
+# regardless of host TZ. Timestamps in notification_log are stored and emitted
+# in UTC; the frontend converts to the viewer's local time.
+ENV TZ=UTC
+
 # Set the working directory
 WORKDIR /app
 

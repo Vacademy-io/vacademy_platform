@@ -1,7 +1,7 @@
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronRight } from "lucide-react";
+import { CaretRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 
@@ -48,7 +48,7 @@ export const StatCard = ({
         <Card
             onClick={onClick}
             className={cn(
-                "group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md hover:border-primary/20 h-full",
+                "group relative overflow-hidden cursor-pointer transition-all duration-base ease-out-soft hover:shadow-md hover:border-primary/20 h-full",
                 // Vibrant Mode Styles
                 "[.ui-vibrant_&]:bg-slate-50 dark:[.ui-vibrant_&]:bg-slate-900/30",
                 "[.ui-vibrant_&]:border-slate-200 dark:[.ui-vibrant_&]:border-slate-700",
@@ -78,7 +78,7 @@ export const StatCard = ({
                             )}>
                                 <Icon size={20} weight="fill" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
-                            <ChevronRight size={16} className="text-white/60 group-hover:text-white" />
+                            <CaretRight size={16} className="text-white/60 group-hover:text-white" />
                         </div>
                         <div className="space-y-1">
                             <div className="text-xl sm:text-2xl font-black tracking-tight text-white">
@@ -107,8 +107,7 @@ export const StatCard = ({
                             )}>
                                 <Icon size={20} weight="duotone" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
-                            <ChevronRight
-                                size={16}
+                            <CaretRight size={16}
                                 className="text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5"
                             />
                         </div>

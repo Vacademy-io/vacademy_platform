@@ -162,7 +162,7 @@ export function AssessmentPreview() {
                       {time}
                     </span>
                     {index < array.length - 1 && (
-                      <span className="absolute right-[-10px] text-lg">:</span>
+                      <span className="absolute -right-2.5 text-lg">:</span>
                     )}
                   </div>
                 ))}

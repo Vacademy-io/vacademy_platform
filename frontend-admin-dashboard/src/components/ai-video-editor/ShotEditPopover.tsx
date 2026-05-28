@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Film, Lock, Mic, X } from 'lucide-react';
+import { Film, Lock, Mic, VolumeX, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ShotClip } from '@/components/ai-video-player/types';
@@ -42,14 +42,20 @@ export function ShotEditPopover({
     affectedEntryCount,
     onClose,
 }: Props) {
-    const { regenerateShot, regeneratingShotIdx, regeneratingSentenceId } =
+    const { regenerateShot, silenceShot, regeneratingShotIdx, regeneratingSentenceId } =
         useVideoEditorStore();
     const [draft, setDraft] = useState(shot.text);
     const [error, setError] = useState<string | null>(null);
+    const [silencing, setSilencing] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const isIntrinsic = shot.audio_policy === 'intrinsic_only';
+    // A muted shot: audio replaced with silence; the slot stays but there is
+    // no narration. Detected the same way as SentenceEditPopover.
+    const isSilenced =
+        !isIntrinsic &&
+        (shot.audio_skipped === true || (shot.text.trim() === '' && (shot.audio_url ?? '') === ''));
     const isRegenerating = regeneratingShotIdx === shot.shot_idx;
     // Mirror the store's exclusivity rule: only one master-audio mutation
     // in flight at a time across sentence + shot units.
@@ -111,6 +117,22 @@ export function ShotEditPopover({
         }
     };
 
+    const handleSilence = async () => {
+        if (isRegenerating || isAnotherRegenerating) return;
+        setError(null);
+        setSilencing(true);
+        const result = await silenceShot(shot.shot_idx);
+        setSilencing(false);
+        if (result.ok) {
+            toast.success('Shot muted — audio replaced with silence');
+            onClose();
+        } else {
+            const msg = result.error || 'Mute failed';
+            setError(msg);
+            toast.error(msg);
+        }
+    };
+
     return createPortal(
         <div
             ref={containerRef}
@@ -158,10 +180,10 @@ export function ShotEditPopover({
             )}
 
             {isIntrinsic ? (
-                <p className="rounded bg-amber-50 px-2 py-2 text-[11px] leading-snug text-amber-900">
+                <p className="rounded bg-amber-50 p-2 text-[11px] leading-snug text-amber-900">
                     This shot uses audio from its own video track ({shot.shot_type}). Master
-                    narration is silenced in this window — there is no script to re-narrate.
-                    To change the audio, edit the underlying source asset.
+                    narration is silenced in this window — there is no script to re-narrate. To
+                    change the audio, edit the underlying source asset.
                 </p>
             ) : (
                 <textarea
@@ -187,27 +209,52 @@ export function ShotEditPopover({
 
             {error && <p className="text-[11px] text-red-500">{error}</p>}
 
-            <div className="mt-1 flex items-center justify-end gap-2">
-                <button
-                    type="button"
-                    onClick={onClose}
-                    disabled={isRegenerating}
-                    className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                    {isIntrinsic ? 'Close' : 'Cancel'}
-                </button>
-                {!isIntrinsic && (
+            <div className="mt-1 flex items-center justify-between gap-2">
+                <div>
+                    {/* Delete audio (mute) — replaces this shot's narration
+                        with equal-length silence; the slot/duration is kept.
+                        Hidden for intrinsic shots and already-muted shots. */}
+                    {!isIntrinsic && !isSilenced && (
+                        <button
+                            type="button"
+                            onClick={handleSilence}
+                            disabled={isRegenerating || isAnotherRegenerating}
+                            title="Replace this shot's narration with silence (keeps its duration)"
+                            className="flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            <VolumeX className="size-3.5" />
+                            {silencing ? 'Muting…' : 'Delete audio'}
+                        </button>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={handleSubmit}
-                        disabled={!canSubmit}
-                        className="rounded bg-indigo-500 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        onClick={onClose}
+                        disabled={isRegenerating}
+                        className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                        {isRegenerating ? 'Re-narrating…' : 'Re-narrate'}
+                        {isIntrinsic ? 'Close' : 'Cancel'}
                     </button>
-                )}
+                    {!isIntrinsic && (
+                        <button
+                            type="button"
+                            onClick={handleSubmit}
+                            disabled={!canSubmit}
+                            className="rounded bg-indigo-500 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+                        >
+                            {isRegenerating && !silencing
+                                ? isSilenced
+                                    ? 'Adding…'
+                                    : 'Re-narrating…'
+                                : isSilenced
+                                  ? 'Add narration'
+                                  : 'Re-narrate'}
+                        </button>
+                    )}
+                </div>
             </div>
         </div>,
-        document.body,
+        document.body
     );
 }

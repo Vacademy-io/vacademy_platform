@@ -41,4 +41,16 @@ public class TranscriptionStatusDto {
 
     private Date createdAt;
     private Date updatedAt;
+
+    /**
+     * Cached LLM-generated study notes (Markdown). Non-null when the user has
+     * previously clicked "Generate Lecture Notes" on this recording. The UI
+     * uses this to skip the action picker and jump straight to the notes
+     * view when the dialog opens, with a "Regenerate" affordance.
+     */
+    private String savedNotesMarkdown;
+
+    /** When {@link #savedNotesMarkdown} was generated. Drives the
+     * "Generated X ago" hint shown above cached notes. */
+    private Date savedNotesGeneratedAt;
 }

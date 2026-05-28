@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import { UserActivityArray } from "../-types/dashboard-data-types";
 import { formatTimeFromMillis, millisToMinutes } from "@/helpers/formatTimeFromMiliseconds";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, TrendingUp, Users } from "lucide-react";
+import { Calendar, Clock, TrendUp, Users } from "@phosphor-icons/react";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 
 const chartConfig = {
@@ -30,9 +30,9 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     const isPlay = usePlayTheme();
 
     // Play mode chart colors
-    const userLineColor = isPlay ? "#58CC02" : "hsl(var(--primary))";
-    const batchLineColor = isPlay ? "#CE82FF" : "hsl(var(--muted-foreground))";
-    const gridColor = isPlay ? "#E5E5E5" : "hsl(var(--border))";
+    const userLineColor = isPlay ? "var(--play-c-success)" : "hsl(var(--primary))";
+    const batchLineColor = isPlay ? "var(--play-c-accent)" : "hsl(var(--muted-foreground))";
+    const gridColor = isPlay ? "var(--play-c-surface)" : "hsl(var(--border))";
     const bgColor = "hsl(var(--background))";
 
     // Transform API data to chart data format and preserve original millisecond values
@@ -69,7 +69,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
                 <div className="flex items-center space-x-3">
                     <div className="p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-primary/20 [.ui-play_&]:rounded-xl">
-                        <TrendingUp size={18} className="text-primary" />
+                        <TrendUp size={18} className="text-primary" />
                     </div>
                     <div className="min-w-0">
                         <h3 className="text-base sm:text-lg font-semibold text-foreground [.ui-play_&]:font-black">Learning Progress Trend</h3>
@@ -81,7 +81,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
-                    <Badge className={`${performanceStatus.color} border text-xs sm:text-sm font-medium px-2 sm:px-3 py-1 [.ui-play_&]:font-black [.ui-play_&]:rounded-full [.ui-play_&]:shadow-[0_2px_0_rgba(0,0,0,0.1)]`}>
+                    <Badge className={`${performanceStatus.color} border text-xs sm:text-sm font-medium px-2 sm:px-3 py-1 [.ui-play_&]:font-black [.ui-play_&]:rounded-full [.ui-play_&]:shadow-play-badge`}>
                         {performanceStatus.text}
                     </Badge>
                     {chartData.length > 0 && (
@@ -125,7 +125,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 {/* Background pattern */}
                 <div className="absolute inset-0 rounded-lg sm:rounded-xl bg-transparent"></div>
 
-                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
                     <ResponsiveContainer width="100%" height={280}>
                         <ChartContainer config={chartConfig} className="w-full h-full overflow-hidden">
                             <LineChart
@@ -297,9 +297,9 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Performance Insights */}
             {chartData.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
                         <div className="flex items-center space-x-2 mb-1">
-                            <TrendingUp size={14} className="text-primary-600" />
+                            <TrendUp size={14} className="text-primary-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Consistency</span>
                         </div>
                         <p className="text-sm font-bold text-gray-800 [.ui-play_&]:text-primary">
@@ -307,7 +307,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </p>
                     </div>
 
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
                         <div className="flex items-center space-x-2 mb-1">
                             <Clock size={14} className="text-success-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Peak Day</span>
@@ -317,7 +317,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </p>
                     </div>
 
-                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))]">
+                    <div className="bg-card/60 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:bg-primary-50 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-press">
                         <div className="flex items-center space-x-2 mb-1">
                             <Users size={14} className="text-info-600" />
                             <span className="text-xs sm:text-sm font-semibold text-gray-900 [.ui-play_&]:font-black">Vs Batch</span>

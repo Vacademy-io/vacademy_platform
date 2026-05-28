@@ -78,6 +78,42 @@ public class WorkflowTriggerService {
                 log.info("Found {} GLOBAL triggers for event='{}'", triggers.size(), eventName);
             }
 
+            // Pool-scoped triggers fire IN ADDITION to institute-level ones (stack).
+            // A pool trigger is modelled like any other entity-scoped trigger: its eventId
+            // holds the pool's id (event_applied_type = POOL), mirroring how PACKAGE_SESSION /
+            // LIVE_SESSION / AUDIENCE scope by their entity id. A lead's pool is resolved
+            // upstream (from its audience) and passed on the context as 'poolId'; when present
+            // we look those up by eventId = poolId and union them with the matches above.
+            // Pool ids are UUIDs, so an eventId = poolId match never collides with lead/audience
+            // ids. The id de-dup guards against any accidental overlap.
+            Object poolIdObj = contextData == null ? null : contextData.get("poolId");
+            if (poolIdObj != null && !poolIdObj.toString().isBlank()) {
+                String poolId = poolIdObj.toString();
+                log.info("Looking for POOL triggers: instituteId='{}', poolId='{}', eventType='{}'",
+                        instituteId, poolId, eventName);
+                List<WorkflowTrigger> poolTriggers = workflowTriggerRepository
+                        .findSpecificTriggers(instituteId, poolId, eventName, activeStatuses);
+                log.info("Found {} POOL triggers for poolId='{}', event='{}'",
+                        poolTriggers.size(), poolId, eventName);
+                if (!poolTriggers.isEmpty()) {
+                    java.util.Set<String> seen = new java.util.HashSet<>();
+                    for (WorkflowTrigger t : triggers) {
+                        seen.add(t.getId());
+                    }
+                    // triggers may be an immutable list from the repo — copy into a mutable one.
+                    triggers = new java.util.ArrayList<>(triggers);
+                    for (WorkflowTrigger pt : poolTriggers) {
+                        if (seen.add(pt.getId())) {
+                            triggers.add(pt);
+                            log.info("Stacking POOL trigger: TriggerId='{}', WorkflowId='{}'",
+                                    pt.getId(), pt.getWorkflow().getId());
+                        }
+                    }
+                }
+            } else {
+                log.debug("No poolId on ctx — skipping POOL trigger lookup");
+            }
+
             log.info("Total {} triggers to execute for event='{}', eventId='{}', instituteId='{}'",
                     triggers.size(), eventName, eventId, instituteId);
 

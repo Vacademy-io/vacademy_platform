@@ -147,7 +147,7 @@ export const RazorpayCheckoutForm = forwardRef<
             contact: orderDetails.contact,
           },
           theme: {
-            color: "#3399cc",
+            color: "#3399cc", // design-lint-ignore: Razorpay SDK theme color
           },
           modal: {
             ondismiss: function () {

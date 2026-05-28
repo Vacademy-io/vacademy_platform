@@ -280,12 +280,18 @@ class ReelsDirectorService:
         # from the same call (Phase 2c.8). Moving this above bgv-resolution
         # lets the bgv chain prefer the LLM's scene-level concept over
         # the heuristic single-word pick from `extract_concept`.
+        # Pass the requested layout so the LLM knows when bg_concepts are
+        # REQUIRED (stacked/pip layouts) vs irrelevant (full_speaker).
+        requested_layout_for_prompt = str(
+            (ctx.config or {}).get("layout") or "full_speaker_with_overlays"
+        )
         overlay_shots, overlay_method, llm_bg_concept, llm_bg_concepts = (
             await self._build_storyline_overlays(
                 reel_duration_s=total_duration,
                 title=title,
                 rationale=rationale,
                 word_importance_reel_time=word_importance_reel_time,
+                layout=requested_layout_for_prompt,
             )
         )
 
@@ -456,6 +462,7 @@ class ReelsDirectorService:
         title: str,
         rationale: str,
         word_importance_reel_time: list[dict],
+        layout: str = "full_speaker_with_overlays",
     ) -> tuple[list[_Shot], str, Optional[str], Optional[list[str]]]:
         """LLM-direct overlay specs → `_Shot` list, with deterministic fallback.
 
@@ -478,6 +485,7 @@ class ReelsDirectorService:
                 title=title,
                 rationale=rationale,
                 word_importance_reel_time=word_importance_reel_time,
+                layout=layout,
             )
         except Exception as e:
             # Defensive — the LLMDirector already catches its own transport

@@ -26,6 +26,7 @@ interface CourseSettingsContextType {
     courseViewSettings: CourseSettingsData['courseViewSettings'];
     outlineSettings: CourseSettingsData['outlineSettings'];
     permissions: CourseSettingsData['permissions'];
+    enrollmentNotifications: CourseSettingsData['enrollmentNotifications'];
 }
 
 const CourseSettingsContext = createContext<CourseSettingsContextType | undefined>(undefined);
@@ -84,6 +85,7 @@ export const CourseSettingsProvider: React.FC<CourseSettingsProviderProps> = ({ 
         courseViewSettings: settings.courseViewSettings,
         outlineSettings: settings.outlineSettings,
         permissions: settings.permissions,
+        enrollmentNotifications: settings.enrollmentNotifications,
     };
 
     return (

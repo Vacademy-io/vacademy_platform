@@ -45,6 +45,9 @@ public class AdPlatformWebhookService {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private LeadEnricher leadEnricher;
+
     // ── Strategy registry (built once at startup via @PostConstruct) ─────────
 
     private Map<String, AdPlatformStrategy> strategyMap;
@@ -178,6 +181,11 @@ public class AdPlatformWebhookService {
         if (StringUtils.hasText(lead.getEmail())) formFields.put("email", lead.getEmail());
         if (StringUtils.hasText(lead.getPhone())) formFields.put("phoneNumber", lead.getPhone());
         if (StringUtils.hasText(lead.getFullName())) formFields.put("fullName", lead.getFullName());
+
+        // Compose Full Name from first/last (when the form has them separately)
+        // before merging connector defaults so the form value always wins.
+        leadEnricher.composeFullName(formFields);
+        leadEnricher.mergeDefaults(formFields, connector.getDefaultValuesJson());
 
         ProcessedFormDataDTO processedData = ProcessedFormDataDTO.builder()
                 .email(lead.getEmail())

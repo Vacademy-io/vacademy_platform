@@ -8,7 +8,6 @@ import {
 // Lazily load heavy libs at call sites
 import { AssignmentSlide, Slide } from '../-hooks/use-slides';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
-import { convertDateFormat } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-components/StepComponents/Step1BasicInfo';
 import { convertToUTC } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import {
     AssignmentFormType,
@@ -16,6 +15,19 @@ import {
     encodeAllowedFileTypes,
 } from '../-form-schemas/assignmentFormSchema';
 import { parseHtmlToString } from '@/lib/utils';
+
+// Convert a UTC ISO timestamp from the backend ("2026-03-25T09:00:00Z")
+// into a "YYYY-MM-DDTHH:mm" string in the admin's LOCAL timezone for the
+// <input type="datetime-local"> control. The shared `convertDateFormat`
+// helper does .toISOString().slice(0,16) which leaks UTC into the form,
+// causing the admin to see times shifted by their TZ offset on reload.
+const isoUtcToLocalDatetimeLocal = (iso: string | undefined | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 
 
@@ -712,8 +724,8 @@ export function timestampToSeconds(timestamp: string | undefined): number {
 }
 
 const transformAssignmentSlide = (assignment: AssignmentSlide) => {
-    const startDate = convertDateFormat(assignment?.live_date || '');
-    const endDate = convertDateFormat(assignment?.end_date || '');
+    const startDate = isoUtcToLocalDatetimeLocal(assignment?.live_date || '');
+    const endDate = isoUtcToLocalDatetimeLocal(assignment?.end_date || '');
     const hasDateRange = !!(startDate || endDate);
     return {
         id: assignment?.id,

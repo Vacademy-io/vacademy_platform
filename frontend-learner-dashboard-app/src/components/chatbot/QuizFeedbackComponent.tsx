@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Trophy,
   XCircle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
+  CheckCircle,
+  CaretDown,
+  CaretUp,
   Lightbulb,
   Target,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -122,11 +122,11 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
         >
           {showDetails ? (
             <>
-              Hide Question Details <ChevronUp className="h-3 w-3 ml-1" />
+              Hide Question Details <CaretUp className="h-3 w-3 ml-1" />
             </>
           ) : (
             <>
-              Show Question Details <ChevronDown className="h-3 w-3 ml-1" />
+              Show Question Details <CaretDown className="h-3 w-3 ml-1" />
             </>
           )}
         </Button>
@@ -153,7 +153,7 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
                   >
                     <div className="flex items-start gap-2">
                       {qf.correct ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
                       ) : (
                         <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                       )}

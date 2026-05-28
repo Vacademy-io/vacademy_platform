@@ -27,6 +27,7 @@ export interface AudienceCampaignPayload {
     end_date_local: string; // format: YYYY-MM-DDTHH:mm:ss
     status: string;
     institute_custom_fields: AudienceCampaignCustomFieldPayload[];
+    default_initial_score?: number;
 }
 
 export const createAudienceCampaign = async (payload: AudienceCampaignPayload) => {

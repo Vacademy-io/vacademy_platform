@@ -22,6 +22,7 @@ import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
 import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
 import { AutomationSettings } from '../-components/Automations';
+import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -57,6 +58,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Payment,
             value: 'Payment Settings',
             component: PaymentSettings,
+        },
+        {
+            tab: SettingsTabs.Invoice,
+            value: 'Invoice Settings',
+            component: InvoiceSettings,
         },
         {
             tab: SettingsTabs.Referral,

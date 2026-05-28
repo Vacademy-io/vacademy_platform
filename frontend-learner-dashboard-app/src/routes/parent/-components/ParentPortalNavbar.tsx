@@ -1,5 +1,5 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { FiSidebar } from "react-icons/fi";
+import { Sidebar } from "@phosphor-icons/react";
 import { ArrowLeft, Bell, Users } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +37,7 @@ export function ParentPortalNavbar({
   const handleGoBack = () => router.history.back();
 
   return (
-    <header className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap gap-2">
+    <header className="navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white dark:bg-neutral-900 px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 shadow-sm w-full overflow-x-auto flex-nowrap gap-2">
       {/* Left — back button + sidebar trigger */}
       <div className="flex items-center gap-2 shrink-0">
         {canGoBack && (
@@ -57,7 +57,7 @@ export function ParentPortalNavbar({
         )}
 
         <SidebarTrigger className="flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [&>svg]:hidden">
-          <FiSidebar className="w-4 h-4 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors duration-200" />
+          <Sidebar className="w-4 h-4 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors duration-200" />
         </SidebarTrigger>
       </div>
 

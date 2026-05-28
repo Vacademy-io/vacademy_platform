@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Mic, MicOff, PhoneOff, VolumeX, Volume2 } from "lucide-react";
+import { X, Microphone, MicrophoneSlash, PhoneDisconnect, SpeakerSlash, SpeakerHigh } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -145,7 +145,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   const wsRef = useRef<ReturnType<typeof useVoiceWebSocket> | null>(null);
 
   const onReady = useCallback(() => {
-    // Send config once WS is ready
+    // PaperPlaneTilt config once WS is ready
     wsRef.current?.sendConfig(language, voice);
   }, [language, voice]);
 
@@ -238,7 +238,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-[10010] flex flex-col bg-gradient-to-b from-slate-900 to-slate-950"
+        className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-slate-900 to-slate-950"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -284,7 +284,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
         </div>
 
         {/* Transcript area */}
-        <div className="max-h-[30%] px-6 overflow-y-auto">
+        <div className="max-h-pct-30 px-6 overflow-y-auto">
           <div className="max-w-lg mx-auto space-y-2 pb-2">
             {transcript.map((msg, i) => (
               <div
@@ -292,7 +292,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`rounded-lg px-3 py-1.5 text-sm max-w-[80%] ${
+                  className={`rounded-lg px-3 py-1.5 text-sm max-w-pct-80 ${
                     msg.role === "user"
                       ? "bg-primary/20 text-white"
                       : "bg-white/10 text-white"
@@ -317,9 +317,9 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             title={isMuted ? "Unmute microphone" : "Mute microphone"}
           >
             {isMuted ? (
-              <VolumeX className="h-5 w-5" />
+              <SpeakerSlash className="h-5 w-5" />
             ) : (
-              <Volume2 className="h-5 w-5" />
+              <SpeakerHigh className="h-5 w-5" />
             )}
           </Button>
 
@@ -334,9 +334,9 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             disabled={voiceState === "processing"}
           >
             {voiceState === "listening" ? (
-              <MicOff className="h-7 w-7" />
+              <MicrophoneSlash className="h-7 w-7" />
             ) : (
-              <Mic className="h-7 w-7" />
+              <Microphone className="h-7 w-7" />
             )}
           </button>
 
@@ -346,7 +346,7 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             className="h-10 rounded-full bg-white/10 text-white hover:bg-red-500/30 hover:text-red-300 px-4 gap-2 text-sm"
             onClick={handleEndSession}
           >
-            <PhoneOff className="h-4 w-4" />
+            <PhoneDisconnect className="h-4 w-4" />
             End
           </Button>
         </div>

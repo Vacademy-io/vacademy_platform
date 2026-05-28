@@ -3,8 +3,9 @@
 # Stage 1: Build the application
 FROM node:20-alpine AS builder
 
-# Install pnpm globally
-RUN npm install -g pnpm
+# Install pnpm globally (pin to the project's pnpm 9 for determinism; unpinned
+# 'pnpm' pulls pnpm 10 which requires Node >=22.13)
+RUN npm install -g pnpm@9
 
 # Set working directory
 WORKDIR /app
@@ -72,8 +73,13 @@ RUN echo 'server {' > /etc/nginx/conf.d/default.conf && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Runtime config injection (writes window.__BACKEND_URL__ from BACKEND_BASE_URL)
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Expose port 80
 EXPOSE 80
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"] 
+# Inject runtime config, then start nginx
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]

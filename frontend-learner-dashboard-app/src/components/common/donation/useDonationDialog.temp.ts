@@ -224,16 +224,16 @@ export const useDonationDialog = ({
             style: {
               base: {
                 fontSize: "16px",
-                color: "#374151",
+                color: "#374151", // design-lint-ignore: Stripe SDK element style
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 "::placeholder": {
-                  color: "#9CA3AF",
+                  color: "#9CA3AF", // design-lint-ignore: Stripe SDK element style
                 },
                 padding: "8px 0",
               },
               invalid: {
-                color: "#DC2626",
+                color: "#DC2626", // design-lint-ignore: Stripe SDK element style
               },
             },
             hidePostalCode: true,

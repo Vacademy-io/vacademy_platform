@@ -414,7 +414,40 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                           return out;
                       };
                       originalCode = _unwrapReadyListener(originalCode);
-                      const scopedCode = `
+                      // ── Navigation / document-wipe neutralization ──
+                      // A headless render must NEVER navigate away or wipe the
+                      // document: either destroys the JS execution context the
+                      // scrub-renderer drives via page.evaluate() on EVERY frame,
+                      // which aborts the whole multi-minute render ("Execution
+                      // context was destroyed, most likely because of a navigation").
+                      // LLM shot scripts occasionally do this by accident. Route the
+                      // offending calls to the inert __sd_* stand-ins defined in the
+                      // scoped IIFE below. page.route() can't catch these — they're
+                      // in-page JS (location assignment / document.write), not network
+                      // requests.
+                      originalCode = originalCode.split('window.location').join('__sd_loc');
+                      originalCode = originalCode.split('document.location').join('__sd_loc');
+                      originalCode = originalCode.split('window.open').join('__sd_open');
+                      originalCode = originalCode.split('document.writeln').join('__sd_docWrite');
+                      originalCode = originalCode.split('document.write').join('__sd_docWrite');
+                      // Bare `location.href = ...` / `location.reload()` / `location.assign(...)`
+                      // — rewritten only when `location` is a standalone identifier
+                      // (NOT el.location, geolocation, relocation, etc.). The boundary
+                      // class excludes a preceding word-char or dot; the trailing class
+                      // requires a `.` or `=` so plain string mentions are left alone.
+                      originalCode = originalCode.replace(/(^|[^\\w.$])location(\\s*[.=])/g, '$1__sd_loc$2');
+                      // String.raw — NOT a plain template literal. Inside this block
+                      // we embed regex literals (`/circle\(\s*0.../`, `/scale\((0...)/`)
+                      // and JS escape-character literals that MUST keep their backslashes
+                      // intact. A plain template literal silently drops unrecognized
+                      // backslash escapes (`\(` → `(`, `\s` → `s`, `\d` → `d`), which
+                      // turned every regex below into an invalid `Unterminated group`
+                      // SyntaxError at `<script>` parse time — killing the LLM-authored
+                      // shot script entirely, leaving GSAP with zero registered tweens
+                      // and no animations in the rendered MP4. String.raw preserves all
+                      // backslashes verbatim while still doing `${...}` interpolation,
+                      // so embedded regexes work AND `${e.id}` still substitutes.
+                      const scopedCode = String.raw`
                         (function(scope) {
                             // Helper to resolve selectors in this shadow root
                             const resolve = (s) => {
@@ -429,6 +462,21 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             const __sd_getElementById = (id) => scope.querySelector('#' + CSS.escape(id));
                             const __sd_querySelector = (sel) => scope.querySelector(sel);
                             const __sd_querySelectorAll = (sel) => scope.querySelectorAll(sel);
+
+                            // ── Navigation / document-wipe stand-ins ──
+                            // Targets of the source rewrites above (window.location,
+                            // document.location, window.open, document.write(ln), bare
+                            // location). Reads degrade to '' ; assignments and calls are
+                            // swallowed. Any stray ReferenceError from an edge-case
+                            // rewrite (e.g. window.opener) is caught by the try/catch that
+                            // wraps the shot script below, so the shot still recovers.
+                            const __sd_navNoop = function () { return null; };
+                            const __sd_loc = new Proxy(
+                                { assign: __sd_navNoop, replace: __sd_navNoop, reload: __sd_navNoop, toString: function () { return ''; } },
+                                { get: function (o, k) { return (k in o) ? o[k] : ''; }, set: function () { return true; } }
+                            );
+                            const __sd_open = __sd_navNoop;
+                            const __sd_docWrite = __sd_navNoop;
 
 
                             // Proxy global helpers to use scoped resolution
@@ -687,6 +735,71 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             const _shotTL = (scope.host && scope.host._shotTL) || null;
                             const gsap = createScopedGsap(_shotTL);
 
+                            // ── Preserve CSS percentage-translate centering ──────────────
+                            // LLM-authored shots commonly center elements with
+                            //   transform: translate(-50%, -50%)
+                            // and then animate y/scale/rotation via GSAP fromTo/to. GSAP
+                            // reads getComputedStyle(el).transform to seed its internal
+                            // x/y/xPercent/yPercent. The browser computes percentage
+                            // translates into a matrix() with pixel values, losing the
+                            // "percent" intent. In the production render's shadow DOM,
+                            // this read sometimes happens before the matrix is populated,
+                            // so GSAP records xPercent: 0, yPercent: 0 and every later
+                            // write of transform drops the -50%/-50% centering — the
+                            // element anchors at its top-left, not its center, and
+                            // visibly shifts right and down.
+                            //
+                            // To stop that, walk the shot's <style> rules, find any
+                            // selectors with transform: translate(X%, Y%), and pre-seed
+                            // GSAP's transform state with xPercent/yPercent + x:0/y:0/
+                            // scale:1/rotation:0. From this moment on, GSAP's tween
+                            // pipeline knows the element's "natural" centering offset
+                            // and preserves it through every subsequent fromTo/to/from.
+                            try {
+                                if (window.gsap && typeof window.gsap.set === 'function') {
+                                    const _styles = scope.querySelectorAll('style');
+                                    const _seen = new WeakSet();
+                                    const _trRe = /translate(?:3d)?\s*\(\s*(-?\d+(?:\.\d+)?)\s*%\s*(?:,\s*(-?\d+(?:\.\d+)?)\s*%)?/i;
+                                    for (let _si = 0; _si < _styles.length; _si++) {
+                                        const _sheet = _styles[_si].sheet;
+                                        if (!_sheet) continue;
+                                        let _rules;
+                                        try { _rules = _sheet.cssRules || _sheet.rules; } catch (e) { continue; }
+                                        if (!_rules) continue;
+                                        for (let _ri = 0; _ri < _rules.length; _ri++) {
+                                            const _r = _rules[_ri];
+                                            if (!_r || !_r.style || !_r.selectorText) continue;
+                                            const _tf = _r.style.transform || _r.style.webkitTransform || '';
+                                            if (!_tf) continue;
+                                            const _m = _tf.match(_trRe);
+                                            if (!_m) continue;
+                                            const _xp = parseFloat(_m[1]);
+                                            const _yp = _m[2] !== undefined ? parseFloat(_m[2]) : 0;
+                                            if (!isFinite(_xp) && !isFinite(_yp)) continue;
+                                            let _els;
+                                            try { _els = scope.querySelectorAll(_r.selectorText); } catch (e) { continue; }
+                                            if (!_els || !_els.length) continue;
+                                            for (let _ei = 0; _ei < _els.length; _ei++) {
+                                                const _el = _els[_ei];
+                                                if (_seen.has(_el)) continue;
+                                                _seen.add(_el);
+                                                try {
+                                                    window.gsap.set(_el, {
+                                                        xPercent: isFinite(_xp) ? _xp : 0,
+                                                        yPercent: isFinite(_yp) ? _yp : 0,
+                                                        x: 0, y: 0,
+                                                    });
+                                                } catch (e) {
+                                                    console.warn('[percent-translate-preinit] gsap.set failed for ' + _r.selectorText + ':', e && e.message);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_ptpErr) {
+                                console.warn('[percent-translate-preinit] scan failed:', _ptpErr && _ptpErr.message);
+                            }
+
                             // Scoped d3 proxy — d3.select/selectAll search inside shadow root
                             const d3 = window.d3 ? (() => {
                                 const proxy = Object.create(window.d3);
@@ -788,7 +901,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             try { console.log("[SHOT-TELEM] shot=${e.id} enter"); } catch (_te) {}
 
                             // Tag every element currently in the shadow scope with
-                            // `data-vx-managed` so the CSS visibility safety net's
+                            // 'data-vx-managed' so the CSS visibility safety net's
                             // 5s force-reveal rule does NOT fire on elements that
                             // the dispatcher knows are owned by an active animation
                             // pipeline (their fades are handled by GSAP/anime, not
@@ -809,7 +922,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             // showed shot-root stuck at opacity 0 in the rendered MP4.
                             // Logging it at every exit (and in the catch) makes the
                             // failure mode visible in shot_telemetry.jsonl — easy to
-                            // grep for `root-opacity=0` to find blank shots before users do.
+                            // grep for 'root-opacity=0' to find blank shots before users do.
                             var __snapRootOpacity = function () {
                                 try {
                                     var _r = scope.querySelector('#shot-root') || scope.host;
@@ -856,7 +969,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                     if (sides[1] + sides[3] >= 100) return true; // left+right
                                 }
                                 // circle(0) / circle(0%) / circle(0px ...). Lookahead
-                                // `(?![\d.])` blocks matching the leading "0" of
+                                // '(?![\d.])' blocks matching the leading "0" of
                                 // "0.5em" or "05" as the full radius (no false fires
                                 // on visibly-sized small clip circles).
                                 if (/circle\(\s*0(?:\.0+)?(?:px|%|em|rem)?(?![\d.])/.test(cp)) return true;
@@ -883,7 +996,7 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
 
                             // Helper: walk the shadow scope and force any element
                             // out of a hidden inline state back to a visible neutral
-                            // state. `force` is true when the script threw (we no
+                            // state. 'force' is true when the script threw (we no
                             // longer trust ANY of its work); false for the success
                             // path, where we only repair elements that still look
                             // hidden AFTER the script ran (e.g. shot-5: clipPath
@@ -934,13 +1047,13 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                             // Walks the shadow scope for text-bearing elements
                             // whose intrinsic width exceeds the container's
                             // max-content width AND that would otherwise wrap
-                            // mid-word because of the universal `word-break:
-                            // break-word` foundation rule. For each such
+                            // mid-word because of the universal 'word-break:
+                            // break-word' foundation rule. For each such
                             // element, binary-searches a font-size scale
                             // between 0.55 and 1.0 of the computed font-size
                             // until the text fits on its allotted lines (or
                             // floor is reached). Applies the resulting size
-                            // as inline `font-size`.
+                            // as inline 'font-size'.
                             //
                             // This makes the recurring "UPS/C", "DREA/M"
                             // character-break bug essentially impossible: the

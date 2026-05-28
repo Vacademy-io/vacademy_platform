@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
@@ -125,6 +126,111 @@ public class ProductPageService {
         ProductPage page = coursePageRepository.findById(coursePageId)
                 .orElseThrow(() -> new VacademyException("Course page not found: " + coursePageId));
         return buildAdminResponseWithCustomFields(page);
+    }
+
+    // -------------------------------------------------------------------------
+    // Custom field management (product-page scoped)
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public ProductPageResponse addCustomFieldToPage(String productPageId, String customFieldId, String instituteId) {
+        ProductPage page = loadPageForInstitute(productPageId, instituteId);
+
+        List<ProductPageInviteMapping> activeMappings = mappingRepository
+                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        if (activeMappings.isEmpty()) {
+            throw new VacademyException("No active course mappings on this page — add courses and save first");
+        }
+
+        for (ProductPageInviteMapping mapping : activeMappings) {
+            String enrollInviteId = mapping.getPsInvitePaymentOption().getEnrollInvite().getId();
+
+            CustomFieldDTO cfDto = new CustomFieldDTO();
+            cfDto.setId(customFieldId);
+
+            InstituteCustomFieldDTO dto = new InstituteCustomFieldDTO();
+            dto.setInstituteId(instituteId);
+            dto.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+            dto.setTypeId(enrollInviteId);
+            dto.setCustomField(cfDto);
+
+            customFieldService.addOrUpdateCustomField(List.of(dto));
+        }
+
+        return buildAdminResponseWithCustomFields(page, activeMappings);
+    }
+
+    @Transactional
+    public ProductPageResponse createAndLinkCustomFieldToPage(
+            String productPageId, ProductPageCustomFieldCreateRequest request, String instituteId) {
+
+        if (request.getFieldName() == null || request.getFieldName().isBlank()) {
+            throw new VacademyException("fieldName is required");
+        }
+        if (request.getFieldType() == null || request.getFieldType().isBlank()) {
+            throw new VacademyException("fieldType is required");
+        }
+
+        ProductPage page = loadPageForInstitute(productPageId, instituteId);
+
+        List<ProductPageInviteMapping> activeMappings = mappingRepository
+                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+        if (activeMappings.isEmpty()) {
+            throw new VacademyException("No active course mappings on this page — add courses and save first");
+        }
+
+        for (ProductPageInviteMapping mapping : activeMappings) {
+            String enrollInviteId = mapping.getPsInvitePaymentOption().getEnrollInvite().getId();
+
+            CustomFieldDTO cfDto = new CustomFieldDTO();
+            cfDto.setFieldName(request.getFieldName());
+            cfDto.setFieldType(request.getFieldType());
+            cfDto.setIsMandatory(request.getIsMandatory());
+            cfDto.setConfig(request.getConfig());
+
+            InstituteCustomFieldDTO dto = new InstituteCustomFieldDTO();
+            dto.setInstituteId(instituteId);
+            dto.setType(CustomFieldTypeEnum.ENROLL_INVITE.name());
+            dto.setTypeId(enrollInviteId);
+            dto.setIsMandatory(request.getIsMandatory());
+            dto.setCustomField(cfDto);
+
+            customFieldService.addOrUpdateCustomField(List.of(dto));
+        }
+
+        return buildAdminResponseWithCustomFields(page, activeMappings);
+    }
+
+    @Transactional
+    public ProductPageResponse removeCustomFieldFromPage(String productPageId, String customFieldId, String instituteId) {
+        ProductPage page = loadPageForInstitute(productPageId, instituteId);
+
+        List<ProductPageInviteMapping> activeMappings = mappingRepository
+                .findByProductPageIdAndStatusIn(productPageId, List.of(STATUS_ACTIVE));
+
+        List<String> mappingIdsToDelete = new ArrayList<>();
+        for (ProductPageInviteMapping mapping : activeMappings) {
+            String enrollInviteId = mapping.getPsInvitePaymentOption().getEnrollInvite().getId();
+            customFieldService.getByInstituteIdAndFieldIdAndTypeAndTypeId(
+                            instituteId, customFieldId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId)
+                    .ifPresent(icf -> mappingIdsToDelete.add(icf.getId()));
+        }
+
+        if (!mappingIdsToDelete.isEmpty()) {
+            customFieldService.softDeleteMappingsByIds(mappingIdsToDelete);
+        }
+
+        return buildAdminResponseWithCustomFields(page, activeMappings);
+    }
+
+    /** Loads a product page and validates it belongs to the given institute (cross-tenant guard). */
+    private ProductPage loadPageForInstitute(String productPageId, String instituteId) {
+        ProductPage page = coursePageRepository.findById(productPageId)
+                .orElseThrow(() -> new VacademyException("Product page not found: " + productPageId));
+        if (!page.getInstituteId().equals(instituteId)) {
+            throw new VacademyException("Product page does not belong to this institute");
+        }
+        return page;
     }
 
     // -------------------------------------------------------------------------
@@ -287,14 +393,18 @@ public class ProductPageService {
     }
 
     private ProductPageResponse buildAdminResponseWithCustomFields(ProductPage page) {
-        ProductPageResponse resp = buildAdminResponse(page);
-
         List<ProductPageInviteMapping> activeMappings = mappingRepository
                 .findByProductPageIdAndStatusIn(page.getId(), List.of(STATUS_ACTIVE));
+        return buildAdminResponseWithCustomFields(page, activeMappings);
+    }
+
+    /** Overload accepting pre-fetched mappings to avoid a redundant query. */
+    private ProductPageResponse buildAdminResponseWithCustomFields(
+            ProductPage page, List<ProductPageInviteMapping> activeMappings) {
+        ProductPageResponse resp = buildAdminResponse(page);
 
         resp.setAggregatedCustomFields(aggregateCustomFields(page.getInstituteId(), activeMappings));
 
-        // Set vendor/currency from the first active invite so the frontend renders the right payment UI
         if (!activeMappings.isEmpty()) {
             EnrollInvite firstInvite = activeMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
             resp.setVendor(firstInvite.getVendor());

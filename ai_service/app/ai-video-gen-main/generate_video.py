@@ -36,6 +36,47 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     """Initialize a blank page with desired viewport and helper updaters for snippets/captions."""
     libs = f"file://{Path.cwd()}/assets/libs"
     page.set_viewport_size({"width": width, "height": height})
+
+    # ── Navigation guard ──
+    # LLM-generated shot HTML occasionally triggers a real top-level navigation
+    # (a `window.location =` script, a <meta http-equiv="refresh">, an
+    # auto-submitting <form>, an <a> that gets click()'d). When that navigation
+    # commits, the page's JS execution context is destroyed — and the renderer
+    # scrubs `gsap.globalTimeline.totalTime(t)` via page.evaluate() on EVERY
+    # frame. The next evaluate then dies with "Execution context was destroyed,
+    # most likely because of a navigation" and the whole multi-minute render is
+    # lost mid-way (observed at frame ~300 when shot-1 mounted).
+    #
+    # We abort any main-frame navigation that fires AFTER the harness page has
+    # loaded. Subresource loads (images/fonts/videos/libs) are navigation=False
+    # and pass straight through, so this doesn't break asset loading. Iframe
+    # navigations are left alone — they don't touch the main execution context.
+    _nav_guard = {"armed": False}
+
+    def _route_guard(route):
+        request = route.request
+        try:
+            if (
+                _nav_guard["armed"]
+                and request.is_navigation_request()
+                and request.frame == page.main_frame
+            ):
+                print(
+                    f"[RENDER-GUARD] blocked top-level navigation → {request.url[:160]}",
+                    flush=True,
+                )
+                route.abort()
+                return
+        except Exception:
+            pass
+        try:
+            route.continue_()
+        except Exception:
+            # Route already handled / page closing — nothing to recover.
+            pass
+
+    page.route("**/*", _route_guard)
+
     # Install updater that creates/removes/positions shadow-root wrapped snippets and scales to fit.
 
 
@@ -143,6 +184,52 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
         """
     )
 
+    # In-page navigation guard (defense-in-depth alongside the route abort
+    # above). Neutralizes the common in-document navigation triggers before any
+    # shot HTML runs. The route guard is the catch-all (it stops even a raw
+    # `location.href = ...` assignment, which can't be overridden from JS); this
+    # init script additionally suppresses anchor clicks / form submits /
+    # window.open / beforeunload so they never even reach the network layer.
+    page.add_init_script(
+        """
+        (() => {
+          try { window.open = function () { return null; }; } catch (e) {}
+          // Anchors / forms: prevent default navigation. Nothing should be
+          // clicked during a headless render, but shot scripts sometimes
+          // synthesize clicks or call form.submit().
+          document.addEventListener('click', (e) => {
+            const a = e.target && e.target.closest && e.target.closest('a[href]');
+            if (a) { e.preventDefault(); e.stopPropagation(); }
+          }, true);
+          document.addEventListener('submit', (e) => {
+            e.preventDefault(); e.stopPropagation();
+          }, true);
+          try {
+            const noop = function () {};
+            HTMLFormElement.prototype.submit = noop;
+            if (HTMLFormElement.prototype.requestSubmit) {
+              HTMLFormElement.prototype.requestSubmit = noop;
+            }
+          } catch (e) {}
+          // Best-effort: stub the Location methods (direct `location.href = x`
+          // is caught by the Playwright route guard, not here).
+          try {
+            ['assign', 'replace', 'reload'].forEach((m) => {
+              try {
+                Object.defineProperty(window.location, m, {
+                  value: function () {}, writable: false, configurable: true,
+                });
+              } catch (e) {}
+            });
+          } catch (e) {}
+          // Cancel any beforeunload-driven unload.
+          window.addEventListener('beforeunload', (e) => {
+            e.preventDefault(); e.returnValue = '';
+          }, true);
+        })();
+        """
+    )
+
     # Base content with background color. HTML overlays are transparent.
     # The harness HTML — with all educational library script tags, base CSS,
     # and the __updateSnippets shadow-DOM dispatcher — lives in render_harness.py
@@ -152,6 +239,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     temp_html_path = Path.cwd() / ".render_page.html"
     temp_html_path.write_text(html_content, encoding="utf-8")
     page.goto(f"file://{temp_html_path}", wait_until="domcontentloaded")
+    # Harness is loaded — arm the navigation guard so any FURTHER top-level
+    # navigation (triggered by shot HTML) is aborted instead of destroying the
+    # execution context the renderer scrubs each frame.
+    _nav_guard["armed"] = True
 
     # Replace background color token
     # page.evaluate("(bg) => { document.querySelector('style').textContent = document.querySelector('style').textContent.replace('REPLACE_BG', bg); }", background_color)
@@ -477,6 +568,12 @@ def _load_caption_settings(settings_path: Path) -> Dict[str, Any]:
     # Defaults now match client-side CaptionDisplay.tsx styling
     return {
         "font_family": data.get("font_family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"),
+        # `font_family_key` is set by render_worker/worker.py when the request
+        # specifies one of the harness-loaded fonts ('inter', 'montserrat',
+        # 'noto-sans', 'fira-code', 'system'). When present it overrides
+        # `font_family` below in the per-frame caption emission so the
+        # corresponding Google Font is picked up.
+        "font_family_key": data.get("font_family_key"),
         "font_size": data.get("font_size", 48),  # Render default: 48px at 1920w (matches YouTube caption size)
         "font_color": data.get("font_color", "#FFFFFF"),
         "font_weight": data.get("font_weight", 400),  # Client uses normal weight
@@ -494,7 +591,30 @@ def _load_caption_settings(settings_path: Path) -> Dict[str, Any]:
         "active_word_css": data.get("active_word_css", "font-weight:700; text-decoration:underline;"),
         "inactive_word_css": data.get("inactive_word_css", "opacity:0.9;"),
         "max_words_per_line": int(data.get("max_words_per_line", 10)),
+        # Style-polish fields. All optional; defaults preserve the existing
+        # phrase-style / system-font / no-stroke rendering when omitted.
+        "style": data.get("style", "phrase"),  # 'phrase' or 'karaoke'
+        "text_stroke_width": int(data.get("text_stroke_width", 0)),
+        "text_stroke_color": data.get("text_stroke_color", "#000000"),
+        "highlight_color": data.get("highlight_color", "#fbbf24"),
     }
+
+
+# Map worker's `font_family_key` enum to the CSS font-family string with a
+# system fallback chain (so a missed Google Font load doesn't blank the
+# caption). Keep this set in lockstep with the FE
+# `caption-rendering.ts:resolveCaptionFontFamily` and the harness's Google
+# Fonts link in `render_harness.py:19`.
+_SYSTEM_FONT_STACK = (
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"
+)
+_FONT_FAMILY_BY_KEY: Dict[str, str] = {
+    "system": _SYSTEM_FONT_STACK,
+    "inter": f"'Inter', {_SYSTEM_FONT_STACK}",
+    "montserrat": f"'Montserrat', {_SYSTEM_FONT_STACK}",
+    "noto-sans": f"'Noto Sans', {_SYSTEM_FONT_STACK}",
+    "fira-code": "'Fira Code', ui-monospace, monospace",
+}
 
 
 def _active_entries_at(
@@ -1035,7 +1155,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-05-09-v34 (gsap-gc-no-recurse-into-nested-timelines, fps={fps})", flush=True)
+        print(f"[RENDER-VERSION] generate_video.py build=2026-05-26-v36 (nav-guard + dispatcher neutralizes location/open/document.write in shot scripts, fps={fps})", flush=True)
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")
@@ -1663,7 +1783,6 @@ def render_video_from_json(
                     style = caption_styles
                     allow_html = bool(style.get("allow_html", False))
                     raw_text = seg.get("text", "")
-                    content_html = raw_text if allow_html else _html_escape(raw_text)
                     _override_pos = (
                         _shot_override.get("position")
                         if isinstance(_shot_override, dict)
@@ -1675,17 +1794,84 @@ def render_video_from_json(
                     else:
                         position_css = f"bottom:{int(height * 0.074)}px; top:auto;"
                     font_size = int(style.get("font_size", 20))
+                    font_color = str(style.get("font_color", "#FFFFFF"))
+                    font_weight = int(style.get("font_weight", 400))
+                    # Font family — prefer the worker's `font_family_key` (one
+                    # of the harness-loaded Google Fonts) if set; otherwise
+                    # fall back to the legacy `font_family` CSS string.
+                    _ff_key = style.get("font_family_key")
+                    if _ff_key and _ff_key in _FONT_FAMILY_BY_KEY:
+                        font_family_css = _FONT_FAMILY_BY_KEY[_ff_key]
+                    else:
+                        font_family_css = str(
+                            style.get(
+                                "font_family",
+                                "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",
+                            )
+                        )
+                    # Caption font_size is already pre-scaled by canvas width
+                    # earlier in this function (see ~line 850-858). The same
+                    # scale applies to text stroke so the outline stays
+                    # visually proportional on portrait.
+                    _font_scale = width / 1920.0
+                    text_stroke_width = max(
+                        0, int(int(style.get("text_stroke_width", 0)) * _font_scale)
+                    )
+                    text_stroke_color = str(style.get("text_stroke_color", "#000000"))
+                    # Stroke CSS — `paint-order: stroke fill` ensures the
+                    # stroke is laid UNDER the glyph fill so edges stay
+                    # readable at thick widths. Empty string when off.
+                    if text_stroke_width > 0:
+                        stroke_css = (
+                            f"-webkit-text-stroke:{text_stroke_width}px {text_stroke_color}; "
+                            f"paint-order:stroke fill; "
+                        )
+                    else:
+                        stroke_css = ""
+
+                    # Build inner content. For karaoke style emit per-word
+                    # spans with active/past/upcoming coloring; for phrase
+                    # style emit a single escaped text node. Mirrors the
+                    # browser branch in CaptionDisplay.tsx:62-99 EXACTLY so
+                    # the editor preview, the post-gen player, and the MP4
+                    # all agree on which word is current at every frame.
+                    cap_style_mode = str(style.get("style", "phrase"))
+                    if cap_style_mode == "karaoke" and seg.get("words"):
+                        highlight_color = str(style.get("highlight_color", "#fbbf24"))
+                        _heavy = min(900, font_weight + 200)
+                        _spans: List[str] = []
+                        for _w in seg["words"]:
+                            try:
+                                _ws = float(_w.get("start", 0))
+                                _we = float(_w.get("end", 0))
+                            except Exception:
+                                continue
+                            _is_current = _ws <= t < _we
+                            _is_past = t >= _we
+                            _color = highlight_color if _is_current else font_color
+                            _weight = _heavy if _is_current else font_weight
+                            _opacity = 0.5 if _is_past else 1.0
+                            _word_text = _html_escape(str(_w.get("word", "")))
+                            _spans.append(
+                                f'<span style="color:{_color}; font-weight:{_weight}; '
+                                f'opacity:{_opacity}; transition:color .12s,opacity .12s;">'
+                                f'{_word_text}</span>'
+                            )
+                        content_html = " ".join(_spans)
+                    else:
+                        content_html = raw_text if allow_html else _html_escape(raw_text)
                     html = (
                         f'<div style="width:100%; height:100%; position:relative;">'
                         f'<div style="position:absolute; left:50%; transform:translateX(-50%); '
                         f'max-width:85%; padding:10px 20px; border-radius:8px; '
                         f'background:{style["background_color"]}; text-align:center; '
-                        f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif; "
-                        f'font-size:{font_size}px; font-weight:400; color:{style["font_color"]}; '
+                        f'font-family:{font_family_css}; '
+                        f'font-size:{font_size}px; font-weight:{font_weight}; color:{font_color}; '
                         f'text-shadow:0 1px 3px rgba(0,0,0,0.4); line-height:1.5; letter-spacing:0.02em; '
                         f'min-height:44px; display:flex; align-items:center; justify-content:center; '
                         f'{position_css}">'
-                        f'<div style="display:inline-block; text-shadow:0 1px 3px rgba(0,0,0,0.4);">'
+                        f'<div style="display:inline-block; text-shadow:0 1px 3px rgba(0,0,0,0.4); '
+                        f'{stroke_css}">'
                         f'{content_html}</div></div></div>'
                     )
                     _caption_entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}
@@ -1709,15 +1895,42 @@ def render_video_from_json(
                 )
                 sys.stdout.flush()
 
-            page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
-                "entries": None,  # Already updated via __updateSnippets above
-                "camera": _cam_state,
-                "character": _char_state,
-                "caption": _caption_entry,
-                "t": t,
-                "seekVideos": True,
-                "segmentChanged": _segment_changed,
-            })
+            try:
+                page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
+                    "entries": None,  # Already updated via __updateSnippets above
+                    "camera": _cam_state,
+                    "character": _char_state,
+                    "caption": _caption_entry,
+                    "t": t,
+                    "seekVideos": True,
+                    "segmentChanged": _segment_changed,
+                })
+            except Exception as _eval_err:
+                # Name the culprit shot when the page context dies mid-render. The
+                # Python side knows exactly which entries are active at this frame,
+                # so we can point at the offending shot even when the browser logs
+                # are truncated. The dispatcher now neutralizes the common in-page
+                # navigation triggers (location.*/window.open/document.write); if
+                # this still fires, inspect the listed shot's HTML for a channel we
+                # don't yet cover (<meta http-equiv=refresh>, a submitting <form>,
+                # an iframe, etc.).
+                _emsg = str(_eval_err)
+                if (
+                    "Execution context was destroyed" in _emsg
+                    or "Target closed" in _emsg
+                    or "Target crashed" in _emsg
+                ):
+                    _active_ids = [e.get("id") for e in active]
+                    print(
+                        f"[RENDER-FATAL] page context died at frame={frame_index} "
+                        f"t={t:.2f}s segment_changed={_segment_changed} "
+                        f"active_shots={_active_ids} — a shot navigated the page or "
+                        f"wiped the document. The shot that just mounted is the culprit; "
+                        f"inspect its HTML.",
+                        flush=True,
+                    )
+                    sys.stdout.flush()
+                raise
 
             # Capture frame — clip to exact viewport to prevent camera/overflow bleeding
             # JPEG is 3-5x faster than PNG to encode and sufficient for H.264 re-encoding

@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.certificate.notification.CertificateIssuedNotificationService;
 import vacademy.io.admin_core_service.features.institute.dto.CertificationGenerationRequest;
 import vacademy.io.admin_core_service.features.institute.dto.settings.certificate.CertificateSettingRequest;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
@@ -11,9 +13,11 @@ import vacademy.io.admin_core_service.features.institute.service.setting.Institu
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.PackageEntity;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 
 import java.util.*;
@@ -26,23 +30,52 @@ public class InstituteCertificateManager {
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
     private final InstituteRepository instituteRepository;
     private final MediaService mediaService;
+    private final CertificateIssuedNotificationService certificateIssuedNotificationService;
+    private final AuthService authService;
 
-    public InstituteCertificateManager(InstituteSettingService instituteSettingService, StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository, InstituteRepository instituteRepository, MediaService mediaService) {
+    public InstituteCertificateManager(InstituteSettingService instituteSettingService,
+                                       StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository,
+                                       InstituteRepository instituteRepository,
+                                       MediaService mediaService,
+                                       CertificateIssuedNotificationService certificateIssuedNotificationService,
+                                       AuthService authService) {
         this.instituteSettingService = instituteSettingService;
         this.studentSessionInstituteGroupMappingRepository = studentSessionInstituteGroupMappingRepository;
         this.instituteRepository = instituteRepository;
         this.mediaService = mediaService;
+        this.certificateIssuedNotificationService = certificateIssuedNotificationService;
+        this.authService = authService;
     }
 
     public ResponseEntity<String> generateAutomatedCourseCompletionCertificate(CustomUserDetails userDetails, String learnerId, String packageSessionId, String instituteId, CertificationGenerationRequest request) {
         Optional<StudentSessionInstituteGroupMapping> instituteStudentMapping = studentSessionInstituteGroupMappingRepository.findByUserIdAndPackageSessionIdAndInstituteId(learnerId, packageSessionId, instituteId);
         if(instituteStudentMapping.isEmpty()) throw new VacademyException(HttpStatus.NOT_FOUND, "Student Mapping Not Present");
 
-        if(!StringUtils.hasText(instituteStudentMapping.get().getAutomatedCompletionCertificateFileId())){
+        // Force a fresh render when the caller opts in (preview flows, post-
+        // template-edit refresh). Without this opt-in the cached file id
+        // wins and learners keep seeing pre-fix output regardless of how the
+        // template/tokens have changed.
+        boolean forceRegenerate = request != null && Boolean.TRUE.equals(request.getRegenerate());
+
+        if(forceRegenerate || !StringUtils.hasText(instituteStudentMapping.get().getAutomatedCompletionCertificateFileId())){
             return handleCaseWhereCertificateNotPresent(learnerId,packageSessionId,instituteId, instituteStudentMapping, request);
         }
 
-        return new ResponseEntity<>(getPdfUrlFromFileId(instituteStudentMapping.get().getAutomatedCompletionCertificateFileId()), HttpStatus.ACCEPTED);
+        // Self-heal the issued_certificate audit table for legacy issuances
+        // that pre-date it. Fresh issuances always write a row via the render
+        // path; this catches the historical gap where a learner's mapping has
+        // a cached file id but the audit table has no row. No-op if a row
+        // already exists.
+        StudentSessionInstituteGroupMapping mapping = instituteStudentMapping.get();
+        String courseName = (request != null && request.getCourseName() != null) ? request.getCourseName()
+                : Optional.ofNullable(mapping.getPackageSession())
+                        .map(ps -> ps.getPackageEntity())
+                        .map(PackageEntity::getPackageName)
+                        .orElse("");
+        instituteSettingService.backfillIssuedCertificateIfMissing(
+                mapping, mapping.getAutomatedCompletionCertificateFileId(), courseName);
+
+        return new ResponseEntity<>(getPdfUrlFromFileId(mapping.getAutomatedCompletionCertificateFileId()), HttpStatus.ACCEPTED);
     }
 
     private String getPdfUrlFromFileId(String automatedCompletionCertificateFileId) {
@@ -54,8 +87,38 @@ public class InstituteCertificateManager {
         if(instituteStudentMapping.isEmpty()) throw new VacademyException("Mapping Not Found");
         if(file.isEmpty()) throw new VacademyException(HttpStatus.NOT_FOUND, "Failed To Fetch Certificate");
 
-        instituteStudentMapping.get().setAutomatedCompletionCertificateFileId(file.get().getId());
-        studentSessionInstituteGroupMappingRepository.save(instituteStudentMapping.get());
+        StudentSessionInstituteGroupMapping mapping = instituteStudentMapping.get();
+        mapping.setAutomatedCompletionCertificateFileId(file.get().getId());
+        studentSessionInstituteGroupMappingRepository.save(mapping);
+
+        // Fire the certificate-issued email asynchronously of failure: never block
+        // the response or surface a failure to the learner if the email fails.
+        try {
+            String studentName = "";
+            try {
+                List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(mapping.getUserId()));
+                if (users != null && !users.isEmpty()) {
+                    studentName = users.get(0).getFullName();
+                }
+            } catch (Exception ignored) { /* fall back to empty name */ }
+
+            String courseName = (request != null && request.getCourseName() != null) ? request.getCourseName()
+                    : Optional.ofNullable(mapping.getPackageSession())
+                            .map(ps -> ps.getPackageEntity())
+                            .map(PackageEntity::getPackageName)
+                            .orElse("");
+
+            certificateIssuedNotificationService.notifyCertificateIssued(
+                    mapping.getInstitute(),
+                    mapping.getUserId(),
+                    studentName,
+                    courseName,
+                    file.get().getId(),
+                    file.get().getUrl());
+        } catch (Exception ignored) {
+            // notification path is best-effort
+        }
+
         return new ResponseEntity<>(file.get().getUrl(), HttpStatus.OK);
     }
 

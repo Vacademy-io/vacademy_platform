@@ -1,3 +1,4 @@
+{{- if .Values.pgbouncer.enabled }}
 {{- /*
   Guard: refuse to render the pgbouncer ConfigMap unless the DB connection
   values have been overridden (typically via a local values.secret.yaml).
@@ -68,3 +69,4 @@ data:
 
     ; TLS for backend connections (required by Linode managed DB)
     server_tls_sslmode = require
+{{- end }}

@@ -36,8 +36,8 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
   function renderTimeline(container) {
     var items = parseJSON(container.getAttribute('data-items'), []);
     if (!items.length) return;
-    var primary = getColor('--primary-color', '#2563eb');
-    var textColor = getColor('--text-color', '#1e293b');
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
     var vertical = container.getAttribute('data-layout') === 'vertical';
 
     var html = '<div class="dg-timeline" style="display:flex;' + (vertical ? 'flex-direction:column;gap:24px;padding:20px;' : 'align-items:flex-start;gap:0;overflow-x:auto;padding:20px 0;') + '">';
@@ -72,8 +72,8 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
   function renderComparison(container) {
     var left = parseJSON(container.getAttribute('data-left'), { title: '', items: [] });
     var right = parseJSON(container.getAttribute('data-right'), { title: '', items: [] });
-    var primary = getColor('--primary-color', '#2563eb');
-    var textColor = getColor('--text-color', '#1e293b');
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
 
     function renderCol(data, accent) {
       var h = '<div style="flex:1;padding:24px;border:2px solid ' + accent + '40;border-radius:12px;background:' + accent + '08">';
@@ -86,7 +86,7 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
     }
     container.innerHTML = '<div style="display:flex;gap:32px;width:100%">'
       + renderCol(left, primary)
-      + renderCol(right, '#10b981')
+      + renderCol(right, '#10b981') // design-lint-ignore: video caption/diagram color data
       + '</div>';
     animateIn(container.querySelectorAll('.dg-cmp-item'), { stagger: 0.12 });
   }
@@ -95,8 +95,8 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
   function renderCycle(container) {
     var items = parseJSON(container.getAttribute('data-items'), []);
     if (!items.length) return;
-    var primary = getColor('--primary-color', '#2563eb');
-    var textColor = getColor('--text-color', '#1e293b');
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
     var n = items.length;
     var cx = 200, cy = 200, r = 150;
 
@@ -122,7 +122,7 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
       svg += '<g class="dg-cyc-node" style="opacity:0">'
         + '<circle cx="' + x + '" cy="' + y + '" r="36" fill="' + primary + '" opacity="0.15"/>'
         + '<circle cx="' + x + '" cy="' + y + '" r="30" fill="' + primary + '"/>'
-        + '<text x="' + x + '" y="' + (y + 1) + '" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="11" font-family="Inter,sans-serif" font-weight="600">' + (typeof item === 'string' ? item.substring(0, 12) : '') + '</text>'
+        + '<text x="' + x + '" y="' + (y + 1) + '" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-size="11" font-family="Inter,sans-serif" font-weight="600">' + (typeof item === 'string' ? item.substring(0, 12) : '') + '</text>' // design-lint-ignore: video caption/diagram color data
         + '</g>';
     });
     svg += '</svg>';
@@ -133,14 +133,14 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
   // ── 4. Hierarchy ──
   function renderHierarchy(container) {
     var root = parseJSON(container.getAttribute('data-root'), { label: '', children: [] });
-    var primary = getColor('--primary-color', '#2563eb');
-    var textColor = getColor('--text-color', '#1e293b');
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
 
     function renderNode(node, depth) {
       var bg = depth === 0 ? primary : (depth === 1 ? primary + 'cc' : primary + '80');
       var fontSize = Math.max(14, 22 - depth * 4);
       var h = '<div class="dg-hier-node" style="display:flex;flex-direction:column;align-items:center;opacity:0">'
-        + '<div style="background:' + bg + ';color:#fff;padding:10px 20px;border-radius:8px;font-family:Montserrat,sans-serif;font-size:' + fontSize + 'px;font-weight:700;text-align:center;white-space:nowrap">' + (node.label || '') + '</div>';
+        + '<div style="background:' + bg + ';color:#fff;padding:10px 20px;border-radius:8px;font-family:Montserrat,sans-serif;font-size:' + fontSize + 'px;font-weight:700;text-align:center;white-space:nowrap">' + (node.label || '') + '</div>'; // design-lint-ignore: video caption/diagram color data
       if (node.children && node.children.length) {
         h += '<div style="width:2px;height:20px;background:' + primary + '40"></div>';
         h += '<div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">';
@@ -158,8 +158,8 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
   function renderVenn(container) {
     var sets = parseJSON(container.getAttribute('data-sets'), []);
     var overlap = parseJSON(container.getAttribute('data-overlap'), []);
-    var primary = getColor('--primary-color', '#2563eb');
-    var textColor = getColor('--text-color', '#1e293b');
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
     var n = Math.min(sets.length, 3);
     if (n < 2) return;
 
@@ -168,7 +168,7 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
     var positions = n === 2
       ? [{ x: 180, y: 170 }, { x: 320, y: 170 }]
       : [{ x: 200, y: 150 }, { x: 300, y: 150 }, { x: 250, y: 230 }];
-    var colors = [primary, '#10b981', '#f59e0b'];
+    var colors = [primary, '#10b981', '#f59e0b']; // design-lint-ignore: video caption/diagram color data
 
     positions.forEach(function(pos, i) {
       if (i >= n) return;
@@ -180,7 +180,7 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
     var overlapX = n === 2 ? 250 : 250;
     var overlapY = n === 2 ? 170 : 180;
     overlap.forEach(function(item, i) {
-      svg += '<text x="' + overlapX + '" y="' + (overlapY + i * 18) + '" text-anchor="middle" fill="#fff" font-size="13" font-family="Inter,sans-serif" font-weight="600">' + item + '</text>';
+      svg += '<text x="' + overlapX + '" y="' + (overlapY + i * 18) + '" text-anchor="middle" fill="#fff" font-size="13" font-family="Inter,sans-serif" font-weight="600">' + item + '</text>'; // design-lint-ignore: video caption/diagram color data
     });
     svg += '</svg>';
     container.innerHTML = svg;
@@ -198,8 +198,8 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
   function renderLabeledDiagram(container) {
     var labels = parseJSON(container.getAttribute('data-labels'), []);
     var imgPrompt = container.getAttribute('data-image-prompt') || '';
-    var textColor = getColor('--text-color', '#1e293b');
-    var primary = getColor('--primary-color', '#2563eb');
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
 
     var html = '<div style="position:relative;width:100%;height:100%">';
     // Image placeholder (the LLM should also include an actual <img> with data-img-prompt)
@@ -210,7 +210,7 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
       var x = label.x || 50;
       var y = label.y || 50;
       html += '<div class="dg-label" style="position:absolute;left:' + x + '%;top:' + y + '%;transform:translate(-50%,-100%);opacity:0">'
-        + '<div style="background:' + primary + ';color:#fff;padding:6px 12px;border-radius:6px;font-family:Inter,sans-serif;font-size:14px;font-weight:600;white-space:nowrap">' + (label.text || '') + '</div>'
+        + '<div style="background:' + primary + ';color:#fff;padding:6px 12px;border-radius:6px;font-family:Inter,sans-serif;font-size:14px;font-weight:600;white-space:nowrap">' + (label.text || '') + '</div>' // design-lint-ignore: video caption/diagram color data
         + '<div style="width:2px;height:20px;background:' + primary + ';margin:0 auto"></div>'
         + '<div style="width:8px;height:8px;border-radius:50%;background:' + primary + ';margin:0 auto"></div>'
         + '</div>';
@@ -225,8 +225,8 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
     var type = container.getAttribute('data-type') || 'bar';
     var values = parseJSON(container.getAttribute('data-values'), []);
     if (!values.length) return;
-    var primary = getColor('--primary-color', '#2563eb');
-    var textColor = getColor('--text-color', '#1e293b');
+    var primary = getColor('--primary-color', '#2563eb'); // design-lint-ignore: video caption/diagram color data
+    var textColor = getColor('--text-color', '#1e293b'); // design-lint-ignore: video caption/diagram color data
     var maxVal = Math.max.apply(null, values.map(function(v) { return v.value || 0; })) || 1;
 
     if (type === 'bar') {
@@ -260,7 +260,7 @@ export const DIAGRAM_TEMPLATES_SCRIPT = `
       }
     } else if (type === 'pie') {
       var total = values.reduce(function(s, v) { return s + (v.value || 0); }, 0) || 1;
-      var colors = [primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+      var colors = [primary, '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4']; // design-lint-ignore: video caption/diagram color data
       var r = 100, cx = 150, cy = 150;
       var svg = '<svg viewBox="0 0 300 300" width="100%" style="max-width:300px;margin:0 auto;display:block">';
       var startAngle = 0;

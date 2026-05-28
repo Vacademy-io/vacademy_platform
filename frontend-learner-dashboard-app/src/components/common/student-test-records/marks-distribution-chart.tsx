@@ -68,7 +68,7 @@ export function MarksDistributionChart({
                 key={bucket.label}
                 className="flex-1 flex flex-col items-center justify-end h-full"
               >
-                <span className="text-[10px] text-muted-foreground mb-1">
+                <span className="text-3xs text-muted-foreground mb-1">
                   {bucket.count}
                 </span>
                 <div
@@ -80,7 +80,7 @@ export function MarksDistributionChart({
                   style={{ height: `${heightPx}px` }}
                 />
                 <span
-                  className={`text-[9px] mt-1 ${
+                  className={`text-3xs mt-1 ${
                     isStudentBucket
                       ? "font-bold text-primary"
                       : "text-muted-foreground"

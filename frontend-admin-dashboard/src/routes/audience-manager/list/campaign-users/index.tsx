@@ -6,9 +6,12 @@ import { Helmet } from 'react-helmet';
 import { CampaignUsersTable } from '../-components/campaign-users/campaign-users-table';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { CaretLeft } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const CAMPAIGN_USERS_ROUTE = '/audience-manager/list/campaign-users/' as const;
@@ -20,7 +23,11 @@ const campaignUsersSearchSchema = z.object({
     campaignType: z.string().optional(),
 });
 
-export const Route = createFileRoute(CAMPAIGN_USERS_ROUTE as any)({
+export const Route = createFileRoute(
+    // Route path uses a const sentinel; the generated route tree doesn't know it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    CAMPAIGN_USERS_ROUTE as any
+)({
     component: CampaignUsersPage,
     validateSearch: campaignUsersSearchSchema,
 });
@@ -30,16 +37,15 @@ export function CampaignUsersPage() {
     const search = useSearch({ from: Route.id });
     const navigate = useNavigate();
 
-    // Debug logging
-    console.log('CampaignUsersPage - search params:', search);
-
     useEffect(() => {
         setNavHeading(`${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} Users`);
-    }, []);
+    }, [setNavHeading]);
 
     const handleBack = () => {
         navigate({
             from: Route.id,
+            // Same sentinel-route reason as the file route above.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             to: '/audience-manager/list/' as any,
         });
     };
@@ -48,16 +54,19 @@ export function CampaignUsersPage() {
         <LayoutContainer>
             <Helmet>
                 <title>{`${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} Users`}</title>
-                <meta name="description" content={`View users enrolled in the ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList).toLowerCase()}.`} />
+                <meta
+                    name="description"
+                    content={`View users enrolled in the ${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList).toLowerCase()}.`}
+                />
             </Helmet>
             <div className="flex w-full flex-col gap-6">
                 <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleBack}
-                    className="w-fit"
+                    className="w-fit text-neutral-600 hover:text-neutral-900"
                 >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    <CaretLeft className="mr-1.5 size-4" />
                     {`Back to ${getTerminologyPlural(OtherTerms.AudienceList, SystemTerms.AudienceList)}`}
                 </Button>
                 {search.campaignId ? (
@@ -68,8 +77,8 @@ export function CampaignUsersPage() {
                         campaignType={search.campaignType}
                     />
                 ) : (
-                    <div className="flex h-[70vh] w-full flex-col items-center justify-center gap-2">
-                        <p className="text-red-500">Campaign ID is required</p>
+                    <div className="flex w-full flex-col items-center justify-center gap-2 py-20">
+                        <p className="text-danger-600">Campaign ID is required</p>
                     </div>
                 )}
             </div>

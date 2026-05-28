@@ -32,7 +32,7 @@ export function OtaUpdateBanner() {
   // Force update: full-screen blocking overlay
   if (otaForceUpdate) {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
         <div className="mx-4 max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
           <h2 className="mb-2 text-lg font-semibold text-gray-900">
             Update Required
@@ -61,7 +61,7 @@ export function OtaUpdateBanner() {
 
   // Optional update: dismissible top banner
   return (
-    <div className="fixed left-0 right-0 top-0 z-[9998] flex items-center justify-between bg-primary/90 px-4 py-2 text-white backdrop-blur-sm">
+    <div className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between bg-primary/90 px-4 py-2 text-white backdrop-blur-sm">
       <span className="text-sm">
         Update {otaVersion} available
         {otaReleaseNotes ? ` — ${otaReleaseNotes}` : ""}

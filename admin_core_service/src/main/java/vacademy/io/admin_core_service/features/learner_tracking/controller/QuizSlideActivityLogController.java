@@ -6,6 +6,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.QuizQuestionFeedbackDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.service.QuizSlideActivityLogService;
 import vacademy.io.common.auth.config.PageConstants;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -37,5 +38,12 @@ public class QuizSlideActivityLogController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
 
         return ResponseEntity.ok(quizSlideActivityLogService.getQuizSlideActivityLog(userId, slideId, PageRequest.of(pageNo, pageSize), userDetails));
+    }
+
+    @PostMapping("/save-question-feedback")
+    public ResponseEntity<String> saveQuizQuestionFeedback(
+            @RequestBody QuizQuestionFeedbackDTO dto,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(quizSlideActivityLogService.saveQuizQuestionFeedback(dto));
     }
 }

@@ -3,6 +3,9 @@ import {
     GET_USER_DOC_SLIDE_ACTIVITY_LOGS,
     GET_QUESTION_SLIDE_ACTIVITY_LOGS,
     GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS,
+    GET_QUIZ_SLIDE_ACTIVITY_LOGS,
+    GET_SLIDE_BY_ID,
+    SAVE_QUIZ_QUESTION_FEEDBACK,
     GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS,
     GRADE_ASSIGNMENT_SUBMISSION,
 } from '@/constants/urls';
@@ -154,6 +157,78 @@ export const getAssignmentSlideActivityLogs = ({
         queryFn: () => fetchAssignmentSlideLogs(userId, slideId, pageNo, pageSize),
         staleTime: 60 * 60 * 1000,
     };
+};
+
+export const fetchQuizSlideLogs = async (
+    userId: string,
+    slideId: string,
+    pageNo: number,
+    pageSize: number
+) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_QUIZ_SLIDE_ACTIVITY_LOGS,
+        params: {
+            userId,
+            slideId,
+            pageNo,
+            pageSize,
+        },
+    });
+    return response.data;
+};
+
+export const fetchSlideById = async (slideId: string) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SLIDE_BY_ID,
+        params: { slideId },
+    });
+    return response.data;
+};
+
+export const getSlideByIdQuery = ({
+    slideId,
+    enabled,
+}: {
+    slideId: string;
+    enabled: boolean;
+}) => ({
+    queryKey: ['GET_SLIDE_BY_ID', slideId],
+    queryFn: () => fetchSlideById(slideId),
+    enabled: enabled && Boolean(slideId),
+    staleTime: 60 * 60 * 1000,
+});
+
+export const getQuizSlideActivityLogs = ({
+    userId,
+    slideId,
+    pageNo,
+    pageSize,
+}: {
+    userId: string;
+    slideId: string;
+    pageNo: number;
+    pageSize: number;
+}) => {
+    return {
+        queryKey: ['GET_QUIZ_SLIDE_ACTIVITY_LOGS', userId, slideId, pageNo, pageSize],
+        queryFn: () => fetchQuizSlideLogs(userId, slideId, pageNo, pageSize),
+        staleTime: 60 * 60 * 1000,
+    };
+};
+
+export const saveQuizQuestionFeedback = async (data: {
+    tracked_id: string;
+    instructor_feedback?: string | null;
+    instructor_feedback_file_id?: string | null;
+}) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: SAVE_QUIZ_QUESTION_FEEDBACK,
+        data,
+    });
+    return response.data;
 };
 
 export const gradeAssignmentSubmission = async (data: {

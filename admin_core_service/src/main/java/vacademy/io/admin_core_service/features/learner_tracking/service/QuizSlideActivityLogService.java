@@ -5,12 +5,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
+import vacademy.io.admin_core_service.features.learner_tracking.dto.QuizQuestionFeedbackDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.QuizSideActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.entity.QuizSlideQuestionTracked;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.QuizSlideQuestionTrackedRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
 
@@ -66,5 +68,17 @@ public class QuizSlideActivityLogService {
             CustomUserDetails userDetails) {
         Page<ActivityLog> activityLogs = activityLogRepository.findActivityLogsWithQuizSlide(userId, slideId, pageable);
         return activityLogs.map(activityLog -> activityLog.toActivityLogDTO());
+    }
+
+    public String saveQuizQuestionFeedback(QuizQuestionFeedbackDTO dto) {
+        if (dto.getTrackedId() == null || dto.getTrackedId().isBlank()) {
+            throw new VacademyException("trackedId is required");
+        }
+        QuizSlideQuestionTracked tracked = quizSlideTrackedRepositry.findById(dto.getTrackedId())
+                .orElseThrow(() -> new VacademyException("Quiz response not found for tracked id " + dto.getTrackedId()));
+        tracked.setInstructorFeedback(dto.getInstructorFeedback());
+        tracked.setInstructorFeedbackFileId(dto.getInstructorFeedbackFileId());
+        quizSlideTrackedRepositry.save(tracked);
+        return tracked.getId();
     }
 }

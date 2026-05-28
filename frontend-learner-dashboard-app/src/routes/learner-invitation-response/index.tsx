@@ -5,7 +5,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleGetEnrollInviteData } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 import { PaymentGatewayWrapper } from "@/components/common/enroll-by-invite/-components/payment-gateway-wrapper";
 import { getPaymentVendor } from "@/components/common/enroll-by-invite/-utils/payment-vendor-helper";
-import { LinkBreak, CreditCard, Warning } from "@phosphor-icons/react";
+import { LinkBreak, CreditCard, Warning, ClipboardText } from "@phosphor-icons/react";
 
 const inviteParamsSchema = z.object({
   instituteId: z.string().uuid(),
@@ -62,6 +62,35 @@ function PaymentGatewayNotConfiguredPage() {
         </h1>
         <p className="mt-4 text-base text-gray-500 max-w-sm mx-auto">
           The institute has not configured a payment gateway for this enrollment. Please contact your institute to complete the setup.
+        </p>
+        <div className="mt-8">
+          <button
+            onClick={() => router.history.back()}
+            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoEnrollmentPlansPage() {
+  const router = useRouter();
+  return (
+    <div className="h-screen w-full bg-gray-50 flex flex-col justify-center items-center px-4">
+      <div className="max-w-md mx-auto text-center w-full">
+        <div className="mb-8 flex justify-center">
+          <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-amber-100 border-4 border-white shadow-sm">
+            <ClipboardText className="h-12 w-12 text-amber-500" aria-hidden="true" />
+          </div>
+        </div>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900">
+          Enrollment Plans Not Set Up
+        </h1>
+        <p className="mt-4 text-base text-gray-500 max-w-sm mx-auto">
+          The institute hasn&apos;t added any enrollment plans to this invite yet. Please contact your institute to complete the setup.
         </p>
         <div className="mt-8">
           <button
@@ -136,6 +165,17 @@ function RouteComponent() {
   const { data: inviteData } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
+
+  // Guard: invite exists but has no payment plans attached. Without this, the
+  // form would crash downstream trying to read payment_option_metadata_json off
+  // an undefined paymentOption (see enroll-form.tsx ~L321 / helper.ts L294).
+  const hasPaymentOption = Boolean(
+    inviteData?.package_session_to_payment_options?.[0]?.payment_option
+  );
+  if (!hasPaymentOption) {
+    return <NoEnrollmentPlansPage />;
+  }
+
   // Determine which payment gateway to use based on invite data
   const paymentVendor = getPaymentVendor(inviteData);
   return (

@@ -90,12 +90,16 @@ export default defineConfig({
                     // quill chunk, making *every* axios call drag in Quill +
                     // mathquill + jquery and triggering a circular-init
                     // ("Cannot access 'B' before initialization") on app load.
+                    // jquery must live in this chunk too — mathquill reads
+                    // window.jQuery at module-eval time, and the import order
+                    // in MainViewQuillEditor.jsx only holds within one chunk.
                     if (
                         id.includes('node_modules/react-quill-new') ||
                         id.includes('node_modules/quill/') ||
                         id.includes('node_modules/quill-delta') ||
                         id.includes('node_modules/mathquill4quill') ||
-                        id.includes('node_modules/@edtr-io/mathquill')
+                        id.includes('node_modules/@edtr-io/mathquill') ||
+                        id.includes('node_modules/jquery')
                     ) {
                         return 'quill-editor';
                     }

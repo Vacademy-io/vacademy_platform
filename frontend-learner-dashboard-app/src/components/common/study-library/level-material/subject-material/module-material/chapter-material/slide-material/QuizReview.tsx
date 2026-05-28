@@ -218,6 +218,81 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
     return map;
   }, [activeAttempt]);
 
+  // Per-attempt score summary derived from the persisted quiz_sides response_json.
+  // Two code paths depending on payload shape:
+  //   - ENRICHED (today's quiz-viewer enrichment, response_json has marks +
+  //     maxMarks + isCorrect): sum the persisted marks/maxMarks directly.
+  //   - LEGACY ({answer:<id>} only, response_status="SUBMITTED"): we have to
+  //     derive correctness. Look up the question by id, compare the saved
+  //     answer ids against getCorrectAnswers(q), and award 1 mark per correct.
+  //     (The original marks_per_question isn't stored on legacy quiz_sides;
+  //     1 mark per question keeps the score in the same scale as the total.)
+  // NOTE: declared here (BEFORE activeAttemptScore / effectiveScoreCard) because
+  // those downstream consts call .get() on it during render. Moving this lower
+  // triggers a temporal-dead-zone ReferenceError in production builds.
+  const scoreByAttemptId = useMemo(() => {
+    const map = new Map<string, { earned: number; total: number; pct: number }>();
+    const questionLookup = new Map<string, Question>();
+    questions.forEach((q) => {
+      if (q.id) questionLookup.set(q.id, q);
+    });
+    attemptLogs?.forEach((a) => {
+      let earned = 0;
+      let total = 0;
+      a.quiz_sides?.forEach((qs) => {
+        let parsed:
+          | {
+              marks?: number;
+              maxMarks?: number;
+              isCorrect?: boolean;
+              answer?: string | number | string[];
+              selectedOptions?: Array<{ id: string }>;
+            }
+          | null = null;
+        if (qs.response_json) {
+          try {
+            parsed = JSON.parse(qs.response_json);
+          } catch {
+            parsed = null;
+          }
+        }
+        // Enriched payload — trust the persisted marks/maxMarks.
+        if (parsed && typeof parsed.maxMarks === 'number') {
+          total += parsed.maxMarks;
+          if (typeof parsed.marks === 'number') {
+            earned += Math.max(0, parsed.marks);
+          } else if (parsed.isCorrect) {
+            earned += parsed.maxMarks;
+          }
+          return;
+        }
+        // Legacy payload — score by comparing saved answer vs current correct answers.
+        total += 1;
+        if (!parsed) return;
+        const q = questionLookup.get(qs.question_id);
+        if (!q) return;
+        const answerIds: string[] =
+          Array.isArray(parsed.selectedOptions) && parsed.selectedOptions.length > 0
+            ? parsed.selectedOptions.map((o) => String(o.id))
+            : parsed.answer != null
+              ? Array.isArray(parsed.answer)
+                ? parsed.answer.map(String)
+                : [String(parsed.answer)]
+              : [];
+        if (answerIds.length === 0) return;
+        const correctIds = getCorrectAnswers(q).map(String);
+        if (correctIds.length === 0) return;
+        const isCorrect =
+          answerIds.length === correctIds.length &&
+          correctIds.every((c) => answerIds.includes(c));
+        if (isCorrect) earned += 1;
+      });
+      const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
+      map.set(a.id, { earned, total, pct });
+    });
+    return map;
+  }, [attemptLogs, questions]);
+
   // Per-question learner answer for the active attempt, parsed from quiz_sides.
   // When viewing the default-latest attempt this typically matches the
   // `userAnswers` prop (parent computes it the same way), but for past attempts
@@ -309,42 +384,6 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
       ? (effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100 >= passPercentage
       : passed;
 
-  // Per-attempt score summary derived from the persisted quiz_sides response_json.
-  // Reads `marks` and `maxMarks` from the enriched payload; for legacy payloads
-  // (only `{answer:<id>}` saved) it falls back to using response_status to count
-  // CORRECT vs WRONG vs SKIPPED.
-  const scoreByAttemptId = useMemo(() => {
-    const map = new Map<string, { earned: number; total: number; pct: number }>();
-    attemptLogs?.forEach((a) => {
-      let earned = 0;
-      let total = 0;
-      a.quiz_sides?.forEach((qs) => {
-        let parsed: { marks?: number; maxMarks?: number; isCorrect?: boolean } | null = null;
-        if (qs.response_json) {
-          try {
-            parsed = JSON.parse(qs.response_json);
-          } catch {
-            parsed = null;
-          }
-        }
-        if (parsed && typeof parsed.maxMarks === 'number') {
-          total += parsed.maxMarks;
-          if (typeof parsed.marks === 'number') {
-            earned += Math.max(0, parsed.marks);
-          } else if (parsed.isCorrect) {
-            earned += parsed.maxMarks;
-          }
-        } else {
-          // Legacy: no maxMarks persisted. Use response_status + assume 1 mark per question.
-          total += 1;
-          if (qs.response_status === 'CORRECT') earned += 1;
-        }
-      });
-      const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
-      map.set(a.id, { earned, total, pct });
-    });
-    return map;
-  }, [attemptLogs]);
   const PASSAGE_LIMIT = 200;
 
   // Helper to get plain text from HTML

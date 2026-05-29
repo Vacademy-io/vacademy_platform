@@ -16,7 +16,7 @@ import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from ..dependencies import get_institute_from_api_key
 from ..models.ai_studio_build import AiStudioBuild
@@ -434,14 +434,14 @@ async def update_project(
 async def delete_project(
     project_id: str,
     institute_id: str = Depends(get_institute_from_api_key),
-) -> None:
+) -> Response:
     """Soft delete (status → ARCHIVED). Builds stay intact and queryable
     by id; they just don't surface in the default project list.
     """
     repo = AiStudioProjectRepository()
     _load_project_or_404(repo, project_id, institute_id)
     repo.archive(project_id)
-    return None
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
@@ -815,7 +815,7 @@ async def publish_build(
 async def delete_build(
     build_id: str,
     institute_id: str = Depends(get_institute_from_api_key),
-) -> None:
+) -> Response:
     """Soft-delete a build. Refuses (409) if it's the project's published
     build unless the caller has already cleared the publish pointer."""
     build_repo = AiStudioBuildRepository()
@@ -827,7 +827,7 @@ async def delete_build(
             "message": "This build is the project's published one. Publish another build first.",
         })
     build_repo.archive(build_id)
-    return None
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------

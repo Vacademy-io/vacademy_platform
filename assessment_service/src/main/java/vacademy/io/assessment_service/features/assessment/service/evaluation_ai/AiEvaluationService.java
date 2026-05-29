@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.AiEvaluationTriggerRequest;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
@@ -69,9 +71,22 @@ public class AiEvaluationService {
                 // Clear any stale cancellation flags from previous runs
                 cancellationService.clearFlag(savedProcess.getId());
 
-                // Trigger Async Evaluation via separate service
-                aiEvaluationAsyncService.evaluateAttemptAsync(savedProcess.getId(), attemptId, preferredModel);
+                // Defer the @Async dispatch until AFTER the parent transaction
+                // commits. Without this, the async thread starts in parallel and
+                // can call findById(processId) before the INSERT becomes visible
+                // to other connections, surfacing as "Process not found" in logs.
+                final String processId = savedProcess.getId();
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                                @Override
+                                public void afterCommit() {
+                                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, preferredModel);
+                                }
+                        });
+                } else {
+                        aiEvaluationAsyncService.evaluateAttemptAsync(processId, attemptId, preferredModel);
+                }
 
-                return savedProcess.getId();
+                return processId;
         }
 }

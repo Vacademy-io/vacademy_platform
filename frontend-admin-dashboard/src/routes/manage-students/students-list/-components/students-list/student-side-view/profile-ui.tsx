@@ -46,7 +46,7 @@ export const ProfileSectionCard = ({
 }) => (
     <section
         className={cn(
-            'rounded-lg border border-neutral-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md',
+            'rounded-lg border border-border bg-card p-5 shadow-sm',
             className
         )}
     >
@@ -54,12 +54,12 @@ export const ProfileSectionCard = ({
             <div className="mb-4 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
                     {Icon && (
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                             <Icon className="size-4" weight="duotone" />
                         </span>
                     )}
                     {heading && (
-                        <h3 className="truncate text-base font-semibold text-neutral-900">
+                        <h3 className="truncate text-subtitle font-semibold text-card-foreground">
                             {heading}
                         </h3>
                     )}
@@ -87,28 +87,26 @@ export const ProfileFieldRow = ({
     const isEmpty =
         value === null || value === undefined || value === '' || value === 'N/A';
     return (
-        <div className="group flex items-start justify-between gap-3 py-2.5">
-            <dt className="shrink-0 pt-0.5 text-xs font-medium uppercase tracking-wide text-neutral-400">
-                {label}
-            </dt>
+        <div className="group flex items-center justify-between gap-3 rounded-md py-2.5 transition-colors hover:bg-muted/40">
+            <dt className="shrink-0 text-caption text-muted-foreground">{label}</dt>
             <dd
                 className={cn(
-                    'flex min-w-0 items-center justify-end gap-1.5 text-right text-sm font-medium',
-                    isEmpty ? 'text-neutral-400' : 'text-neutral-900'
+                    'flex min-w-0 items-center justify-end gap-1.5 text-right text-body',
+                    isEmpty ? 'text-muted-foreground' : 'text-card-foreground'
                 )}
             >
                 <span
                     className="truncate"
                     title={typeof value === 'string' && !isEmpty ? value : undefined}
                 >
-                    {value}
+                    {isEmpty ? '—' : value}
                 </span>
                 {onCopy && !isEmpty && (
                     <button
                         type="button"
                         onClick={onCopy}
                         aria-label={`Copy ${label}`}
-                        className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                        className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                     >
                         {copied ? (
                             <Check className="size-3.5 text-success-600" />
@@ -146,11 +144,11 @@ export const ProfileEmpty = ({
     hint?: string;
     action?: React.ReactNode;
 }) => (
-    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-200 px-4 py-10 text-center">
-        <Icon className="size-8 text-neutral-300" />
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-4 py-10 text-center">
+        <Icon className="size-8 text-muted-foreground" />
         <div>
-            <p className="text-sm font-medium text-neutral-700">{title}</p>
-            {hint && <p className="mt-0.5 text-xs text-neutral-500">{hint}</p>}
+            <p className="text-body font-semibold text-card-foreground">{title}</p>
+            {hint && <p className="mt-0.5 text-caption text-muted-foreground">{hint}</p>}
         </div>
         {action}
     </div>
@@ -321,11 +319,10 @@ export const ProfileHero = ({
 }) => (
     <section
         className={cn(
-            'relative overflow-hidden rounded-lg border border-neutral-200 bg-white p-4 pl-5 shadow-sm',
+            'overflow-hidden rounded-lg border border-border bg-card p-5 shadow-sm',
             className
         )}
     >
-        <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', TONE_ACCENT[tone])} />
         <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-3">
                 {Icon && (
@@ -343,16 +340,20 @@ export const ProfileHero = ({
                     {eyebrow && (
                         <span
                             className={cn(
-                                'text-xs font-semibold uppercase tracking-widest',
+                                'text-caption font-semibold',
                                 TONE_TEXT[tone]
                             )}
                         >
                             {eyebrow}
                         </span>
                     )}
-                    <div className="text-xl font-bold leading-tight text-neutral-900">{title}</div>
+                    <div className="text-h3 font-semibold leading-tight text-card-foreground">
+                        {title}
+                    </div>
                     {subtitle && (
-                        <div className="mt-0.5 text-xs text-neutral-500">{subtitle}</div>
+                        <div className="mt-0.5 text-caption text-muted-foreground">
+                            {subtitle}
+                        </div>
                     )}
                 </div>
             </div>

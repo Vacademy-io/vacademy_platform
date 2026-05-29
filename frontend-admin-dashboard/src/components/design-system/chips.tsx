@@ -28,7 +28,7 @@ export const ChipsWrapper = ({ children, className }: ChipsWrapperProps) => {
         <div
             className={cn(
                 'inline-flex flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-300 font-regular text-neutral-600',
-                isCompact ? 'h-6 px-1.5 py-0.5 text-xs' : 'h-8 px-3 py-[6px] text-body',
+                isCompact ? 'h-6 px-1.5 py-0.5 text-xs' : 'h-8 px-3 py-1.5 text-body',
                 className
             )}
         >
@@ -50,7 +50,7 @@ const Chips = ({
         <ChipsWrapper
             className={cn(
                 avatarAddress ? 'rounded-full' : 'rounded-lg',
-                'active:bg-[#f5e6d1]',
+                'active:bg-primary-100',
                 disabled
                     ? 'border-neutral-100'
                     : selected
@@ -62,7 +62,7 @@ const Chips = ({
             {leadingIcon &&
                 React.createElement(leadingIcon, {
                     className: cn(
-                        'size-[18px]',
+                        'size-4',
                         disabled ? 'text-neutral-300' : 'text-neutral-600'
                     ),
                 })}
@@ -76,7 +76,7 @@ const Chips = ({
             {label && (
                 <div
                     className={cn(
-                        'flex items-center text-[14px] leading-[22px]',
+                        'flex items-center text-body',
                         disabled ? 'text-neutral-300' : 'text-neutral-600'
                     )}
                 >
@@ -133,14 +133,14 @@ export const FilterChips = ({
                         <div className="flex items-center gap-2">
                             {React.createElement(PlusCircle, {
                                 className: cn(
-                                    isCompact ? 'size-3.5' : 'size-[18px]',
+                                    isCompact ? 'size-3.5' : 'size-4',
                                     disabled ? 'text-neutral-300' : 'text-neutral-600'
                                 ),
                             })}
                             <div
                                 className={cn(
-                                    'flex items-center leading-[22px]',
-                                    isCompact ? 'text-xs' : 'text-[14px]',
+                                    'flex items-center',
+                                    isCompact ? 'text-xs' : 'text-body',
                                     disabled ? 'text-neutral-300' : 'text-neutral-600'
                                 )}
                             >
@@ -166,7 +166,7 @@ export const FilterChips = ({
                     </ChipsWrapper>
                 </button>
             </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0" align="start">
+            <PopoverContent className="w-52 p-0" align="start">
                 <Command shouldFilter={shouldFilter}>
                     <CommandInput
                         placeholder="Search"
@@ -250,7 +250,7 @@ export const StatusChips = ({
             <div className="flex items-center gap-1">
                 {showIcon && (
                     <StatusIcon
-                        className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-[18px]')}
+                        className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-4')}
                         weight="fill"
                     />
                 )}
@@ -261,6 +261,81 @@ export const StatusChips = ({
         </ChipsWrapper>
     );
 };
+
+/**
+ * ChipToggleGroup — single-select row of toggle chips.
+ *
+ * Use for inline "All / Pending / Completed / Live"-style filters where exactly
+ * one option is active at a time. Replaces the hand-rolled patterns previously
+ * inlined in Tests, Courses (level filter), and Full History. Different from
+ * `FilterChips` above, which is a popover-based multi-select.
+ *
+ * @example
+ *   <ChipToggleGroup
+ *     value={activeFilter}
+ *     onChange={setActiveFilter}
+ *     options={[
+ *       { value: 'ALL', label: 'All' },
+ *       { value: 'PENDING', label: 'Pending', icon: Clock },
+ *       { value: 'LIVE', label: 'Live', icon: Radio },
+ *     ]}
+ *   />
+ */
+export interface ChipToggleOption<V extends string = string> {
+    value: V;
+    label: string;
+    icon?: React.ComponentType<{ className?: string }>;
+}
+
+export interface ChipToggleGroupProps<V extends string = string> {
+    value: V;
+    onChange: (value: V) => void;
+    options: ChipToggleOption<V>[];
+    disabled?: boolean;
+    className?: string;
+    ariaLabel?: string;
+}
+
+export function ChipToggleGroup<V extends string = string>({
+    value,
+    onChange,
+    options,
+    disabled,
+    className,
+    ariaLabel,
+}: ChipToggleGroupProps<V>) {
+    return (
+        <div
+            role="group"
+            aria-label={ariaLabel}
+            className={cn('flex flex-wrap items-center gap-1.5', className)}
+        >
+            {options.map((opt) => {
+                const active = opt.value === value;
+                const Icon = opt.icon;
+                return (
+                    <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => !disabled && onChange(opt.value)}
+                        disabled={disabled}
+                        aria-pressed={active}
+                        className={cn(
+                            'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                            active
+                                ? 'border-primary-500 bg-primary-500 text-neutral-50'
+                                : 'border-border bg-card text-muted-foreground hover:border-primary-300 hover:text-primary-600',
+                            disabled && 'cursor-not-allowed opacity-50'
+                        )}
+                    >
+                        {Icon && <Icon className="size-3" />}
+                        {opt.label}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 export const PaymentStatusChips = ({ status }: { status: string }) => {
     const statusData = ActivityStatusData[status as ActivityStatus];
@@ -276,7 +351,7 @@ export const PaymentStatusChips = ({ status }: { status: string }) => {
     return (
         <ChipsWrapper className={cn(statusData.color.bg, '')}>
             <div className="flex items-center gap-1">
-                <StatusIcon className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-[18px]')} weight="fill" />
+                <StatusIcon className={cn(statusData.color.icon, isCompact ? 'size-3.5' : 'size-4')} weight="fill" />
                 <div className={cn('capitalize text-neutral-600', isCompact ? 'text-xs' : 'text-body')}>{status}</div>
             </div>
         </ChipsWrapper>

@@ -2,7 +2,16 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useState, useEffect } from 'react';
-import { Key, Shield, MonitorPlay, Envelope, Eye, EyeSlash, Copy, Check } from '@phosphor-icons/react';
+import {
+    Key,
+    Shield,
+    ArrowSquareOut,
+    Envelope,
+    Eye,
+    EyeSlash,
+    Copy,
+    Check,
+} from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
@@ -209,7 +218,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                             type="button"
                             onClick={() => handleCopy(selectedStudent.username!, 'Username')}
                             aria-label="Copy username"
-                            className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                            className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
                             {copiedField === 'Username' ? (
                                 <Check className="size-3.5 text-success-600" />
@@ -236,7 +245,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                             type="button"
                             onClick={() => setShowPassword((v) => !v)}
                             aria-label={showPassword ? 'Hide password' : 'Show password'}
-                            className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                            className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
                             {showPassword ? (
                                 <EyeSlash className="size-3.5" />
@@ -251,7 +260,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                             type="button"
                             onClick={() => handleCopy(password, 'Password', true)}
                             aria-label="Copy password"
-                            className="shrink-0 rounded p-0.5 text-neutral-400 opacity-0 transition hover:bg-neutral-100 hover:text-neutral-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 group-hover:opacity-100"
+                            className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-card-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
                             {copiedField === 'Password' ? (
                                 <Check className="size-3.5 text-success-600" />
@@ -300,7 +309,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                             disable={false}
                             onAsyncClick={handleAccessPortal}
                         >
-                            <MonitorPlay className="size-3.5" />
+                            <ArrowSquareOut className="size-3.5" />
                             Open Portal
                         </MyButton>
                     ) : undefined

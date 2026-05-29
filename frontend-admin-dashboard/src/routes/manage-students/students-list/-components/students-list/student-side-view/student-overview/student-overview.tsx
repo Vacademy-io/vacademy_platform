@@ -65,17 +65,18 @@ const SessionExpiryCard = ({ plan }: { plan: UserPlan }) => {
 
     const daysLeft = endMs != null ? Math.max(0, Math.floor((endMs - now) / DAY_MS)) : 0;
 
-    // Truthful "% of the plan window still remaining". Uses the real
-    // start→end span when available; otherwise falls back to a 365-day window.
-    let pctRemaining = 0;
+    // "% of the plan window already used" — bar grows as the plan ages, so a
+    // near-full bar visually signals renewal urgency. Subtitle still shows the
+    // remaining days, so users see both progress and time-left at a glance.
+    let pctElapsed = 0;
     if (endMs != null && startMs != null && endMs > startMs) {
-        pctRemaining = ((endMs - now) / (endMs - startMs)) * 100;
+        pctElapsed = ((now - startMs) / (endMs - startMs)) * 100;
     } else if (endMs != null) {
-        pctRemaining = (daysLeft / 365) * 100;
+        pctElapsed = (1 - daysLeft / 365) * 100;
     }
-    pctRemaining = Math.min(100, Math.max(0, pctRemaining));
+    pctElapsed = Math.min(100, Math.max(0, pctElapsed));
 
-    const tone = pctRemaining >= 50 ? 'success' : pctRemaining >= 15 ? 'warning' : 'danger';
+    const tone = pctElapsed <= 50 ? 'success' : pctElapsed <= 85 ? 'warning' : 'danger';
     const toneText =
         tone === 'success'
             ? 'text-success-600'
@@ -122,15 +123,17 @@ const SessionExpiryCard = ({ plan }: { plan: UserPlan }) => {
             </div>
 
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-                {/* Width is data-driven (remaining fraction of the plan window) — inline style required for dynamic %. */}
+                {/* Width is data-driven (elapsed fraction of the plan window) — inline style required for dynamic %. */}
                 <div
                     className={cn('h-full rounded-full transition-all duration-500', toneBar)}
-                    style={{ width: `${pctRemaining}%` }} // design-lint-ignore: inline-style — dynamic data-driven width
+                    style={{ width: `${pctElapsed}%` }} // design-lint-ignore: inline-style — dynamic data-driven width
                 />
             </div>
             <div className="mt-1.5 flex items-center justify-between">
-                <span className="text-xs text-neutral-500">{status}</span>
-                <span className="text-xs text-neutral-400">{Math.round(pctRemaining)}% remaining</span>
+                <span className="text-caption text-neutral-500">{status}</span>
+                <span className="text-caption text-neutral-400">
+                    {Math.round(pctElapsed)}% elapsed
+                </span>
             </div>
         </div>
     );
@@ -367,16 +370,18 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 const daysLeft =
                     endMs != null ? Math.max(0, Math.floor((endMs - now) / DAY_MS)) : 0;
 
-                let pctRemaining = 0;
+                // Elapsed fraction — bar grows as the plan ages (intuitive
+                // left-to-right fill); tone goes success → warning → danger.
+                let pctElapsed = 0;
                 if (endMs != null && startMs != null && endMs > startMs) {
-                    pctRemaining = ((endMs - now) / (endMs - startMs)) * 100;
+                    pctElapsed = ((now - startMs) / (endMs - startMs)) * 100;
                 } else if (endMs != null) {
-                    pctRemaining = (daysLeft / 365) * 100;
+                    pctElapsed = (1 - daysLeft / 365) * 100;
                 }
-                pctRemaining = Math.min(100, Math.max(0, pctRemaining));
+                pctElapsed = Math.min(100, Math.max(0, pctElapsed));
 
                 const tone =
-                    pctRemaining >= 50 ? 'success' : pctRemaining >= 15 ? 'warning' : 'danger';
+                    pctElapsed <= 50 ? 'success' : pctElapsed <= 85 ? 'warning' : 'danger';
                 const planName = hero.enroll_invite?.name?.trim() || 'Session';
                 const formattedExpiry =
                     endMs != null ? new Date(endMs).toLocaleDateString() : '—';
@@ -390,7 +395,7 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                             icon={Hourglass}
                             tone={tone}
                         >
-                            <ProfileMiniBar value={pctRemaining} tone={tone} />
+                            <ProfileMiniBar value={pctElapsed} tone={tone} />
                         </ProfileHero>
 
                         {rest.map((plan) => (

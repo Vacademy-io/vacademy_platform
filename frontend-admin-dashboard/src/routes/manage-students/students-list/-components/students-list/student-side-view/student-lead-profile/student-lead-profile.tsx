@@ -1415,10 +1415,12 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     </div>
                 ) : (
                     <button
+                        type="button"
                         onClick={() => setShowAssignCounselor(true)}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-neutral-200 py-2 text-xs text-neutral-500 hover:border-primary-300 hover:text-primary-600"
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border py-2 text-caption text-muted-foreground transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                     >
-                        + Assign a Counselor
+                        <Plus className="size-3.5" />
+                        Assign a Counselor
                     </button>
                 )}
             </ProfileSectionCard>

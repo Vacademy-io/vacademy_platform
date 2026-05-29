@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
-import { StatusChips } from '@/components/design-system/chips';
+import { ChipToggleGroup, StatusChips } from '@/components/design-system/chips';
 import { TestReportDialog } from './test-report-dialog';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -67,11 +67,16 @@ const TONE_CHIP_CLASS: Record<ScoreTone, string> = {
 // Filter chip definitions — drives the secondary control bar.
 type FilterKey = 'ALL' | 'ENDED' | 'PENDING' | 'LIVE';
 
-const FILTER_CHIPS: { key: FilterKey; label: string; statuses: string[] }[] = [
+const FILTER_CHIPS: {
+    key: FilterKey;
+    label: string;
+    statuses: string[];
+    icon?: React.ComponentType<{ className?: string }>;
+}[] = [
     { key: 'ALL', label: 'All', statuses: [] },
-    { key: 'ENDED', label: 'Completed', statuses: ['ENDED'] },
-    { key: 'PENDING', label: 'Pending', statuses: ['PENDING'] },
-    { key: 'LIVE', label: 'Live', statuses: ['LIVE'] },
+    { key: 'ENDED', label: 'Completed', statuses: ['ENDED'], icon: CheckCircle },
+    { key: 'PENDING', label: 'Pending', statuses: ['PENDING'], icon: Clock },
+    { key: 'LIVE', label: 'Live', statuses: ['LIVE'], icon: Radio },
 ];
 
 export const StudentTestRecord = ({
@@ -360,16 +365,16 @@ export const StudentTestRecord = ({
         <div className="flex flex-col gap-3">
             {/* ── Hero zone ─────────────────────────────────────────────────── */}
             <ProfileHero
-                eyebrow={latestAttempt ? 'LATEST RESULT' : 'NO ATTEMPTS YET'}
+                eyebrow={latestAttempt ? 'LATEST RESULT' : 'TEST PERFORMANCE'}
                 icon={Exam}
                 tone={heroTone as 'success' | 'primary' | 'warning' | 'danger' | 'neutral'}
                 title={
                     latestAttempt ? (
-                        <span className="text-2xl font-bold leading-none text-neutral-900">
+                        <span className="text-h2 font-semibold leading-none text-card-foreground">
                             {latestAttempt.total_marks.toFixed(2)}&nbsp;pts
                         </span>
                     ) : (
-                        <span className="text-xl font-bold leading-none text-neutral-500">
+                        <span className="text-h3 font-semibold leading-none text-muted-foreground">
                             No attempts yet
                         </span>
                     )
@@ -438,30 +443,16 @@ export const StudentTestRecord = ({
             {/* ── Filter chips + search ──────────────────────────────────────── */}
             <div className="flex flex-wrap items-center justify-between gap-2">
                 {/* Filter toggle pills */}
-                <div className="flex items-center gap-1.5">
-                    {FILTER_CHIPS.map((chip) => {
-                        const isActive = activeFilter === chip.key;
-                        return (
-                            <button
-                                key={chip.key}
-                                type="button"
-                                onClick={() => handleFilterChip(chip.key)}
-                                className={cn(
-                                    'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-                                    isActive
-                                        ? 'bg-primary-600 text-white'
-                                        : 'border border-neutral-200 bg-white text-neutral-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700'
-                                )}
-                                aria-pressed={isActive}
-                            >
-                                {chip.key === 'ENDED' && <CheckCircle className="size-3" />}
-                                {chip.key === 'PENDING' && <Clock className="size-3" />}
-                                {chip.key === 'LIVE' && <Radio className="size-3" />}
-                                {chip.label}
-                            </button>
-                        );
-                    })}
-                </div>
+                <ChipToggleGroup<FilterKey>
+                    value={activeFilter}
+                    onChange={handleFilterChip}
+                    options={FILTER_CHIPS.map((c) => ({
+                        value: c.key,
+                        label: c.label,
+                        icon: c.icon,
+                    }))}
+                    ariaLabel="Filter test attempts by status"
+                />
 
                 {/* Search */}
                 <AssessmentDetailsSearchComponent

@@ -20,6 +20,7 @@ import {
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
+import { ChipToggleGroup } from '@/components/design-system/chips';
 import {
     ProfileSkeleton,
     ProfileEmpty,
@@ -216,23 +217,12 @@ export const StudentFullHistory = ({ studentUserId }: StudentFullHistoryProps) =
             />
 
             {/* Filter chips */}
-            <div className="flex flex-wrap gap-2">
-                {FILTER_CHIPS.map((chip) => (
-                    <button
-                        key={chip.id}
-                        type="button"
-                        onClick={() => setActiveFilter(chip.id)}
-                        className={cn(
-                            'rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-                            activeFilter === chip.id
-                                ? 'border-primary-500 bg-primary-500 text-white'
-                                : 'border-neutral-200 bg-white text-neutral-600 hover:border-primary-300 hover:text-primary-600'
-                        )}
-                    >
-                        {chip.label}
-                    </button>
-                ))}
-            </div>
+            <ChipToggleGroup<Category>
+                value={activeFilter}
+                onChange={setActiveFilter}
+                options={FILTER_CHIPS.map((c) => ({ value: c.id, label: c.label }))}
+                ariaLabel="Filter history events by category"
+            />
 
             {/* Timeline grouped by date bucket */}
             {filteredEvents.length === 0 ? (

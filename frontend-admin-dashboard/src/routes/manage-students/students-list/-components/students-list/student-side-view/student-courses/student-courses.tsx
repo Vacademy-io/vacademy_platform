@@ -6,6 +6,7 @@ import {
 } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { getInstituteId } from '@/constants/helper';
 import { MyButton } from '@/components/design-system/button';
+import { ChipToggleGroup } from '@/components/design-system/chips';
 import { AssignCourseDialog } from './assign-course-dialog';
 import { DeassignCourseDialog } from './deassign-course-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -261,34 +262,19 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             {/* Level filter chips */}
             {availableLevels.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <Funnel className="size-3.5 shrink-0 text-neutral-400" />
-                    <button
-                        type="button"
-                        onClick={() => handleLevelFilter(null)}
-                        className={cn(
-                            'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-                            selectedLevelId === null
-                                ? 'bg-primary-500 text-white'
-                                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                        )}
-                    >
-                        All
-                    </button>
-                    {availableLevels.map((level) => (
-                        <button
-                            key={level.id}
-                            type="button"
-                            onClick={() => handleLevelFilter(level.id)}
-                            className={cn(
-                                'rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-                                selectedLevelId === level.id
-                                    ? 'bg-primary-500 text-white'
-                                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                            )}
-                        >
-                            {level.level_name}
-                        </button>
-                    ))}
+                    <Funnel className="size-3.5 shrink-0 text-muted-foreground" />
+                    <ChipToggleGroup<string>
+                        value={selectedLevelId ?? '__ALL__'}
+                        onChange={(v) => handleLevelFilter(v === '__ALL__' ? null : v)}
+                        options={[
+                            { value: '__ALL__', label: 'All' },
+                            ...availableLevels.map((level) => ({
+                                value: level.id,
+                                label: level.level_name,
+                            })),
+                        ]}
+                        ariaLabel="Filter courses by level"
+                    />
                 </div>
             )}
 

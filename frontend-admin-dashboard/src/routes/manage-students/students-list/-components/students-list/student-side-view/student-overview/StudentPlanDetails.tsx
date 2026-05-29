@@ -42,8 +42,10 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 
 type PlanTone = 'success' | 'warning' | 'danger';
 
-const deriveTone = (pctRemaining: number): PlanTone =>
-    pctRemaining >= 50 ? 'success' : pctRemaining >= 15 ? 'warning' : 'danger';
+// Tone reflects how much of the plan window has been USED. Low elapsed = safe
+// (lots of plan life left); high elapsed = renewal urgency.
+const deriveTone = (pctElapsed: number): PlanTone =>
+    pctElapsed <= 50 ? 'success' : pctElapsed <= 85 ? 'warning' : 'danger';
 
 const computePlanMeta = (plan: UserPlan) => {
     const now = Date.now();
@@ -56,15 +58,19 @@ const computePlanMeta = (plan: UserPlan) => {
 
     const daysLeft = endMs != null ? Math.max(0, Math.floor((endMs - now) / DAY_MS)) : 0;
 
-    let pctRemaining = 0;
+    // "% of the plan window already used" — the bar grows as the plan ages,
+    // matching how users intuitively read a left-to-right fill ("how far through
+    // are we"). The subtitle keeps the numeric "X days left" so users still
+    // see the remaining time at a glance.
+    let pctElapsed = 0;
     if (endMs != null && startMs != null && endMs > startMs) {
-        pctRemaining = ((endMs - now) / (endMs - startMs)) * 100;
+        pctElapsed = ((now - startMs) / (endMs - startMs)) * 100;
     } else if (endMs != null) {
-        pctRemaining = (daysLeft / 365) * 100;
+        pctElapsed = (1 - daysLeft / 365) * 100;
     }
-    pctRemaining = Math.min(100, Math.max(0, pctRemaining));
+    pctElapsed = Math.min(100, Math.max(0, pctElapsed));
 
-    return { daysLeft, pctRemaining, tone: deriveTone(pctRemaining) };
+    return { daysLeft, pctElapsed, tone: deriveTone(pctElapsed) };
 };
 
 // ── Status pill ───────────────────────────────────────────────────────────────
@@ -479,7 +485,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
 
     const activeMeta = activePlan ? computePlanMeta(activePlan) : null;
     const activeTone = activeMeta?.tone ?? 'success';
-    const activePct = activeMeta?.pctRemaining ?? 0;
+    const activePct = activeMeta?.pctElapsed ?? 0;
     const activeDaysLeft = activeMeta?.daysLeft ?? 0;
     const activeExpiryDate = activePlan ? getExpiryDate(activePlan) : null;
     const activePlanName = activePlan ? getPlanName(activePlan) : '';
@@ -533,7 +539,9 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                             />
                         }
                     >
-                        {/* Width is data-driven (remaining fraction of the plan window). */}
+                        {/* Width is data-driven (elapsed fraction of the plan window).
+                            Tone is explicit so the bar's auto-tone (designed for
+                            completion %) doesn't flip success/warning incorrectly. */}
                         <ProfileMiniBar value={activePct} tone={activeTone} />
                     </ProfileHero>
 

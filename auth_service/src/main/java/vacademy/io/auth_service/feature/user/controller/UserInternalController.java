@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.core.util.CsvUtil;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
+import vacademy.io.auth_service.feature.user.service.UserOperationService;
 import vacademy.io.auth_service.feature.user_resolution.service.UserResolutionService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
@@ -28,6 +29,9 @@ public class UserInternalController {
 
     @Autowired
     private UserResolutionService userResolutionService;
+
+    @Autowired
+    private UserOperationService userOperationService;
 
     @PostMapping("/create-or-get-existing-by-id")
     @Transactional
@@ -100,6 +104,15 @@ public class UserInternalController {
      * pre-fetch IDs whose profile lives here, then join against their own tables
      * (e.g. admin-core leads search). Capped at 500 ids by the underlying query.
      */
+    @GetMapping("/by-email")
+    public ResponseEntity<UserDTO> getUserByEmail(@RequestParam String email) {
+        UserDTO user = userOperationService.findUserByEmail(email.toLowerCase().trim());
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(user);
+    }
+
     @GetMapping("/search-ids")
     public ResponseEntity<List<String>> searchUserIds(
             @RequestParam("query") String query,

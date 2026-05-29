@@ -122,6 +122,14 @@ export const StudentsListSection = () => {
         })
     );
 
+    const hasOrgAssociatedBatches = useMemo(
+        () =>
+            (instituteDetails?.batches_for_sessions || []).some(
+                (b) => b.is_org_associated === true
+            ),
+        [instituteDetails]
+    );
+
     // Role-based column hiding: read the current role's display settings from cache.
     // Cache miss → empty hidden set → no role-driven hiding (institute defaults apply).
     const roleHiddenColumns = useMemo(() => {
@@ -510,6 +518,16 @@ export const StudentsListSection = () => {
                                                         plan_type: paymentFilterApplied,
                                                         amount_paid: paymentFilterApplied,
                                                         preffered_batch: false,
+                                                        membership_role:
+                                                            hasOrgAssociatedBatches &&
+                                                            roleEnabledCustomFields.has(
+                                                                'membership_role'
+                                                            ),
+                                                        membership_type:
+                                                            hasOrgAssociatedBatches &&
+                                                            roleEnabledCustomFields.has(
+                                                                'membership_type'
+                                                            ),
                                                     };
                                                 })(),
                                             }}

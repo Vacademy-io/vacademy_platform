@@ -297,14 +297,23 @@ export const StudentSidebar = ({
                                     <>
                                         {selectedStudent.comma_separated_org_roles
                                             .split(',')
-                                            .map((role, index) => (
-                                                <div
-                                                    key={index}
-                                                    className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium capitalize text-amber-700"
-                                                >
-                                                    {role.trim().toLowerCase().replace(/_/g, ' ')}
-                                                </div>
-                                            ))}
+                                            .map((role, index) => {
+                                                const r = role.trim().toUpperCase();
+                                                const label =
+                                                    r === 'ADMIN'
+                                                        ? 'Practice Admin'
+                                                        : r === 'LEARNER'
+                                                          ? 'Practice Staff'
+                                                          : role.trim();
+                                                return (
+                                                    <div
+                                                        key={index}
+                                                        className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                                                    >
+                                                        {label}
+                                                    </div>
+                                                );
+                                            })}
                                     </>
                                 )}
                             </div>

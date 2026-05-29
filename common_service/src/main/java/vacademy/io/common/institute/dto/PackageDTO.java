@@ -35,6 +35,7 @@ public class PackageDTO {
     private Integer courseDepth;
     private String courseHtmlDescriptionHtml;
     private String dripConditionJson;
+    private String packageType;
 
     // Constructor from Package entity
     public PackageDTO(PackageEntity packageEntity) {
@@ -58,5 +59,6 @@ public class PackageDTO {
         this.courseDepth = packageEntity.getCourseDepth();
         this.courseHtmlDescriptionHtml = packageEntity.getCourseHtmlDescription();
         this.dripConditionJson = packageEntity.getDripConditionJson();
+        this.packageType = packageEntity.getPackageType();
     }
 }

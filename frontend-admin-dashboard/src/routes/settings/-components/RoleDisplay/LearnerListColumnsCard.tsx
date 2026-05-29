@@ -11,6 +11,14 @@ import {
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
+// Membership columns shown only when the institute has org-associated batches.
+// They follow the opt-in pattern (hidden by default) — admin explicitly enables them.
+// Accessors MUST match the column ids in `myColumns` (table-column-data.tsx).
+const MEMBERSHIP_COLUMNS: { accessor: string; label: string }[] = [
+    { accessor: 'membership_role', label: 'Membership Role' },
+    { accessor: 'membership_type', label: 'Membership Type' },
+];
+
 // Stable list of admin-controlled system columns + their human labels. The
 // accessors here MUST match the column ids in `myColumns` (table-column-data.tsx)
 // AND the SYSTEM_FIELD_KEY_TO_ACCESSOR mapping. Filter-driven columns
@@ -37,6 +45,7 @@ const SYSTEM_COLUMNS: { accessor: string; label: string }[] = [
     { accessor: 'expiry_date', label: 'Session Expiry' },
     { accessor: 'status', label: 'Status' },
     { accessor: 'referral_count', label: 'Referrals Count' },
+    { accessor: 'counsellor', label: 'Counsellor' },
 ];
 
 interface LearnerListColumnsCardProps {
@@ -152,6 +161,16 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
                 <div>
                     <h4 className="mb-2 text-sm font-semibold text-neutral-600">System columns</h4>
                     <div className="flex flex-col">{SYSTEM_COLUMNS.map(renderSystemRow)}</div>
+                </div>
+                <div>
+                    <h4 className="mb-2 text-sm font-semibold text-neutral-600">
+                        Membership columns
+                    </h4>
+                    <p className="mb-2 text-xs text-neutral-400">
+                        These columns are hidden by default and only visible when the institute has
+                        org-associated batches. Toggle on the ones this role should see.
+                    </p>
+                    <div className="flex flex-col">{MEMBERSHIP_COLUMNS.map(renderCustomRow)}</div>
                 </div>
                 <div>
                     <h4 className="mb-2 text-sm font-semibold text-neutral-600">

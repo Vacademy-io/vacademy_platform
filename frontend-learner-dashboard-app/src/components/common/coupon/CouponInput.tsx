@@ -88,7 +88,7 @@ export const CouponInput = ({
                             type="button"
                             buttonType="primary"
                             scale="medium"
-                            onClick={onApply}
+                            onClick={() => onApply()}
                             disable={state.isApplying || !state.code.trim()}
                             className="whitespace-nowrap"
                         >

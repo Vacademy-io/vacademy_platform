@@ -1772,6 +1772,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               enrollInviteId={inviteData?.id || ""}
               userEmail={enrollmentData.registrationData?.email?.value as string | undefined}
               onCouponChange={setAppliedCouponCode}
+              initialCouponCode={appliedCouponCode}
             />
           );
         }
@@ -1829,6 +1830,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             enrollInviteId={inviteData?.id || ""}
             userEmail={enrollmentData.registrationData?.email?.value as string | undefined}
             onCouponChange={setAppliedCouponCode}
+            initialCouponCode={appliedCouponCode}
           />
         );
       case 3: {

@@ -1,5 +1,5 @@
 import React from "react";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check } from "@phosphor-icons/react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -118,7 +118,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   return (
     <div
       className={cn(
-        "flex w-full max-w-[92%]",
+        "flex w-full max-w-pct-92",
         isUser ? "ml-auto justify-end" : "mr-auto justify-start",
       )}
     >
@@ -132,7 +132,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               className="object-cover"
             />
           ) : null}
-          <AvatarFallback className="text-primary font-bold text-[10px] bg-muted">
+          <AvatarFallback className="text-primary font-bold text-caption bg-muted">
             {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
@@ -141,7 +141,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       <div className="flex items-end gap-1">
         <div
           className={cn(
-            "rounded-xl px-2.5 py-1.5 text-[13px] break-words max-w-full leading-relaxed",
+            "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
             isUser
               ? "bg-primary text-primary-foreground rounded-br-sm shadow-sm"
               : "bg-card text-card-foreground rounded-bl-sm shadow-sm ring-1 ring-border/30",
@@ -157,7 +157,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       key={i}
                       src={att.url}
                       alt={att.name || "attachment"}
-                      className="max-w-[120px] max-h-[80px] rounded object-cover"
+                      className="max-w-32 max-h-20 rounded object-cover"
                     />
                   ))}
                 </div>

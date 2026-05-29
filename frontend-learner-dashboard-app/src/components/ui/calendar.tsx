@@ -24,7 +24,7 @@ export function Calendar({ selected, onSelect, className }: CalendarProps) {
   };
 
   // Resolve brand primary color from CSS variable (fallback to blue)
-  const [primaryHex, setPrimaryHex] = React.useState('#2563eb');
+  const [primaryHex, setPrimaryHex] = React.useState('#2563eb'); // design-lint-ignore: react-date-range SDK color prop fallback
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const root = getComputedStyle(document.documentElement);

@@ -69,31 +69,54 @@ export const InitiateReportDialog = ({ onSuccess }: InitiateReportDialogProps) =
             onOpenChange={setOpen}
             trigger={<MyButton>New Report</MyButton>}
             heading={`Generate ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Report`}
+<<<<<<< HEAD
             dialogWidth="max-w-sm"
+=======
+            dialogWidth="sm:max-w-md"
+>>>>>>> origin/main
             content={
                 <div className="flex flex-col gap-4">
                     <p className="text-sm text-neutral-500">
                         Select a date range to analyze performance.
                     </p>
+<<<<<<< HEAD
                     <div className="flex flex-col gap-4">
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="start-date" className="text-xs font-medium text-neutral-600">
+=======
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-4">
+                            <Label htmlFor="start-date" className="text-left sm:text-right">
+>>>>>>> origin/main
                                 Start Date
                             </Label>
                             <Input
                                 id="start-date"
                                 type="date"
+<<<<<<< HEAD
+=======
+                                className="col-span-1 sm:col-span-3"
+>>>>>>> origin/main
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                             />
                         </div>
+<<<<<<< HEAD
                         <div className="flex flex-col gap-1.5">
                             <Label htmlFor="end-date" className="text-xs font-medium text-neutral-600">
+=======
+                        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-4">
+                            <Label htmlFor="end-date" className="text-left sm:text-right">
+>>>>>>> origin/main
                                 End Date
                             </Label>
                             <Input
                                 id="end-date"
                                 type="date"
+<<<<<<< HEAD
+=======
+                                className="col-span-1 sm:col-span-3"
+>>>>>>> origin/main
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                             />

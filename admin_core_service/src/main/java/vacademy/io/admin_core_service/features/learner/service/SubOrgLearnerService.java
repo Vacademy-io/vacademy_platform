@@ -95,6 +95,7 @@ public class SubOrgLearnerService {
     private final StudentFeePaymentRepository studentFeePaymentRepository;
     private final CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
+    private final vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -378,6 +379,13 @@ public class SubOrgLearnerService {
         String learnerUserPlanId = createLearnerUserPlan(user.getId(), request.getSubOrgId(), primaryPsId);
 
         // 7-9. Per-PS: SSIGM + StudentSubOrg + faculty mapping (admin only).
+        // Resolve the FSPSSM access_permission CSV once: explicit request override wins,
+        // otherwise read the sub-org's persisted ADMIN_PERMISSIONS setting (falls back to
+        // "FULL" inside the service). Avoids re-fetching the org-level invite per-PS.
+        String resolvedAccessPermission = StringUtils.hasText(request.getAccessPermission())
+                ? request.getAccessPermission()
+                : subOrgSubscriptionService.resolveAdminPermissionCsv(
+                        request.getSubOrgId(), request.getInstituteId());
         StudentSessionInstituteGroupMapping firstMapping = null;
         for (PackageSession ps : packageSessions) {
             // createMapping reads request.packageSessionId — temporarily set it.
@@ -390,7 +398,8 @@ public class SubOrgLearnerService {
                 if (firstMapping == null) firstMapping = mapping;
                 if (isAdminRole(request.getCommaSeparatedOrgRoles())) {
                     syncFacultyMappingForSubOrgAdmin(user, ps.getId(),
-                            request.getSubOrgId(), request.getCommaSeparatedOrgRoles());
+                            request.getSubOrgId(), request.getCommaSeparatedOrgRoles(),
+                            resolvedAccessPermission);
                 }
             } finally {
                 request.setPackageSessionId(saved);
@@ -1146,7 +1155,12 @@ public class SubOrgLearnerService {
      * - One entry per SUBORG_LEARNER invite with access_type = ENROLL_INVITE (auto-discovered via sub_org_id)
      */
     private void syncFacultyMappingForSubOrgAdmin(UserDTO user, String packageSessionId,
-                                                   String subOrgId, String orgRoles) {
+                                                   String subOrgId, String orgRoles,
+                                                   String accessPermission) {
+        // Caller resolves the CSV; we only guard against empty so a stray null/blank
+        // doesn't write an empty access_permission column.
+        String effectivePermission = StringUtils.hasText(accessPermission) ? accessPermission : "FULL";
+
         // 1. PACKAGE_SESSION entry
         AddUserAccessDTO psAccessDTO = AddUserAccessDTO.builder()
                 .userId(user.getId())
@@ -1156,12 +1170,13 @@ public class SubOrgLearnerService {
                 .userType(orgRoles)
                 .accessType("PACKAGE_SESSION")
                 .accessId(packageSessionId)
-                .accessPermission("FULL")
+                .accessPermission(effectivePermission)
                 .linkageType("SUB_ORG")
                 .suborgId(subOrgId)
                 .build();
         facultyService.grantUserAccess(psAccessDTO);
-        log.info("Synced FSPSSM (PACKAGE_SESSION) user={}, PS={}, subOrg={}", user.getId(), packageSessionId, subOrgId);
+        log.info("Synced FSPSSM (PACKAGE_SESSION) user={}, PS={}, subOrg={}, perm={}",
+                user.getId(), packageSessionId, subOrgId, effectivePermission);
 
         // 2. ENROLL_INVITE entries — auto-discover invites with sub_org_id for this PS
         try {
@@ -1176,7 +1191,7 @@ public class SubOrgLearnerService {
                         .userType(orgRoles)
                         .accessType("ENROLL_INVITE")
                         .accessId(inviteId)
-                        .accessPermission("FULL")
+                        .accessPermission(effectivePermission)
                         .linkageType("SUB_ORG")
                         .suborgId(subOrgId)
                         .build();

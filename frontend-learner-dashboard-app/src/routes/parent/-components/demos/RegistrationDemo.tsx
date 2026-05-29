@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Check, Save, Send, AlertCircle } from "lucide-react";
+import { CaretLeft, CaretRight, Check, FloppyDisk, PaperPlaneTilt, WarningCircle } from "@phosphor-icons/react";
 
 interface Props { child: ChildProfile; formData: RegistrationFormData }
 
@@ -31,7 +31,7 @@ export function RegistrationDemo({ child, formData }: Props) {
       <div><h2 className="text-lg sm:text-xl font-bold text-foreground">Registration Form</h2><p className="text-sm text-muted-foreground mt-0.5">{formData.title}</p></div>
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2">
         {sections.map((s, i) => (<button key={s.id} onClick={() => { if (i < cur) setCur(i); }} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${i === cur ? "bg-primary text-primary-foreground shadow-sm" : i < cur ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 cursor-pointer" : "bg-muted text-muted-foreground"}`}>
-          {i < cur ? <Check size={12} /> : <span className="w-4 h-4 rounded-full border text-center text-[10px] leading-4">{i + 1}</span>}{s.title}
+          {i < cur ? <Check size={12} /> : <span className="w-4 h-4 rounded-full border text-center text-caption leading-4">{i + 1}</span>}{s.title}
         </button>))}
       </div>
       <AnimatePresence mode="wait">
@@ -40,19 +40,19 @@ export function RegistrationDemo({ child, formData }: Props) {
             <CardContent className="space-y-4">{section.fields.map(f => (
               <div key={f.id}><label className="text-xs font-medium text-foreground mb-1.5 block">{f.label}{f.is_required && <span className="text-destructive ml-0.5">*</span>}</label>
                 {f.type === "select" && f.options ? (<select value={vals[section.id]?.[f.id] ?? ""} onChange={e => handleChange(f.id, e.target.value)} className="w-full h-9 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"><option value="">Select...</option>{f.options.map(o => <option key={o} value={o}>{o}</option>)}</select>)
-                : f.type === "textarea" ? (<textarea value={vals[section.id]?.[f.id] ?? ""} onChange={e => handleChange(f.id, e.target.value)} placeholder={f.placeholder} className="w-full min-h-[80px] rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-y" />)
+                : f.type === "textarea" ? (<textarea value={vals[section.id]?.[f.id] ?? ""} onChange={e => handleChange(f.id, e.target.value)} placeholder={f.placeholder} className="w-full min-h-20 rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 resize-y" />)
                 : (<Input type={f.type === "email" ? "email" : f.type === "date" ? "date" : "text"} value={vals[section.id]?.[f.id] ?? ""} onChange={e => handleChange(f.id, e.target.value)} placeholder={f.placeholder} className="h-9 text-sm" />)}
-                {errors[f.id] && <p className="text-[11px] text-destructive mt-1 flex items-center gap-1"><AlertCircle size={10} />{errors[f.id]}</p>}
+                {errors[f.id] && <p className="text-caption text-destructive mt-1 flex items-center gap-1"><WarningCircle size={10} />{errors[f.id]}</p>}
               </div>
             ))}</CardContent>
           </Card>
         </motion.div>)}
       </AnimatePresence>
       <div className="flex items-center justify-between gap-3">
-        <Button variant="outline" onClick={handlePrev} disabled={cur === 0} className="gap-1.5 text-xs h-9"><ChevronLeft size={14} />Previous</Button>
+        <Button variant="outline" onClick={handlePrev} disabled={cur === 0} className="gap-1.5 text-xs h-9"><CaretLeft size={14} />Previous</Button>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => toast.success("Draft saved (demo)")} className="gap-1.5 text-xs h-9"><Save size={12} />Save Draft</Button>
-          {cur < total - 1 ? (<Button onClick={handleNext} className="gap-1.5 text-xs h-9">Next<ChevronRight size={14} /></Button>) : (<Button onClick={() => toast.success("Registration submitted! (demo)")} className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700"><Send size={12} />Submit</Button>)}
+          <Button variant="ghost" size="sm" onClick={() => toast.success("Draft saved (demo)")} className="gap-1.5 text-xs h-9"><FloppyDisk size={12} />Save Draft</Button>
+          {cur < total - 1 ? (<Button onClick={handleNext} className="gap-1.5 text-xs h-9">Next<CaretRight size={14} /></Button>) : (<Button onClick={() => toast.success("Registration submitted! (demo)")} className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700"><PaperPlaneTilt size={12} />Submit</Button>)}
         </div>
       </div>
     </div>

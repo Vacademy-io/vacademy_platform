@@ -1,6 +1,9 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
+// Local admin-core override — kept for ad-hoc dev testing. Production callers
+// must use BASE_URL; flip specific URL constants to this only while testing locally.
+export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 
@@ -346,6 +349,9 @@ export const GET_USER_DOC_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/
 export const GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/learner-video-question-activity-logs`;
 export const GET_QUESTION_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/question-slide-activity-logs`;
 export const GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
+export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
+export const GET_SLIDE_BY_ID = `${"http://localhost:8072"}/admin-core-service/slide/v1/slide`;
+export const SAVE_QUIZ_QUESTION_FEEDBACK = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;
@@ -493,6 +499,11 @@ export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
 // Layer 3 — Create Assessment from a completed recording transcript.
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
+
+// Persist LLM-generated study notes (Markdown) so the next dialog open
+// can show them without re-running the LLM. POST body: { markdown: string }.
+export const RECORDING_STUDY_NOTES = (scheduleId: string, recordingId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/study-notes`;
 
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
@@ -766,6 +777,12 @@ export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
 
+// Institute Payment Gateway Admin CRUD
+export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/payment-gateways?instituteId=${instituteId}`;
+export const INSTITUTE_PAYMENT_GATEWAY_BY_ID = (instituteId: string, mappingId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/payment-gateways/${mappingId}?instituteId=${instituteId}`;
+
 // Application Stage
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
 
@@ -839,3 +856,10 @@ export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFi
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
 export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;
+
+// Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
+// are admin-gated via JWT + clientId header (auto-injected by axiosInstance);
+// validate is a public endpoint used by all three learner checkout surfaces.
+export const COUPON_BASE = `${BASE_URL}/admin-core-service/v1/coupon`;
+export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
+export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;

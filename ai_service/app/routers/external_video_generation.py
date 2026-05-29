@@ -355,7 +355,12 @@ async def generate_video_external(
             try:
                 with make_db_session() as bg_session:
                     bg_svc = VideoGenerationService(
-                        repository=AiVideoRepository(session=bg_session),
+                        # Session-less repo: every get/update opens its own
+                        # short-lived, pre-pinged session and closes it. Sharing
+                        # the long-lived `bg_session` here caused reads to leave a
+                        # transaction open across the multi-minute render, which
+                        # Postgres then killed (idle-in-transaction timeout).
+                        repository=AiVideoRepository(),
                         s3_service=S3Service()
                     )
                     async for event in bg_svc.generate_till_stage(
@@ -668,8 +673,9 @@ async def resume_video_external(
             try:
                 with make_db_session() as bg_session:
                     bg_svc = VideoGenerationService(
-                        repository=AiVideoRepository(session=bg_session),
-                        s3_service=S3Service(),
+                        # Session-less repo — see note in _run_generation. Avoids
+                        # idle-in-transaction kills across the long resume render.
+                        repository=AiVideoRepository(),
                     )
                     # Retrieve the original record to get prompt + settings
                     rec = bg_svc.repository.get_by_video_id(vid)
@@ -834,7 +840,9 @@ async def retry_video_external(
         try:
             with make_db_session() as bg_session:
                 bg_svc = VideoGenerationService(
-                    repository=AiVideoRepository(session=bg_session),
+                    # Session-less repo — see note in _run_generation. Avoids
+                    # idle-in-transaction kills across the long retry render.
+                    repository=AiVideoRepository(),
                     s3_service=S3Service(),
                 )
                 rec = bg_svc.repository.get_by_video_id(vid)
@@ -1441,7 +1449,8 @@ async def build_sentence_clips_external(
         video_gen_root=service.video_gen_root,
     )
     try:
-        result = svc.build_for_video(video_id)
+        # Off the event loop — does blocking S3 I/O + audio slicing.
+        result = await asyncio.to_thread(svc.build_for_video, video_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except Exception as exc:
@@ -1549,7 +1558,11 @@ async def regenerate_sentence_external(
     overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
 
     try:
-        result = svc.regenerate_sentence(
+        # Off the event loop — same reason as /shot/regenerate: the pipeline's
+        # Sarvam TTS uses asyncio.run() and would silently fall back to a
+        # different voice if run on the FastAPI loop.
+        result = await asyncio.to_thread(
+            svc.regenerate_sentence,
             video_id=payload.video_id,
             sentence_id=payload.sentence_id,
             new_text=payload.new_text,
@@ -1686,7 +1699,14 @@ async def regenerate_shot_external(
     overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
 
     try:
-        result = svc.regenerate_shot(
+        # Run the blocking TTS+splice off the event loop. Critical: the pipeline's
+        # Sarvam TTS calls asyncio.run() internally, which raises ("cannot be
+        # called from a running event loop") if executed on the FastAPI loop —
+        # caught by Sarvam's try/except → silent fallback to a DIFFERENT (Edge)
+        # voice. Generation avoids this by running the pipeline in a thread pool;
+        # regen must do the same so the re-narrated voice matches the original.
+        result = await asyncio.to_thread(
+            svc.regenerate_shot,
             video_id=payload.video_id,
             shot_idx=payload.shot_idx,
             new_text=payload.new_text,
@@ -1707,6 +1727,76 @@ async def regenerate_shot_external(
         new_global_duration=result.new_global_duration,
         timeline_url=result.timeline_url,
     )
+
+
+class RebuildMasterRequest(BaseModel):
+    video_id: str
+
+
+class RebuildMasterResponse(BaseModel):
+    video_id: str
+    new_global_audio_url: str
+    total_duration: float
+    shot_count: int
+    word_count: int
+    timeline_url: str
+
+
+@router.post(
+    "/shot/rebuild-master",
+    response_model=RebuildMasterResponse,
+    summary="RECOVERY — rebuild master narration + words + timeline from per-shot clips (External, v3)",
+)
+async def rebuild_master_external(
+    payload: RebuildMasterRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RebuildMasterResponse:
+    """
+    Recover a video whose master narration / timeline was corrupted — e.g. a
+    bad shot regen that left a near-empty master MP3 and drove every shot /
+    entry / word timestamp negative (collapsing `total_duration`).
+
+    Re-concatenates the surviving per-shot clips referenced in `meta.shots[]`
+    (regenerated clips in `shot_clips/`, originals in `per_shot_tts/`, silent
+    gaps for skipped shots) into a fresh master + `words.json`, then recomputes
+    every shot / entry / `total_duration` offset from the real per-shot
+    durations. Edits are preserved because each shot's `audio_url` already
+    points at the correct clip. Idempotent — derives everything from S3
+    artifacts; the corrupted master is left as an orphaned version.
+
+    Errors:
+      - 400 — video / meta.shots[] missing.
+      - 500 — concat (ffmpeg) / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    # render_service isn't used by the rebuild (concat runs locally via ffmpeg),
+    # but SentenceClipService requires one; pass a (possibly unconfigured) instance.
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url or "",
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    try:
+        # Off the event loop — runs ffmpeg concat + S3 I/O.
+        result = await asyncio.to_thread(svc.rebuild_master_from_shots, payload.video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to rebuild master: {exc}")
+
+    return RebuildMasterResponse(**result)
 
 
 class SilenceSentenceRequest(BaseModel):
@@ -1763,7 +1853,9 @@ async def silence_sentence_external(
         video_gen_root=service.video_gen_root,
     )
     try:
-        result = svc.silence_sentence(
+        # Off the event loop — the splice makes a blocking render-server call.
+        result = await asyncio.to_thread(
+            svc.silence_sentence,
             video_id=payload.video_id,
             sentence_id=payload.sentence_id,
             crossfade_ms=payload.crossfade_ms,
@@ -1777,6 +1869,88 @@ async def silence_sentence_external(
     return RegenerateSentenceResponse(
         video_id=result.video_id,
         sentence=SentenceClipDto(**result.sentence),
+        duration_delta=result.duration_delta,
+        new_global_audio_url=result.new_global_audio_url,
+        new_global_duration=result.new_global_duration,
+        timeline_url=result.timeline_url,
+    )
+
+
+class SilenceShotRequest(BaseModel):
+    video_id: str
+    shot_idx: int = Field(
+        ..., description="Zero-based shot index, matches `shot_idx` in meta.shots[]",
+    )
+    crossfade_ms: int = Field(default=50, ge=0, le=2000)
+    head_pad_ms: int = Field(default=40, ge=0, le=500)
+
+
+@router.post(
+    "/shot/silence",
+    response_model=RegenerateShotResponse,
+    summary="Mute one shot — replace its audio with silence of equal length (External, v3)",
+)
+async def silence_shot_external(
+    payload: SilenceShotRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateShotResponse:
+    """
+    Replace one shot's audio with synthesized silence of identical length.
+    Total duration and downstream timestamps are preserved (duration_delta ~0).
+
+    The shot stays in `meta.shots[]` (with empty `text` + `audio_url` and
+    `audio_skipped=True`) so the editor can re-narrate the same slot via
+    /shot/regenerate. Also writes the per-entry audio ref with policy='silent'.
+
+    Refuses `audio_policy=intrinsic_only` shots (source clip / Veo) — they
+    carry their own audio.
+
+    Errors:
+      - 400 — shot not found / no meta.shots[] (pre-v3) / intrinsic_only.
+      - 503 — render server not configured.
+      - 500 — splice / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    try:
+        # Off the event loop — the splice makes a blocking render-server call.
+        result = await asyncio.to_thread(
+            svc.silence_shot,
+            video_id=payload.video_id,
+            shot_idx=payload.shot_idx,
+            crossfade_ms=payload.crossfade_ms,
+            head_pad_ms=payload.head_pad_ms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to silence shot: {exc}")
+
+    return RegenerateShotResponse(
+        video_id=result.video_id,
+        shot=ShotClipDto(**result.shot),
         duration_delta=result.duration_delta,
         new_global_audio_url=result.new_global_audio_url,
         new_global_duration=result.new_global_duration,
@@ -1902,7 +2076,9 @@ async def insert_shot_external(
     html_model = _resolve_html_model(db, quality_tier)
 
     try:
-        result = svc.insert_shot(
+        # Off the event loop — runs LLM/HTML generation + S3 I/O.
+        result = await asyncio.to_thread(
+            svc.insert_shot,
             video_id=payload.video_id,
             gap_start=payload.gap_start,
             gap_end=payload.gap_end,
@@ -3682,3 +3858,217 @@ async def delete_audio_track_external(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===========================================================================
+# Media picker — stock search (Pexels/Pixabay), AI image gen, re-host, and the
+# per-institute saved asset library. Powers the editor's unified media picker
+# wherever an image/video is uploaded or replaced.
+# ===========================================================================
+
+
+class MediaSearchRequest(BaseModel):
+    query: str
+    provider: str = Field(default="auto", description="pexels | pixabay | auto")
+    orientation: str = "landscape"
+    per_page: int = Field(default=24, ge=1, le=80)
+
+
+class MediaSearchItem(BaseModel):
+    url: str
+    thumb: str = ""
+    photographer: str = ""
+    photographer_url: str = ""
+    alt: str = ""
+    source: str = ""
+    source_url: str = ""
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration: Optional[float] = None
+    kind: str = "image"
+
+
+class MediaSearchResponse(BaseModel):
+    items: List[MediaSearchItem]
+    provider_used: str
+
+
+class GenerateImageRequest(BaseModel):
+    prompt: str
+    orientation: str = "landscape"
+
+
+class GenerateImageResponse(BaseModel):
+    url: str
+
+
+class RehostRequest(BaseModel):
+    url: str
+    kind: str = "image"
+
+
+class RehostResponse(BaseModel):
+    url: str
+
+
+class SaveAssetRequest(BaseModel):
+    url: str
+    kind: str = "image"
+    source: str = "upload"  # upload | pexels | pixabay | ai
+    thumb_url: Optional[str] = None
+    prompt: Optional[str] = None
+    source_url: Optional[str] = None
+    photographer: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration: Optional[float] = None
+
+
+@router.post(
+    "/media/search-images",
+    response_model=MediaSearchResponse,
+    summary="Search stock photos (Pexels/Pixabay) for the editor media picker (External)",
+)
+async def media_search_images(
+    payload: MediaSearchRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> MediaSearchResponse:
+    from ..services.media_search_service import MediaSearchService
+
+    items, used = MediaSearchService().search_images(
+        query=payload.query, provider=payload.provider,
+        orientation=payload.orientation, per_page=payload.per_page,
+    )
+    return MediaSearchResponse(items=[MediaSearchItem(**i) for i in items], provider_used=used)
+
+
+@router.post(
+    "/media/search-videos",
+    response_model=MediaSearchResponse,
+    summary="Search stock videos (Pexels/Pixabay) for the editor media picker (External)",
+)
+async def media_search_videos(
+    payload: MediaSearchRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> MediaSearchResponse:
+    from ..services.media_search_service import MediaSearchService
+
+    items, used = MediaSearchService().search_videos(
+        query=payload.query, provider=payload.provider,
+        orientation=payload.orientation, per_page=payload.per_page,
+    )
+    return MediaSearchResponse(items=[MediaSearchItem(**i) for i in items], provider_used=used)
+
+
+@router.post(
+    "/media/rehost",
+    response_model=RehostResponse,
+    summary="Re-host a remote (stock/AI) media URL into our S3 (External)",
+)
+async def media_rehost(
+    payload: RehostRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RehostResponse:
+    from ..services.media_search_service import MediaSearchService
+
+    try:
+        url = MediaSearchService().rehost_remote_url(payload.url, payload.kind)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to re-host media: {e}")
+    return RehostResponse(url=url)
+
+
+@router.post(
+    "/media/generate-image",
+    response_model=GenerateImageResponse,
+    summary="Generate an image with AI for the editor media picker (External)",
+)
+async def media_generate_image(
+    payload: GenerateImageRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    _credits=Depends(require_credits("image", estimated_tokens=2000)),
+) -> GenerateImageResponse:
+    from ..services.media_search_service import MediaSearchService
+
+    prompt = (payload.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    try:
+        url = await MediaSearchService().generate_image(prompt, payload.orientation)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {e}")
+    return GenerateImageResponse(url=url)
+
+
+@router.post(
+    "/media/asset",
+    response_model=Dict[str, Any],
+    summary="Save a media asset to the institute's editor library (External)",
+)
+async def save_media_asset(
+    payload: SaveAssetRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> Dict[str, Any]:
+    from ..repositories.editor_media_asset_repository import EditorMediaAssetRepository
+
+    if payload.kind not in ("image", "video"):
+        raise HTTPException(status_code=400, detail="kind must be image|video")
+    if payload.source not in ("upload", "pexels", "pixabay", "ai"):
+        raise HTTPException(status_code=400, detail="invalid source")
+    try:
+        rec = EditorMediaAssetRepository().create(
+            institute_id=institute_id,
+            url=payload.url,
+            kind=payload.kind,
+            source=payload.source,
+            thumb_url=payload.thumb_url,
+            prompt=payload.prompt,
+            source_url=payload.source_url,
+            photographer=payload.photographer,
+            width=payload.width,
+            height=payload.height,
+            duration=payload.duration,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save asset: {e}")
+    return rec.to_dict()
+
+
+@router.get(
+    "/media/assets",
+    response_model=List[Dict[str, Any]],
+    summary="List the institute's saved editor media assets (External)",
+)
+async def list_media_assets(
+    kind: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 60,
+    offset: int = 0,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> List[Dict[str, Any]]:
+    from ..repositories.editor_media_asset_repository import EditorMediaAssetRepository
+
+    rows = EditorMediaAssetRepository().list_by_institute(
+        institute_id, kind=kind, q=q, limit=min(max(limit, 1), 200), offset=max(offset, 0),
+    )
+    return [r.to_dict() for r in rows]
+
+
+@router.delete(
+    "/media/asset/{asset_id}",
+    response_model=Dict[str, Any],
+    summary="Delete a saved editor media asset (External)",
+)
+async def delete_media_asset(
+    asset_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> Dict[str, Any]:
+    from ..repositories.editor_media_asset_repository import EditorMediaAssetRepository
+
+    deleted = EditorMediaAssetRepository().delete_by_id(asset_id, institute_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="asset not found")
+    return {"deleted": True}
+

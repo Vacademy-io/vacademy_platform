@@ -19,13 +19,13 @@ import { Input } from "@/components/ui/input";
 import { MyInput } from "@/components/design-system/input";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Mail,
+  Envelope,
   ArrowLeft,
-  RefreshCw,
+  ArrowsClockwise,
   Shield,
-  CheckCircle2,
-  AlertTriangle,
-} from "lucide-react";
+  CheckCircle,
+  Warning,
+} from "@phosphor-icons/react";
 
 import { TokenKey } from "@/constants/auth/tokens";
 import {
@@ -467,7 +467,7 @@ export function EmailLogin({
                 className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg"
               >
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <Warning className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <h4 className="font-medium text-amber-800 text-sm">
                       Email Login Temporarily Unavailable
@@ -511,7 +511,7 @@ export function EmailLogin({
                               onChangeFunction={field.onChange}
                               disabled={!ENABLE_OTP_FOR_LOGIN_SIGNUP}
                             />
-                            <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                            <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                           </div>
                         </FormControl>
                       </FormItem>
@@ -542,13 +542,13 @@ export function EmailLogin({
                             ease: "linear",
                           }}
                         >
-                          <RefreshCw className="w-4 h-4" />
+                          <ArrowsClockwise className="w-4 h-4" />
                         </motion.div>
                         <span className="text-sm">Sending code...</span>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center space-x-2">
-                        <Mail className="w-4 h-4" />
+                        <Envelope className="w-4 h-4" />
                         <span className="text-sm">Send Verification Code</span>
                       </div>
                     )}
@@ -583,7 +583,7 @@ export function EmailLogin({
                 }}
                 className="w-12 h-12 bg-gray-100 rounded-md mx-auto flex items-center justify-center"
               >
-                <Mail className="w-6 h-6 text-gray-700" />
+                <Envelope className="w-6 h-6 text-gray-700" />
               </motion.div>
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -598,7 +598,7 @@ export function EmailLogin({
                   transition={{ delay: 0.3 }}
                   className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1"
                 >
-                  <CheckCircle2 className="w-3 h-3 text-gray-600" />
+                  <CheckCircle className="w-3 h-3 text-gray-600" />
                   <span className="text-sm font-medium text-gray-800">
                     {email}
                   </span>
@@ -698,7 +698,7 @@ export function EmailLogin({
                             ease: "linear",
                           }}
                         >
-                          <RefreshCw className="w-4 h-4" />
+                          <ArrowsClockwise className="w-4 h-4" />
                         </motion.div>
                         <span className="text-sm">Verifying...</span>
                       </div>
@@ -743,12 +743,12 @@ export function EmailLogin({
                     >
                       {timer > 0 ? (
                         <div className="flex items-center space-x-1">
-                          <RefreshCw className="w-3 h-3" />
+                          <ArrowsClockwise className="w-3 h-3" />
                           <span className="text-xs">Resend in {timer}s</span>
                         </div>
                       ) : (
                         <div className="flex items-center space-x-1">
-                          <RefreshCw className="w-3 h-3" />
+                          <ArrowsClockwise className="w-3 h-3" />
                           <span className="text-xs">Resend code</span>
                         </div>
                       )}

@@ -27,11 +27,11 @@ export const CertificateDialog = ({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-md p-0 overflow-hidden">
                 <div
-                    className="bg-gradient-to-r from-primary-600 to-primary-500 text-white px-5 py-4 flex items-center gap-3"
+                    className="bg-gradient-to-r from-primary-500 to-primary-400 text-white px-5 py-4 flex items-center gap-3"
                     style={{
                         background:
-                            "linear-gradient(to right, var(--color-primary-600, #2563eb), var(--color-primary-500, #3b82f6))",
-                        color: "#fff",
+                            "linear-gradient(to right, hsl(var(--primary-500)), hsl(var(--primary-400)))",
+                        color: "white",
                     }}
                 >
                     <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">

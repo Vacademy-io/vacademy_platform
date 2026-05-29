@@ -45,6 +45,29 @@ export type SelectedPayment = PaymentPlan & {
   duration?: string;
 };
 
+/**
+ * Canonical price source for a SelectedPayment. `actual_price` is the field
+ * populated on every construction path (helper.ts and the plan-section
+ * spreads alike); `amount` is set only on some paths and historically caused
+ * pricing/gateway mismatches when callers read one but not the other.
+ *
+ * Reading order: actual_price → amount → 0. Always returns a number so
+ * callers can do math without nullish checks. Use this anywhere you'd
+ * otherwise inline `selectedPayment?.actual_price ?? selectedPayment?.amount`.
+ */
+export const getSelectedPaymentPrice = (
+  selectedPayment: SelectedPayment | null | undefined
+): number => {
+  if (!selectedPayment) return 0;
+  if (typeof selectedPayment.actual_price === "number") {
+    return selectedPayment.actual_price;
+  }
+  if (typeof selectedPayment.amount === "number") {
+    return selectedPayment.amount;
+  }
+  return 0;
+};
+
 export interface EnrollmentData {
   registrationData: Record<
     string,

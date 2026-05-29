@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { GraduationCap, RotateCcw } from "lucide-react";
+import { GraduationCap, ArrowCounterClockwise } from "@phosphor-icons/react";
 import { FormProvider, UseFormReturn, useWatch } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
 import PhoneInputField from "@/components/design-system/phone-input-field";
@@ -644,7 +644,7 @@ const RegistrationStep = ({
                   className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
                   onClick={() => form.reset()}
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <ArrowCounterClockwise className="w-4 h-4" />
                   Reset
                 </button>
                 
@@ -655,7 +655,7 @@ const RegistrationStep = ({
                   layoutVariant="default"
                   onClick={handleNextClick}
                   disable={isLoadingOtp || form.formState.isSubmitting}
-                  className="min-w-[140px]"
+                  className="min-w-reg-150"
                 >
                   {isLoadingOtp || form.formState.isSubmitting ? (
                     <>

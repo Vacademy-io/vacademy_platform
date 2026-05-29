@@ -15,7 +15,7 @@ const TimeUnit: React.FC<{ value: string; label: string }> = ({
       <div className="absolute inset-x-0 top-0 h-1/2 bg-white/10 rounded-t-xl" />
       <span className="relative z-10">{value}</span>
     </div>
-    <span className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-widest font-medium">
+    <span className="text-caption sm:text-xs text-gray-400 uppercase tracking-widest font-medium">
       {label}
     </span>
   </div>

@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useExportSettings } from '../contexts/export-settings-context';
 import { processHtmlString, getBase64FromUrl } from '../utils/utils';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Question } from '../types/question';
 import { Resizable } from 're-resizable';
 import { RefreshCw } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Add answerSpacing parameter to your props
 interface QuestionComponentProps {
@@ -15,13 +15,33 @@ interface QuestionComponentProps {
     showMarks?: boolean;
     showCheckboxes?: boolean;
     answerSpacing?: number; // Added this
+    /**
+     * When true, highlights the correct option(s) (parsed from
+     * question.marking_json -> data.correctOptionIds) and renders the
+     * optional `question.explanation_text` below the options. Used by
+     * answer-key PDF exports; regular question-paper exports leave this
+     * false so the printable is suitable for handing out to learners.
+     */
+    showAnswers?: boolean;
 }
+
+const parseCorrectOptionIds = (markingJson: string | undefined): string[] => {
+    if (!markingJson) return [];
+    try {
+        const parsed = JSON.parse(markingJson);
+        const ids = parsed?.data?.correctOptionIds;
+        return Array.isArray(ids) ? ids.map(String) : [];
+    } catch {
+        return [];
+    }
+};
 
 export function QuestionComponent({
     question,
     showMarks = true,
     showCheckboxes = false,
     answerSpacing, // Added this
+    showAnswers = false,
 }: QuestionComponentProps) {
     const { settings, updateSettings } = useExportSettings();
     const marks = JSON.parse(question.marking_json)?.data?.totalMark || 0;
@@ -306,52 +326,107 @@ export function QuestionComponent({
             </div>
 
             <div className="grid grid-cols-2 pl-4">
-                {question.options_with_explanation.map((option, index) => (
-                    <p key={option.id} className="flex gap-x-2">
-                        {showCheckboxes && (
-                            <Checkbox className="pointer-events-none mt-1 rounded-sm border-2 border-black" />
-                        )}
+                {question.options_with_explanation.map((option, index) => {
+                    const isCorrect =
+                        showAnswers &&
+                        parseCorrectOptionIds(question.marking_json).includes(
+                            String(option.id ?? index)
+                        );
+                    return (
+                        <p
+                            key={option.id}
+                            className={cn(
+                                'flex gap-x-2 rounded-sm px-2 py-1',
+                                // Multi-signal correct-answer styling: color
+                                // (bg + green text) + weight (bold) + shape
+                                // (2px ring) + the filled checkbox below.
+                                // The ring + bold + filled box survive a B&W
+                                // photocopy where the green tint would be
+                                // lost, so the answer key still reads
+                                // correctly after printing.
+                                isCorrect &&
+                                    'bg-success-50 font-semibold text-success-800 ring-2 ring-success-500'
+                            )}
+                        >
+                            {showCheckboxes && (
+                                <span
+                                    aria-hidden
+                                    className={cn(
+                                        'mt-1 inline-flex size-4 shrink-0 items-center justify-center rounded-sm border-2 border-black text-xs leading-none',
+                                        // Print-safe inline checkbox — using
+                                        // Radix Checkbox here would lose its
+                                        // checked state through html2canvas
+                                        // capture. A styled <span> always
+                                        // renders predictably.
+                                        isCorrect &&
+                                            'border-primary-500 bg-primary-500 text-white'
+                                    )}
+                                >
+                                    {isCorrect ? '✓' : ''}
+                                </span>
+                            )}
 
-                        <p>
-                            {String.fromCharCode(97 + index)}
-                            {')'}{' '}
+                            <p>
+                                {String.fromCharCode(97 + index)}
+                                {')'}{' '}
+                            </p>
+                            <div className="mr-2">
+                                {processHtmlString(option.text.content).map(
+                                    (item, index) => {
+                                        if (item.type === 'text') {
+                                            return (
+                                                <span
+                                                    key={
+                                                        item.content.slice(
+                                                            0,
+                                                            10
+                                                        ) + index
+                                                    }
+                                                    id="text-content"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: item.content,
+                                                    }}
+                                                />
+                                            );
+                                        } else if (item.type === 'image') {
+                                            return (
+                                                <img
+                                                    key={index}
+                                                    src={
+                                                        base64Images[
+                                                            item.content
+                                                        ] || item.content
+                                                    }
+                                                    alt={`Question image ${index + 1}`}
+                                                    className=""
+                                                />
+                                            );
+                                        } else if (item.type === 'formula') {
+                                            return (
+                                                <span
+                                                    key={`formula-${index}`}
+                                                    className="inline-block align-middle"
+                                                    dangerouslySetInnerHTML={{
+                                                        __html: item.content,
+                                                    }}
+                                                />
+                                            );
+                                        }
+                                        return null;
+                                    }
+                                )}
+                            </div>
                         </p>
-                        <div className="mr-2">
-                            {processHtmlString(option.text.content).map((item, index) => {
-                                if (item.type === 'text') {
-                                    return (
-                                        <span
-                                            key={item.content.slice(0, 10) + index}
-                                            id="text-content"
-                                            dangerouslySetInnerHTML={{
-                                                __html: item.content,
-                                            }}
-                                        />
-                                    );
-                                } else if (item.type === 'image') {
-                                    return (
-                                        <img
-                                            key={index}
-                                            src={base64Images[item.content] || item.content}
-                                            alt={`Question image ${index + 1}`}
-                                            className=""
-                                        />
-                                    );
-                                } else if (item.type === 'formula') {
-                                    return (
-                                        <span
-                                            key={`formula-${index}`}
-                                            className="inline-block align-middle"
-                                            dangerouslySetInnerHTML={{ __html: item.content }}
-                                        />
-                                    );
-                                }
-                                return null;
-                            })}
-                        </div>
-                    </p>
-                ))}
+                    );
+                })}
             </div>
+
+            {showAnswers && question.explanation_text && (
+                <div className="rounded-sm border-l-4 border-success-300 bg-success-50/60 px-3 py-2 text-sm italic text-success-900">
+                    <span className="font-semibold not-italic">Why: </span>
+                    {question.explanation_text}
+                </div>
+            )}
 
             {/* Add this for answer spacing */}
             {(question.question_type === 'LONG_ANSWER' ||

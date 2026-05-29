@@ -28,15 +28,20 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateResponseDTO;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentPlanService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.ReenrollmentGapValidationService;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -85,6 +90,12 @@ public class LearnerEnrollRequestService {
     private LearnerCouponService learnerCouponService;
 
     @Autowired
+    private CouponValidationService couponValidationService;
+
+    @Autowired
+    private AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    @Autowired
     private DynamicNotificationService dynamicNotificationService;
 
     @Autowired
@@ -92,6 +103,9 @@ public class LearnerEnrollRequestService {
 
     @Autowired
     private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
 
     @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
@@ -177,13 +191,15 @@ public class LearnerEnrollRequestService {
                     learnerEnrollRequestDTO.getInstituteId(),
                     enrollDTO.getPackageSessionIds());
 
-            // Suppress credential email for PAID enrollments — will be sent after payment confirmation
+            // Suppress credential email for PAID enrollments — will be sent after payment
+            // confirmation
             if (sendCredentials && StringUtils.hasText(enrollDTO.getPaymentOptionId())) {
                 try {
                     PaymentOption earlyPaymentOption = paymentOptionService.findById(enrollDTO.getPaymentOptionId());
                     if (earlyPaymentOption != null
                             && !PaymentOptionType.FREE.name().equals(earlyPaymentOption.getType())) {
-                        log.info("Non-free enrollment detected (type={}). Suppressing credential email until payment confirmed.",
+                        log.info(
+                                "Non-free enrollment detected (type={}). Suppressing credential email until payment confirmed.",
                                 earlyPaymentOption.getType());
                         sendCredentials = false;
                     }
@@ -205,6 +221,14 @@ public class LearnerEnrollRequestService {
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
+
+        // Verify the FE-supplied (plan, option, package_session) triple all
+        // belong to the FE-supplied enroll_invite. Without this, a learner
+        // could combine a free invite's path with a paid plan's IDs and
+        // enroll into a paid course for nothing. See validateEnrollmentReferences
+        // for the per-rule rationale.
+        validateEnrollmentReferences(enrollInvite, paymentOption, paymentPlan,
+                enrollDTO.getPackageSessionIds());
 
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
         String userPlanSource = UserPlanSourceEnum.USER.name();
@@ -316,6 +340,8 @@ public class LearnerEnrollRequestService {
 
         UserPlan userPlan = createUserPlan(
                 learnerEnrollRequestDTO.getUser().getId(),
+                learnerEnrollRequestDTO.getInstituteId(),
+                learnerEnrollRequestDTO.getUser() != null ? learnerEnrollRequestDTO.getUser().getEmail() : null,
                 enrollDTO,
                 enrollInvite,
                 paymentOption,
@@ -324,7 +350,8 @@ public class LearnerEnrollRequestService {
                 subOrgId);
 
         // B2B: After org-level UserPlan creation, create scoped FREE invites
-        // For FREE plans (status=ACTIVE), do it now. For PAID plans, webhook handles it.
+        // For FREE plans (status=ACTIVE), do it now. For PAID plans, webhook handles
+        // it.
         if (EnrollInviteTag.SUB_ORG.name().equals(enrollInvite.getTag())
                 && enrollInvite.getSubOrgId() != null
                 && UserPlanStatusEnum.ACTIVE.name().equals(userPlan.getStatus())) {
@@ -386,18 +413,18 @@ public class LearnerEnrollRequestService {
             if (!hasWorkflow) {
                 log.info("FREE enrollment completed. Sending enrollment notifications for user: {}",
                         learnerEnrollRequestDTO.getUser().getId());
-//                sendDynamicNotificationForEnrollment(
-//                        learnerEnrollRequestDTO.getInstituteId(),
-//                        learnerEnrollRequestDTO.getUser(),
-//                        paymentOption,
-//                        enrollInvite,
-//                        enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
-//                );
-//
-//                sendReferralInvitationEmail(
-//                        learnerEnrollRequestDTO.getInstituteId(),
-//                        learnerEnrollRequestDTO.getUser(),
-//                        enrollInvite);
+                // sendDynamicNotificationForEnrollment(
+                // learnerEnrollRequestDTO.getInstituteId(),
+                // learnerEnrollRequestDTO.getUser(),
+                // paymentOption,
+                // enrollInvite,
+                // enrollDTO.getPackageSessionIds().get(0) // Get first package session ID
+                // );
+                //
+                // sendReferralInvitationEmail(
+                // learnerEnrollRequestDTO.getInstituteId(),
+                // learnerEnrollRequestDTO.getUser(),
+                // enrollInvite);
             } else {
                 log.info(
                         "FREE enrollment with workflow. Notifications skipped for user: {}. Workflow will handle enrollment.",
@@ -426,14 +453,14 @@ public class LearnerEnrollRequestService {
                                 // Layer 1: warn Sentry when phone is missing or too short to be valid
                                 if (rawPhone == null || rawPhone.isEmpty()
                                         || rawPhone.replaceAll("[^0-9]", "").length() < 10) {
-                                    SentryLogger.logWarning("WhatsApp enrollment skipped: invalid or missing phone number",
+                                    SentryLogger.logWarning(
+                                            "WhatsApp enrollment skipped: invalid or missing phone number",
                                             Map.of(
                                                     "user.id", learnerEnrollRequestDTO.getUser().getId(),
                                                     "phone", rawPhone != null ? rawPhone : "null",
                                                     "workflow.id", workflowId,
                                                     "package_session.id", packageSessionId,
-                                                    "layer", "1-enrollment-trigger"
-                                            ));
+                                                    "layer", "1-enrollment-trigger"));
                                 }
                                 userMap.put("name", learnerEnrollRequestDTO.getUser().getFullName());
                                 userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
@@ -481,8 +508,7 @@ public class LearnerEnrollRequestService {
                                                 "workflow.id", workflowId,
                                                 "user.id", learnerEnrollRequestDTO.getUser().getId(),
                                                 "package_session.id", packageSessionId,
-                                                "layer", "1-enrollment-trigger"
-                                        ));
+                                                "layer", "1-enrollment-trigger"));
                             }
                         }
                     }
@@ -499,6 +525,7 @@ public class LearnerEnrollRequestService {
                     userPlan.getId());
         }
 
+        response.setUserPlanId(userPlan.getId());
         return response;
     }
 
@@ -553,8 +580,8 @@ public class LearnerEnrollRequestService {
 
         try {
             // 1. Update created SSIGM entries: set ROOT_ADMIN role and subOrg
-            List<StudentSessionInstituteGroupMapping> mappings =
-                    ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "ACTIVE");
+            List<StudentSessionInstituteGroupMapping> mappings = ssigmRepository
+                    .findByUserPlanIdAndStatus(userPlan.getId(), "ACTIVE");
             if (mappings.isEmpty()) {
                 // For PAID plans, mappings may be in INVITED status
                 mappings = ssigmRepository.findByUserPlanIdAndStatus(userPlan.getId(), "INVITED");
@@ -586,6 +613,11 @@ public class LearnerEnrollRequestService {
             }
 
             // 3. Create faculty mappings for each package session (admin portal access)
+            // Resolve the FSPSSM access_permission CSV once from the sub-org's settingJson
+            // (set at create-with-subscription time via admin_permissions). Falls back to
+            // "FULL" inside the service when the sub-org has no explicit ADMIN_PERMISSIONS.
+            String accessPermissionCsv = subOrgSubscriptionService
+                    .resolveAdminPermissionCsv(subOrgId, enrollInvite.getInstituteId());
             for (String packageSessionId : packageSessionIds) {
                 try {
                     // PACKAGE_SESSION entry
@@ -597,15 +629,16 @@ public class LearnerEnrollRequestService {
                             .userType("ROOT_ADMIN")
                             .accessType("PACKAGE_SESSION")
                             .accessId(packageSessionId)
-                            .accessPermission("FULL")
+                            .accessPermission(accessPermissionCsv)
                             .linkageType("SUB_ORG")
                             .suborgId(subOrgId)
                             .build();
                     facultyService.grantUserAccess(accessDTO);
-                    log.info("Created faculty mapping for user={} packageSession={} sub-org={}",
-                            userId, packageSessionId, subOrgId);
+                    log.info("Created faculty mapping for user={} packageSession={} sub-org={} perm={}",
+                            userId, packageSessionId, subOrgId, accessPermissionCsv);
 
-                    // Auto-discover invites with sub_org_id for this PS and create ENROLL_INVITE entries
+                    // Auto-discover invites with sub_org_id for this PS and create ENROLL_INVITE
+                    // entries
                     List<String> inviteIds = enrollInviteRepository
                             .findInviteIdsForSubOrgAndPackageSession(subOrgId, packageSessionId);
                     for (String inviteId : inviteIds) {
@@ -617,7 +650,7 @@ public class LearnerEnrollRequestService {
                                 .userType("ROOT_ADMIN")
                                 .accessType("ENROLL_INVITE")
                                 .accessId(inviteId)
-                                .accessPermission("FULL")
+                                .accessPermission(accessPermissionCsv)
                                 .linkageType("SUB_ORG")
                                 .suborgId(subOrgId)
                                 .build();
@@ -641,7 +674,8 @@ public class LearnerEnrollRequestService {
     /**
      * Validates seat limit for SUBORG_LEARNER enrollments.
      * Finds ROOT_ADMIN's UserPlan → PaymentPlan.memberCount for the sub-org + PS.
-     * Counts active learner members (excluding ROOT_ADMIN) and rejects if at capacity.
+     * Counts active learner members (excluding ROOT_ADMIN) and rejects if at
+     * capacity.
      * Each PS is validated independently.
      */
     private void validateSubOrgSeatLimit(String subOrgId, String packageSessionId) {
@@ -679,6 +713,61 @@ public class LearnerEnrollRequestService {
                 .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
     }
 
+    /**
+     * Defense against FE-supplied reference tampering. The enroll request
+     * carries four IDs (invite, payment_option, plan, package_sessions);
+     * without verifying their relationships a learner could pair a free
+     * invite's code path with another course's paid plan and walk away
+     * with a paid enrollment for nothing. We assert:
+     *
+     *   1. If a plan was supplied, it belongs to the supplied payment option.
+     *   2. Every supplied package_session has an ACTIVE
+     *      (enroll_invite, payment_option, package_session) bridge row.
+     *
+     * Package-session-less flows (CPO with no package context) skip rule 2.
+     */
+    private void validateEnrollmentReferences(EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            PaymentPlan paymentPlan,
+            List<String> packageSessionIds) {
+        if (paymentPlan != null
+                && paymentPlan.getPaymentOption() != null
+                && !paymentOption.getId().equals(paymentPlan.getPaymentOption().getId())) {
+            log.warn("Reference mismatch: plan {} belongs to option {}, supplied option {}",
+                    paymentPlan.getId(),
+                    paymentPlan.getPaymentOption().getId(),
+                    paymentOption.getId());
+            throw new VacademyException("Selected plan does not belong to the chosen payment option.");
+        }
+
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return;
+        }
+
+        java.util.List<vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption> bridges =
+                packageSessionLearnerInvitationToPaymentOptionRepository
+                        .findByEnrollInvite_IdInAndPaymentOption_IdInAndPackageSession_IdInAndStatusIn(
+                                java.util.List.of(enrollInvite.getId()),
+                                java.util.List.of(paymentOption.getId()),
+                                packageSessionIds,
+                                java.util.List.of("ACTIVE"));
+        java.util.Set<String> bridged = new java.util.HashSet<>();
+        for (var b : bridges) {
+            if (b.getPackageSession() != null) {
+                bridged.add(b.getPackageSession().getId());
+            }
+        }
+        for (String psId : packageSessionIds) {
+            if (psId != null && !bridged.contains(psId)) {
+                log.warn(
+                        "Reference mismatch: package_session {} not bridged to invite {} + option {}",
+                        psId, enrollInvite.getId(), paymentOption.getId());
+                throw new VacademyException(
+                        "Selected batch is not part of this invite. Please reload and try again.");
+            }
+        }
+    }
+
     private PaymentOption getValidatedPaymentOption(String paymentOptionId) {
         return Optional.ofNullable(paymentOptionId)
                 .map(paymentOptionService::findById)
@@ -693,6 +782,8 @@ public class LearnerEnrollRequestService {
 
     private UserPlan createUserPlan(
             String userId,
+            String instituteId,
+            String userEmail,
             LearnerPackageSessionsEnrollDTO enrollDTO,
             EnrollInvite enrollInvite,
             PaymentOption paymentOption,
@@ -719,10 +810,19 @@ public class LearnerEnrollRequestService {
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();
         }
+
+        // Resolve discount coupon (if learner entered one at checkout) by
+        // re-running the validator. Do NOT trust FE-supplied IDs — the FE only
+        // sends the code string; the BE recomputes scope, plan-type fit, etc.
+        // and produces the AppliedCouponDiscount that UserPlanService then
+        // snapshots + atomically decrements via CouponRedemptionService.
+        AppliedCouponDiscount appliedCouponDiscount = resolveAppliedCoupon(
+                enrollDTO, instituteId, userEmail, paymentPlan);
+
         return userPlanService.createUserPlan(
                 userId,
                 paymentPlan,
-                null, // coupon can be handled later if needed
+                appliedCouponDiscount,
                 enrollInvite,
                 paymentOption,
                 enrollDTO.getPaymentInitiationRequest(),
@@ -730,6 +830,48 @@ public class LearnerEnrollRequestService {
                 source,
                 subOrgId,
                 enrollDTO.getStartDate());
+    }
+
+    /**
+     * Returns the AppliedCouponDiscount that the learner-supplied code resolves
+     * to, or {@code null} when no code was supplied. Throws when a code was
+     * supplied but failed validation — the message carries the stable error
+     * code from {@link vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationMessages}
+     * so the controller can surface a learner-friendly error.
+     */
+    private AppliedCouponDiscount resolveAppliedCoupon(
+            LearnerPackageSessionsEnrollDTO enrollDTO,
+            String instituteId,
+            String userEmail,
+            PaymentPlan paymentPlan) {
+        String code = enrollDTO.getCouponCode();
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+
+        String packageSessionId = (enrollDTO.getPackageSessionIds() != null
+                && !enrollDTO.getPackageSessionIds().isEmpty())
+                ? enrollDTO.getPackageSessionIds().get(0)
+                : null;
+        Double totalAmount = paymentPlan != null ? paymentPlan.getActualPrice() : 0.0;
+
+        CouponValidateRequestDTO req = CouponValidateRequestDTO.builder()
+                .couponCode(code)
+                .instituteId(instituteId)
+                .packageSessionId(packageSessionId)
+                .enrollInviteId(enrollDTO.getEnrollInviteId())
+                .paymentPlanId(paymentPlan != null ? paymentPlan.getId() : enrollDTO.getPlanId())
+                .userEmail(userEmail)
+                .totalAmount(totalAmount)
+                .build();
+
+        CouponValidateResponseDTO resp = couponValidationService.validate(req);
+        if (!resp.isValid()) {
+            throw new VacademyException(resp.getMessage());
+        }
+        return appliedCouponDiscountRepository.findById(resp.getAppliedCouponDiscountId())
+                .orElseThrow(() -> new VacademyException(
+                        "Resolved AppliedCouponDiscount missing: " + resp.getAppliedCouponDiscountId()));
     }
 
     private LearnerEnrollResponseDTO enrollLearnerToBatch(
@@ -992,9 +1134,12 @@ public class LearnerEnrollRequestService {
     }
 
     /**
-     * Resolves the learner portal URL for the credential email's "Access Your Account" link.
-     * Priority: package.course_setting.LMS_SETTING.learndash_base_url → institute.learnerPortalBaseUrl → null.
-     * Kept in sync with the v3 path (BulkAssignmentService.resolveLearnerPortalUrl).
+     * Resolves the learner portal URL for the credential email's "Access Your
+     * Account" link.
+     * Priority: package.course_setting.LMS_SETTING.learndash_base_url →
+     * institute.learnerPortalBaseUrl → null.
+     * Kept in sync with the v3 path
+     * (BulkAssignmentService.resolveLearnerPortalUrl).
      */
     private String resolveLearnerPortalUrl(List<String> packageSessionIds, String instituteId) {
         String packageUrl = getLearndashBaseUrlFromPackage(packageSessionIds);

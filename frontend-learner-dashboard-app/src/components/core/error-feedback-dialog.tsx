@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Sentry from '@sentry/react';
 import { useLocation } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { Loader2, Bug, Send, User, Mail, FileText, Image as ImageIcon } from 'lucide-react';
+import { SpinnerGap, Bug, PaperPlaneTilt, User, Envelope, FileText, Image as ImageIcon } from '@phosphor-icons/react';
 import {
     Sheet,
     SheetContent,
@@ -298,7 +298,7 @@ export function ErrorFeedbackDialog({
             <SheetTrigger asChild>
                 {trigger || <MyButton buttonType="secondary">Report an Issue</MyButton>}
             </SheetTrigger>
-            <SheetContent className="sm:max-w-md w-[90vw] overflow-y-auto bg-white border-l border-gray-200 p-6">
+            <SheetContent className="sm:max-w-md w-vw-90 overflow-y-auto bg-white border-l border-gray-200 p-6">
                 <SheetHeader className="mb-6">
                     <SheetTitle className="text-xl font-bold text-gray-900">Report an Issue</SheetTitle>
                     <SheetDescription className="text-gray-500">
@@ -344,7 +344,7 @@ export function ErrorFeedbackDialog({
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="Please describe what you were doing when the error occurred..."
-                            className="min-h-[120px] resize-y bg-white border-gray-300 focus-visible:ring-1 focus-visible:ring-primary-500"
+                            className="min-h-reg-120 resize-y bg-white border-gray-300 focus-visible:ring-1 focus-visible:ring-primary-500"
                         />
                     </div>
 
@@ -383,12 +383,12 @@ export function ErrorFeedbackDialog({
                         >
                             {isSubmitting ? (
                                 <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    <SpinnerGap className="mr-2 h-4 w-4 animate-spin" />
                                     Sending...
                                 </>
                             ) : (
                                 <>
-                                    <Send className="mr-2 h-4 w-4" />
+                                    <PaperPlaneTilt className="mr-2 h-4 w-4" />
                                     Send Report
                                 </>
                             )}

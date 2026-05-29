@@ -23,7 +23,7 @@ export interface PriceWithMrpProps {
 }
 
 const sizeClassMap: Record<NonNullable<PriceWithMrpProps["size"]>, { actual: string; mrp: string }> = {
-  xs: { actual: "text-sm font-semibold", mrp: "text-[10px]" },
+  xs: { actual: "text-sm font-semibold", mrp: "text-3xs" },
   sm: { actual: "text-base font-semibold", mrp: "text-xs" },
   md: { actual: "text-lg font-bold", mrp: "text-sm" },
   lg: { actual: "text-2xl font-bold", mrp: "text-base" },
@@ -149,7 +149,7 @@ export const OfferBadge = ({ actual, elevated, className }: OfferBadgeProps) => 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm",
+        "inline-flex items-center gap-1 rounded-md bg-red-500 px-2 py-0.5 text-3xs font-bold uppercase tracking-wide text-white shadow-sm",
         className
       )}
     >

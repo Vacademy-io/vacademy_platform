@@ -16,7 +16,7 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType>({
   primaryColor: import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "neutral",
   setPrimaryColor: () => {},
-  getPrimaryColorCode: () => "#6B7280",
+  getPrimaryColorCode: () => "#6B7280", // design-lint-ignore: theme default color
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -29,7 +29,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       | { colors?: { primary?: Record<"500", string> } }
       | undefined;
     const hex = entry?.colors?.primary?.["500"];
-    return hex || "#6B7280";
+    return hex || "#6B7280"; // design-lint-ignore: theme default color
   };
 
   // Apply CSS variables when primary color changes
@@ -108,7 +108,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       });
 
       // Set primary foreground based on the brightness of primary-500
-      const [, , l] = convert.hex.hsl((primary500 || "#000000").replace("#", ""));
+      const [, , l] = convert.hex.hsl((primary500 || "#000000").replace("#", "")); // design-lint-ignore: theme default color
       document.documentElement.style.setProperty(
         "--primary-foreground",
         l > 60 ? "222.2 47.4% 11.2%" : "210 40% 98%"

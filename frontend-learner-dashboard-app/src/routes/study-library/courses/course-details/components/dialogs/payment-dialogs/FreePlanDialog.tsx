@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, Gift, Check } from "lucide-react";
+import { SpinnerGap, CheckCircle, Gift, Check } from "@phosphor-icons/react";
 import {
   fetchEnrollmentDetails,
   getPaymentOptions,
@@ -149,7 +149,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading free plan options...</p>
             </div>
           </div>
@@ -184,7 +184,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-screen-90 overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center space-x-2">
             <Gift className="w-6 h-6 text-green-600" />
@@ -359,7 +359,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
               >
                 {processingEnrollment ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <SpinnerGap className="w-4 h-4 animate-spin" />
                     Enrolling...
                   </>
                 ) : (

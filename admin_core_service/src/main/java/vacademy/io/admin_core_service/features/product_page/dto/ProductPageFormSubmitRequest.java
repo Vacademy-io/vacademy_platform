@@ -8,6 +8,7 @@ import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Step 1 of Course Page enrollment: collect learner details and create ABANDONED_CART
@@ -27,4 +28,7 @@ public class ProductPageFormSubmitRequest {
     private UserDTO userDetails;
     private LearnerExtraDetails learnerExtraDetails;
     private List<CustomFieldValueDTO> customFieldValues;
+
+    /** UTM attribution params captured from the landing page URL. */
+    private Map<String, String> utmParams;
 }

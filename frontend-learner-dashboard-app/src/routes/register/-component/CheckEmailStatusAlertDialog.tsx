@@ -391,7 +391,7 @@ const CheckEmailStatusAlertDialog = ({
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogContent className="p-0 overflow-hidden border border-primary-100 shadow-2xl sm:max-w-[430px] rounded-2xl">
+      <AlertDialogContent className="p-0 overflow-hidden border border-primary-100 shadow-2xl sm:max-w-reg-430 rounded-2xl">
         <div className="px-5 py-4 bg-gradient-to-r from-primary-50 to-white border-b border-primary-100">
           <h1 className="text-primary-600 font-semibold text-base">
             Check Registration Status

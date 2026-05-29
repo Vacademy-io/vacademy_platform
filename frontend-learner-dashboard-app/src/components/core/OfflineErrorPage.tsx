@@ -1,4 +1,4 @@
-import { RefreshCw, WifiOff, CloudOff } from 'lucide-react';
+import { ArrowsClockwise, WifiSlash, CloudSlash } from '@phosphor-icons/react';
 import { MyButton } from '../design-system/button';
 
 export function OfflineErrorPage() {
@@ -7,11 +7,11 @@ export function OfflineErrorPage() {
             <div className="max-w-md mx-auto text-center w-full">
                 <div className="mb-8 flex justify-center">
                     <div className="relative">
-                        <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-slate-200 border-4 border-white shadow-sm">
-                            <WifiOff className="h-12 w-12 text-slate-600 animate-pulse" aria-hidden="true" />
+                        <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-200 border-4 border-white shadow-sm">
+                            <WifiSlash className="h-12 w-12 text-slate-600 animate-pulse" aria-hidden="true" />
                         </div>
                         <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-gray-100">
-                            <CloudOff className="h-5 w-5 text-slate-500" aria-hidden="true" />
+                            <CloudSlash className="h-5 w-5 text-slate-500" aria-hidden="true" />
                         </div>
                     </div>
                 </div>
@@ -27,7 +27,7 @@ export function OfflineErrorPage() {
                         className="w-full sm:w-auto"
                         onClick={() => window.location.reload()}
                     >
-                        <RefreshCw className="mr-2 h-4 w-4" />
+                        <ArrowsClockwise className="mr-2 h-4 w-4" />
                         Try Again
                     </MyButton>
                 </div>

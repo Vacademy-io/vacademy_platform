@@ -7,7 +7,7 @@ import { pushTnCAccepted } from '@/components/common/enroll-by-invite/-utils/gtm
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { getFieldRenderType } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
 import { parseDropdownOptions } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
-import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, SpinnerGap } from "@phosphor-icons/react";
 import type { ProductPageData, ProductPageSettings, FieldValue, PageJson } from '../-types/product-page-types';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
@@ -15,7 +15,7 @@ function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
     try { return JSON.parse(jsonStr) as T; } catch { return fallback; }
 }
 
-const EMPTY_PAGE_JSON: PageJson = { globalSettings: { primaryColor: '#4F46E5', logoFileId: '' }, components: [] };
+const EMPTY_PAGE_JSON: PageJson = { globalSettings: { primaryColor: '#4F46E5', logoFileId: '' }, components: [] }; // design-lint-ignore: page-builder default color
 
 interface MultiEnrollFormProps {
     pageData: ProductPageData;
@@ -26,9 +26,9 @@ interface MultiEnrollFormProps {
     onNext: () => void;
 }
 
-export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', courseIds, onBack, onNext }: MultiEnrollFormProps) => {
+export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', courseIds, onBack, onNext }: MultiEnrollFormProps) => { // design-lint-ignore: page-builder default color
     const {
-        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection,
+        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection, utmParams,
     } = useProductPageStore();
 
     const currency = pageData.currency || 'INR';
@@ -113,6 +113,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                 instituteId: pageData.institute_id,
                 selectedPsInvitePaymentOptionIds: selectedPsOptionIds,
                 registrationData,
+                utmParams,
             });
         },
         onSuccess: (data) => {
@@ -157,7 +158,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                                     key={m.ps_invite_payment_option_id}
                                     className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs"
                                 >
-                                    <span className="max-w-[140px] truncate font-medium text-gray-800">{name}</span>
+                                    <span className="max-w-36 truncate font-medium text-gray-800">{name}</span>
                                     {price > 0 && (
                                         <span className="text-gray-400">·&nbsp;{currencySymbol}{price.toLocaleString()}</span>
                                     )}
@@ -336,7 +337,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                         >
                             {formSubmitMutation.isPending ? (
                                 <>
-                                    <Loader2 className="size-4 animate-spin" />
+                                    <SpinnerGap className="size-4 animate-spin" />
                                     Saving...
                                 </>
                             ) : (

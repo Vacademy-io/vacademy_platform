@@ -95,7 +95,7 @@ export function TncModal({ tncUrl, onAccepted, prefillName: prefillNameProp = fa
 
     return (
         <Dialog open={true} onOpenChange={() => {}}>
-            <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-4 bg-white" onInteractOutside={(e) => e.preventDefault()}>
+            <DialogContent className="max-w-4xl h-screen-90 flex flex-col p-4 bg-white" onInteractOutside={(e) => e.preventDefault()}>
                 <DialogHeader>
                     <DialogTitle className="text-xl">Accept Terms & Conditions</DialogTitle>
                     <DialogDescription>

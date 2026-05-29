@@ -52,6 +52,7 @@ import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
 import { Route as WorkflowWorkflowIdIndexRouteImport } from "./routes/workflow/$workflowId/index"
+import { Route as VimStudioIndexRouteImport } from "./routes/vim/studio/index"
 import { Route as VimOnboardingIndexRouteImport } from "./routes/vim/onboarding/index"
 import { Route as VideoApiStudioInputVideosIndexRouteImport } from "./routes/video-api-studio/input-videos/index"
 import { Route as VideoApiStudioConsoleIndexRouteImport } from "./routes/video-api-studio/console/index"
@@ -100,6 +101,7 @@ import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automa
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
+import { Route as AudienceManagerFollowUpsIndexRouteImport } from "./routes/audience-manager/follow-ups/index"
 import { Route as AssessmentQuestionPapersIndexRouteImport } from "./routes/assessment/question-papers/index"
 import { Route as AssessmentEvaluationAiIndexRouteImport } from "./routes/assessment/evaluation-ai/index"
 import { Route as AssessmentAssessmentListIndexRouteImport } from "./routes/assessment/assessment-list/index"
@@ -118,6 +120,7 @@ import { Route as AdmissionsAdmissionListIndexRouteImport } from "./routes/admis
 import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
 import { Route as AdminPackageManagementOffersIndexRouteImport } from "./routes/admin-package-management/offers/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
+import { Route as VimStudioNewRouteImport } from "./routes/vim/studio/new"
 import { Route as VimReelsNewRouteImport } from "./routes/vim/reels/new"
 import { Route as TemplatesEditTemplateIdRouteImport } from "./routes/templates/edit/$templateId"
 import { Route as SignupOauthCallbackRouteImport } from "./routes/signup/oauth/callback"
@@ -128,6 +131,7 @@ import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
+import { Route as VimStudioProjectIdIndexRouteImport } from "./routes/vim/studio/$projectId/index"
 import { Route as VimReelsReelIdIndexRouteImport } from "./routes/vim/reels/$reelId/index"
 import { Route as VimEditVideoIdIndexRouteImport } from "./routes/vim/edit/$videoId/index"
 import { Route as VideoApiStudioEditVideoIdIndexRouteImport } from "./routes/video-api-studio/edit/$videoId/index"
@@ -471,6 +475,11 @@ const WorkflowWorkflowIdIndexRoute = WorkflowWorkflowIdIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/workflow/$workflowId/index.lazy").then((d) => d.Route),
 )
+const VimStudioIndexRoute = VimStudioIndexRouteImport.update({
+  id: "/vim/studio/",
+  path: "/vim/studio/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VimOnboardingIndexRoute = VimOnboardingIndexRouteImport.update({
   id: "/vim/onboarding/",
   path: "/vim/onboarding/",
@@ -877,6 +886,16 @@ const AudienceManagerListIndexRoute =
   } as any).lazy(() =>
     import("./routes/audience-manager/list/index.lazy").then((d) => d.Route),
   )
+const AudienceManagerFollowUpsIndexRoute =
+  AudienceManagerFollowUpsIndexRouteImport.update({
+    id: "/audience-manager/follow-ups/",
+    path: "/audience-manager/follow-ups/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/follow-ups/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AssessmentQuestionPapersIndexRoute =
   AssessmentQuestionPapersIndexRouteImport.update({
     id: "/assessment/question-papers/",
@@ -1025,6 +1044,11 @@ const AdminPackageManagementBulkCreateIndexRoute =
       (d) => d.Route,
     ),
   )
+const VimStudioNewRoute = VimStudioNewRouteImport.update({
+  id: "/vim/studio/new",
+  path: "/vim/studio/new",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VimReelsNewRoute = VimReelsNewRouteImport.update({
   id: "/vim/reels/new",
   path: "/vim/reels/new",
@@ -1098,6 +1122,11 @@ const WorkflowWorkflowIdEditIndexRoute =
       (d) => d.Route,
     ),
   )
+const VimStudioProjectIdIndexRoute = VimStudioProjectIdIndexRouteImport.update({
+  id: "/vim/studio/$projectId/",
+  path: "/vim/studio/$projectId/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VimReelsReelIdIndexRoute = VimReelsReelIdIndexRouteImport.update({
   id: "/vim/reels/$reelId/",
   path: "/vim/reels/$reelId/",
@@ -1559,6 +1588,7 @@ export interface FileRoutesByFullPath {
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
+  "/vim/studio/new": typeof VimStudioNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admin-package-management/offers/": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
@@ -1577,6 +1607,7 @@ export interface FileRoutesByFullPath {
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
+  "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
@@ -1625,6 +1656,7 @@ export interface FileRoutesByFullPath {
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
   "/video-api-studio/input-videos/": typeof VideoApiStudioInputVideosIndexRoute
   "/vim/onboarding/": typeof VimOnboardingIndexRoute
+  "/vim/studio/": typeof VimStudioIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
@@ -1656,6 +1688,7 @@ export interface FileRoutesByFullPath {
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
   "/vim/edit/$videoId/": typeof VimEditVideoIdIndexRoute
   "/vim/reels/$reelId/": typeof VimReelsReelIdIndexRoute
+  "/vim/studio/$projectId/": typeof VimStudioProjectIdIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1729,6 +1762,7 @@ export interface FileRoutesByTo {
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
+  "/vim/studio/new": typeof VimStudioNewRoute
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admin-package-management/offers": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
@@ -1747,6 +1781,7 @@ export interface FileRoutesByTo {
   "/assessment/assessment-list": typeof AssessmentAssessmentListIndexRoute
   "/assessment/evaluation-ai": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers": typeof AssessmentQuestionPapersIndexRoute
+  "/audience-manager/follow-ups": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
@@ -1795,6 +1830,7 @@ export interface FileRoutesByTo {
   "/video-api-studio/console": typeof VideoApiStudioConsoleIndexRoute
   "/video-api-studio/input-videos": typeof VideoApiStudioInputVideosIndexRoute
   "/vim/onboarding": typeof VimOnboardingIndexRoute
+  "/vim/studio": typeof VimStudioIndexRoute
   "/workflow/$workflowId": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
@@ -1826,6 +1862,7 @@ export interface FileRoutesByTo {
   "/video-api-studio/edit/$videoId": typeof VideoApiStudioEditVideoIdIndexRoute
   "/vim/edit/$videoId": typeof VimEditVideoIdIndexRoute
   "/vim/reels/$reelId": typeof VimReelsReelIdIndexRoute
+  "/vim/studio/$projectId": typeof VimStudioProjectIdIndexRoute
   "/workflow/$workflowId/edit": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1901,6 +1938,7 @@ export interface FileRoutesById {
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
+  "/vim/studio/new": typeof VimStudioNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admin-package-management/offers/": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
@@ -1919,6 +1957,7 @@ export interface FileRoutesById {
   "/assessment/assessment-list/": typeof AssessmentAssessmentListIndexRoute
   "/assessment/evaluation-ai/": typeof AssessmentEvaluationAiIndexRoute
   "/assessment/question-papers/": typeof AssessmentQuestionPapersIndexRoute
+  "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
@@ -1967,6 +2006,7 @@ export interface FileRoutesById {
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
   "/video-api-studio/input-videos/": typeof VideoApiStudioInputVideosIndexRoute
   "/vim/onboarding/": typeof VimOnboardingIndexRoute
+  "/vim/studio/": typeof VimStudioIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
@@ -1998,6 +2038,7 @@ export interface FileRoutesById {
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
   "/vim/edit/$videoId/": typeof VimEditVideoIdIndexRoute
   "/vim/reels/$reelId/": typeof VimReelsReelIdIndexRoute
+  "/vim/studio/$projectId/": typeof VimStudioProjectIdIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -2074,6 +2115,7 @@ export interface FileRouteTypes {
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
+    | "/vim/studio/new"
     | "/admin-package-management/bulk-create/"
     | "/admin-package-management/offers/"
     | "/admissions/admission-form/"
@@ -2092,6 +2134,7 @@ export interface FileRouteTypes {
     | "/assessment/assessment-list/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
+    | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
@@ -2140,6 +2183,7 @@ export interface FileRouteTypes {
     | "/video-api-studio/console/"
     | "/video-api-studio/input-videos/"
     | "/vim/onboarding/"
+    | "/vim/studio/"
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
@@ -2171,6 +2215,7 @@ export interface FileRouteTypes {
     | "/video-api-studio/edit/$videoId/"
     | "/vim/edit/$videoId/"
     | "/vim/reels/$reelId/"
+    | "/vim/studio/$projectId/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2244,6 +2289,7 @@ export interface FileRouteTypes {
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
+    | "/vim/studio/new"
     | "/admin-package-management/bulk-create"
     | "/admin-package-management/offers"
     | "/admissions/admission-form"
@@ -2262,6 +2308,7 @@ export interface FileRouteTypes {
     | "/assessment/assessment-list"
     | "/assessment/evaluation-ai"
     | "/assessment/question-papers"
+    | "/audience-manager/follow-ups"
     | "/audience-manager/list"
     | "/audience-manager/recent-leads"
     | "/audience-manager/reports"
@@ -2310,6 +2357,7 @@ export interface FileRouteTypes {
     | "/video-api-studio/console"
     | "/video-api-studio/input-videos"
     | "/vim/onboarding"
+    | "/vim/studio"
     | "/workflow/$workflowId"
     | "/workflow/create"
     | "/workflow/list"
@@ -2341,6 +2389,7 @@ export interface FileRouteTypes {
     | "/video-api-studio/edit/$videoId"
     | "/vim/edit/$videoId"
     | "/vim/reels/$reelId"
+    | "/vim/studio/$projectId"
     | "/workflow/$workflowId/edit"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId"
@@ -2415,6 +2464,7 @@ export interface FileRouteTypes {
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
+    | "/vim/studio/new"
     | "/admin-package-management/bulk-create/"
     | "/admin-package-management/offers/"
     | "/admissions/admission-form/"
@@ -2433,6 +2483,7 @@ export interface FileRouteTypes {
     | "/assessment/assessment-list/"
     | "/assessment/evaluation-ai/"
     | "/assessment/question-papers/"
+    | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
@@ -2481,6 +2532,7 @@ export interface FileRouteTypes {
     | "/video-api-studio/console/"
     | "/video-api-studio/input-videos/"
     | "/vim/onboarding/"
+    | "/vim/studio/"
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
@@ -2512,6 +2564,7 @@ export interface FileRouteTypes {
     | "/video-api-studio/edit/$videoId/"
     | "/vim/edit/$videoId/"
     | "/vim/reels/$reelId/"
+    | "/vim/studio/$projectId/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2586,6 +2639,7 @@ export interface RootRouteChildren {
   SignupOauthCallbackRoute: typeof SignupOauthCallbackRoute
   TemplatesEditTemplateIdRoute: typeof TemplatesEditTemplateIdRoute
   VimReelsNewRoute: typeof VimReelsNewRoute
+  VimStudioNewRoute: typeof VimStudioNewRoute
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
   AdminPackageManagementOffersIndexRoute: typeof AdminPackageManagementOffersIndexRoute
   AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
@@ -2604,6 +2658,7 @@ export interface RootRouteChildren {
   AssessmentAssessmentListIndexRoute: typeof AssessmentAssessmentListIndexRoute
   AssessmentEvaluationAiIndexRoute: typeof AssessmentEvaluationAiIndexRoute
   AssessmentQuestionPapersIndexRoute: typeof AssessmentQuestionPapersIndexRoute
+  AudienceManagerFollowUpsIndexRoute: typeof AudienceManagerFollowUpsIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
@@ -2652,6 +2707,7 @@ export interface RootRouteChildren {
   VideoApiStudioConsoleIndexRoute: typeof VideoApiStudioConsoleIndexRoute
   VideoApiStudioInputVideosIndexRoute: typeof VideoApiStudioInputVideosIndexRoute
   VimOnboardingIndexRoute: typeof VimOnboardingIndexRoute
+  VimStudioIndexRoute: typeof VimStudioIndexRoute
   WorkflowWorkflowIdIndexRoute: typeof WorkflowWorkflowIdIndexRoute
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
@@ -2683,6 +2739,7 @@ export interface RootRouteChildren {
   VideoApiStudioEditVideoIdIndexRoute: typeof VideoApiStudioEditVideoIdIndexRoute
   VimEditVideoIdIndexRoute: typeof VimEditVideoIdIndexRoute
   VimReelsReelIdIndexRoute: typeof VimReelsReelIdIndexRoute
+  VimStudioProjectIdIndexRoute: typeof VimStudioProjectIdIndexRoute
   WorkflowWorkflowIdEditIndexRoute: typeof WorkflowWorkflowIdEditIndexRoute
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute: typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -3023,6 +3080,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof WorkflowWorkflowIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/vim/studio/": {
+      id: "/vim/studio/"
+      path: "/vim/studio"
+      fullPath: "/vim/studio/"
+      preLoaderRoute: typeof VimStudioIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/vim/onboarding/": {
       id: "/vim/onboarding/"
       path: "/vim/onboarding"
@@ -3359,6 +3423,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AudienceManagerListIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/audience-manager/follow-ups/": {
+      id: "/audience-manager/follow-ups/"
+      path: "/audience-manager/follow-ups"
+      fullPath: "/audience-manager/follow-ups/"
+      preLoaderRoute: typeof AudienceManagerFollowUpsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/assessment/question-papers/": {
       id: "/assessment/question-papers/"
       path: "/assessment/question-papers"
@@ -3485,6 +3556,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminPackageManagementBulkCreateIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/vim/studio/new": {
+      id: "/vim/studio/new"
+      path: "/vim/studio/new"
+      fullPath: "/vim/studio/new"
+      preLoaderRoute: typeof VimStudioNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/vim/reels/new": {
       id: "/vim/reels/new"
       path: "/vim/reels/new"
@@ -3553,6 +3631,13 @@ declare module "@tanstack/react-router" {
       path: "/workflow/$workflowId/edit"
       fullPath: "/workflow/$workflowId/edit/"
       preLoaderRoute: typeof WorkflowWorkflowIdEditIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/vim/studio/$projectId/": {
+      id: "/vim/studio/$projectId/"
+      path: "/vim/studio/$projectId"
+      fullPath: "/vim/studio/$projectId/"
+      preLoaderRoute: typeof VimStudioProjectIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/reels/$reelId/": {
@@ -3957,6 +4042,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupOauthCallbackRoute: SignupOauthCallbackRoute,
   TemplatesEditTemplateIdRoute: TemplatesEditTemplateIdRoute,
   VimReelsNewRoute: VimReelsNewRoute,
+  VimStudioNewRoute: VimStudioNewRoute,
   AdminPackageManagementBulkCreateIndexRoute:
     AdminPackageManagementBulkCreateIndexRoute,
   AdminPackageManagementOffersIndexRoute:
@@ -3978,6 +4064,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentAssessmentListIndexRoute: AssessmentAssessmentListIndexRoute,
   AssessmentEvaluationAiIndexRoute: AssessmentEvaluationAiIndexRoute,
   AssessmentQuestionPapersIndexRoute: AssessmentQuestionPapersIndexRoute,
+  AudienceManagerFollowUpsIndexRoute: AudienceManagerFollowUpsIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
@@ -4036,6 +4123,7 @@ const rootRouteChildren: RootRouteChildren = {
   VideoApiStudioConsoleIndexRoute: VideoApiStudioConsoleIndexRoute,
   VideoApiStudioInputVideosIndexRoute: VideoApiStudioInputVideosIndexRoute,
   VimOnboardingIndexRoute: VimOnboardingIndexRoute,
+  VimStudioIndexRoute: VimStudioIndexRoute,
   WorkflowWorkflowIdIndexRoute: WorkflowWorkflowIdIndexRoute,
   WorkflowCreateIndexRoute: WorkflowCreateIndexRoute,
   WorkflowListIndexRoute: WorkflowListIndexRoute,
@@ -4081,6 +4169,7 @@ const rootRouteChildren: RootRouteChildren = {
   VideoApiStudioEditVideoIdIndexRoute: VideoApiStudioEditVideoIdIndexRoute,
   VimEditVideoIdIndexRoute: VimEditVideoIdIndexRoute,
   VimReelsReelIdIndexRoute: VimReelsReelIdIndexRoute,
+  VimStudioProjectIdIndexRoute: VimStudioProjectIdIndexRoute,
   WorkflowWorkflowIdEditIndexRoute: WorkflowWorkflowIdEditIndexRoute,
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute:
     StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute,

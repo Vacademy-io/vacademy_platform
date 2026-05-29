@@ -13,13 +13,14 @@ export const Route = createFileRoute('/vim/edit/$videoId/')({
                 : Number.isFinite(Number(focusTimeRaw))
                   ? Number(focusTimeRaw)
                   : undefined;
-        // `kind` selects which backend table this timeline lives in. Reels
-        // route /frame/* saves to /external/reels/v1/frame/*; anything else
-        // (omitted, 'video', unrecognized) falls through to the AI-gen-video
-        // endpoints. Returned as optional so existing /vim/edit callers don't
-        // need to pass it explicitly.
+        // `kind` selects which backend table this timeline lives in + which
+        // /frame/* base saveChanges hits: 'reel' → /external/reels/v1/frame/*,
+        // 'studio' → /external/studio/v1/builds/{id}/frame/* (id is the build
+        // id, passed as $videoId), anything else → AI-gen-video endpoints.
+        // Optional so existing /vim/edit callers don't need to pass it.
         const kindRaw = search.kind == null ? undefined : String(search.kind);
-        const kind: 'reel' | undefined = kindRaw === 'reel' ? 'reel' : undefined;
+        const kind: 'reel' | 'studio' | undefined =
+            kindRaw === 'reel' ? 'reel' : kindRaw === 'studio' ? 'studio' : undefined;
         return {
             htmlUrl: String(search.htmlUrl ?? ''),
             audioUrl: search.audioUrl ? String(search.audioUrl) : undefined,

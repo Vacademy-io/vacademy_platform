@@ -242,6 +242,7 @@ function campaignStatusChip(status: string | null) {
     return map[s] ?? 'bg-neutral-100 text-neutral-500';
 }
 
+<<<<<<< HEAD
 /**
  * Derives a "Next Best Action" hint from existing profile data — purely client-side.
  * Priority order:
@@ -277,6 +278,19 @@ function heroTone(profile: UserLeadProfile): 'danger' | 'warning' | 'info' | 'pr
     if (profile.best_score >= 80) return 'danger';
     if (profile.best_score >= 50) return 'warning';
     return 'primary';
+=======
+// Picks the most recently submitted audience response — used as a fallback when
+// the lead has no scored "best" response yet but does have linked campaigns.
+function pickMostRecentAudience(
+    audiences: AudienceMembership[] | undefined
+): AudienceMembership | undefined {
+    if (!audiences || audiences.length === 0) return undefined;
+    return [...audiences].sort((a, b) => {
+        const ta = a.submitted_at ? Date.parse(a.submitted_at) : 0;
+        const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0;
+        return tb - ta;
+    })[0];
+>>>>>>> origin/main
 }
 
 // ── Score Breakdown ───────────────────────────────────────────────────────────
@@ -1101,6 +1115,19 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         retry: 1,
     });
 
+    // Shared with AudienceListSection via the same query key — TanStack dedupes.
+    // We read it here so the follow-up form can fall back to the most-recent
+    // linked campaign response when the profile has no `best_score_response_id`
+    // yet (common for fresh leads that haven't been scored).
+    const { data: audiences } = useQuery({
+        queryKey: ['user-audiences', userId],
+        queryFn: () => fetchUserAudiences(userId),
+        enabled: !!userId,
+        staleTime: 2 * 60 * 1000,
+    });
+    const effectiveResponseId =
+        profile?.best_score_response_id ?? pickMostRecentAudience(audiences)?.response_id ?? null;
+
     // Institute's configurable lead statuses (table-backed; seeded New/Converted/Lost).
     const { statuses: leadStatuses } = useLeadStatuses();
 
@@ -1153,7 +1180,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 />
                 {/* Still show audience list and note form even without a lead profile */}
                 <AudienceListSection userId={userId} />
-                <AddNoteForm userId={userId} audienceResponseId={null} />
+                <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
             </div>
         );
     }
@@ -1328,8 +1355,62 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 </div>
             </ProfileSectionCard>
 
+<<<<<<< HEAD
             {/* ── Lead Status ── */}
             <ProfileSectionCard heading="Lead Status">
+=======
+            {/* ── Stat grid ── */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <StatCard
+                    icon={<Megaphone size={18} />}
+                    label="Campaigns"
+                    value={profile.campaign_count}
+                />
+                <StatCard
+                    icon={<Lightning size={18} />}
+                    label="Timeline Events"
+                    value={profile.total_timeline_events}
+                />
+                <StatCard
+                    icon={<CalendarCheck size={18} />}
+                    label="Demo Attendance"
+                    value={profile.demo_attendance_count}
+                />
+                <StatCard
+                    icon={<ChartBar size={18} />}
+                    label="Best Source"
+                    value={sourceLabel(profile.best_source_type)}
+                />
+            </div>
+
+            {/* ── Dates ── */}
+            <div className="space-y-2 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-sm">
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Last Activity</span>
+                    <span className="font-medium">{formatDate(profile.last_activity_at)}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Lead Since</span>
+                    <span className="font-medium">{formatDate(profile.created_at)}</span>
+                </div>
+                {isConverted && (
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Converted On</span>
+                        <span className="font-medium text-green-700">
+                            {formatDate(profile.converted_at)}
+                        </span>
+                    </div>
+                )}
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Score Updated</span>
+                    <span className="font-medium">{formatDate(profile.last_calculated_at)}</span>
+                </div>
+            </div>
+
+            {/* ── Status control ── */}
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                <p className="mb-1.5 text-xs text-muted-foreground">Lead Status</p>
+>>>>>>> origin/main
                 <div className="flex flex-wrap gap-1.5">
                     {leadStatuses.map((s) => {
                         const active = profile.conversion_status === s.status_key;
@@ -1439,13 +1520,11 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             <AudienceListSection userId={userId} />
 
             {/* ── Follow-ups ── */}
-            {profile.best_score_response_id && (
-                <FollowUpsWidget
-                    audienceResponseId={profile.best_score_response_id}
-                    userId={userId}
-                />
+            {effectiveResponseId && (
+                <FollowUpsWidget audienceResponseId={effectiveResponseId} userId={userId} />
             )}
 
+<<<<<<< HEAD
             {/* ── Activity & Notes ── */}
             <div id="lead-activity-section">
                 <CrossStageTimeline
@@ -1458,9 +1537,13 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     }
                 />
             </div>
+=======
+            {/* ── Add Note / Log Activity ── */}
+            <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
+>>>>>>> origin/main
 
             {/* ── Lead Journey Timeline ── */}
-            <LeadJourneyTimeline userId={userId} responseId={profile?.best_score_response_id} />
+            <LeadJourneyTimeline userId={userId} responseId={effectiveResponseId} />
         </div>
     );
 }

@@ -8,7 +8,7 @@ import {
 } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { RazorpayCheckoutForm } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
 import type { RazorpayCheckoutFormRef } from '@/components/common/enroll-by-invite/-components/razorpay-checkout-form';
-import { ArrowLeft, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, SpinnerGap, ShieldCheck } from "@phosphor-icons/react";
 import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 
 interface CombinedPaymentStepProps {
@@ -26,7 +26,7 @@ export const CombinedPaymentStep = ({
     settings,
     instituteId,
     vendor,
-    primaryColor = '#2563eb',
+    primaryColor = '#2563eb', // design-lint-ignore: page-builder default color
     onBack,
     onSuccess,
 }: CombinedPaymentStepProps) => {
@@ -78,6 +78,7 @@ export const CombinedPaymentStep = ({
                 couponCode: couponCode || undefined,
                 registrationData,
                 paymentInitiationRequest,
+                utmParams,
             });
 
             if (result.payment_url) {
@@ -131,6 +132,7 @@ export const CombinedPaymentStep = ({
                     currency,
                     razorpay_request: {},
                 },
+                utmParams,
             });
 
             if (result.order_id && result.razorpay_key_id && razorpayRef.current) {
@@ -230,7 +232,7 @@ export const CombinedPaymentStep = ({
                             className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                         >
                             {isProcessing ? (
-                                <><Loader2 className="size-4 animate-spin" /> Processing...</>
+                                <><SpinnerGap className="size-4 animate-spin" /> Processing...</>
                             ) : (
                                 'Complete Enrollment (Free)'
                             )}
@@ -260,7 +262,7 @@ export const CombinedPaymentStep = ({
                                 style={{ backgroundColor: primaryColor }}
                             >
                                 {isProcessing ? (
-                                    <><Loader2 className="size-4 animate-spin" /> Opening payment...</>
+                                    <><SpinnerGap className="size-4 animate-spin" /> Opening payment...</>
                                 ) : (
                                     <>Pay {currency} {amount.toLocaleString()}</>
                                 )}
@@ -275,7 +277,7 @@ export const CombinedPaymentStep = ({
                             style={{ backgroundColor: primaryColor }}
                         >
                             {isProcessing ? (
-                                <><Loader2 className="size-4 animate-spin" /> Processing...</>
+                                <><SpinnerGap className="size-4 animate-spin" /> Processing...</>
                             ) : (
                                 <>Pay {currency} {amount.toLocaleString()}</>
                             )}

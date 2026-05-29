@@ -7,7 +7,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Flag, PartyPopper, ListOrdered } from "lucide-react";
+import { Flag, Confetti, ListNumbers } from "@phosphor-icons/react";
 
 interface AdmissionTrackerProps {
   child: ChildProfile;
@@ -123,7 +123,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
           <Card className="shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-base flex items-center gap-2">
-                <ListOrdered size={16} />
+                <ListNumbers size={16} />
                 Admission Process
               </CardTitle>
             </CardHeader>
@@ -168,7 +168,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
                             Step {stage.sequence}
                           </p>
                           <div className="flex gap-2 mt-2">
-                            <Badge variant="secondary" className="text-[10px]">
+                            <Badge variant="secondary" className="text-caption">
                               {stage.type}
                             </Badge>
                           </div>
@@ -176,12 +176,12 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
 
                         {/* Status Badge */}
                         {isCompleted && (
-                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-100 text-[10px] shrink-0">
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-100 text-caption shrink-0">
                             Completed
                           </Badge>
                         )}
                         {isCurrent && (
-                          <Badge className="bg-primary/10 text-primary hover:bg-primary/10 text-[10px] shrink-0">
+                          <Badge className="bg-primary/10 text-primary hover:bg-primary/10 text-caption shrink-0">
                             In Progress
                           </Badge>
                         )}
@@ -207,7 +207,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
         >
           <Card className="shadow-sm bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/20 dark:to-green-950/20 border-emerald-200 dark:border-emerald-800">
             <CardContent className="p-6 text-center">
-              <PartyPopper
+              <Confetti
                 size={36}
                 className="mx-auto text-emerald-600 mb-3"
               />

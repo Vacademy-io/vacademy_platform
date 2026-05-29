@@ -1480,12 +1480,12 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 {/* Video player container with verification overlay */}
                 <div
                     ref={playerContainerRef}
-                    className="aspect-video w-full relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden rounded-lg"
+                    className="aspect-video w-full relative min-h-reg-200 sm:min-h-reg-250 md:min-h-reg-300 lg:h-full items-center flex justify-center overflow-hidden rounded-lg"
                     onMouseMove={handleMouseMove}
                 >
                     {/* Verification overlay - only shown in fullscreen */}
                     {showVerification && isFullscreen && (
-                        <div className="absolute inset-0 z-[10000] flex items-end justify-center pb-24 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="absolute inset-0 z-50 flex items-end justify-center pb-24 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
                             <div className="relative animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6">
                                 <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
                                     <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
@@ -1532,9 +1532,9 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                     )}
                     {/* Verification Overlay - Premium UI */}
                     {showVerification && !isFullscreen && ( // Removed enableConcentrationScore check as it is checked in logic
-                        <div className="absolute inset-0 z-[50] flex items-end justify-center pb-8 pointer-events-none">
-                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9990] animate-in fade-in duration-500 pointer-events-auto" />
-                            <div className="relative z-[9999] animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
+                        <div className="absolute inset-0 z-50 flex items-end justify-center pb-8 pointer-events-none">
+                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in duration-500 pointer-events-auto" />
+                            <div className="relative z-50 animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
                                 <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
                                     <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
                                         <div
@@ -1581,7 +1581,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
                     {/* Bottom Controls Overlay - Video controls moved to bottom */}
                     {!isFullscreen && (
-                        <div className="absolute bottom-0 left-0 right-0 z-[9999] bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
+                        <div className="absolute bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
                             {/* Video Controls */}
                             <div className="flex gap-2 justify-between items-center w-full mb-4">
                                 <div className="w-full flex gap-2 items-center justify-start">
@@ -1739,7 +1739,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
                     {/* Fullscreen controls overlay */}
                     {isFullscreen && showFullscreenControls && (
-                        <div className="absolute inset-0 z-[9999] flex flex-col justify-between bg-gradient-to-b from-black/50 via-transparent to-black/80 animate-in fade-in duration-200 pointer-events-none">
+                        <div className="absolute inset-0 z-50 flex flex-col justify-between bg-gradient-to-b from-black/50 via-transparent to-black/80 animate-in fade-in duration-200 pointer-events-none">
                             {/* Top controls - Exit fullscreen */}
                             <div className="flex justify-end p-4 pointer-events-auto">
                                 <button

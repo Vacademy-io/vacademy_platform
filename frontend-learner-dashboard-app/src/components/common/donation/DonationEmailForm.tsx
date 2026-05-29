@@ -46,7 +46,7 @@ export const DonationEmailForm: React.FC<DonationEmailFormProps> = ({
             placeholder={validationError ? validationError : "you@example.com"}
           />
         </div>
-        <p className="text-[11px] text-gray-400 mt-1">We'll send your receipt to this email address</p>
+        <p className="text-2xs text-gray-400 mt-1">We'll send your receipt to this email address</p>
       </div>
     </>
   );

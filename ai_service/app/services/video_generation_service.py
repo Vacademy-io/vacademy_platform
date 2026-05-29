@@ -1945,7 +1945,32 @@ class VideoGenerationService:
                         except _queue.Empty:
                             break
                     outputs = await _pipeline_future
-                
+
+                    # Pin the CONCRETE voice actually used by TTS so per-shot /
+                    # per-sentence re-narration reproduces the SAME voice
+                    # (fixes "regenerated audio uses a different voice"). The
+                    # pipeline stamps these once synthesis resolves a real voice
+                    # name — including a premium auto-pick or a mid-synth
+                    # edge→google fallback. Best-effort; never breaks generation.
+                    try:
+                        _rv_voice = getattr(pipeline, "_tts_voice_id_resolved", None)
+                        _rv_provider = getattr(pipeline, "_tts_provider_resolved", None)
+                        if _rv_voice:
+                            _vrec_rv = self.repository.get_by_video_id(video_id)
+                            _emeta_rv = dict((_vrec_rv.extra_metadata or {}) if _vrec_rv else {})
+                            _emeta_rv["resolved_voice"] = {
+                                "provider": _rv_provider,
+                                "voice_id": _rv_voice,
+                                "gender": voice_gender,
+                                "language": language,
+                            }
+                            self.repository.update_metadata(video_id, _emeta_rv)
+                    except Exception:
+                        logger.warning(
+                            "[VideoGenService] failed to persist resolved_voice for %s",
+                            video_id, exc_info=True,
+                        )
+
                 # Record token usage per stage.
                 #
                 # Use a FRESH session — the request-scoped `db_session` may have

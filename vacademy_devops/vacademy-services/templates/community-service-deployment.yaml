@@ -1,3 +1,4 @@
+{{- if .Values.services.community_service.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +30,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: myconfigmapv1.0
+            - secretRef:
+                name: vacademy-secrets
           resources:
             requests:
               cpu: "500m"
@@ -68,3 +71,4 @@ spec:
             successThreshold: 1
           ports:
             - containerPort: {{ .Values.services.community_service.port }}
+{{- end }}

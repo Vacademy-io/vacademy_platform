@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { SiStripe } from "react-icons/si";
-import { Loader2, Lock } from "lucide-react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand logo (no Phosphor equivalent)
+import { SpinnerGap, Lock } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { processDonationPayment, createDonationRequest } from "../../-services/donation-api";
 
@@ -97,20 +97,20 @@ export const PaymentForm = ({
   return (
     <div className="space-y-4">
       {/* Card Element Container */}
-      <div className="min-h-[48px] border border-gray-300 rounded-md p-3 bg-white">
+      <div className="min-h-12 border border-gray-300 rounded-md p-3 bg-white">
         <CardElement
           options={{
             style: {
               base: {
                 fontSize: "16px",
-                color: "#374151",
+                color: "#374151", // design-lint-ignore: payment SDK style
                 fontFamily: "system-ui, -apple-system, sans-serif",
                 "::placeholder": {
-                  color: "#9CA3AF",
+                  color: "#9CA3AF", // design-lint-ignore: payment SDK style
                 },
               },
               invalid: {
-                color: "#DC2626",
+                color: "#DC2626", // design-lint-ignore: payment SDK style
               },
             },
           }}
@@ -144,7 +144,7 @@ export const PaymentForm = ({
         >
           {isProcessing ? (
             <>
-              <Loader2 size={18} className="animate-spin" />
+              <SpinnerGap size={18} className="animate-spin" />
               Processing...
             </>
           ) : (

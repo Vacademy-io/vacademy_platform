@@ -1,7 +1,7 @@
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import * as Sentry from '@sentry/react';
-import { RefreshCw, Home, LogOut, Bug, CheckCircle2, Terminal } from 'lucide-react';
+import { ArrowsClockwise, House, SignOut, Bug, CheckCircle, Terminal } from '@phosphor-icons/react';
 import { MyButton } from '../design-system/button';
 import { removeTokensAndLogout } from '@/lib/auth/sessionUtility';
 import { ErrorFeedbackDialog } from './error-feedback-dialog';
@@ -27,7 +27,7 @@ export function RuntimeErrorPage({ error }: Props) {
             <div className="max-w-md mx-auto text-center w-full">
                 <div className="mb-8 flex justify-center">
                     <div className="relative">
-                        <div className="flex h-24 w-24 items-center justify-center rounded-[2rem] bg-rose-100 border-4 border-white shadow-sm">
+                        <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-rose-100 border-4 border-white shadow-sm">
                             <Bug className="h-12 w-12 text-rose-600" aria-hidden="true" />
                         </div>
                         <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-gray-100">
@@ -44,7 +44,7 @@ export function RuntimeErrorPage({ error }: Props) {
 
                 <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 text-left max-w-md mx-auto shadow-sm">
                     <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <CheckCircle className="h-4 w-4 text-green-500" />
                         Recommended Steps
                     </h3>
                     <ul className="mt-3 space-y-3 text-sm text-gray-600">
@@ -73,7 +73,7 @@ export function RuntimeErrorPage({ error }: Props) {
                         className="w-full sm:w-auto"
                         onClick={() => window.location.reload()}
                     >
-                        <RefreshCw className="mr-2 h-4 w-4" />
+                        <ArrowsClockwise className="mr-2 h-4 w-4" />
                         Reload Page
                     </MyButton>
                     <MyButton
@@ -105,7 +105,7 @@ export function RuntimeErrorPage({ error }: Props) {
                         }}
                         className="text-sm font-medium text-gray-500 hover:text-gray-900 inline-flex items-center gap-2 transition-colors"
                     >
-                        <LogOut className="h-4 w-4" />
+                        <SignOut className="h-4 w-4" />
                         Sign out
                     </button>
                 </div>

@@ -235,7 +235,7 @@ const handleSuccessfulLogin = async (
 
       const details = await fetchAndStoreInstituteDetails(instituteId, userId);
       if (setPrimaryColor) {
-        setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
+        setPrimaryColor(details?.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22"); // design-lint-ignore: default brand color fallback
       }
       await fetchAndStoreStudentDetails(instituteId, userId);
 

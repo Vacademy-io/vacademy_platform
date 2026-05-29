@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { RefreshCw, Shield } from "lucide-react";
+import { ArrowsClockwise, Shield } from "@phosphor-icons/react";
 
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Heading } from "@/components/common/auth/login/components/heading";
@@ -310,7 +310,7 @@ export function InstituteSelection() {
                                                 ease: "linear",
                                             }}
                                         >
-                                            <RefreshCw className="w-4 h-4" />
+                                            <ArrowsClockwise className="w-4 h-4" />
                                         </motion.div>
                                         <span className="text-sm">
                                             Processing...

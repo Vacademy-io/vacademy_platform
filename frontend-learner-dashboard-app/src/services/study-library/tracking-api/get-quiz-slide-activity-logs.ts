@@ -2,12 +2,22 @@ import { useQuery } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { GET_QUIZ_SLIDE_ACTIVITY_LOGS } from "@/constants/urls";
 
+export interface QuizSideEntry {
+  id: string;
+  question_id: string;
+  response_json: string | null;
+  response_status: string | null;
+  instructor_feedback?: string | null;
+  instructor_feedback_file_id?: string | null;
+}
+
 export interface QuizAttemptLog {
   id: string;
   start_time: string | null;
   end_time: string | null;
   percentage_watched: number | null;
   status: string | null;
+  quiz_sides?: QuizSideEntry[];
 }
 
 interface PageResponse {

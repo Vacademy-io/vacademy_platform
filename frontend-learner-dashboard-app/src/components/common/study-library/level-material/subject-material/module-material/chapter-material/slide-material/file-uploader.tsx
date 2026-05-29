@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Upload, X, FileText } from "lucide-react"
+import { UploadSimple, X, FileText } from "@phosphor-icons/react"
 
 export type AllowedFileType = "pdf" | "image" | "doc" | "video" | "audio"
 
@@ -185,7 +185,7 @@ export const FileUploader = ({
 
         <div className="flex flex-col items-center justify-center space-y-3">
           <div className="p-3 bg-gray-100 rounded-full">
-            <Upload className="h-6 w-6 text-gray-500" />
+            <UploadSimple className="h-6 w-6 text-gray-500" />
           </div>
           <div className="text-sm text-gray-600">
             <span className="font-medium">Click to upload</span> or drag and drop
@@ -216,7 +216,7 @@ export const FileUploader = ({
                 <div className="flex items-center space-x-3">
                   <FileText className="h-5 w-5 text-gray-500" />
                   <div>
-                    <p className="text-sm font-medium truncate max-w-[200px]">{file.name}</p>
+                    <p className="text-sm font-medium truncate max-w-reg-200">{file.name}</p>
                     <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
                   </div>
                 </div>

@@ -176,11 +176,19 @@ def splice_audio(
         _download_url(new_clip_url, new_clip)
 
         base_duration = probe_duration(base)
-        if replace_start < 0 or replace_end > base_duration + 0.05:
+        if replace_start < 0 or replace_start >= base_duration:
             raise AudioOpsError(
-                f"replace range [{replace_start}, {replace_end}] outside base "
-                f"audio duration {base_duration:.2f}s"
+                f"replace_start {replace_start} outside base audio duration "
+                f"{base_duration:.2f}s"
             )
+        # Clamp an overshooting `replace_end` to the real end. Timeline offsets
+        # are summed from per-shot durations and can drift a few tens of ms past
+        # the actual concatenated master length (MP3 frame-boundary rounding on
+        # re-encode), so the LAST shot's end legitimately exceeds base_duration
+        # by a hair. Treat that as "replace through the end" instead of failing —
+        # `replace_start` is already validated to be inside the file.
+        if replace_end > base_duration:
+            replace_end = base_duration
 
         # Apply the pad: head ends `pad_s` later, tail starts `pad_s` later.
         # The window's TOTAL length is preserved so `duration_delta` math

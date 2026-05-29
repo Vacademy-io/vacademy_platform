@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, User, Clock, FileText, ExternalLink } from "lucide-react";
+import { Calendar, User, Clock, FileText, ArrowSquareOut } from "@phosphor-icons/react";
 import type { PlanningLog } from "../-types/types";
 import {
   formatIntervalType,
@@ -56,14 +56,14 @@ export default function ViewPlanningDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl">
+      <DialogContent className="max-h-screen-90 max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className="ml-2">{log.title}</span>
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
+        <ScrollArea className="max-h-view-dialog pr-4">
           <div className="space-y-4">
             {/* Metadata Section */}
             <div className="grid gap-3 rounded-lg border bg-muted/30 p-4">
@@ -148,7 +148,7 @@ export default function ViewPlanningDialog({
                           {loadingFileId === fileId ? (
                             <span className="animate-spin">⏳</span>
                           ) : (
-                            <ExternalLink className="size-4" />
+                            <ArrowSquareOut className="size-4" />
                           )}
                           <span className="ml-2">View</span>
                         </Button>

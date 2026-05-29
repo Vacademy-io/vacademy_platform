@@ -41,7 +41,25 @@ export interface Entry {
     htmlStartY?: number;
     htmlEndX?: number;
     htmlEndY?: number;
-    audio_url?: string; // Optional per-entry audio (for user_driven)
+    audio_url?: string; // Optional per-entry audio (for user_driven) — legacy
+    /**
+     * Per-entry audio clip — the persisted source of truth for this entry's
+     * audio ("entry owns its audio clip"). Written by the BE on shot
+     * re-narrate / silence. The master narration MP3 stays authoritative for
+     * playback + render until a timeline is fully migrated (see
+     * `TimelineMeta.entries_own_audio`); these refs ride along as the future
+     * source of truth and prevent double-play in the meantime.
+     *  - `narration_only` — a TTS clip for this entry's narration window.
+     *  - `intrinsic`      — entry carries its own audio (source clip / Veo);
+     *                       the master is silent in this window (always layered).
+     *  - `silent`         — narration muted for this window (no audio played).
+     */
+    audio?: {
+        clip_url: string;
+        duration_s: number;
+        words_url?: string;
+        policy: 'narration_only' | 'intrinsic' | 'silent';
+    };
     sound_cues?: SoundCue[]; // Sound Planner cues — scheduled via useSoundScheduler
     opacity?: number; // Crossfade opacity (0..1) — set per-frame at render time during transition windows
     /**
@@ -162,6 +180,16 @@ export interface TimelineMeta {
 
     // Extra audio tracks (background music, etc.) mixed on top of narration
     audio_tracks?: AudioTrack[];
+
+    /**
+     * When `true`, every narration-bearing entry carries its own `entry.audio`
+     * clip and the player should drive narration from those per-entry clips
+     * (muting the master narration MP3). Set only by a full migration/backfill
+     * once per-entry coverage is complete. Absent/false → the master MP3 is
+     * authoritative and per-entry narration clips are skipped to avoid
+     * double-play (the incremental "entry owns its audio clip" foundation).
+     */
+    entries_own_audio?: boolean;
 
     // Dimensions
     dimensions?: {

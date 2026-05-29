@@ -13,13 +13,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Loader2,
-  Mail,
+  SpinnerGap,
+  Envelope,
   ArrowRight,
   ArrowLeft,
-  RefreshCw,
-  CheckCircle2,
-} from "lucide-react";
+  ArrowsClockwise,
+  CheckCircle,
+} from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { toast } from "sonner";
@@ -418,7 +418,7 @@ export function EmailOtpForm({
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
                   Sending OTP...
                 </>
               ) : (
@@ -455,7 +455,7 @@ export function EmailOtpForm({
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Mail className="w-8 h-8 text-blue-600" />
+            <Envelope className="w-8 h-8 text-blue-600" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900">
             Verify Your Email
@@ -494,7 +494,7 @@ export function EmailOtpForm({
           >
             {currentStep === "verifying" ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
                 Verifying...
               </>
             ) : (
@@ -512,12 +512,12 @@ export function EmailOtpForm({
           >
             {timer > 0 ? (
               <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin" />
+                <ArrowsClockwise className="w-4 h-4 animate-spin" />
                 Resend in {timer}s
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4" />
+                <ArrowsClockwise className="w-4 h-4" />
                 Resend OTP
               </span>
             )}

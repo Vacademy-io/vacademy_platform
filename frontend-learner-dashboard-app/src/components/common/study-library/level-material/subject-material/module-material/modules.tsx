@@ -22,7 +22,7 @@ export const Modules = ({modules: initialModules }:ModulesProps) => {
     return(
         <div className=" w-full flex flex-col items-center justify-center">
         {!modules?.length && (
-            <div className="flex w-full h-[70vh] flex-col items-center justify-center gap-8 rounded-lg">
+            <div className="flex w-full h-screen-70 flex-col items-center justify-center gap-8 rounded-lg">
                     <EmptyModulesImage />
                     <div>No {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)} have been added yet.</div>
                 </div>

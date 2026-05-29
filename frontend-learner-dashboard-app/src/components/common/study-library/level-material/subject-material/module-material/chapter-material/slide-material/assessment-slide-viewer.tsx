@@ -3,14 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Storage } from "@capacitor/storage";
 import {
-  CheckCircle2,
+  CheckCircle,
   Clock,
   ListChecks,
-  ListOrdered,
+  ListNumbers,
   PlayCircle,
-  RotateCw,
+  ArrowClockwise,
   Trophy,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -74,7 +74,7 @@ const InfoChip = ({ icon, label, value, bgClass }: InfoChipProps) => (
       {icon}
     </div>
     <div className="flex flex-col">
-      <span className="text-[11px] uppercase tracking-wide text-neutral-500">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-neutral-500">{label}</span>
       <span className="text-sm font-semibold text-neutral-800">{value ?? "—"}</span>
     </div>
   </div>
@@ -157,10 +157,10 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
 
   const buttonState = (() => {
     if (!assessment) return { label: "Start Assessment", disabled: true, icon: PlayCircle };
-    if (isInProgress) return { label: "Resume Assessment", disabled: false, icon: RotateCw };
+    if (isInProgress) return { label: "Resume Assessment", disabled: false, icon: ArrowClockwise };
     if (isSubmitted) {
-      if (canReattempt) return { label: "Re-attempt", disabled: false, icon: RotateCw };
-      return { label: "Submitted", disabled: true, icon: CheckCircle2 };
+      if (canReattempt) return { label: "Re-attempt", disabled: false, icon: ArrowClockwise };
+      return { label: "Submitted", disabled: true, icon: CheckCircle };
     }
     if (canStartFresh) return { label: "Start Assessment", disabled: false, icon: PlayCircle };
     return { label: "Not Available", disabled: true, icon: PlayCircle };
@@ -182,7 +182,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
 
   if (!assessmentId) {
     return (
-      <div className="flex h-[420px] flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50">
+      <div className="flex h-reg-420 flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50">
         <ListChecks className="size-8 text-neutral-400" />
         <p className="mt-3 text-sm text-neutral-500">No assessment is linked to this slide.</p>
       </div>
@@ -197,7 +197,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
             <ListChecks className="size-6" />
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] uppercase tracking-wide text-neutral-500">
+            <span className="text-2xs uppercase tracking-wide text-neutral-500">
               Assessment
             </span>
             <h2 className="text-xl font-semibold leading-snug text-neutral-900">
@@ -208,7 +208,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
           </div>
         </div>
         {assessment?.play_mode && (
-          <Badge variant="outline" className="px-2 py-0.5 text-[11px] uppercase tracking-wider">
+          <Badge variant="outline" className="px-2 py-0.5 text-2xs uppercase tracking-wider">
             {assessment.play_mode}
           </Badge>
         )}
@@ -232,7 +232,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
           }
         />
         <InfoChip
-          icon={<ListOrdered className="size-4 text-blue-600" />}
+          icon={<ListNumbers className="size-4 text-blue-600" />}
           label="Sections"
           bgClass="bg-blue-50"
           value={sectionCount && sectionCount > 0 ? sectionCount : null}
@@ -253,7 +253,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
       {isSubmitted && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <div className="flex items-center gap-2 text-emerald-700">
-            <CheckCircle2 className="size-5" />
+            <CheckCircle className="size-5" />
             <span className="text-sm font-semibold">You have submitted this assessment.</span>
           </div>
           {showResult && assessment?.report_release_status === "RELEASED" ? (
@@ -279,7 +279,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
           size="lg"
           disabled={buttonState.disabled}
           onClick={handleStart}
-          className="min-w-[180px]"
+          className="min-w-reg-180"
         >
           <buttonState.icon className="mr-2 size-4" />
           {buttonState.label}

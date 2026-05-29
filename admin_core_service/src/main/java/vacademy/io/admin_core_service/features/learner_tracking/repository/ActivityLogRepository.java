@@ -271,7 +271,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.quizSlideQuestionTracked qt
-            WHERE al.userId = :userId AND al.slideId = :slideId
+            WHERE al.userId = :userId AND al.slideId = :slideId AND al.sourceType = 'QUIZ'
             """)
     Page<ActivityLog> findActivityLogsWithQuizSlide(@Param("userId") String userId,
             @Param("slideId") String slideId,

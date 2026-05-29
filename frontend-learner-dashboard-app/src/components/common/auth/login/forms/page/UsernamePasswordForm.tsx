@@ -12,10 +12,9 @@ import { SessionLimitDialog } from "@/components/common/auth/login/components/Se
 import { TokenKey } from "@/constants/auth/tokens";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { User, Lock, RefreshCw, Shield, Eye, EyeOff } from "lucide-react";
+import { User, Lock, ArrowsClockwise, Shield, Eye, EyeSlash, XCircle } from "@phosphor-icons/react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { VscError } from "react-icons/vsc";
 
 import {
   getTokenDecodedData,
@@ -388,7 +387,7 @@ export function UsernameLogin({
                                 className="text-gray-400 hover:text-gray-600 transition-colors duration-200 z-10"
                               >
                                 {showPassword ? (
-                                  <EyeOff className="w-4 h-4" />
+                                  <EyeSlash className="w-4 h-4" />
                                 ) : (
                                   <Eye className="w-4 h-4" />
                                 )}
@@ -398,8 +397,8 @@ export function UsernameLogin({
                           </div>
                           {form.formState.errors.password?.message && (
                             <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
-                              <VscError />
-                              <span className="mt-[3px]">
+                              <XCircle />
+                              <span className="mt-0.5">
                                 {form.formState.errors.password.message}
                               </span>
                             </div>
@@ -450,7 +449,7 @@ export function UsernameLogin({
                       ease: "linear",
                     }}
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <ArrowsClockwise className="w-4 h-4" />
                   </motion.div>
                   <span className="text-sm">Signing in...</span>
                 </div>

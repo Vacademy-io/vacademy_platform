@@ -4,7 +4,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { Bell, BellOff, Volume2, VolumeX, Shield, Smartphone } from 'lucide-react';
+import { Bell, BellSlash, SpeakerHigh, SpeakerSlash, Shield, DeviceMobile } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
 export const NotificationSettings: React.FC = () => {
@@ -46,7 +46,7 @@ export const NotificationSettings: React.FC = () => {
               {isPermissionGranted ? (
                 <Bell className="h-5 w-5 text-green-600" />
               ) : (
-                <BellOff className="h-5 w-5 text-gray-400" />
+                <BellSlash className="h-5 w-5 text-gray-400" />
               )}
               <CardTitle>Notification Status</CardTitle>
             </div>
@@ -63,7 +63,7 @@ export const NotificationSettings: React.FC = () => {
             <div className="space-y-1">
               <div className="font-medium">Platform</div>
               <div className="text-sm text-muted-foreground flex items-center space-x-2">
-                <Smartphone className="h-4 w-4" />
+                <DeviceMobile className="h-4 w-4" />
                 <span className="capitalize">{status.platform}</span>
               </div>
             </div>
@@ -134,9 +134,9 @@ export const NotificationSettings: React.FC = () => {
             <div className="space-y-1">
               <div className="font-medium flex items-center space-x-2">
                 {settings.sound ? (
-                  <Volume2 className="h-4 w-4" />
+                  <SpeakerHigh className="h-4 w-4" />
                 ) : (
-                  <VolumeX className="h-4 w-4" />
+                  <SpeakerSlash className="h-4 w-4" />
                 )}
                 <span>Sound</span>
               </div>

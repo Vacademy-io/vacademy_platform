@@ -54,6 +54,11 @@ window._env_ = {
 
 // Make configuration available globally
 Object.freeze(window._env_);
+
+// Standalone same-origin backend override (read by src/config/baseUrl.ts).
+// Empty when BACKEND_BASE_URL is unset, so getBaseUrl() falls back to its
+// build-time / domain-map logic (no-op for non-standalone deploys).
+window.__BACKEND_URL__ = "${BACKEND_BASE_URL:-}";
 EOF
 
 echo "✅ Environment configuration generated at ${CONFIG_FILE}"

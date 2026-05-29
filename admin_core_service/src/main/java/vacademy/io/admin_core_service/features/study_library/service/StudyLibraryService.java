@@ -537,7 +537,7 @@ public class StudyLibraryService {
             return new ArrayList<>();
         }
         try {
-            return new ObjectMapper().readValue(json, new TypeReference<List<ChapterDTOWithDetails>>() {
+            return objectMapper.readValue(json, new TypeReference<List<ChapterDTOWithDetails>>() {
             });
         } catch (JsonProcessingException jsonProcessingException) {
             throw new VacademyException(jsonProcessingException.getMessage());

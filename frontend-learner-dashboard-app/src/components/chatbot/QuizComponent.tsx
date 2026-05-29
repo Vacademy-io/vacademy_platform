@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Clock, CheckCircle2, XCircle, ChevronRight } from "lucide-react";
+import { Clock, CheckCircle, XCircle, CaretRight } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -136,7 +136,7 @@ export const QuizComponent: React.FC<QuizComponentProps> = ({
             )}
           >
             {answers[q.id] !== undefined ? (
-              <CheckCircle2 className="h-3.5 w-3.5" />
+              <CheckCircle className="h-3.5 w-3.5" />
             ) : (
               idx + 1
             )}
@@ -231,7 +231,7 @@ export const QuizComponent: React.FC<QuizComponentProps> = ({
               onClick={goToNextQuestion}
               className="h-8"
             >
-              Next <ChevronRight className="h-4 w-4 ml-1" />
+              Next <CaretRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (
             <Button

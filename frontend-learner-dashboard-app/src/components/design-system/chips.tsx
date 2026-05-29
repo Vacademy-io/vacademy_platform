@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check } from "@phosphor-icons/react";
 export const StatusCheck = () => (
   <div className="flex items-center justify-center rounded-full bg-green-500 p-1">
     <Check className="h-3 w-3 text-white" />
@@ -101,7 +101,7 @@ export const MarkBadge = ({ marks }: { marks: number }) => {
 //   return (
 //       <div
 //           className={cn(
-//               "inline-flex h-8 flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-300 px-3 py-[6px] text-body font-regular text-neutral-600",
+//               "inline-flex h-8 flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-body font-regular text-neutral-600",
 //               className,
 //           )}
 //       >
@@ -136,7 +136,7 @@ export const MarkBadge = ({ marks }: { marks: number }) => {
 //           <div className="flex items-center">
 //               {showIcon && (
 //                   <StatusIcon
-//                       className={cn(statusData.color.icon, "size-[18px]")}
+//                       className={cn(statusData.color.icon, "size-5")}
 //                       weight="fill"
 //                   />
 //               )}

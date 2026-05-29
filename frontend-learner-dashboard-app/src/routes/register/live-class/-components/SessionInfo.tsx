@@ -77,7 +77,7 @@ export default function SessionInfo({
   const convertedStartTime = getConvertedStartTime();
 
   return (
-    <div className="flex flex-col gap-6 h-full w-full lg:w-[50%] lg:max-w-[560px] items-center">
+    <div className="flex flex-col gap-6 h-full w-full lg:w-1/2 lg:max-w-reg-560 items-center">
       {/* Institute Branding */}
       <div className="flex items-center gap-3">
         {instituteLogoUrl ? (
@@ -127,7 +127,7 @@ export default function SessionInfo({
         <Card className="w-full border-primary-100/60 shadow-sm">
           <CardContent className="p-4 sm:p-5">
             <div
-              className="max-h-[28vh] sm:max-h-[35vh] overflow-auto prose prose-sm max-w-none text-gray-600 leading-relaxed"
+              className="max-h-screen-28 sm:max-h-screen-35 overflow-auto prose prose-sm max-w-none text-gray-600 leading-relaxed"
               dangerouslySetInnerHTML={{
                 __html: sessionDetails.descriptionHtml,
               }}
@@ -139,7 +139,7 @@ export default function SessionInfo({
           <img
             src={RegistrationLogo}
             alt="Registration"
-            className="max-w-[280px] max-h-[200px] object-contain opacity-70"
+            className="max-w-reg-280 max-h-52 object-contain opacity-70"
           />
         </div>
       )}

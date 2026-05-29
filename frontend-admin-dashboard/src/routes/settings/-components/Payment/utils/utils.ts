@@ -94,6 +94,7 @@ export const getRequiredApprovalStatus = (existingFreePlans: FreePlanInfo[]): bo
 export const getTotalSteps = (planType: string): number => {
     if (planType === PaymentPlans.FREE) return 2;
     if (planType === PaymentPlans.DONATION) return 2;
+    if (planType === PaymentPlans.CPO) return 2;
     return 3;
 };
 

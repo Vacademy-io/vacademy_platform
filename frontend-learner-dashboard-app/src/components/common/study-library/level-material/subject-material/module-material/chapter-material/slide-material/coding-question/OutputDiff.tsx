@@ -42,12 +42,12 @@ export function OutputDiff({ actual, expected }: Props) {
 
   return (
     <div className="space-y-1">
-      <div className="grid grid-cols-[auto,1fr,1fr] gap-x-2 rounded border bg-white p-1 font-mono text-[11px]">
+      <div className="grid grid-cols-[auto,1fr,1fr] gap-x-2 rounded border bg-white p-1 font-mono text-2xs">
         <div className="col-span-1" />
-        <div className="text-[10px] font-semibold uppercase text-gray-500">
+        <div className="text-3xs font-semibold uppercase text-gray-500">
           Your output
         </div>
-        <div className="text-[10px] font-semibold uppercase text-gray-500">
+        <div className="text-3xs font-semibold uppercase text-gray-500">
           Expected
         </div>
         {rows.map((r, i) => (
@@ -55,7 +55,7 @@ export function OutputDiff({ actual, expected }: Props) {
         ))}
       </div>
       {firstDiffMsg && (
-        <div className="text-[11px] text-red-700">{firstDiffMsg}</div>
+        <div className="text-2xs text-red-700">{firstDiffMsg}</div>
       )}
     </div>
   );

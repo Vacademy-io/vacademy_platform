@@ -10,13 +10,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { MyButton } from "@/components/design-system/button";
 import {
-    MessageCircle,
-    AlertTriangle,
-    CheckCircle2,
-    ExternalLink,
-    Sparkles,
+    ChatCircle,
+    Warning,
+    CheckCircle,
+    ArrowSquareOut,
+    Sparkle,
     X
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { useState } from "react";
 
 // Types for the enrollment policy response
@@ -133,9 +133,9 @@ const EnrollmentPolicyDialog = ({
     const getActionIcon = (type: string) => {
         switch (type) {
             case "whatsapp":
-                return <MessageCircle className="w-5 h-5" />;
+                return <ChatCircle className="w-5 h-5" />;
             default:
-                return <ExternalLink className="w-5 h-5" />;
+                return <ArrowSquareOut className="w-5 h-5" />;
         }
     };
 
@@ -146,7 +146,7 @@ const EnrollmentPolicyDialog = ({
                 <div className="relative">
                     <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping duration-1000" />
                     <div className="relative mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/30 ring-4 ring-white">
-                        <CheckCircle2 className="w-10 h-10 text-white" />
+                        <CheckCircle className="w-10 h-10 text-white" />
                     </div>
                 </div>
                 <div className="text-center space-y-2">
@@ -165,7 +165,7 @@ const EnrollmentPolicyDialog = ({
                                 <div className={cn(
                                     "p-3 rounded-2xl flex-shrink-0 transition-colors",
                                     action.type === "whatsapp"
-                                        ? "bg-[#25D366]/10 text-[#25D366] group-hover:bg-[#25D366]/20"
+                                        ? "bg-whatsapp/10 text-whatsapp group-hover:bg-whatsapp/20"
                                         : "bg-primary/10 text-primary group-hover:bg-primary/20"
                                 )}>
                                     {getActionIcon(action.type)}
@@ -186,13 +186,13 @@ const EnrollmentPolicyDialog = ({
                                     className={cn(
                                         "flex-shrink-0 w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all duration-300 transform active:scale-[0.98]",
                                         action.type === "whatsapp"
-                                            ? "bg-[#25D366] hover:bg-[#128C7E] text-white shadow-lg shadow-green-500/20"
+                                            ? "bg-whatsapp hover:bg-whatsapp-hover text-white shadow-lg shadow-green-500/20"
                                             : "bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
                                     )}
                                 >
                                     {getActionIcon(action.type)}
                                     <span>{action.buttonText}</span>
-                                    <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                                    <ArrowSquareOut className="w-3.5 h-3.5 opacity-80" />
                                 </button>
                             </div>
                         </CardContent>
@@ -209,7 +209,7 @@ const EnrollmentPolicyDialog = ({
         <>
             <DialogHeader className="space-y-4 pb-4">
                 <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
-                    <AlertTriangle className="w-8 h-8 text-white" />
+                    <Warning className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
                     <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-800">
@@ -225,7 +225,7 @@ const EnrollmentPolicyDialog = ({
             <div className="py-4 space-y-4">
                 {/* <div className="rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4">
                     <div className="flex items-start gap-3">
-                        <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <Sparkle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-amber-800">
                             Your existing enrollment gives you full access to all course content. Continue learning from where you left off!
                         </p>
@@ -236,7 +236,7 @@ const EnrollmentPolicyDialog = ({
                 {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (
                     <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
-                            <Sparkles className="w-6 h-6 text-primary-600" />
+                            <Sparkle className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">Want to Upgrade?</h4>
                             <p className="text-sm text-gray-600">
                                 {reenrollmentPolicy.upgradeOptions.paid_upgrade.text || "Upgrade to get access to premium features."}
@@ -251,7 +251,7 @@ const EnrollmentPolicyDialog = ({
                                 className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
                             >
                                 <span>Upgrade Now</span>
-                                <ExternalLink className="w-4 h-4 ml-2" />
+                                <ArrowSquareOut className="w-4 h-4 ml-2" />
                             </MyButton>
                         </div>
                     </div>
@@ -292,7 +292,7 @@ const EnrollmentPolicyDialog = ({
         <>
             <DialogHeader className="space-y-4 pb-4">
                 <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-red-400 to-rose-500 flex items-center justify-center shadow-lg shadow-red-500/30">
-                    <AlertTriangle className="w-8 h-8 text-white" />
+                    <Warning className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
                     <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-800">
@@ -308,7 +308,7 @@ const EnrollmentPolicyDialog = ({
                 <div className="py-4">
                     <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
-                            <Sparkles className="w-6 h-6 text-primary-600" />
+                            <Sparkle className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">Upgrade to Continue Learning</h4>
                             <p className="text-sm text-gray-600">
                                 Click below to join membership.
@@ -323,7 +323,7 @@ const EnrollmentPolicyDialog = ({
                                 className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
                             >
                                 <span>{reenrollmentPolicy.upgradeOptions.paid_upgrade.text}</span>
-                                <ExternalLink className="w-4 h-4 ml-2" />
+                                <ArrowSquareOut className="w-4 h-4 ml-2" />
                             </MyButton>
                         </div>
                     </div>
@@ -337,7 +337,7 @@ const EnrollmentPolicyDialog = ({
         <>
             <DialogHeader className="space-y-4 pb-4">
                 <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                    <AlertTriangle className="w-8 h-8 text-white" />
+                    <Warning className="w-8 h-8 text-white" />
                 </div>
                 <div className="text-center space-y-2">
                     <DialogTitle className="text-xl sm:text-2xl font-bold text-gray-800">
@@ -354,7 +354,7 @@ const EnrollmentPolicyDialog = ({
                 <div className="py-4">
                     <div className="rounded-xl bg-gradient-to-br from-primary-50 to-blue-50 border border-primary-200 p-5">
                         <div className="flex flex-col items-center text-center space-y-3">
-                            <Sparkles className="w-6 h-6 text-primary-600" />
+                            <Sparkle className="w-6 h-6 text-primary-600" />
                             <h4 className="font-semibold text-gray-900">Upgrade to Continue Learning</h4>
                             <p className="text-sm text-gray-600">
                                Click below to join membership.
@@ -369,7 +369,7 @@ const EnrollmentPolicyDialog = ({
                                 className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
                             >
                                 <span>{reenrollmentPolicy.upgradeOptions.paid_upgrade.text}</span>
-                                <ExternalLink className="w-4 h-4 ml-2" />
+                                <ArrowSquareOut className="w-4 h-4 ml-2" />
                             </MyButton>
                         </div>
                     </div>

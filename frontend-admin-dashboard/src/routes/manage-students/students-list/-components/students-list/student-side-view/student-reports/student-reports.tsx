@@ -200,12 +200,22 @@ export const StudentReports = () => {
     })).filter((g) => g.items.length > 0);
 
     return (
+<<<<<<< HEAD
         <div className="flex flex-col gap-3 text-neutral-600">
             {/* Primary action bar */}
             <ProfileActionBar className="justify-between">
                 <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
                     {reportLabel} Reports
                 </span>
+=======
+        <div className="flex h-full flex-col gap-4 p-3 sm:gap-6 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <h2 className="text-h3 font-bold tracking-tight text-neutral-900 sm:text-h2">
+                        {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Reports
+                    </h2>
+                </div>
+>>>>>>> origin/main
                 <div className="flex gap-2">
                     {pendingProcesses.length > 0 && (
                         <MyButton

@@ -97,7 +97,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
   const useGroupsFormat = groups && groups.length > 0;
 
   return (
-    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>
+    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}> // design-lint-ignore: page-builder default color
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-8">

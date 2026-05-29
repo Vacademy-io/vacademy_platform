@@ -113,6 +113,9 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponRedemptionService couponRedemptionService;
+
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
@@ -124,6 +127,7 @@ public class UserPlanService {
                 paymentOption, paymentInitiationRequestDTO, status, null, null, null);
     }
 
+    @Transactional
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
@@ -249,6 +253,13 @@ public class UserPlanService {
 
         String paymentJson = JsonUtil.toJson(paymentInitiationRequestDTO);
         userPlan.setJsonPaymentDetails(paymentJson);
+
+        // Atomic redemption — runs inside the @Transactional boundary of this method.
+        // A race-loss or status-flipped-mid-flight throws VacademyException and
+        // rolls back the entire enrollment (no UserPlan, no orphaned references).
+        if (appliedCouponDiscount != null) {
+            couponRedemptionService.consume(appliedCouponDiscount);
+        }
 
         logger.debug("Saving UserPlan with details: {}", userPlan);
         UserPlan saved = userPlanRepository.save(userPlan);
@@ -751,6 +762,8 @@ public class UserPlanService {
                 .planJson(userPlan.getPlanJson())
                 .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
                 .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
+                .appliedCoupon(vacademy.io.admin_core_service.features.user_subscription.dto.CouponSnapshotDTO
+                        .fromJson(userPlan.getAppliedCouponDiscountJson()))
                 .enrollInviteId(userPlan.getEnrollInviteId())
                 .paymentOptionId(userPlan.getPaymentOptionId())
                 .paymentOptionJson(userPlan.getPaymentOptionJson())
@@ -810,6 +823,8 @@ public class UserPlanService {
                 .planJson(userPlan.getPlanJson())
                 .appliedCouponDiscountId(userPlan.getAppliedCouponDiscountId())
                 .appliedCouponDiscountJson(userPlan.getAppliedCouponDiscountJson())
+                .appliedCoupon(vacademy.io.admin_core_service.features.user_subscription.dto.CouponSnapshotDTO
+                        .fromJson(userPlan.getAppliedCouponDiscountJson()))
                 .enrollInviteId(userPlan.getEnrollInviteId())
                 .paymentOptionId(userPlan.getPaymentOptionId())
                 .paymentOptionJson(userPlan.getPaymentOptionJson())

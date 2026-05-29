@@ -573,7 +573,7 @@ const CourseCatalougePage: React.FC = () => {
           {/* Tab Navigation */}
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md mb-3">
             <div className="p-2 sm:p-3">
-              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row rounded-full [.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-2xl [.ui-play_&]:p-1.5 [.ui-play_&]:gap-1.5 [.ui-play_&]:shadow-[0_3px_0_hsl(var(--primary-200))]">
+              <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row rounded-full [.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-2xl [.ui-play_&]:p-1.5 [.ui-play_&]:gap-1.5 [.ui-play_&]:shadow-play-3-primary">
                 {visibleTabs.map((t) => {
                   const count =
                     t.value === "ALL"
@@ -600,12 +600,12 @@ const CourseCatalougePage: React.FC = () => {
                       // Play Styles — solid, bold, Duolingo-style
                       "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-xs",
                       t.value === "COMPLETED" &&
-                      "[.ui-play_&]:data-[state=active]:!bg-[#58cc02] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#46a302]",
+                      "[.ui-play_&]:data-[state=active]:!bg-play-success [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-play-3-success",
                       t.value === "PROGRESS" &&
-                      "[.ui-play_&]:data-[state=active]:!bg-[#1cb0f6] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#1899d6]",
+                      "[.ui-play_&]:data-[state=active]:!bg-play-info [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-play-3-info",
                       t.value !== "COMPLETED" &&
                       t.value !== "PROGRESS" &&
-                      "[.ui-play_&]:data-[state=active]:!bg-[#ce82ff] [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-[0_3px_0_#a568cc]"
+                      "[.ui-play_&]:data-[state=active]:!bg-play-accent [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-play-3-accent"
                     )}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -626,7 +626,7 @@ const CourseCatalougePage: React.FC = () => {
                               : "Completed")}
                       </span>
                       {count > 0 && (
-                        <span className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-neutral-200/80 text-[10px] font-semibold text-neutral-700 data-[state=active]:bg-primary-200 dark:bg-neutral-700 dark:text-neutral-200">
+                        <span className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-neutral-200/80 text-caption font-semibold text-neutral-700 data-[state=active]:bg-primary-200 dark:bg-neutral-700 dark:text-neutral-200">
                           {count}
                         </span>
                       )}

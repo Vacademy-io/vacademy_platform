@@ -78,6 +78,16 @@ public class EnrollInviteSettingDTO {
         @JsonProperty("ALLOWED_TEAM_ROLES")
         private List<String> allowedTeamRoles;
 
+        /**
+         * Permissions to assign to the sub-org admin's FSPSSM rows (stored on the
+         * access_permission column as a comma-separated string). Picked by the parent
+         * institute admin at sub-org creation. Examples: ["FULL"], ["CREATE_COURSE"],
+         * ["FULL","CREATE_COURSE"]. Null / empty → the legacy default "FULL" is applied,
+         * so existing sub-orgs created before this field shipped behave unchanged.
+         */
+        @JsonProperty("ADMIN_PERMISSIONS")
+        private List<String> adminPermissions;
+
     }
 
     @Data

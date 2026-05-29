@@ -30,6 +30,12 @@ import {
     Settings2,
     RotateCcw,
 } from 'lucide-react';
+import { PencilSimple } from '@phosphor-icons/react';
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover';
 import {
     createAssessmentFromRecording,
     publishAssessmentFromRecording,
@@ -37,6 +43,7 @@ import {
     type CreateAssessmentFromRecordingRequest,
     type GeneratedQuestion,
 } from '../-services/utils';
+import { RecordingAssessmentExportButtons } from './RecordingAssessmentExportButtons';
 import {
     QUESTION_TYPES,
     type QuestionTypeCode,
@@ -49,6 +56,23 @@ interface BatchSummary {
     session_name?: string;
 }
 
+/**
+ * Pretty-print an OpenRouter model slug for the chip in the preview header.
+ * Drops the provider prefix and title-cases segments, so `google/gemini-3-pro`
+ * reads as `Gemini 3 Pro`. The raw slug stays available on the chip's `title`
+ * tooltip for power users who want to verify the exact OpenRouter model.
+ */
+const formatModelLabel = (slug: string): string => {
+    const tail = slug.includes('/') ? (slug.split('/').pop() ?? slug) : slug;
+    return tail
+        .split('-')
+        .filter(Boolean)
+        .map((part) =>
+            /^[a-z]/.test(part) ? part[0]!.toUpperCase() + part.slice(1) : part
+        )
+        .join(' ');
+};
+
 interface CreateAssessmentFromRecordingModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -59,6 +83,13 @@ interface CreateAssessmentFromRecordingModalProps {
     /** Transcript URLs published by the worker. Used to auto-suggest a title. */
     sourceTextUrl?: string | null;
     englishTextUrl?: string | null;
+    /**
+     * When provided, the modal opens directly into the Preview pane with this
+     * artifact's questions already loaded — bypassing the form + generation
+     * step entirely. Used by the "Past papers" reuse flow so teachers can
+     * re-export PDFs or re-publish without spending another LLM call.
+     */
+    initialArtifact?: AssessmentArtifact | null;
 }
 
 /**
@@ -78,6 +109,7 @@ export function CreateAssessmentFromRecordingModal({
     batches,
     sourceTextUrl,
     englishTextUrl,
+    initialArtifact,
 }: CreateAssessmentFromRecordingModalProps) {
     const [startDateTime, setStartDateTime] = useState<string>(defaultStartDateTime());
     const [endDateTime, setEndDateTime] = useState<string>(defaultEndDateTime());
@@ -127,8 +159,18 @@ export function CreateAssessmentFromRecordingModal({
             setTitleEdited(false);
             setQuestionTypes([]);
             setIncludeImages(false);
+            return;
         }
-    }, [open]);
+        // Reuse flow: when the parent passes a past artifact, hydrate the
+        // preview state directly so the modal skips the form + generation
+        // step. titleEdited=true blocks the transcript-derived auto-suggest
+        // from clobbering the artifact's stored title on open.
+        if (initialArtifact) {
+            setResult(initialArtifact);
+            setTitle(initialArtifact.title ?? '');
+            setTitleEdited(true);
+        }
+    }, [open, initialArtifact]);
 
     // Auto-suggest a title from the transcript when the modal opens. We pull
     // the English transcript (falls back to source) and use its first salient
@@ -1114,8 +1156,24 @@ function PreviewPane({
                 Matches the slim header style of the AI-tools preview rather
                 than the previous heavy primary-tinted card. */}
             <div className="flex flex-col gap-1.5 px-1">
-                <div className="text-lg font-semibold leading-tight text-neutral-800">
-                    {result.title ?? 'Untitled'}
+                {/* Inline editable title bound to configFields.title (strict
+                    controlled — the export buttons fall back to result.title
+                    when this is empty so clearing the field is safe). The
+                    always-visible pencil makes the affordance discoverable;
+                    most users miss that a heading can be clicked to edit. */}
+                <div className="group flex items-center gap-2 rounded-sm border border-neutral-200 px-2 py-1 transition-colors hover:border-neutral-300 focus-within:border-primary-400">
+                    <Input
+                        value={configFields.title}
+                        onChange={(e) => configFields.setTitle(e.target.value)}
+                        placeholder={result.title ?? 'Untitled'}
+                        aria-label="Assessment title"
+                        className="h-auto flex-1 border-0 bg-transparent px-0 py-0 text-lg font-semibold leading-tight text-neutral-800 shadow-none placeholder:text-neutral-400 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    />
+                    <PencilSimple
+                        aria-hidden
+                        weight="bold"
+                        className="size-4 shrink-0 text-neutral-500 transition-colors group-focus-within:text-primary-500"
+                    />
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-500">
                     <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-medium text-neutral-600">
@@ -1127,15 +1185,60 @@ function PreviewPane({
                         </span>
                     )}
                     {result.modelUsed && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-mono text-[10px] text-neutral-400">
-                            {result.modelUsed}
+                        <span
+                            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-medium text-neutral-600"
+                            title={result.modelUsed}
+                        >
+                            {formatModelLabel(result.modelUsed)}
                         </span>
                     )}
                     {batches && batches.length > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-medium text-neutral-600">
-                            <Users className="size-3" />
-                            {batches.length} {batches.length === 1 ? 'batch' : 'batches'}
-                        </span>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-medium text-neutral-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                                >
+                                    <Users className="size-3" />
+                                    {batches.length}{' '}
+                                    {batches.length === 1
+                                        ? 'batch'
+                                        : 'batches'}
+                                    <ChevronDown className="size-3" />
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                                align="start"
+                                className="w-72 p-0"
+                            >
+                                <div className="border-b border-neutral-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Assigned batches ({batches.length})
+                                </div>
+                                <ul className="max-h-64 overflow-y-auto py-1">
+                                    {batches.map((b) => (
+                                        <li
+                                            key={b.package_session_id}
+                                            className="flex flex-col gap-0.5 px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+                                        >
+                                            <span className="font-medium">
+                                                {b.package_name}
+                                            </span>
+                                            {(b.level_name ||
+                                                b.session_name) && (
+                                                <span className="text-xs text-neutral-500">
+                                                    {[
+                                                        b.level_name,
+                                                        b.session_name,
+                                                    ]
+                                                        .filter(Boolean)
+                                                        .join(' · ')}
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </PopoverContent>
+                        </Popover>
                     )}
                 </div>
             </div>
@@ -1173,13 +1276,23 @@ function PreviewPane({
                         Assessment</strong> to set the title, schedule, and
                         marking — you can publish from inside that dialog.
                     </div>
-                    <MyButton
-                        type="button"
-                        onClick={() => setConfigDialogOpen(true)}
-                    >
-                        <Settings2 className="size-3.5" />
-                        Create Assessment
-                    </MyButton>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <RecordingAssessmentExportButtons
+                            questions={result.questions ?? []}
+                            title={
+                                configFields.title?.trim() ||
+                                result.title ||
+                                'Assessment'
+                            }
+                        />
+                        <MyButton
+                            type="button"
+                            onClick={() => setConfigDialogOpen(true)}
+                        >
+                            <Settings2 className="size-3.5" />
+                            Create Assessment
+                        </MyButton>
+                    </div>
                 </div>
             )}
 

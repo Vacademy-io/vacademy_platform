@@ -838,7 +838,11 @@ export const StudentFiles = () => {
 
             {/* ── Add File Dialog ──────────────────────────────────────────── */}
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+<<<<<<< HEAD
                 <DialogContent className="overflow-y-auto">
+=======
+                <DialogContent className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
+>>>>>>> origin/main
                     <DialogHeader>
                         <DialogTitle className="text-sm font-semibold">
                             Add File for{' '}

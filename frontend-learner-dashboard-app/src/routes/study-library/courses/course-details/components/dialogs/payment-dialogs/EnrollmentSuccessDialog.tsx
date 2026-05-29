@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CheckCircle, ArrowRight } from "lucide-react";
+import { CheckCircle, ArrowRight } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 
 interface EnrollmentSuccessDialogProps {

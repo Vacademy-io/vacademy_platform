@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { MessageCircle, Sparkles, HelpCircle, BookOpen } from "lucide-react";
+import { ChatCircle, Sparkle, Question, BookOpen } from "@phosphor-icons/react";
 import { useLocation } from "@tanstack/react-router";
 import { Capacitor } from "@capacitor/core";
 import { useChatbotContext } from "./useChatbotContext";
@@ -8,8 +8,8 @@ import { avatarUrl } from "@/services/chatbot-settings";
 import { AnimatePresence, motion } from "framer-motion";
 
 const ROTATING_MESSAGES = [
-  { text: "Any doubts?", icon: HelpCircle },
-  { text: "Learn something new?", icon: Sparkles },
+  { text: "Any doubts?", icon: Question },
+  { text: "Learn something new?", icon: Sparkle },
   { text: "Practice questions?", icon: BookOpen },
 ];
 
@@ -97,7 +97,7 @@ export const ChatbotFloatingButton = () => {
 
   return (
     <div className={cn(
-      "fixed right-6 z-[990] flex flex-col items-end gap-3 pointer-events-none",
+      "fixed right-6 z-50 flex flex-col items-end gap-3 pointer-events-none",
       isOnVideoPage ? "bottom-20" : "bottom-6",
       isNativePlatform && "mb-10"
     )}>
@@ -109,7 +109,7 @@ export const ChatbotFloatingButton = () => {
             initial={{ opacity: 0, y: 10, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.9 }}
-            className="bg-background border border-border shadow-lg rounded-xl p-3 max-w-[200px] pointer-events-auto relative mr-2"
+            className="bg-background border border-border shadow-lg rounded-xl p-3 max-w-48 pointer-events-auto relative mr-2"
           >
             <div className="text-sm font-medium text-foreground relative z-10">
                {LONG_PROMPT}
@@ -175,7 +175,7 @@ export const ChatbotFloatingButton = () => {
                        transition={{ duration: 0.2 }}
                     >
                         {/* Show specific icon for the message if showing pill, else default icon */}
-                        {(showPill || isHovered) ? <CurrentIcon className="h-7 w-7" /> : <MessageCircle className="h-7 w-7" />}
+                        {(showPill || isHovered) ? <CurrentIcon className="h-7 w-7" /> : <ChatCircle className="h-7 w-7" />}
                     </motion.div>
                   )}
                 </div>

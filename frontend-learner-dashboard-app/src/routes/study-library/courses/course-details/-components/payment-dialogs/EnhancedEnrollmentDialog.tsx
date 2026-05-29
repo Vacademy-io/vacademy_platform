@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { usePaymentStatusDialog } from "@/hooks/use-payment-status";
 import { OneTimePaymentDialog } from "./OneTimePaymentDialog";
 import { SubscriptionPaymentDialog } from "./SubscriptionPaymentDialog";
@@ -135,10 +135,10 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   // Show loading state
   if (is_loading) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
             <p className="text-gray-600">Checking enrollment status...</p>
           </div>
         </div>
@@ -155,7 +155,7 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
       // Don't show error dialog, continue to enrollment flow below
     } else {
       return (
-        <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
           <div className="bg-white rounded-lg p-6 max-w-sm">
             <div className="text-center">
               <p className="text-red-600 mb-4">{error.message}</p>
@@ -347,7 +347,7 @@ export const EnhancedEnrollmentDialog: React.FC<EnhancedEnrollmentDialogProps> =
   // For other payment types (donation, free), use the existing flow
   // This would need to be implemented based on the existing donation and free enrollment dialogs
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
       <div className="bg-white rounded-lg p-6 max-w-sm">
         <div className="text-center">
           <p className="text-gray-600 mb-4">Payment type {paymentType} not yet supported in enhanced flow.</p>

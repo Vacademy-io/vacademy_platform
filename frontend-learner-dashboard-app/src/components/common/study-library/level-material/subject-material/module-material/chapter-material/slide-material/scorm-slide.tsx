@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useRouter } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { Slide, ScormSlide } from '@/hooks/study-library/use-slides';
 import { getPackageSessionId } from '@/utils/study-library/get-list-from-stores/getPackageSessionId';
+import { refreshProgressAfterSubmit } from '@/utils/study-library/tracking/refreshProgressAfterSubmit';
 
 // SCORM Tracking endpoints
 const SCORM_TRACKING_BASE = `${BASE_URL}/admin-core-service/scorm/tracking/v1`;
@@ -16,6 +19,9 @@ interface ScormTrackingData {
 interface ScormTrackingCommitPayload {
     scorm_slide_id: string;
     package_session_id: string;
+    chapter_id?: string;
+    module_id?: string;
+    subject_id?: string;
     cmi_suspend_data?: string | null;
     cmi_location?: string | null;
     cmi_exit?: string | null;
@@ -24,9 +30,24 @@ interface ScormTrackingCommitPayload {
     score_raw?: number | null;
     score_min?: number | null;
     score_max?: number | null;
+    score_scaled?: number | null;
+    progress_measure?: number | null;
     total_time?: string | null;
     cmi_json?: Record<string, string> | null;
 }
+
+// SCORM-spec CMI keys all begin with "cmi." (e.g. cmi.score.raw, cmi.completion_status).
+// The earlier permissive "cmi_" prefix also matched the DTO's own `cmi_json` field
+// (when it accidentally leaked into the ref) — leading to a self-referential
+// "cmi_json": "[object Object]" entry in subsequent commits. Anchor strictly to
+// "cmi." to stop that class of bleed-through.
+const isCmiKey = (key: string) => key.startsWith('cmi.');
+
+const toNum = (v: unknown): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+};
 
 interface ScormSlideComponentProps {
     slide: Slide;
@@ -46,6 +67,8 @@ const ScormSlideComponent = ({
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const cmiDataRef = useRef<ScormTrackingData>({});
     const { getPublicUrl } = useFileUpload();
+    const router = useRouter();
+    const queryClient = useQueryClient();
 
     const scormSlide = slide.scorm_slide as ScormSlide | undefined;
 
@@ -65,7 +88,14 @@ const ScormSlideComponent = ({
         setError(null);
     }, [slide.id]);
 
-    // Initialize tracking data from backend
+    // Initialize tracking data from backend.
+    //
+    // The backend returns the full ScormTrackingDTO (typed fields + the raw
+    // cmi_json map). We only restore the raw cmi.* keys into cmiDataRef —
+    // anything else (typed score fields, status fields, parent's cmi_json
+    // string, etc.) is derived state and must NOT be round-tripped on the
+    // next commit, otherwise cmi_json would nest one layer deeper on every
+    // commit (request payload grows quadratically; that was the bug).
     const initializeScormTracking = useCallback(async () => {
         if (!slide.id) return;
 
@@ -73,7 +103,14 @@ const ScormSlideComponent = ({
             const response = await authenticatedAxiosInstance.get(
                 `${SCORM_TRACKING_BASE}/${slide.id}/initialize?packageSessionId=${resolvedPackageSessionId}`
             );
-            cmiDataRef.current = response.data || {};
+            const cmiJson = (response.data?.cmi_json ?? {}) as Record<string, unknown>;
+            const restored: ScormTrackingData = {};
+            for (const [key, value] of Object.entries(cmiJson)) {
+                if (isCmiKey(key) && value != null) {
+                    restored[key] = String(value);
+                }
+            }
+            cmiDataRef.current = restored;
         } catch (err) {
             console.warn(
                 'SCORM tracking initialization failed (may be first launch):',
@@ -83,48 +120,86 @@ const ScormSlideComponent = ({
         }
     }, [slide.id, resolvedPackageSessionId]);
 
-    // Commit tracking data to backend
+    // Commit tracking data to backend.
     // NOTE: Both initialize and commit MUST use slide.id (the parent Slide entity's ID)
-    // because scorm_learner_progress is indexed by slide_id (not scorm_slide.id)
+    // because scorm_learner_progress is indexed by slide_id (not scorm_slide.id).
     const commitScormData = useCallback(async () => {
         if (!slide.id) return;
 
         const cmi = cmiDataRef.current;
 
-        // Map well-known SCORM 1.2 keys to typed DTO fields.
-        // All remaining raw cmi.* keys go into cmi_json for backend storage.
-        const knownFields: ScormTrackingCommitPayload = {
-            scorm_slide_id: scormSlide?.id || '',
-            package_session_id: resolvedPackageSessionId,
-            cmi_location: cmi['cmi.core.lesson_location'] ?? cmi['cmi.location'] ?? null,
-            cmi_exit:     cmi['cmi.core.exit']            ?? cmi['cmi.exit']     ?? null,
-            cmi_suspend_data: cmi['cmi.suspend_data']    ?? null,
-            completion_status: cmi['cmi.completion_status']
-                ?? cmi['cmi.core.lesson_status']
-                ?? null,
-            success_status: cmi['cmi.success_status'] ?? null,
-            score_raw: cmi['cmi.core.score.raw']  != null ? Number(cmi['cmi.core.score.raw'])  : null,
-            score_min: cmi['cmi.core.score.min']  != null ? Number(cmi['cmi.core.score.min'])  : null,
-            score_max: cmi['cmi.core.score.max']  != null ? Number(cmi['cmi.core.score.max'])  : null,
-            total_time: cmi['cmi.core.session_time'] ?? cmi['cmi.session_time'] ?? null,
-            // Store EVERYTHING as cmi_json for full fidelity
-            cmi_json: Object.keys(cmi).length > 0 ? cmi : null,
-        };
+        // SCORM 2004 keys (cmi.*) take precedence over SCORM 1.2 keys
+        // (cmi.core.*) for any field where both spellings exist. A 2004
+        // package writes the new-style keys; a 1.2 package writes the old
+        // ones; neither writes both. SCORM 1.2 has no separate success
+        // field — lesson_status carries both completion and pass/fail in
+        // one enum, so it maps only to completion_status here.
+        const completionStatus = cmi['cmi.completion_status']
+            ?? cmi['cmi.core.lesson_status']
+            ?? null;
+        const successStatus = cmi['cmi.success_status'] ?? null;
+        const scoreRaw = toNum(cmi['cmi.score.raw'] ?? cmi['cmi.core.score.raw']);
+        const scoreMin = toNum(cmi['cmi.score.min'] ?? cmi['cmi.core.score.min']);
+        const scoreMax = toNum(cmi['cmi.score.max'] ?? cmi['cmi.core.score.max']);
+        const scoreScaled = toNum(cmi['cmi.score.scaled']);
+        const progressMeasure = toNum(cmi['cmi.progress_measure']);
 
-        console.log('[SCORM] Committing to slide.id:', slide.id, '| payload:', knownFields);
+        // Only ship raw cmi.* keys in cmi_json — see initializeScormTracking
+        // for the rationale. Filtering here is the belt to initialize's
+        // braces: if anything ever sneaks into cmiDataRef that isn't a cmi
+        // key, we strip it before sending.
+        const rawCmi: Record<string, string> = {};
+        for (const [key, value] of Object.entries(cmi)) {
+            if (isCmiKey(key) && value != null) {
+                rawCmi[key] = String(value);
+            }
+        }
+
+        // Cascade-context IDs live in the slide route's URL search params.
+        // The route names `sessionId` for what the backend calls
+        // `packageSessionId` (see validateSearch in the slide route).
+        const search = router.state.location.search as Record<string, unknown>;
+        const chapterIdForCascade = (search.chapterId as string | undefined) ?? '';
+        const moduleIdForCascade = (search.moduleId as string | undefined) ?? '';
+        const subjectIdForCascade = (search.subjectId as string | undefined) ?? '';
+        const packageSessionIdForCascade =
+            (search.sessionId as string | undefined)
+            ?? (search.packageSessionId as string | undefined)
+            ?? resolvedPackageSessionId
+            ?? '';
+
+        const payload: ScormTrackingCommitPayload = {
+            scorm_slide_id: scormSlide?.id || '',
+            package_session_id: packageSessionIdForCascade,
+            chapter_id: chapterIdForCascade || undefined,
+            module_id: moduleIdForCascade || undefined,
+            subject_id: subjectIdForCascade || undefined,
+            cmi_location: cmi['cmi.location'] ?? cmi['cmi.core.lesson_location'] ?? null,
+            cmi_exit: cmi['cmi.exit'] ?? cmi['cmi.core.exit'] ?? null,
+            cmi_suspend_data: cmi['cmi.suspend_data'] ?? null,
+            completion_status: completionStatus,
+            success_status: successStatus,
+            score_raw: scoreRaw,
+            score_min: scoreMin,
+            score_max: scoreMax,
+            score_scaled: scoreScaled,
+            progress_measure: progressMeasure,
+            total_time: cmi['cmi.session_time'] ?? cmi['cmi.core.session_time'] ?? null,
+            cmi_json: Object.keys(rawCmi).length > 0 ? rawCmi : null,
+        };
 
         try {
             await authenticatedAxiosInstance.post(
-                // Use slide.id — same ID used in /initialize — so the backend
-                // findTopByUserIdAndSlideId query matches the initialized session.
                 `${SCORM_TRACKING_BASE}/${slide.id}/commit`,
-                knownFields
+                payload
             );
-            console.log('[SCORM] Commit successful');
+            if (chapterIdForCascade) {
+                void refreshProgressAfterSubmit(queryClient, chapterIdForCascade);
+            }
         } catch (err) {
             console.error('SCORM commit failed:', err);
         }
-    }, [scormSlide?.id, slide.id, resolvedPackageSessionId]);
+    }, [scormSlide?.id, slide.id, resolvedPackageSessionId, router, queryClient]);
 
     // Listen for postMessage events from the SCORM wrapper on S3
     useEffect(() => {

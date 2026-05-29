@@ -1,4 +1,4 @@
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { CaretLeft, CaretRight } from '@phosphor-icons/react';
 import React from 'react';
 import { cn } from "@/lib/utils";
 
@@ -93,7 +93,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
           )}
         >
-          <ChevronLeftIcon className="h-4 w-4" aria-hidden="true" />
+          <CaretLeft className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only">Previous</span>
         </button>
 
@@ -103,7 +103,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
             onClick={() => typeof page === 'number' && onPageChange(page)}
             aria-current={page === currentPage ? 'page' : undefined}
             className={cn(
-              "inline-flex items-center justify-center h-9 min-w-[36px] px-2 rounded-full text-sm font-medium transition-all",
+              "inline-flex items-center justify-center h-9 min-w-9 px-2 rounded-full text-sm font-medium transition-all",
               page === currentPage
                 ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
                 : "bg-background text-muted-foreground border border-transparent hover:bg-primary-50 hover:text-primary",
@@ -125,7 +125,7 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:text-primary/70 [.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary"
           )}
         >
-          <ChevronRightIcon className="h-4 w-4" aria-hidden="true" />
+          <CaretRight className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only">Next</span>
         </button>
       </nav>

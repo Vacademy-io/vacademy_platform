@@ -85,7 +85,7 @@ export const performFullAuthCycle = async (
         const minimalInstitute = {
             id: instituteId,
             institute_name: "Loading...",
-            institute_theme_code: "#000000"
+            institute_theme_code: "#000000" // design-lint-ignore: theme default color
         };
 
         await Preferences.set({ key: "StudentDetails", value: JSON.stringify(minimalStudent) });

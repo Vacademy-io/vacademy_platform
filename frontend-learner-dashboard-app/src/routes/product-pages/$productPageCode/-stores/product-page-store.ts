@@ -37,6 +37,15 @@ interface ProductPageStore {
     abandonedCartIds: string[];
     setFormSubmitResult: (userId: string, abandonedCartIds: string[]) => void;
 
+    // CPO installment state
+    cpoUserPlanId: string | null;
+    cpoSelectedSfpIds: string[];
+    cpoSelectedTotal: number;
+    cpoCustomAmount: number | undefined;
+    setCpoEnrollResult: (userPlanId: string) => void;
+    setCpoSelection: (sfpIds: string[], total: number) => void;
+    setCpoCustomAmount: (amount: number | undefined) => void;
+
     // UTM params (forwarded from URL)
     utmParams: Record<string, string>;
     setUtmParams: (params: Record<string, string>) => void;
@@ -60,6 +69,10 @@ const initialState = {
     userId: null,
     abandonedCartIds: [],
     utmParams: {},
+    cpoUserPlanId: null,
+    cpoSelectedSfpIds: [],
+    cpoSelectedTotal: 0,
+    cpoCustomAmount: undefined,
 };
 
 export const useProductPageStore = create<ProductPageStore>((set, get) => ({
@@ -98,6 +111,12 @@ export const useProductPageStore = create<ProductPageStore>((set, get) => ({
     setRegistrationData: (data) => set({ registrationData: data }),
 
     setFormSubmitResult: (userId, abandonedCartIds) => set({ userId, abandonedCartIds }),
+
+    setCpoEnrollResult: (userPlanId) => set({ cpoUserPlanId: userPlanId }),
+
+    setCpoSelection: (sfpIds, total) => set({ cpoSelectedSfpIds: sfpIds, cpoSelectedTotal: total }),
+
+    setCpoCustomAmount: (amount) => set({ cpoCustomAmount: amount }),
 
     setUtmParams: (params) => set({ utmParams: params }),
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 
 export interface PendingAttachment {
   type: string;
@@ -49,12 +49,12 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
           {/* Loading spinner overlay while upload is in progress */}
           {!att.url && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <Loader2 className="h-3 w-3 text-white animate-spin" />
+              <SpinnerGap className="h-3 w-3 text-white animate-spin" />
             </div>
           )}
           {/* Delete button */}
           <button
-            className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-[8px] flex items-center justify-center"
+            className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
             onClick={() => onRemove(i)}
           >
             &times;

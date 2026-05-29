@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { CreditCard, Heart } from "lucide-react";
+import { CreditCard, Heart } from "@phosphor-icons/react";
 import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { SubscriptionPlanSection } from "./subscription-plan-sections";

@@ -1,7 +1,6 @@
-#!/Volumes/shreyash_ex/Vacademy/vacademy_platform/ai_service/.venv/bin/python3.14
+#!/Volumes/shreyash_ex/Vacademy/vacademy_platform/ai_service/.venv/bin/python
 import sys
 from pip._internal.cli.main import main
 if __name__ == '__main__':
-    if sys.argv[0].endswith('.exe'):
-        sys.argv[0] = sys.argv[0][:-4]
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
     sys.exit(main())

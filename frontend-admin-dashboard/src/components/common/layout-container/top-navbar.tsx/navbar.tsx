@@ -802,13 +802,21 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     </DialogContent>
                 </Dialog>
 
-                {roles.includes('STUDENT') && <SSOSwitcher variant="button" className="" />}
+                {/* Header button is desktop-only — on mobile the same action lives
+                    inside the profile dropdown (see SSOSwitcher variant="dropdown" below)
+                    so the cramped mobile header doesn't have to fit a 5th item. */}
+                {roles.includes('STUDENT') && (
+                    <SSOSwitcher variant="button" className="hidden sm:block" />
+                )}
 
                 {/* User profile dropdown */}
                 <div className="flex items-center gap-1">
                     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-                        <DropdownMenuTrigger className="flex items-center gap-1 md:gap-2">
-                            {adminLogo !== '' && (
+                        <DropdownMenuTrigger
+                            className="flex items-center gap-1 md:gap-2"
+                            aria-label="Open profile menu"
+                        >
+                            {adminLogo !== '' ? (
                                 <img
                                     src={adminLogo}
                                     alt="logo"
@@ -817,6 +825,21 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                         isCompact ? 'size-8' : 'size-8 md:size-10'
                                     )}
                                 />
+                            ) : (
+                                // Initials fallback so the dropdown trigger always has a visible
+                                // affordance — without this, mobile users with no profile pic
+                                // saw nothing tappable and couldn't reach Logout / Switch to Learner.
+                                <div
+                                    className={cn(
+                                        'flex shrink-0 items-center justify-center rounded-full bg-primary-500 font-semibold text-neutral-50',
+                                        isCompact ? 'size-8 text-sm' : 'size-8 text-sm md:size-10 md:text-base'
+                                    )}
+                                >
+                                    {(adminDetails?.full_name || getUserName() || '?')
+                                        .trim()
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                </div>
                             )}
                             <span className="hidden md:inline">
                                 {isOpen ? <CaretDown /> : <CaretUp />}

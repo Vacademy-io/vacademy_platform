@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowRight, ArrowLeft } from "lucide-react";
+import { SpinnerGap, ArrowRight, ArrowLeft } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { toast } from "sonner";
@@ -224,7 +224,7 @@ export function EmailInputForm({
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
                 Sending OTP...
               </>
             ) : (

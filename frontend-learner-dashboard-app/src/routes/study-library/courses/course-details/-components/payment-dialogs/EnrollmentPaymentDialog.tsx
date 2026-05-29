@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import {
   fetchEnrollmentDetails,
   type EnrollmentResponse,
@@ -72,10 +72,10 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+            <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
             <p className="text-gray-600">Loading enrollment options...</p>
           </div>
         </div>
@@ -85,7 +85,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
 
   if (error && !enrollmentData) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
             <h3 className="text-lg font-semibold mb-4">Enrollment Error</h3>
@@ -199,7 +199,7 @@ export const EnrollmentPaymentDialog: React.FC<EnrollmentPaymentRouterProps> = (
   // Show error state
   if (error) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in flex items-center justify-center">
+      <div className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-center justify-center">
         <div className="bg-white rounded-lg p-6 max-w-sm">
           <div className="text-center">
             <h3 className="text-lg font-semibold mb-4">Enrollment Error</h3>

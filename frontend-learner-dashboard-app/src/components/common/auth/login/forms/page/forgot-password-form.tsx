@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, ArrowLeft, Key, Shield, CheckCircle, RefreshCw, ArrowRight } from "lucide-react";
+import { Envelope, ArrowLeft, Key, Shield, CheckCircle, ArrowsClockwise, ArrowRight } from "@phosphor-icons/react";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
@@ -77,7 +77,7 @@ export function ForgotPassword() {
             if (parsedInstituteDetails.institute_id === HOLISTIC_INSTITUTE_ID) {
               setPrimaryColor("holistic");
             } else {
-              setPrimaryColor(parsedInstituteDetails.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22");
+              setPrimaryColor(parsedInstituteDetails.institute_theme_code ?? import.meta.env.VITE_DEFAULT_THEME_COLOR ?? "#E67E22"); // design-lint-ignore: theme fallback color passed to setPrimaryColor, not a CSS class
             }
           }
         }
@@ -179,7 +179,7 @@ export function ForgotPassword() {
       />
 
       {/* Centered container */}
-      <div className="w-full min-h-[60vh] flex items-center justify-center p-4">
+      <div className="w-full min-h-screen-60 flex items-center justify-center p-4">
         <div className="w-full max-w-lg xl:max-w-xl">
           {/* Main Card */}
             <motion.div
@@ -256,7 +256,7 @@ export function ForgotPassword() {
                                   {...field}
                                   className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
                                 />
-                                <Mail className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
                               </div>
                             </FormControl>
                           </FormItem>
@@ -277,13 +277,13 @@ export function ForgotPassword() {
                               animate={{ rotate: 360 }}
                               transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                             >
-                              <RefreshCw className="w-4 h-4" />
+                              <ArrowsClockwise className="w-4 h-4" />
                             </motion.div>
                               <span>Sending...</span>
                           </div>
                         ) : (
                           <div className="flex items-center justify-center space-x-2">
-                            <Mail className="w-4 h-4" />
+                            <Envelope className="w-4 h-4" />
                               <span>Send Credentials</span>
                               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                           </div>

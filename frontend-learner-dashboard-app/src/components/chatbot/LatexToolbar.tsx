@@ -90,13 +90,13 @@ export const LatexToolbar: React.FC<LatexToolbarProps> = ({
       {SYMBOL_GROUPS.map((group) => (
         <React.Fragment key={group.name}>
           {/* Subtle section header */}
-          <span className="w-full text-[9px] uppercase tracking-wider text-muted-foreground/60 font-medium px-0.5 mt-0.5 first:mt-0">
+          <span className="w-full text-caption uppercase tracking-wider text-muted-foreground/60 font-medium px-0.5 mt-0.5 first:mt-0">
             {group.name}
           </span>
           {group.symbols.map((item) => (
             <button
               key={item.label}
-              className="h-7 min-w-[32px] px-1.5 text-xs font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
+              className="h-7 min-w-8 px-1.5 text-xs font-mono rounded bg-background hover:bg-primary/10 hover:text-primary border border-border/50 transition-colors"
               onClick={() => onInsert(item.insert)}
               title={item.insert}
             >

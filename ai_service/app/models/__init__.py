@@ -6,6 +6,7 @@ from .ai_api_keys import AiApiKeys
 from .ai_token_usage import AiTokenUsage, ApiProvider, RequestType
 from .chat_session import ChatSession
 from .chat_message import ChatMessage
+from .copy_check import CopyCheckRubric, CopyCheckQuestionAnswer
 
-__all__ = ["AiGenVideo", "AiApiKeys", "AiTokenUsage", "ApiProvider", "RequestType", "ChatSession", "ChatMessage", "Base"]
+__all__ = ["AiGenVideo", "AiApiKeys", "AiTokenUsage", "ApiProvider", "RequestType", "ChatSession", "ChatMessage", "Base", "CopyCheckRubric", "CopyCheckQuestionAnswer"]
 

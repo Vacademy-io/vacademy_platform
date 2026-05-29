@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { ChevronLeftIcon, ChevronRightIcon, X } from 'lucide-react';
+import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import axios from "axios";
 import { LIVE_SESSION_REQUEST_OTP, LIVE_SESSION_VERIFY_OTP, LEAD_COLLECTION_ENROLL_URL } from "@/constants/urls";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -491,7 +491,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                    onClick={handleSendOtp}
                    className="w-full sm:w-auto px-4 py-2 text-white rounded-md hover:opacity-90 text-sm"
                    style={{
-                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                    }}
                  >
                    Send OTP
@@ -533,7 +533,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                    disabled={isVerifyingOtp || emailOtp.length !== 6}
                    className="w-full sm:w-auto px-4 py-2 text-white rounded-md hover:opacity-90 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
                    style={{
-                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                     backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                    }}
                  >
                    {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
@@ -606,7 +606,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
             {renderProgressBar()}
 
             {/* Form Fields */}
-            <div className="space-y-4 min-h-[200px]">
+            <div className="space-y-4 min-h-48">
               {formStyle.type === 'multiStep' ? (
                 <div className={`transition-all duration-300 ${
                   formStyle.transition === 'slide' ? 'transform' : ''
@@ -628,7 +628,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                     onClick={handlePreviousStep}
                     className="flex items-center px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
                   >
-                    <ChevronLeftIcon className="w-4 h-4 mr-1" />
+                    <CaretLeft className="w-4 h-4 mr-1" />
                     Previous
                   </button>
                 )}
@@ -638,7 +638,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                   onClick={handleClose}
                     className="px-4 py-2 text-white rounded-md hover:opacity-90 transition-colors"
                     style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                     }}
                 >
                     Cancel
@@ -655,11 +655,11 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                     disabled={!canProceedToNextStep()}
                     className="flex items-center px-6 py-2 text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                     }}
                   >
                     Next
-                    <ChevronRightIcon className="w-4 h-4 ml-1" />
+                    <CaretRight className="w-4 h-4 ml-1" />
                   </button>
                 ) : (
               <button
@@ -667,7 +667,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                     disabled={isSubmitting || (formStyle.type === 'multiStep' && !canProceedToNextStep())}
                     className="px-6 py-2 text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 style={{
-                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                      backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                     }}
                   >
                     {isSubmitting ? "Submitting..." : "Submit"}
@@ -713,7 +713,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                 }}
                 className="w-full px-4 py-2 text-white rounded-md hover:opacity-90 transition-colors"
                 style={{
-                  backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6'
+                  backgroundColor: domainRouting.instituteThemeCode ? `hsl(var(--primary))` : '#3b82f6' // design-lint-ignore: page-builder default color
                 }}
               >
                 Close

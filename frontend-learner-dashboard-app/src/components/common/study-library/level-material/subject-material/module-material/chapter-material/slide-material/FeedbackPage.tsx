@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Star } from "lucide-react";
+import { Star } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { submitFeedback } from "@/services/feedback/submitFeedback";
 import Swal from "sweetalert2";
@@ -110,7 +110,7 @@ export default function FeedbackPage() {
         title: "Thank you!",
         text: "Thanks for sharing your thoughts — it means a lot to us!",
         icon: "success",
-        confirmButtonColor: "#2563eb",
+        confirmButtonColor: "#2563eb", // design-lint-ignore: SweetAlert2 SDK color prop, not a Tailwind class
       });
 
       setRating(0);
@@ -131,7 +131,7 @@ export default function FeedbackPage() {
   };
 
   return (
-    <div className="w-full min-h-[calc(100vh-150px)] bg-gradient-to-br px-6 py-10 overflow-y-auto">
+    <div className="w-full min-h-[calc(100vh-150px)] bg-gradient-to-br px-6 py-10 overflow-y-auto"> {/* design-lint-ignore: viewport calc with fixed offset, no token equivalent */}
       <div className="mb-6">
         <h2 className="text-2xl font-bold mb-2">We Value Your Feedback</h2>
         <p className="text-base text-gray-600">
@@ -174,7 +174,7 @@ export default function FeedbackPage() {
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             placeholder="We’d love to hear about your experience! What did you enjoy? What could be improved?"
-            className="w-full min-h-[150px] p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200 resize-none"
+            className="w-full min-h-reg-150 p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200 resize-none"
           />
         </div>
 

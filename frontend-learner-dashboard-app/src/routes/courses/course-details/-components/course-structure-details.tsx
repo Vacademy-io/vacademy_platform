@@ -472,8 +472,8 @@ export const CourseStructureDetails = ({
           {courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
-              const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]";
-              const subjectContentIndent = `${baseIndent} pl-[1.5rem]`;
+              const baseIndent = "pl-struct-base";
+              const subjectContentIndent = `${baseIndent} pl-6`;
 
               return (
                 <Collapsible
@@ -533,7 +533,7 @@ export const CourseStructureDetails = ({
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                          const moduleContentIndent = `pl-struct-module`;
                           return (
                             <Collapsible
                               key={mod.module.id}
@@ -598,7 +598,7 @@ export const CourseStructureDetails = ({
                                     const isChapterOpen = openChapters.has(
                                       ch.id
                                     );
-                                    const chapterContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem+1.5rem)]`;
+                                    const chapterContentIndent = `pl-struct-chapter`;
                                     return (
                                       <Collapsible
                                         key={ch.id}
@@ -720,7 +720,7 @@ export const CourseStructureDetails = ({
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`;
+                          const moduleContentIndent = `pl-struct-module`;
                           return (
                             <Collapsible
                               key={mod.module.id}

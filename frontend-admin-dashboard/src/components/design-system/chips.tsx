@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import {
@@ -106,19 +106,29 @@ export const FilterChips = ({
     onSearchChange,
     shouldFilter = true,
     onOpenChange,
+    closeOnSelect = false,
 }: FilterChipsProps & {
     onSearchChange?: (value: string) => void;
     shouldFilter?: boolean;
     onOpenChange?: (open: boolean) => void;
+    // When true, the popover closes after each item selection. Opt-in so existing
+    // multi-select call sites that rely on the popover staying open are unaffected.
+    closeOnSelect?: boolean;
 }) => {
     const { isCompact } = useCompactMode();
+    const [open, setOpen] = useState(false);
 
     useEffect(() => {
         if (clearFilters) handleClearFilters && handleClearFilters();
     }, [clearFilters]);
 
+    const handleOpenChange = (next: boolean) => {
+        setOpen(next);
+        onOpenChange && onOpenChange(next);
+    };
+
     return (
-        <Popover onOpenChange={onOpenChange}>
+        <Popover open={open} onOpenChange={handleOpenChange}>
             <PopoverTrigger className="flex items-center">
                 <button>
                     <ChipsWrapper
@@ -178,7 +188,10 @@ export const FilterChips = ({
                             {filterList?.map((option) => (
                                 <CommandItem
                                     key={option.id}
-                                    onSelect={() => handleSelect && handleSelect(option)}
+                                    onSelect={() => {
+                                        handleSelect && handleSelect(option);
+                                        if (closeOnSelect) setOpen(false);
+                                    }}
                                 >
                                     <div
                                         className={cn(

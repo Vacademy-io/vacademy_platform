@@ -1,4 +1,4 @@
-import { Heart } from "lucide-react";
+import { Heart } from "@phosphor-icons/react";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { InstituteBrandingComponent } from "@/components/common/institute-branding";
 

@@ -35,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { AlertTriangle, Receipt, Download, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Warning, Receipt, DownloadSimple, CaretDown, CaretUp, SpinnerGap } from "@phosphor-icons/react";
 
 interface PaymentsModuleProps {
   child: ChildProfile;
@@ -190,7 +190,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
     return (
       <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
         <div className="text-center py-12">
-          <AlertTriangle
+          <Warning
             size={32}
             className="mx-auto text-destructive/60 mb-2"
           />
@@ -203,7 +203,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
   }
 
   return (
-    <div className="w-full min-h-[calc(100vh-8rem)] space-y-5 pb-20 lg:pb-8">
+    <div className="w-full min-h-parent-main space-y-5 pb-20 lg:pb-8">
       {/* Header */}
       <div>
         <h2 className="text-lg sm:text-xl font-bold text-foreground">
@@ -222,7 +222,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
       >
         <Card className="shadow-sm bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
           <CardContent className="p-4 text-center">
-            <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
+            <p className="text-caption font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
               Total Dues
             </p>
             <p className="text-lg sm:text-xl font-bold text-blue-700 dark:text-blue-300">
@@ -233,7 +233,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
 
         <Card className="shadow-sm bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
           <CardContent className="p-4 text-center">
-            <p className="text-[10px] font-medium text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">
+            <p className="text-caption font-medium text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">
               Overdue Amount
             </p>
             <p className="text-lg sm:text-xl font-bold text-red-700 dark:text-red-300">
@@ -244,7 +244,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
 
         <Card className="shadow-sm bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800">
           <CardContent className="p-4 text-center">
-            <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">
+            <p className="text-caption font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-1">
               Total Paid
             </p>
             <p className="text-lg sm:text-xl font-bold text-emerald-700 dark:text-emerald-300">
@@ -263,7 +263,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
             {overdueCount > 0 && (
               <Badge
                 variant="destructive"
-                className="ml-1 text-[10px] px-1.5 py-0 h-4 leading-4"
+                className="ml-1 text-caption px-1.5 py-0 h-4 leading-4"
               >
                 {overdueCount}
               </Badge>
@@ -349,7 +349,7 @@ export function PaymentsModule({ child }: PaymentsModuleProps) {
         <TabsContent value="overdues" className="mt-4 space-y-3">
           {overdueItems.length > 0 && (
             <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
-              <AlertTriangle
+              <Warning
                 size={16}
                 className="text-red-600 dark:text-red-400 shrink-0"
               />
@@ -464,7 +464,7 @@ function DuesTable({
                 {startIdx + idx + 1}
               </TableCell>
               <TableCell
-                className="max-w-[180px] truncate"
+                className="max-w-44 truncate"
                 title={item.fee_type_name || undefined}
               >
                 {item.fee_type_name || "—"}
@@ -548,11 +548,11 @@ function StatusBadge({
   if (isOverdue) {
     return (
       <div className="flex flex-col items-center gap-0.5">
-        <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-[10px] hover:bg-red-100">
+        <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-caption hover:bg-red-100">
           {status === "PARTIAL_PAID" ? "PARTIAL PAID" : status}
         </Badge>
         {daysOverdue != null && (
-          <span className="text-[10px] text-red-600 dark:text-red-400">
+          <span className="text-caption text-red-600 dark:text-red-400">
             {daysOverdue} days overdue
           </span>
         )}
@@ -562,7 +562,7 @@ function StatusBadge({
 
   if (status === "PARTIAL_PAID") {
     return (
-      <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-[10px] hover:bg-yellow-100">
+      <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 text-caption hover:bg-yellow-100">
         PARTIAL PAID
       </Badge>
     );
@@ -570,10 +570,10 @@ function StatusBadge({
 
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-[10px] hover:bg-emerald-100">
+      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-caption hover:bg-emerald-100">
         {status}
       </Badge>
-      <span className="text-[10px] text-muted-foreground">upcoming</span>
+      <span className="text-caption text-muted-foreground">upcoming</span>
     </div>
   );
 }
@@ -700,9 +700,9 @@ function ReceiptsTable({
                 >
                   <TableCell className="w-8 pr-0">
                     {isExpanded ? (
-                      <ChevronUp size={16} className="text-muted-foreground" />
+                      <CaretUp size={16} className="text-muted-foreground" />
                     ) : (
-                      <ChevronDown size={16} className="text-muted-foreground" />
+                      <CaretDown size={16} className="text-muted-foreground" />
                     )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
@@ -713,7 +713,7 @@ function ReceiptsTable({
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge
-                      className={`text-[10px] ${
+                      className={`text-caption ${
                         invoiceTypeColors[invoice.type] ||
                         "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300"
                       }`}
@@ -737,9 +737,9 @@ function ReceiptsTable({
                       title={invoice.pdf_file_id ? "Download receipt" : "PDF not available"}
                     >
                       {downloadingId === invoice.invoice_id ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <SpinnerGap size={14} className="animate-spin" />
                       ) : (
-                        <Download size={14} />
+                        <DownloadSimple size={14} />
                       )}
                       <span className="text-xs">
                         {!invoice.pdf_file_id
@@ -757,7 +757,7 @@ function ReceiptsTable({
                       <div className="p-4 space-y-4">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                           <div>
-                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                            <p className="text-caption uppercase text-muted-foreground tracking-wide">
                               Amount Paid Now
                             </p>
                             <p className="font-semibold text-foreground">
@@ -765,7 +765,7 @@ function ReceiptsTable({
                             </p>
                           </div>
                           <div>
-                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                            <p className="text-caption uppercase text-muted-foreground tracking-wide">
                               Total Paid
                             </p>
                             <p className="font-semibold text-emerald-600 dark:text-emerald-400">
@@ -773,7 +773,7 @@ function ReceiptsTable({
                             </p>
                           </div>
                           <div>
-                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                            <p className="text-caption uppercase text-muted-foreground tracking-wide">
                               Balance Due
                             </p>
                             <p className="font-semibold text-red-600 dark:text-red-400">
@@ -781,7 +781,7 @@ function ReceiptsTable({
                             </p>
                           </div>
                           <div>
-                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">
+                            <p className="text-caption uppercase text-muted-foreground tracking-wide">
                               Total Expected
                             </p>
                             <p className="font-semibold text-foreground">

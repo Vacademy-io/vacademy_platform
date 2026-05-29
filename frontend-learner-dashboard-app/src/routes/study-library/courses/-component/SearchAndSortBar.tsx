@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import { MagnifyingGlass, ArrowsDownUp, SlidersHorizontal } from "@phosphor-icons/react";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { Input } from "@/components/ui/input";
@@ -56,7 +56,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
             "[.ui-vibrant_&]:shadow-sm",
             // Play Styles — soft shadow + thin border via play-theme.css fallback
             "[.ui-play_&]:!bg-white [.ui-play_&]:rounded-2xl [.ui-play_&]:border [.ui-play_&]:!border-primary-100",
-            "[.ui-play_&]:shadow-[0_1px_2px_hsl(var(--primary-300)/0.06),0_8px_24px_-10px_hsl(var(--primary-400)/0.14)]"
+            "[.ui-play_&]:shadow-play-glow-primary"
         )}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {/* Filter toggle — desktop only, only shown when filter is closed */}
@@ -73,7 +73,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                         <SlidersHorizontal size={15} />
                         <span className="text-sm">Filters</span>
                         {activeFiltersCount > 0 && (
-                            <Badge variant="secondary" className="h-4 px-1 text-[10px] leading-none ml-0.5">
+                            <Badge variant="secondary" className="h-4 px-1 text-caption leading-none ml-0.5">
                                 {activeFiltersCount}
                             </Badge>
                         )}
@@ -82,7 +82,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                 {/* Search Section */}
                 <div className="flex-1 min-w-0">
                     <div className="relative">
-                        <Search
+                        <MagnifyingGlass
                             size={18}
                             className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
                         />
@@ -106,12 +106,12 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                     <label className="text-sm font-medium whitespace-nowrap hidden sm:block">
                         Sort by:
                     </label>
-                    <ArrowUpDown
+                    <ArrowsDownUp
                         size={16}
                         className="text-muted-foreground shrink-0 sm:hidden"
                         aria-hidden="true"
                     />
-                    <div className="flex-1 sm:w-[170px] sm:flex-none">
+                    <div className="flex-1 sm:w-44 sm:flex-none">
                         <Select value={sortOption} onValueChange={onSortChange}>
                             <SelectTrigger aria-label="Sort courses">
                                 <SelectValue placeholder="Sort order" />

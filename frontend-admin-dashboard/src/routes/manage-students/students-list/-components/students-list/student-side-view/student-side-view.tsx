@@ -113,9 +113,15 @@ export const StudentSidebar = ({
     /** Open the Lead Profile tab by default each time a lead is opened (lead lists). */
     defaultLeadProfile?: boolean;
 }) => {
-    const { state } = useSidebar();
+    const { state, setOpen, setOpenMobile } = useSidebar();
     const [category, setCategory] = useState('overview');
-    const { toggleSidebar } = useSidebar();
+    // Explicitly close both desktop + mobile sidebar state. Using `toggleSidebar`
+    // hit a stale-closure case where `isMobile` could be wrong post-hydration,
+    // so the X click flipped the wrong state on touch viewports.
+    const closeSidebar = () => {
+        setOpen(false);
+        setOpenMobile(false);
+    };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
     const { selectedStudent, openOverlay } = useStudentSidebar();
@@ -218,7 +224,11 @@ export const StudentSidebar = ({
     }, [category]);
 
     return (
-        <Sidebar side="right" className={cn('!top-14 md:!top-20', className)}>
+        <Sidebar
+            side="right"
+            preventOutsideClose
+            className={cn('!top-14 md:!top-20', className)}
+        >
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
@@ -266,10 +276,20 @@ export const StudentSidebar = ({
                             </div>
 
                             <button
+<<<<<<< HEAD
                                 onClick={() => openOverlay()}
                                 className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                 aria-label="Open full profile"
                                 title="Open full profile"
+=======
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    closeSidebar();
+                                }}
+                                className="group shrink-0 rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
+                                aria-label="Close"
+>>>>>>> origin/main
                             >
                                 <ArrowsOutSimple className="size-5" />
                             </button>
@@ -342,6 +362,7 @@ export const StudentSidebar = ({
                                         return (
                                             <button
                                                 key={tabId}
+<<<<<<< HEAD
                                                 role="tab"
                                                 aria-selected={isActive}
                                                 ref={isActive ? activeTabRef : null}
@@ -352,6 +373,19 @@ export const StudentSidebar = ({
                                                         : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-800'
                                                 )}
                                                 onClick={() => setCategory(tabId)}
+=======
+                                                type="button"
+                                                ref={category === tabId ? activeTabRef : null}
+                                                className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
+                                                    category === tabId
+                                                        ? 'bg-white text-primary-500 shadow-sm'
+                                                        : 'text-neutral-600 hover:text-neutral-800'
+                                                }`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCategory(tabId);
+                                                }}
+>>>>>>> origin/main
                                             >
                                                 {label}
                                             </button>
@@ -362,16 +396,30 @@ export const StudentSidebar = ({
                                         student belongs to one — it has no settings flag of its own. */}
                                     {selectedStudent?.sub_org_name && (
                                         <button
+<<<<<<< HEAD
                                             role="tab"
                                             aria-selected={category === 'subOrg'}
+=======
+                                            type="button"
+>>>>>>> origin/main
                                             ref={category === 'subOrg' ? activeTabRef : null}
                                             className={cn(
                                                 'shrink-0 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                                                 category === 'subOrg'
+<<<<<<< HEAD
                                                     ? 'bg-primary-500 text-white shadow-sm'
                                                     : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-800'
                                             )}
                                             onClick={() => setCategory('subOrg')}
+=======
+                                                    ? 'bg-white text-primary-500 shadow-sm'
+                                                    : 'text-neutral-600 hover:text-neutral-800'
+                                            }`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCategory('subOrg');
+                                            }}
+>>>>>>> origin/main
                                         >
                                             SubOrg
                                         </button>

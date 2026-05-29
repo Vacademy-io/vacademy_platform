@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { StarIcon, BookOpen } from "lucide-react";
+import { Star, BookOpen } from "@phosphor-icons/react";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { toTitleCase } from "@/lib/utils";
@@ -166,7 +166,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     </div>
                 )}
 
-                <div className="mb-3 min-h-[24px]">
+                <div className="mb-3 min-h-6">
                     {tags && tags.length > 0 ? (
                         <div className="flex flex-wrap gap-1 sm:gap-2">
                             {tags.slice(0, 3).map((tag) => (
@@ -193,7 +193,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 <div className="flex items-center text-sm text-gray-600 mb-4">
                     <div className="flex items-center space-x-1">
                         {[...Array(5)].map((_, i) => (
-                            <StarIcon
+                            <Star
                                 key={i}
                                 className={`w-4 h-4 sm:w-5 sm:h-5 ${
                                     i < Math.floor(ratingValue)

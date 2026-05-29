@@ -17,6 +17,39 @@
   --play-radius-card: 20px;
   --play-radius-btn: 14px;
   --play-radius-badge: 999px;
+
+  /* Gamification surface + 3D press-shadow pairs (promoted from hardcoded hex).
+     Kept as hex to preserve exact gamified shades; referenced via var() in widgets. */
+  --play-xp-bg: #FFB800;
+  --play-xp-shadow: #CC9300;
+  --play-streak-bg: #FF6B35;
+  --play-streak-shadow: #CC4A1A;
+  --play-streak-bg-idle: #FF8C42;
+  --play-streak-shadow-idle: #CC6A2A;
+  --play-achievement-bg: #8E44AD;
+  --play-achievement-shadow: #6C3483;
+
+  /* Duolingo-style play palette (role -> base + deep "3D" shade). Promoted from
+     scattered arbitrary hex; exposed to Tailwind as the `play-*` color + shadow tokens. */
+  --play-c-success: #58CC02;
+  --play-c-success-deep: #46a302;
+  --play-c-info: #1CB0F6;
+  --play-c-info-deep: #1899d6;
+  --play-c-danger: #FF4B4B;
+  --play-c-danger-deep: #cc3c3c;
+  --play-c-warn: #FF9600;
+  --play-c-warn-deep: #e08600;
+  --play-c-accent: #CE82FF;
+  --play-c-accent-deep: #a866cc;
+  --play-c-muted: #AFAFAF;
+  --play-c-muted-deep: #8e8e8e;
+  --play-c-surface: #E5E5E5;
+  --play-c-highlight: #FFF3CD;
+  --play-c-gold: #ffc800;
+  --play-c-gold-deep: #e6b400;
+  --play-c-navy: #235390;
+  --play-c-navy-deep: #1a3d6d;
+  --play-c-ink: #3c3c3c;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */

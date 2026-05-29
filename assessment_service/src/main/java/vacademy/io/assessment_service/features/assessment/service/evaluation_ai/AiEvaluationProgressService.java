@@ -10,8 +10,10 @@ import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.Part
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.QuestionEvaluationResultDto;
 import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
 import vacademy.io.assessment_service.features.assessment.entity.AiQuestionEvaluation;
+import vacademy.io.assessment_service.features.assessment.client.AiServiceCopyCheckClient;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AiQuestionEvaluationRepository;
+import vacademy.io.assessment_service.features.assessment.repository.CopyCheckLayoutRepository;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -26,6 +28,8 @@ public class AiEvaluationProgressService {
         private final AiQuestionEvaluationRepository questionEvaluationRepository;
         private final ObjectMapper objectMapper;
         private final AiEvaluationCancellationService cancellationService;
+        private final AiServiceCopyCheckClient aiServiceCopyCheckClient;
+        private final CopyCheckLayoutRepository copyCheckLayoutRepository;
 
         /**
          * Get real-time progress for an evaluation
@@ -96,6 +100,23 @@ public class AiEvaluationProgressService {
                         }
                 }
 
+                // Layout map URL for the FE annotation overlay. FE fetches the
+                // JSON via this URL once and renders boxes against the rendered
+                // pdf.js page dimensions.
+                String layoutMapUrl = copyCheckLayoutRepository
+                                .findByEvaluationProcessId(processId)
+                                .map(layout -> "/assessment-service/copy-check/layout/" + layout.getId())
+                                .orElse(null);
+
+                // The currently-applied rubric_version for any of the completed
+                // question evaluations. Used by the FE to decide whether to
+                // show the "rubric changed since this evaluation" badge.
+                Integer rubricVersion = questionEvals.stream()
+                                .map(AiQuestionEvaluation::getRubricVersion)
+                                .filter(java.util.Objects::nonNull)
+                                .findFirst()
+                                .orElse(null);
+
                 return EvaluationProgressDto.builder()
                                 .attemptId(process.getStudentAttempt().getId())
                                 .evaluationProcessId(process.getId())
@@ -107,6 +128,9 @@ public class AiEvaluationProgressService {
                                 .participantDetails(participantDetails)
                                 .assessmentId(assessmentId)
                                 .fileId(fileId)
+                                .layoutMapUrl(layoutMapUrl)
+                                .rubricVersion(rubricVersion)
+                                .aiServiceJobId(process.getAiServiceJobId())
                                 .build();
         }
 
@@ -139,12 +163,22 @@ public class AiEvaluationProgressService {
                 AiEvaluationProcess process = processRepository.findById(processId)
                                 .orElseThrow(() -> new RuntimeException("Evaluation process not found: " + processId));
 
-                // Check if process is already completed or failed
+                // Check terminal state BEFORE forwarding the cancel — don't post
+                // cancels for already-finished jobs that ai_service has long
+                // since reaped (#15).
                 if ("COMPLETED".equals(process.getStatus()) || "FAILED".equals(process.getStatus())) {
                         log.warn("Cannot stop process {} - already in terminal state: {}", processId,
                                         process.getStatus());
                         cancellationService.clearFlag(processId); // Clear flag since we're not cancelling
                         throw new RuntimeException("Evaluation process is already " + process.getStatus());
+                }
+
+                // If this process is being run by the ai_service path, forward the
+                // cancel so the Python orchestrator aborts at its next checkpoint.
+                // Cancel forward is keyed by process_id so it works even before
+                // ai_service has echoed back its job_id (#16).
+                if (aiServiceCopyCheckClient != null) {
+                        aiServiceCopyCheckClient.cancelByProcessId(processId);
                 }
 
                 // STEP 3: Update process status to CANCELLED in database
@@ -172,17 +206,63 @@ public class AiEvaluationProgressService {
 
         private QuestionEvaluationResultDto mapToResultDto(AiQuestionEvaluation questionEval) {
                 JsonNode evaluationDetailsJson = null;
+                List<JsonNode> annotations = null;
+                List<JsonNode> criteriaBreakdown = null;
+                Double confidence = null;
+
                 if (questionEval.getEvaluationResultJson() != null) {
                         try {
-                                // Parse the full evaluation result JSON
                                 JsonNode fullResultJson = objectMapper.readTree(questionEval.getEvaluationResultJson());
 
-                                // Extract only the evaluation_details_json field
+                                // Legacy auto-evaluation path: nested evaluation_details_json string.
                                 if (fullResultJson.has("evaluation_details_json")) {
                                         String evaluationDetailsStr = fullResultJson.get("evaluation_details_json")
                                                         .asText();
-                                        // Parse the nested JSON string into a JsonNode
                                         evaluationDetailsJson = objectMapper.readTree(evaluationDetailsStr);
+                                }
+
+                                // Copy-check callback path: annotations + criteria_breakdown live at
+                                // the top level of the QuestionDone payload. We surface them as
+                                // first-class DTO fields and also synthesize evaluation_details_json
+                                // so the existing FE QuestionCard (which reads from there) keeps
+                                // working without changes.
+                                if (fullResultJson.has("annotations") && fullResultJson.get("annotations").isArray()) {
+                                        annotations = new java.util.ArrayList<>();
+                                        for (JsonNode item : fullResultJson.get("annotations")) {
+                                                annotations.add(item);
+                                        }
+                                }
+                                if (fullResultJson.has("criteria_breakdown")
+                                                && fullResultJson.get("criteria_breakdown").isArray()) {
+                                        criteriaBreakdown = new java.util.ArrayList<>();
+                                        for (JsonNode item : fullResultJson.get("criteria_breakdown")) {
+                                                criteriaBreakdown.add(item);
+                                        }
+                                }
+                                if (fullResultJson.has("confidence")) {
+                                        confidence = fullResultJson.get("confidence").asDouble();
+                                }
+                                if (evaluationDetailsJson == null
+                                                && (annotations != null || criteriaBreakdown != null)) {
+                                        com.fasterxml.jackson.databind.node.ObjectNode synth = objectMapper
+                                                        .createObjectNode();
+                                        if (fullResultJson.has("marks_awarded")) {
+                                                synth.set("marks_awarded", fullResultJson.get("marks_awarded"));
+                                        }
+                                        if (fullResultJson.has("feedback")) {
+                                                synth.set("feedback", fullResultJson.get("feedback"));
+                                        }
+                                        if (fullResultJson.has("extracted_answer")) {
+                                                synth.set("extracted_answer", fullResultJson.get("extracted_answer"));
+                                        }
+                                        if (criteriaBreakdown != null) {
+                                                synth.set("criteria_breakdown",
+                                                                fullResultJson.get("criteria_breakdown"));
+                                        }
+                                        if (annotations != null) {
+                                                synth.set("annotations", fullResultJson.get("annotations"));
+                                        }
+                                        evaluationDetailsJson = synth;
                                 }
                         } catch (Exception e) {
                                 log.warn("Failed to parse evaluation details JSON for question {}",
@@ -199,6 +279,10 @@ public class AiEvaluationProgressService {
                                 .feedback(questionEval.getFeedback())
                                 .extractedAnswer(questionEval.getExtractedAnswer())
                                 .evaluationDetailsJson(evaluationDetailsJson)
+                                .annotations(annotations)
+                                .criteriaBreakdown(criteriaBreakdown)
+                                .rubricVersion(questionEval.getRubricVersion())
+                                .confidence(confidence)
                                 .startedAt(questionEval.getStartedAt())
                                 .completedAt(questionEval.getCompletedAt())
                                 .build();

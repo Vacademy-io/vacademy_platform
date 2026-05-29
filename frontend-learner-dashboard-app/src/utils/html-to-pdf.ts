@@ -58,7 +58,7 @@ export const convertHtmlToPdf = async (htmlString: string): Promise<Blob> => {
       scale: 1.5,
       useCORS: true,
       logging: false,
-      backgroundColor: "#ffffff",
+      backgroundColor: "#ffffff", // design-lint-ignore: PDF render data
       width: content.scrollWidth,
       height: contentHeight,
       windowWidth: content.scrollWidth,
@@ -89,7 +89,7 @@ export const convertHtmlToPdf = async (htmlString: string): Promise<Blob> => {
       
       if (tempCtx) {
         // Fill with white background
-        tempCtx.fillStyle = "#ffffff";
+        tempCtx.fillStyle = "#ffffff"; // design-lint-ignore: PDF render data
         tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         
         // Position for this slice
@@ -144,7 +144,7 @@ const optimizeImage = (canvas: HTMLCanvasElement): string => {
 
   if (ctx) {
     // Fill with white background first
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = "#ffffff"; // design-lint-ignore: PDF render data
     ctx.fillRect(0, 0, optimizedCanvas.width, optimizedCanvas.height);
     
     // Enable image smoothing for better quality

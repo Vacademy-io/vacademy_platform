@@ -236,11 +236,16 @@ export function AddResponsePage() {
             ) {
                 if (!phone) phone = value;
             }
+            // Exact match — `includes('name')` was too loose and swallowed
+            // "Center Name", "Branch Name", etc., so the wrong value landed in
+            // user_dto.full_name (whichever name-containing field came first).
             if (
-                keyLower.includes('full_name') ||
-                keyLower.includes('fullname') ||
-                nameLower.includes('full name') ||
-                nameLower.includes('name')
+                keyLower === 'full_name' ||
+                keyLower === 'fullname' ||
+                nameLower === 'full name' ||
+                nameLower === 'fullname' ||
+                nameLower === 'name' ||
+                nameLower === 'parent name'
             ) {
                 if (!fullName) fullName = value;
             }

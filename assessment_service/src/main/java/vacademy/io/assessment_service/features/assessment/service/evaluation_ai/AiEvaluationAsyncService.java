@@ -440,7 +440,7 @@ public class AiEvaluationAsyncService {
                         String url = mediaClient
                                         .get()
                                         .uri(uriBuilder -> uriBuilder
-                                                        .path("/public/get-public-url")
+                                                        .path("/media-service/public/get-public-url")
                                                         .queryParam("fileId", fileId)
                                                         .build())
                                         .retrieve()

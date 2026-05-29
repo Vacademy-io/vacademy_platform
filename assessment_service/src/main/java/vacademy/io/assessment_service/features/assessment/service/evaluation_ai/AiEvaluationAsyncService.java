@@ -71,7 +71,7 @@ public class AiEvaluationAsyncService {
         @Value("${media.service.baseurl}")
         private String mediaServiceUrl;
 
-        @Value("${assessment.ai-evaluation.use-ai-service:false}")
+        @Value("${assessment.ai-evaluation.use-ai-service:true}")
         private boolean useAiServicePipeline;
 
         /**

@@ -59,8 +59,11 @@ import {
   EnrollmentPolicyDialog,
   EnrollmentPolicyResponse,
   EnrollmentPolicyDialogType,
+  EMPTY_BILLING_CONTACT,
+  BillingContactState,
   CpoInstallmentSelectionStep,
 } from "./-components";
+import { getCurrencySymbol } from "./-components/payment-selection-step";
 import {
   enrollCpoWithoutPayment,
   enrollCpoLearnerForPaymentViaInvite,
@@ -252,6 +255,7 @@ const EnrollByInvite = ({
     },
     [],
   );
+  const [billingContact, setBillingContact] = useState<BillingContactState>(EMPTY_BILLING_CONTACT);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -292,6 +296,11 @@ const EnrollByInvite = ({
     }
     return {};
   }, [inviteData?.setting_json]);
+
+  const collectBillingContact = Boolean(
+    (inviteConfig as { collectBillingContactDetails?: boolean })
+      ?.collectBillingContactDetails
+  );
 
   // Inject GTM if the institute has configured a container ID
   useEffect(() => {
@@ -1377,6 +1386,7 @@ const EnrollByInvite = ({
           couponDiscount,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
@@ -1447,6 +1457,7 @@ const EnrollByInvite = ({
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
@@ -1521,6 +1532,7 @@ const EnrollByInvite = ({
           couponDiscount,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
         });
 
         // Extract userPlanId from response (backend creates enrollment and returns it)
@@ -1657,6 +1669,7 @@ const EnrollByInvite = ({
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
 
@@ -1760,6 +1773,7 @@ const EnrollByInvite = ({
         couponDiscount,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+        billingContact: collectBillingContact ? billingContact : undefined,
         // userId: submittedUserId || undefined,
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
@@ -1869,6 +1883,8 @@ const EnrollByInvite = ({
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+            billingContact: collectBillingContact ? billingContact : undefined,
+            // userId: submittedUserId || undefined,
           });
 
           setPaymentCompletionResponse(paymentResponse);
@@ -1957,6 +1973,7 @@ const EnrollByInvite = ({
           couponDiscount,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
         });
 
         const userPlanId =
@@ -2276,6 +2293,9 @@ const EnrollByInvite = ({
             instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
+            collectBillingContact={collectBillingContact}
+            billingContact={billingContact}
+            onBillingContactChange={setBillingContact}
           />
         );
       case 1: {
@@ -2462,6 +2482,17 @@ const EnrollByInvite = ({
             email={enrollmentData?.registrationData?.email?.value || ""}
             isAutoLoggingIn={isAutoLoggingIn}
             config={inviteConfig}
+            amountDisplay={
+              enrollmentData.selectedPayment
+                ? `${getCurrencySymbol(
+                    enrollmentData.selectedPayment.currency || ""
+                  )}${
+                    enrollmentData.selectedPayment.actual_price ??
+                    enrollmentData.selectedPayment.amount ??
+                    ""
+                  }`
+                : ""
+            }
           />
         );
       default:
@@ -2472,6 +2503,9 @@ const EnrollByInvite = ({
             instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
+            collectBillingContact={collectBillingContact}
+            billingContact={billingContact}
+            onBillingContactChange={setBillingContact}
           />
         );
     }

@@ -121,6 +121,9 @@ public class InvoiceService {
     private NotificationService notificationService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.notification_service.service.BillingContactRecipientResolver billingContactRecipientResolver;
+
+    @Autowired
     @Lazy
     private PaymentService paymentService;
 
@@ -2231,17 +2234,23 @@ public class InvoiceService {
                 toUser.setPlaceholders(Map.of("email", user.getEmail()));
                 toUser.setAttachments(List.of(attachmentDTO));
 
+                java.util.List<AttachmentUsersDTO> recipients = new java.util.ArrayList<>();
+                recipients.add(toUser);
+                billingContactRecipientResolver
+                        .buildBillingContactAttachmentRecipient(user.getId(), instituteId, user.getEmail(), List.of(attachmentDTO))
+                        .ifPresent(recipients::add);
+
                 AttachmentNotificationDTO attachmentDto = AttachmentNotificationDTO.builder()
                         .body(body)
                         .subject(subject)
                         .notificationType("EMAIL")
                         .source("INVOICE")
                         .sourceId(invoice.getId())
-                        .users(List.of(toUser))
+                        .users(recipients)
                         .build();
 
                 notificationService.sendAttachmentEmailViaUnified(List.of(attachmentDto), instituteId);
-                log.info("Invoice email sent to learner {} for invoice: {} (PDF attached)", user.getEmail(), invoice.getInvoiceNumber());
+                log.info("Invoice email sent to {} recipient(s) for invoice: {} (PDF attached)", recipients.size(), invoice.getInvoiceNumber());
             } else {
                 NotificationDTO notificationDTO = new NotificationDTO();
                 notificationDTO.setBody(body);
@@ -2253,9 +2262,16 @@ public class InvoiceService {
                 toUser.setChannelId(user.getEmail());
                 toUser.setUserId(user.getId());
                 toUser.setPlaceholders(Map.of("email", user.getEmail()));
-                notificationDTO.setUsers(List.of(toUser));
+
+                java.util.List<NotificationToUserDTO> recipients = new java.util.ArrayList<>();
+                recipients.add(toUser);
+                billingContactRecipientResolver
+                        .buildBillingContactRecipient(user.getId(), instituteId, user.getEmail())
+                        .ifPresent(recipients::add);
+                notificationDTO.setUsers(recipients);
+
                 notificationService.sendEmailViaUnified(notificationDTO, instituteId);
-                log.info("Invoice email sent to learner {} for invoice: {} (link in body)", user.getEmail(), invoice.getInvoiceNumber());
+                log.info("Invoice email sent to {} recipient(s) for invoice: {} (link in body)", recipients.size(), invoice.getInvoiceNumber());
             }
         } catch (Exception e) {
             log.error("Error sending invoice email", e);

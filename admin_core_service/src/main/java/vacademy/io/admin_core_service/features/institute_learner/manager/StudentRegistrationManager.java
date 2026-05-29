@@ -251,6 +251,15 @@ public class StudentRegistrationManager {
             if (studentExtraDetails.getParentsToMotherMobileNumber() != null) {
                 student.setParentToMotherMobileNumber(studentExtraDetails.getParentsToMotherMobileNumber());
             }
+            if (studentExtraDetails.getBillingContactName() != null) {
+                student.setBillingContactName(studentExtraDetails.getBillingContactName());
+            }
+            if (studentExtraDetails.getBillingContactEmail() != null) {
+                student.setBillingContactEmail(studentExtraDetails.getBillingContactEmail());
+            }
+            if (studentExtraDetails.getBillingContactRole() != null) {
+                student.setBillingContactRole(studentExtraDetails.getBillingContactRole());
+            }
         }
         return instituteStudentRepository.save(student);
     }

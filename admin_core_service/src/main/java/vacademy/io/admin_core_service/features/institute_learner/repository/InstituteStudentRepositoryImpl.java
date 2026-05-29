@@ -62,6 +62,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                 ssigm.expiry_date AS expiryDate,
                 s.parents_to_mother_mobile_number AS parentsToMotherMobileNumber,
                 s.parents_to_mother_email AS parentsToMotherEmail,
+                s.billing_contact_name AS billingContactName,
+                s.billing_contact_email AS billingContactEmail,
+                s.billing_contact_role AS billingContactRole,
                 ssigm.institute_enrollment_number AS instituteEnrollmentNumber,
                 ssigm.institute_id AS instituteId,
                 ssigm.group_id AS groupId,
@@ -131,7 +134,8 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
                      s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                      s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                      s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-                     s.parents_to_mother_email, ssigm.institute_enrollment_number,
+                     s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+                     s.billing_contact_role, ssigm.institute_enrollment_number,
                      ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, 
                      ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                      ssigm.desired_level_id, ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
@@ -412,6 +416,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             public String getExpiryDate() { return str("expirydate"); }
             public String getParentsToMotherMobileNumber() { return str("parentstomothermobilenumber"); }
             public String getParentsToMotherEmail() { return str("parentstomotheremail"); }
+            public String getBillingContactName() { return str("billingcontactname"); }
+            public String getBillingContactEmail() { return str("billingcontactemail"); }
+            public String getBillingContactRole() { return str("billingcontactrole"); }
             public String getInstituteEnrollmentNumber() { return str("instituteenrollmentnumber"); }
             public String getInstituteId() { return str("instituteid"); }
             public String getGroupId() { return str("groupid"); }

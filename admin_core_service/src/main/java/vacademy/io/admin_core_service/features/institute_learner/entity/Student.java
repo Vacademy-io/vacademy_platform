@@ -145,6 +145,16 @@ public class Student {
     @Column(name = "guardian_email")
     private String guardianEmail;
 
+    // --- Billing Contact (V313) ---
+    @Column(name = "billing_contact_name")
+    private String billingContactName;
+
+    @Column(name = "billing_contact_email")
+    private String billingContactEmail;
+
+    @Column(name = "billing_contact_role")
+    private String billingContactRole;
+
     // --- Terms and Conditions Fields ---
     @Column(name = "tnc_accepted")
     @Builder.Default
@@ -191,6 +201,9 @@ public class Student {
         }
         if (this.guardianEmail != null) {
             this.guardianEmail = this.guardianEmail.toLowerCase();
+        }
+        if (this.billingContactEmail != null) {
+            this.billingContactEmail = this.billingContactEmail.toLowerCase();
         }
     }
 }

@@ -168,6 +168,7 @@ const GenerateInviteLinkDialog = ({
                 redirectPath: '',
                 showLoginButton: true,
                 content: '',
+                collectBillingContactDetails: false,
             },
         },
     });
@@ -833,6 +834,7 @@ const GenerateInviteLinkDialog = ({
                     redirectPath: '',
                     showLoginButton: true,
                     content: '',
+                    collectBillingContactDetails: false,
                 },
             });
         }

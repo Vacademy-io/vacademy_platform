@@ -20,6 +20,7 @@ import vacademy.io.common.logging.SentryLogger;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,9 @@ public class PaymentNotificatonService {
 
     @Autowired
     private MediaService mediaService;
+
+    @Autowired
+    private BillingContactRecipientResolver billingContactRecipientResolver;
 
     public boolean sendPaymentConfirmationNotification(
             String instituteId,
@@ -69,7 +73,13 @@ public class PaymentNotificatonService {
         notificationToUserDTO.setChannelId(paymentInitiationRequestDTO.getEmail() == null ? userDTO.getEmail()
                 : paymentInitiationRequestDTO.getEmail());
         notificationToUserDTO.setPlaceholders(new HashMap<>());
-        notificationDTO.setUsers(List.of(notificationToUserDTO));
+
+        List<NotificationToUserDTO> recipients = new ArrayList<>();
+        recipients.add(notificationToUserDTO);
+        billingContactRecipientResolver
+                .buildBillingContactRecipient(userDTO.getId(), instituteId, notificationToUserDTO.getChannelId())
+                .ifPresent(recipients::add);
+        notificationDTO.setUsers(recipients);
 
         try {
             notificationService.sendEmailViaUnified(notificationDTO, instituteId);

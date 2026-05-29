@@ -540,6 +540,30 @@ export const DEFAULT_SYSTEM_FIELDS: SystemField[] = [
         order: 20,
         visibility: false,
     },
+    // Billing contact columns — hidden by default; admins opt in per role from
+    // the display-settings UI. Populated only when an invite enabled
+    // "Collect Billing Contact Details" and the learner ticked the box.
+    {
+        key: 'BILLING_CONTACT_NAME',
+        defaultValue: 'Billing Contact Name',
+        customValue: 'Billing Contact Name',
+        order: 21,
+        visibility: false,
+    },
+    {
+        key: 'BILLING_CONTACT_EMAIL',
+        defaultValue: 'Billing Contact Email',
+        customValue: 'Billing Contact Email',
+        order: 22,
+        visibility: false,
+    },
+    {
+        key: 'BILLING_CONTACT_ROLE',
+        defaultValue: 'Billing Contact Role',
+        customValue: 'Billing Contact Role',
+        order: 23,
+        visibility: false,
+    },
     // Filter-driven columns (Batch / Plan Type / Amount Paid / Preferred Batch /
     // Enroll Invite Name) intentionally NOT here. They appear only when their
     // corresponding filter is applied and are appended after the configured

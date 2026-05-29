@@ -35,6 +35,9 @@ public class StudentV2DTO {
     private Date expiryDate;
     private String parentsToMotherMobileNumber;
     private String parentsToMotherEmail;
+    private String billingContactName;
+    private String billingContactEmail;
+    private String billingContactRole;
     private String password;
     private String paymentStatus;
     private String packageSessionId;

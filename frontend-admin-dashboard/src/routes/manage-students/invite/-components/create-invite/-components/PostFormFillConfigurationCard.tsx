@@ -70,7 +70,31 @@ const PostFormFillConfigurationCard = ({ form }: PostFormFillConfigurationCardPr
                                 <p className="text-xs text-neutral-500">
                                     Custom content to display on the success page. Overrides the default message. You may use HTML.
                                 </p>
+                                <p className="text-xs text-neutral-500">
+                                    Supported tokens: <code>{'{{courseName}}'}</code> and <code>{'{{amount}}'}</code>. They are replaced at runtime with the course title and the amount the learner paid for their selected plan.
+                                </p>
                                 <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+
+                    <FormField
+                        control={form.control}
+                        name="postformfillConfiguration.collectBillingContactDetails"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                    <FormLabel className="text-sm font-semibold">Collect Billing Contact Details</FormLabel>
+                                    <p className="text-xs text-neutral-500">
+                                        Let learners add a separate billing contact (name, email, role) during enrollment. The billing email also receives invoices and renewal notices.
+                                    </p>
+                                </div>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
                             </FormItem>
                         )}
                     />

@@ -48,4 +48,6 @@ public class AuthServiceRoutes {
      * passes its role check.
      */
     public static final String ADD_USER_ROLES_INTERNAL = "/auth-service/internal/v1/user-roles/add-user-roles";
+
+    public static final String GET_USER_BY_EMAIL = "/auth-service/internal/user/by-email";
 }

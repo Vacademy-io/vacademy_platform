@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const tabIcons = {
   [assessmentTypes.LIVE]: PlayCircle,
   [assessmentTypes.UPCOMING]: CalendarDots,
-  [assessmentTypes.PAST]: History,
+  [assessmentTypes.PAST]: ClockCounterClockwise,
 };
 
 const ScheduleTestTabList = ({

@@ -27,7 +27,11 @@ interface ReviewStepProps {
   instituteId: string;
   enrollInviteId: string;
   userEmail?: string;
-  onCouponChange?: (appliedCode: string | null) => void;
+  onCouponChange?: (appliedCode: string | null, discount: number) => void;
+  // Restored from the parent on remount so the discount survives a
+  // Review → Pay → Back round-trip. PaidPlanReview re-runs validate once
+  // the plan is loaded.
+  initialCouponCode?: string | null;
 }
 
 const ReviewStep = ({
@@ -43,6 +47,7 @@ const ReviewStep = ({
   enrollInviteId,
   userEmail,
   onCouponChange,
+  initialCouponCode,
 }: ReviewStepProps) => {
   return (
     <div className="space-y-6">
@@ -94,6 +99,7 @@ const ReviewStep = ({
                 enrollInviteId={enrollInviteId}
                 userEmail={userEmail}
                 onCouponChange={onCouponChange}
+                initialCouponCode={initialCouponCode}
               />
             ) : (
               <FreePlanReview
@@ -198,6 +204,7 @@ const PaidPlanReview = ({
   enrollInviteId,
   userEmail,
   onCouponChange,
+  initialCouponCode,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
@@ -208,25 +215,79 @@ const PaidPlanReview = ({
   instituteId: string;
   enrollInviteId: string;
   userEmail?: string;
-  onCouponChange?: (appliedCode: string | null) => void;
+  onCouponChange?: (appliedCode: string | null, discount: number) => void;
+  initialCouponCode?: string | null;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
   const couponsEnabled = useCouponsEnabled();
   const couponCtx = useCheckoutCoupon({
-    buildRequest: (code) => ({
-      couponCode: code,
-      instituteId,
-      enrollInviteId,
-      packageSessionId: package_session_id || null,
-      paymentPlanId: plan?.id ?? null,
-      userEmail: userEmail || null,
-      totalAmount: typeof plan?.actual_price === "number" ? plan.actual_price : 0,
-    }),
+    buildRequest: (code) => {
+      // Mirror the pricing-display fallback chain (actual_price → amount → 0).
+      // Some SelectedPayment construction paths only set `amount`, not
+      // `actual_price`; without the fallback the validate call sends
+      // total_amount=0 and the BE percentage discount comes back as 0.
+      const totalAmount =
+        typeof plan?.actual_price === "number"
+          ? plan.actual_price
+          : typeof plan?.amount === "number"
+          ? plan.amount
+          : 0;
+      return {
+        couponCode: code,
+        instituteId,
+        enrollInviteId,
+        packageSessionId: package_session_id || null,
+        paymentPlanId: plan?.id ?? null,
+        userEmail: userEmail || null,
+        totalAmount,
+      };
+    },
   });
-  // Bubble the applied code up so enroll-form can include it in the payload.
+  // Bubble the applied code + discount up so enroll-form can both include
+  // the code in the payload AND subtract the discount from the gateway
+  // amount. Without the discount the BE records the coupon but the gateway
+  // charges the full price.
   useEffect(() => {
-    onCouponChange?.(couponCtx.state.appliedCode);
-  }, [couponCtx.state.appliedCode, onCouponChange]);
+    onCouponChange?.(
+      couponCtx.state.appliedCode,
+      couponCtx.state.appliedCode ? couponCtx.state.discount : 0
+    );
+  }, [couponCtx.state.appliedCode, couponCtx.state.discount, onCouponChange]);
+
+  // Restore a previously-applied coupon after a Review → Pay → Back round-trip.
+  // The parent persists the code; we re-run validate once the plan is loaded
+  // so the discount and IDs are re-derived. Guarded so we don't loop on
+  // failures (e.g. coupon expired since the original apply).
+  const [restoreAttempted, setRestoreAttempted] = useState(false);
+  useEffect(() => {
+    if (restoreAttempted) return;
+    if (!initialCouponCode) return;
+    if (!plan) return; // wait until the price source exists
+    if (couponCtx.state.appliedCode || couponCtx.state.isApplying) return;
+    setRestoreAttempted(true);
+    couponCtx.setCode(initialCouponCode);
+    void couponCtx.apply(initialCouponCode);
+  }, [initialCouponCode, plan, couponCtx, restoreAttempted]);
+
+  // If the restore validate fails (coupon got expired / exhausted / scope
+  // changed since we last saw it), drop it from the parent so the enroll
+  // payload doesn't carry a stale code that the BE would also reject.
+  useEffect(() => {
+    if (!restoreAttempted) return;
+    if (!initialCouponCode) return;
+    if (couponCtx.state.isApplying) return;
+    if (couponCtx.state.appliedCode) return; // restore succeeded
+    if (!couponCtx.state.error) return; // hasn't resolved yet
+    onCouponChange?.(null, 0);
+  }, [
+    restoreAttempted,
+    initialCouponCode,
+    couponCtx.state.isApplying,
+    couponCtx.state.appliedCode,
+    couponCtx.state.error,
+    onCouponChange,
+  ]);
+
   if (!plan) return null;
 
   const formatValidity = (validityInDays: number) => {

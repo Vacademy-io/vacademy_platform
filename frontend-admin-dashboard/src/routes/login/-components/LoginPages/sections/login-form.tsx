@@ -18,7 +18,6 @@ import { Form, FormControl, FormField, FormItem } from '@/components/ui/form';
 import { useNavigate } from '@tanstack/react-router';
 import { handleSSOLogin } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-// import { Link2Icon } from 'lucide-react';
 import { handleOAuthLogin } from '@/hooks/login/oauth-login';
 import { GitHubIcon } from '@/components/icons/GitHubIcon';
 import { GoogleIcon } from '@/components/icons/GoogleIcon';
@@ -460,7 +459,7 @@ export function LoginForm() {
                                 <img
                                     src={instituteLogo}
                                     alt="institute logo"
-                                    className="mb-4 max-h-16 max-w-[160px] object-contain sm:mb-6 sm:max-h-20 sm:max-w-[200px]"
+                                    className="mb-4 max-h-16 max-w-40 object-contain sm:mb-6 sm:max-h-20 sm:max-w-52"
                                 />
                             ) : null}
                             {instituteName && cachedBranding?.hideInstituteName !== true ? (
@@ -580,7 +579,7 @@ export function LoginForm() {
                                                                         size="large"
                                                                         label="Username"
                                                                         {...field}
-                                                                        className="w-full"
+                                                                        className="w-full sm:w-full"
                                                                     />
                                                                 </FormControl>
                                                             </FormItem>
@@ -608,7 +607,7 @@ export function LoginForm() {
                                                                             size="large"
                                                                             label="Password"
                                                                             {...field}
-                                                                            className="w-full"
+                                                                            className="w-full sm:w-full"
                                                                         />
                                                                     </FormControl>
                                                                 </FormItem>

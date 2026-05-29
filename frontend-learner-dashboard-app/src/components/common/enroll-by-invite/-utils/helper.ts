@@ -96,6 +96,7 @@ export interface PaymentOption {
   require_approval: boolean;
   payment_plans: PaymentPlan[];
   payment_option_metadata_json: string; // You can also parse this into PaymentOptionMetadata if needed
+  complex_payment_option_id?: string | null;
 }
 
 export interface PaymentPlan {
@@ -291,7 +292,26 @@ export function convertPlansToPaymentOptions(rawPlans: PackageSessionData) {
 }
 
 export function getDefaultPlanFromPaymentsData(item: PaymentOption) {
-  const parsedData = JSON.parse(item.payment_option_metadata_json);
+  // Safe parse — CPO options may have empty or minimal metadata JSON
+  let parsedData: Record<string, unknown> = {};
+  try {
+    parsedData = JSON.parse(item.payment_option_metadata_json || "{}") || {};
+  } catch {
+    parsedData = {};
+  }
+
+  if (item.type === "CPO") {
+    return {
+      id: item.id,
+      name: item.name,
+      description: "Pay in installments",
+      currency: (parsedData?.currency as string) || "INR",
+      type: item.type,
+      complex_payment_option_id: item.complex_payment_option_id,
+      payment_options: item.payment_plans,
+    };
+  }
+
   if (item.type === "donation") {
     return {
       id: item.id,
@@ -330,16 +350,17 @@ export function getDefaultPlanFromPaymentsData(item: PaymentOption) {
       options_metadata: parsedData?.upfrontData,
     };
   } else {
+    const subData = parsedData?.subscriptionData as Record<string, unknown> | undefined;
     return {
       id: item.id,
       name: item.name,
       description: "Access to subscription plan.",
-      currency: parsedData?.currency || "",
+      currency: (parsedData?.currency as string) || "",
       type: item.type,
       payment_options: item.payment_plans,
-      discount_json: parsedData?.subscriptionData?.planDiscounts,
+      discount_json: subData?.planDiscounts,
       options_metadata:
-        parsedData?.subscriptionData?.customIntervals.map(
+        ((subData?.customIntervals as PaymentPlansInterface[] | undefined) || []).map(
           (interval: PaymentPlansInterface) => {
             return {
               value: interval.value || 0,

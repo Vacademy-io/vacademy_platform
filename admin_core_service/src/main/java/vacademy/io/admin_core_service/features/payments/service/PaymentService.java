@@ -12,10 +12,16 @@ import vacademy.io.admin_core_service.features.learner_payment_option_operation.
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceFactory;
 import vacademy.io.admin_core_service.features.payments.manager.PaymentServiceStrategy;
 import vacademy.io.admin_core_service.features.payments.manager.PhonePePaymentManager;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserInstitutePaymentGatewayMapping;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogLineItemRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserInstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -60,6 +66,67 @@ public class PaymentService {
         @Autowired
         private AuthService authService;
 
+        @Autowired
+        private PaymentLogRepository paymentLogRepository;
+
+        @Autowired
+        private PaymentLogLineItemRepository paymentLogLineItemRepository;
+
+        /**
+         * Persist a PaymentLogLineItem for the coupon discount when the
+         * UserPlan was created with one. Without this row, InvoiceService
+         * has no way to render the "Coupon SAVE20 -₹50" line — the invoice
+         * would show full price - 0 discount = full price, contradicting
+         * what the gateway actually captured.
+         *
+         * Idempotent: skips if a line item with the same source_id already
+         * exists on any PaymentLog of this UserPlan. Required because
+         * LearnerInstallmentPaymentService.payInstallments re-invokes
+         * handlePayment for subsequent installments on a UserPlan where
+         * userPlan.appliedCouponDiscount is still set — without the guard
+         * each installment would record a duplicate discount line, and the
+         * invoice would show plan_price − (N × discount).
+         */
+        private void recordCouponLineItemIfApplicable(String paymentLogId, UserPlan userPlan) {
+                if (userPlan == null || paymentLogId == null) {
+                        return;
+                }
+                AppliedCouponDiscount coupon = userPlan.getAppliedCouponDiscount();
+                if (coupon == null) {
+                        return;
+                }
+                PaymentPlan plan = userPlan.getPaymentPlan();
+                if (plan == null) {
+                        return;
+                }
+                double discount = CouponDiscountUtil.computeDiscount(coupon, plan.getActualPrice());
+                if (discount <= 0.0) {
+                        return;
+                }
+                if (paymentLogLineItemRepository
+                                .existsByPaymentLog_UserPlan_IdAndSourceId(userPlan.getId(), coupon.getId())) {
+                        log.debug("Coupon line item already recorded for userPlan={} coupon={} — skipping",
+                                        userPlan.getId(), coupon.getId());
+                        return;
+                }
+                paymentLogRepository.findById(paymentLogId).ifPresent(paymentLog -> {
+                        PaymentLogLineItem item = new PaymentLogLineItem();
+                        item.setPaymentLog(paymentLog);
+                        // Both fields contain "COUPON" so InvoiceService picks the row up
+                        // in calculateDiscountAmount AND resolves the code via
+                        // buildDiscountDescription (source.toLowerCase().contains("coupon")).
+                        item.setType("COUPON_DISCOUNT");
+                        item.setSource("COUPON_CODE");
+                        item.setSourceId(coupon.getId());
+                        // Stored as negative — calculateDiscountAmount's "< 0" branch is the
+                        // canonical convention for this column.
+                        item.setAmount(-(int) Math.round(discount));
+                        paymentLogLineItemRepository.save(item);
+                        log.info("Recorded coupon line item {} for paymentLog={} coupon={} discount={}",
+                                        item.getId(), paymentLogId, coupon.getName(), discount);
+                });
+        }
+
         /**
          * Handles payment for learner package enrollment with EnrollInvite.
          */
@@ -84,6 +151,12 @@ public class PaymentService {
                                 enrollInvite.getCurrency(),
                                 userPlan,
                                 request.getOrderId());
+
+                // Persist the coupon discount as a PaymentLogLineItem so
+                // InvoiceService can render the discount line on receipts
+                // (plan price − coupon = paid amount). Without this row the
+                // invoice arithmetic contradicts what the gateway captured.
+                recordCouponLineItemIfApplicable(paymentLogId, userPlan);
 
                 if (!StringUtils.hasText(request.getOrderId())) {
                         request.setOrderId(paymentLogId);
@@ -152,6 +225,10 @@ public class PaymentService {
                                 enrollInvite.getCurrency(),
                                 userPlan,
                                 request.getOrderId());
+
+                // Same rationale as handlePayment — invoices need the coupon
+                // line item to render the discount row.
+                recordCouponLineItemIfApplicable(paymentLogId, userPlan);
 
                 if (!StringUtils.hasText(request.getOrderId())) {
                         request.setOrderId(paymentLogId);

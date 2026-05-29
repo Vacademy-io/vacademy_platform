@@ -3,6 +3,7 @@ import { forwardRef } from 'react';
 import {
     Clapperboard,
     FolderOpen,
+    Layers,
     LogOut,
     Palette,
     Scissors,
@@ -42,6 +43,7 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'create', label: 'Create', Icon: Wand2 },
     { id: 'recent', label: 'Recent', Icon: Clapperboard },
     { id: 'reels', label: 'Reels', Icon: Scissors },
+    { id: 'studio', label: 'Studio', Icon: Layers },
     { id: 'assets', label: 'Assets', Icon: FolderOpen },
     { id: 'avatars', label: 'Avatars', Icon: UserSquare2 },
     { id: 'brand-kits', label: 'Brand Kits', Icon: Palette },

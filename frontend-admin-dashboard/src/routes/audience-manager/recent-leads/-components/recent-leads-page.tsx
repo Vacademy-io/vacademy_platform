@@ -7,12 +7,13 @@ import { parseHtmlToString } from '@/lib/utils';
 import {
     DownloadSimple,
     MagnifyingGlass,
-    Funnel,
     X,
     Flame,
     CheckCircle,
     Columns,
     Clock,
+    Megaphone,
+    CalendarBlank,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -62,13 +63,17 @@ type SlaFilter =
     | 'FOLLOW_UP_DUE'
     | 'FOLLOW_UP_OVERDUE'
     | 'ANY_OVERDUE';
-const SLA_OPTIONS: { value: string; label: string }[] = [
-    { value: ALL_SLA_VALUE, label: 'All SLA states' },
-    { value: 'ANY_OVERDUE', label: 'Any overdue' },
-    { value: 'TAT_OVERDUE', label: 'Reach-out overdue' },
-    { value: 'TAT_BEFORE', label: 'Reach-out due soon' },
-    { value: 'FOLLOW_UP_DUE', label: 'Follow-up due' },
-    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up overdue' },
+const SLA_OPTIONS: { value: string; label: string; helper?: string }[] = [
+    { value: ALL_SLA_VALUE, label: 'All action statuses' },
+    {
+        value: 'ANY_OVERDUE',
+        label: 'Any deadline missed',
+        helper: 'First contact or follow-up — whichever is overdue',
+    },
+    { value: 'TAT_OVERDUE', label: 'First contact missed' },
+    { value: 'TAT_BEFORE', label: 'First contact coming up' },
+    { value: 'FOLLOW_UP_DUE', label: 'Follow-up coming up' },
+    { value: 'FOLLOW_UP_OVERDUE', label: 'Follow-up missed' },
 ];
 const SEARCH_DEBOUNCE_MS = 500;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -89,11 +94,26 @@ const toDateInputValue = (d: Date) => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 };
-const RECENT_DEFAULT_DAYS = 30;
-const computeDefaultRange = () => {
+// Date filter is a preset day-range select (no custom calendar) so a counsellor
+// can switch windows in one click. "ALL" disables the submitted-date filter.
+const ALL_DATE_VALUE = 'ALL';
+const CUSTOM_DATE_VALUE = 'CUSTOM';
+const DEFAULT_RANGE_DAYS = '30';
+const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
+    { value: '1', label: 'Last 24 hours' },
+    { value: '7', label: 'Last 7 days' },
+    { value: '15', label: 'Last 15 days' },
+    { value: '30', label: 'Last 30 days' },
+    { value: ALL_DATE_VALUE, label: 'All time' },
+    { value: CUSTOM_DATE_VALUE, label: 'Custom range' },
+];
+const rangeForPreset = (preset: string): { from: string; to: string } => {
+    if (preset === ALL_DATE_VALUE) return { from: '', to: '' };
+    const n = Number(preset);
+    if (!Number.isFinite(n) || n <= 0) return { from: '', to: '' };
     const now = new Date();
     const start = new Date(now);
-    start.setDate(start.getDate() - (RECENT_DEFAULT_DAYS - 1));
+    start.setDate(start.getDate() - (n - 1));
     return { from: toDateInputValue(start), to: toDateInputValue(now) };
 };
 
@@ -106,6 +126,21 @@ const csvSafe = (val: unknown) => {
         return `"${str.replace(/"/g, '""')}"`;
     }
     return str;
+};
+
+/**
+ * Single SLA-filter option content. Pulled out of the inline JSX so the
+ * RecentLeadsContent function stays under CodeFactor's complexity threshold.
+ * When `helper` is set, render the two-line label + subtitle pattern.
+ */
+const SlaOptionLabel = ({ label, helper }: { label: string; helper?: string }) => {
+    if (!helper) return <>{label}</>;
+    return (
+        <div className="flex flex-col">
+            <span>{label}</span>
+            <span className="text-caption text-muted-foreground">{helper}</span>
+        </div>
+    );
 };
 
 export const RecentLeadsPage = () => {
@@ -128,10 +163,18 @@ const RecentLeadsContent = () => {
 
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(20);
-    const defaultRange = useMemo(() => computeDefaultRange(), []);
-    const [fromDate, setFromDate] = useState(defaultRange.from);
-    const [toDate, setToDate] = useState(defaultRange.to);
-    const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>(defaultRange);
+    const [rangeDays, setRangeDays] = useState<string>(DEFAULT_RANGE_DAYS);
+    // Custom-range state (only used when rangeDays === CUSTOM_DATE_VALUE).
+    const [customFrom, setCustomFrom] = useState('');
+    const [customTo, setCustomTo] = useState('');
+    const [customOpen, setCustomOpen] = useState(false);
+    const appliedRange = useMemo(
+        () =>
+            rangeDays === CUSTOM_DATE_VALUE
+                ? { from: customFrom, to: customTo }
+                : rangeForPreset(rangeDays),
+        [rangeDays, customFrom, customTo]
+    );
     const [audienceId, setAudienceId] = useState<string>(ALL_AUDIENCES_VALUE);
 
     const [searchInput, setSearchInput] = useState('');
@@ -246,6 +289,7 @@ const RecentLeadsContent = () => {
             conversionFilter,
             slaFilter,
             counsellorFilter,
+            ALL_COUNSELLORS_VALUE,
             page,
             pageSize,
         ],
@@ -312,8 +356,6 @@ const RecentLeadsContent = () => {
 
     // Filters
     const handleClearFilter = () => {
-        setFromDate('');
-        setToDate('');
         setAudienceId(ALL_AUDIENCES_VALUE);
         setSearchInput('');
         setAppliedSearch('');
@@ -321,8 +363,24 @@ const RecentLeadsContent = () => {
         setLeadStatusFilter(ALL_ACTIVE_VALUE);
         setSlaFilter(ALL_SLA_VALUE);
         setCounsellorFilter(ALL_COUNSELLORS_VALUE);
+        setRangeDays(DEFAULT_RANGE_DAYS);
+        setCustomFrom('');
+        setCustomTo('');
         setPage(0);
-        setAppliedRange({ from: '', to: '' });
+    };
+    const setDateRange = (value: string) => {
+        setPage(0);
+        setRangeDays(value);
+        if (value === CUSTOM_DATE_VALUE) {
+            // Seed the custom inputs with the last 30 days so a counsellor can
+            // tweak from a sensible starting point instead of empty fields.
+            if (!customFrom && !customTo) {
+                const seed = rangeForPreset(DEFAULT_RANGE_DAYS);
+                setCustomFrom(seed.from);
+                setCustomTo(seed.to);
+            }
+            setCustomOpen(true);
+        }
     };
     const setCounsellor = (value: string) => {
         setPage(0);
@@ -340,26 +398,19 @@ const RecentLeadsContent = () => {
         setPage(0);
         setSlaFilter(value);
     };
-    const handleApplyDate = () => {
-        setPage(0);
-        setAppliedRange({ from: fromDate, to: toDate });
-    };
     const handleAudienceChange = (value: string) => {
         setPage(0);
         setAudienceId(value);
     };
 
     const isFilterActive =
-        !!appliedRange.from ||
-        !!appliedRange.to ||
+        rangeDays !== DEFAULT_RANGE_DAYS ||
         audienceId !== ALL_AUDIENCES_VALUE ||
         !!appliedSearch ||
         tierFilter !== ALL_TIERS_VALUE ||
         leadStatusFilter !== ALL_ACTIVE_VALUE ||
         slaFilter !== ALL_SLA_VALUE ||
         counsellorFilter !== ALL_COUNSELLORS_VALUE;
-    const moreFiltersActive =
-        audienceId !== ALL_AUDIENCES_VALUE || !!appliedRange.from || !!appliedRange.to;
 
     // CSV export (shared by "Export" + "Export selected")
     const [isExporting, setIsExporting] = useState(false);
@@ -464,8 +515,7 @@ const RecentLeadsContent = () => {
                     lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
                     lead_status_id: leadStatusId,
                     conversion_status_filter: conversionFilter,
-                    sla_filter:
-                        slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
+                    sla_filter: slaFilter === ALL_SLA_VALUE ? undefined : (slaFilter as SlaFilter),
                     assigned_counselor_id:
                         counsellorFilter === ALL_COUNSELLORS_VALUE ? undefined : counsellorFilter,
                     page: pageNo,
@@ -512,15 +562,23 @@ const RecentLeadsContent = () => {
             onRemove: () => setCounsellor(ALL_COUNSELLORS_VALUE),
         });
     }
-    if (appliedRange.from || appliedRange.to)
+    if (rangeDays !== DEFAULT_RANGE_DAYS) {
+        let label: string;
+        if (rangeDays === CUSTOM_DATE_VALUE) {
+            label =
+                customFrom && customTo ? `Date: ${customFrom} → ${customTo}` : 'Date: custom range';
+        } else {
+            label = DATE_RANGE_OPTIONS.find((o) => o.value === rangeDays)?.label ?? 'Date range';
+        }
         chips.push({
-            label: `Date: ${appliedRange.from || '…'} → ${appliedRange.to || '…'}`,
+            label,
             onRemove: () => {
-                setFromDate('');
-                setToDate('');
-                setAppliedRange({ from: '', to: '' });
+                setRangeDays(DEFAULT_RANGE_DAYS);
+                setCustomFrom('');
+                setCustomTo('');
             },
         });
+    }
 
     return (
         <div className="flex w-full flex-col gap-4">
@@ -565,12 +623,12 @@ const RecentLeadsContent = () => {
                         <Select value={slaFilter} onValueChange={setSla}>
                             <SelectTrigger className="h-10 w-44">
                                 <Clock className="mr-1.5 size-4 text-neutral-400" />
-                                <SelectValue placeholder="All SLA states" />
+                                <SelectValue placeholder="Action status" />
                             </SelectTrigger>
                             <SelectContent>
                                 {SLA_OPTIONS.map((o) => (
                                     <SelectItem key={o.value} value={o.value}>
-                                        {o.label}
+                                        <SlaOptionLabel label={o.label} helper={o.helper} />
                                     </SelectItem>
                                 ))}
                             </SelectContent>
@@ -585,60 +643,74 @@ const RecentLeadsContent = () => {
                             isLoading={counsellorOptionsQuery.isLoading}
                         />
                     )}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-10">
-                                <Funnel className="mr-1.5 size-4" />
-                                More filters
-                                {moreFiltersActive && (
-                                    <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
-                                )}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-72 space-y-3">
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-neutral-600">Audience</Label>
-                                <Select value={audienceId} onValueChange={handleAudienceChange}>
-                                    <SelectTrigger className="h-9 w-full">
-                                        <SelectValue placeholder="All audiences" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={ALL_AUDIENCES_VALUE}>
-                                            All audiences
-                                        </SelectItem>
-                                        {audienceOptions.map((opt) => (
-                                            <SelectItem key={opt.id} value={opt.id}>
-                                                {opt.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs text-neutral-600">From</Label>
-                                    <Input
-                                        type="date"
-                                        value={fromDate}
-                                        onChange={(e) => setFromDate(e.target.value)}
-                                        className="h-9"
-                                    />
+                    <Select value={audienceId} onValueChange={handleAudienceChange}>
+                        <SelectTrigger className="h-10 w-44">
+                            <Megaphone className="mr-1.5 size-4 text-neutral-400" />
+                            <SelectValue placeholder="All audiences" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value={ALL_AUDIENCES_VALUE}>All audiences</SelectItem>
+                            {audienceOptions.map((opt) => (
+                                <SelectItem key={opt.id} value={opt.id}>
+                                    {opt.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select value={rangeDays} onValueChange={setDateRange}>
+                        <SelectTrigger className="h-10 w-40">
+                            <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {DATE_RANGE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {rangeDays === CUSTOM_DATE_VALUE && (
+                        <Popover open={customOpen} onOpenChange={setCustomOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-10">
+                                    <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
+                                    {customFrom && customTo
+                                        ? `${customFrom} → ${customTo}`
+                                        : 'Set dates'}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-72 space-y-3">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-neutral-600">From</Label>
+                                        <Input
+                                            type="date"
+                                            value={customFrom}
+                                            onChange={(e) => setCustomFrom(e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs text-neutral-600">To</Label>
+                                        <Input
+                                            type="date"
+                                            value={customTo}
+                                            onChange={(e) => setCustomTo(e.target.value)}
+                                            className="h-9"
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs text-neutral-600">To</Label>
-                                    <Input
-                                        type="date"
-                                        value={toDate}
-                                        onChange={(e) => setToDate(e.target.value)}
-                                        className="h-9"
-                                    />
-                                </div>
-                            </div>
-                            <Button size="sm" className="w-full" onClick={handleApplyDate}>
-                                Apply dates
-                            </Button>
-                        </PopoverContent>
-                    </Popover>
+                                <Button
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() => setCustomOpen(false)}
+                                >
+                                    Done
+                                </Button>
+                            </PopoverContent>
+                        </Popover>
+                    )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">

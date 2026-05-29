@@ -124,6 +124,20 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
       (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
   );
 
+  // Drop the applied coupon if the learner switches plans — its discount was
+  // computed against the previous plan's price, and leaving it in place would
+  // make the gateway charge a different amount than the BE re-validates to.
+  const prevPlanIdRef = useRef<string | null | undefined>(selectedPaymentPlan?.id);
+  useEffect(() => {
+    const currentId = selectedPaymentPlan?.id;
+    if (prevPlanIdRef.current !== currentId) {
+      prevPlanIdRef.current = currentId;
+      if (couponCtx.state.appliedCode) {
+        couponCtx.clear();
+      }
+    }
+  }, [selectedPaymentPlan?.id, couponCtx]);
+
   // Helper function to get real user data from preferences
   const getRealUserData = useCallback(async () => {
     try {

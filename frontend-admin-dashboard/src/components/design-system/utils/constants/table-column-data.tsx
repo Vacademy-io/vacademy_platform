@@ -14,7 +14,11 @@ import { useState, useRef } from 'react';
 import { LogDetailsDialog } from '@/components/common/student-slide-tracking/log-details-dialog';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    ContentTerms,
+    OtherTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 import { EnrollRequestsStudentMenuOptions } from '@/routes/manage-students/enroll-requests/-components/bulk-actions/enroll-request-individual-options';
 import { generateCustomFieldColumns } from './custom-field-columns';
 import { processColumnsWithSystemFields } from './system-field-columns';
@@ -159,10 +163,10 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<StudentTable>; column
                     .map((item) =>
                         typeof item === 'object'
                             ? item.name ||
-                            item.title ||
-                            item.label ||
-                            item.id ||
-                            JSON.stringify(item)
+                              item.title ||
+                              item.label ||
+                              item.id ||
+                              JSON.stringify(item)
                             : item
                     )
                     .join(', ');
@@ -187,7 +191,7 @@ const CreateClickableCell = ({ row, columnId }: { row: Row<StudentTable>; column
         >
             <span className="truncate">{getDisplayValue(value)}</span>
             {isAudienceOnly && (
-                <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">
+                <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
                     Audience
                 </span>
             )}
@@ -223,11 +227,11 @@ const ExpiryDateCell = ({ row }: { row: Row<StudentTable> }) => {
         <div
             className={`${
                 daysLeft < 30
-                ? 'text-danger-600'
-                : daysLeft < 180
-                    ? 'text-warning-500'
-                    : 'text-success-500'
-                }`}
+                    ? 'text-danger-600'
+                    : daysLeft < 180
+                      ? 'text-warning-500'
+                      : 'text-success-500'
+            }`}
             onClick={() => handleClick('expiry_date', row)}
             onDoubleClick={(e) => handleDoubleClick(e, 'expiry_date', row)}
         >
@@ -251,6 +255,43 @@ const StatusCell = ({ row }: { row: Row<StudentTable> }) => {
             onDoubleClick={(e) => handleDoubleClick(e, 'status', row)}
         >
             <StatusChips status={mappedStatus} />
+        </div>
+    );
+};
+
+const MembershipTypeCell = ({ row }: { row: Row<StudentTable> }) => {
+    const { handleClick, handleDoubleClick } = useClickHandlers();
+    const { packageName, levelName, packageType } = useGetStudentBatch(
+        row.original.package_session_id
+    );
+
+    const display = packageType === 'MEMBERSHIP' ? `${packageName}`.trim() || '-' : '-';
+
+    return (
+        <div
+            onClick={() => handleClick('membership_type', row)}
+            onDoubleClick={(e) => handleDoubleClick(e, 'membership_type', row)}
+        >
+            {display}
+        </div>
+    );
+};
+
+const MembershipRoleCell = ({ row }: { row: Row<StudentTable> }) => {
+    const { handleClick, handleDoubleClick } = useClickHandlers();
+    const roles = row.original.comma_separated_org_roles || '';
+    const display = roles.includes('ADMIN')
+        ? 'Practice Admin'
+        : roles.includes('LEARNER')
+          ? 'Practice Staff'
+          : '-';
+
+    return (
+        <div
+            onClick={() => handleClick('comma_separated_org_roles', row)}
+            onDoubleClick={(e) => handleDoubleClick(e, 'comma_separated_org_roles', row)}
+        >
+            {display}
         </div>
     );
 };
@@ -589,6 +630,25 @@ export const myColumns: ColumnDef<StudentTable>[] = [
         cell: ({ row }) => <StatusCell row={row} />,
     },
     {
+        id: 'membership_role',
+        accessorKey: 'comma_separated_org_roles',
+        size: 160,
+        minSize: 120,
+        maxSize: 220,
+        header: 'Membership Role',
+        cell: ({ row }) => <MembershipRoleCell row={row} />,
+        enableHiding: true,
+    },
+    {
+        id: 'membership_type',
+        size: 180,
+        minSize: 120,
+        maxSize: 280,
+        header: 'Membership Type',
+        cell: ({ row }) => <MembershipTypeCell row={row} />,
+        enableHiding: true,
+    },
+    {
         id: 'options',
         size: 60,
         minSize: 50,
@@ -614,7 +674,7 @@ export const getCustomColumns = (showApprovalActions = false): ColumnDef<Student
 
         // If showApprovalActions is true, replace the options column
         if (showApprovalActions) {
-            const optionsIndex = columnsToProcess.findIndex(col => col.id === 'options');
+            const optionsIndex = columnsToProcess.findIndex((col) => col.id === 'options');
             if (optionsIndex !== -1) {
                 columnsToProcess[optionsIndex] = {
                     id: 'options',

@@ -4,6 +4,7 @@ import {
     VALIDATE_PRODUCT_PAGE_COUPON,
     PRODUCT_PAGE_FORM_SUBMIT,
     PRODUCT_PAGE_ENROLL,
+    PRODUCT_PAGE_CPO_ENROLL,
 } from '@/constants/urls';
 import type {
     ProductPageData,
@@ -48,6 +49,7 @@ interface FormSubmitPayload {
     instituteId: string;
     selectedPsInvitePaymentOptionIds: string[];
     registrationData: Record<string, FieldValue>;
+    utmParams?: Record<string, string>;
 }
 
 function matchesEmail(v: FieldValue) {
@@ -101,6 +103,7 @@ export const submitProductPageForm = async (
         },
         learner_extra_details: {},
         custom_field_values: customFieldValues,
+        utm_params: payload.utmParams ?? {},
     });
     return response.data;
 };
@@ -117,7 +120,54 @@ interface EnrollPayload {
     couponCode?: string;
     registrationData: Record<string, FieldValue>;
     paymentInitiationRequest: Record<string, unknown>;
+    utmParams?: Record<string, string>;
 }
+
+interface CpoEnrollPayload {
+    coursePageCode: string;
+    instituteId: string;
+    psInvitePaymentOptionId: string;
+    paymentPlanId: string;
+    registrationData: Record<string, FieldValue>;
+}
+
+export const enrollCpoForProductPage = async (
+    payload: CpoEnrollPayload
+): Promise<{ user_id: string; user_plan_id: string }> => {
+    const { registrationData } = payload;
+    const values = Object.values(registrationData);
+    const email = values.find(matchesEmail)?.value ?? '';
+    const phone = values.find(matchesPhone)?.value ?? '';
+    const name = values.find(matchesName)?.value ?? '';
+
+    const customFieldValues = values.map((f) => ({
+        custom_field_id: f.id,
+        value: f.value,
+        enroll_invite_ids: f.enroll_invite_ids ?? [],
+    }));
+
+    const response = await axios.post<{ user_id: string; user_plan_id: string }>(PRODUCT_PAGE_CPO_ENROLL, {
+        product_page_code: payload.coursePageCode,
+        institute_id: payload.instituteId,
+        ps_invite_payment_option_id: payload.psInvitePaymentOptionId,
+        payment_plan_id: payload.paymentPlanId,
+        user_details: {
+            email,
+            username: email,
+            mobile_number: phone,
+            full_name: name,
+            address_line: '',
+            region: '',
+            city: '',
+            pin_code: '',
+            date_of_birth: new Date().toISOString().split('T')[0],
+            gender: '',
+        },
+        learner_extra_details: {},
+        custom_field_values: customFieldValues,
+    });
+    return response.data;
+};
 
 export const enrollForProductPage = async (
     payload: EnrollPayload
@@ -154,6 +204,7 @@ export const enrollForProductPage = async (
         refer_request: null,
         custom_field_values: customFieldValues,
         payment_initiation_request: payload.paymentInitiationRequest,
+        utm_params: payload.utmParams ?? {},
     });
     return response.data;
 };

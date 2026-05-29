@@ -29,4 +29,27 @@ public final class CouponDiscountUtil {
         }
         return discount.getDiscountPoint();
     }
+
+    /**
+     * Returns the amount the payment gateway should actually capture for an
+     * enrollment after the validated coupon discount is applied. Null base or
+     * null discount → base passed through unchanged. Floors at 0 so a flat
+     * discount larger than the price (or a 100%+ percentage coupon) collapses
+     * to zero instead of going negative — callers should treat a zero result
+     * as "skip the gateway, mark as paid".
+     *
+     * The result is rounded to 2 decimal places (currency precision) so the
+     * gateway sees a clean amount and downstream telemetry doesn't trip on
+     * floating-point noise. Stripe/Razorpay both expect 2dp amounts anyway.
+     */
+    public static double applyDiscount(Double baseAmount, AppliedCouponDiscount discount) {
+        if (baseAmount == null) return 0.0;
+        if (discount == null) return roundCurrency(baseAmount);
+        double net = Math.max(0.0, baseAmount - computeDiscount(discount, baseAmount));
+        return roundCurrency(net);
+    }
+
+    private static double roundCurrency(double amount) {
+        return Math.round(amount * 100.0) / 100.0;
+    }
 }

@@ -28,6 +28,7 @@ export interface ProductPageMappingResponse {
     session_name?: string;
     course_preview_image_media_id?: string | null;
     about_the_course_html?: string | null;
+    payment_option_type?: string | null;
 }
 
 export interface AggregatedCustomField {
@@ -57,7 +58,7 @@ export interface AggregatedCustomField {
 export interface ProductPageSettings {
     defaultStep: 'CATALOG' | 'CART' | 'PAYMENT';
     allowCourseDeselection: boolean;
-    gtmContainerId: string;
+    gtmContainerId?: string;
     tnc: {
         enabled: boolean;
         content: string;
@@ -76,6 +77,9 @@ export interface ProductPageSettings {
     coupon?: {
         enabled: boolean;
     };
+    afterPaymentRedirectUrl?: string;
+    showLoginButton?: boolean;
+    successPageContent?: string;
 }
 
 export interface ProductPageData {
@@ -103,6 +107,7 @@ export interface ProductPageFormSubmitResponse {
 export interface ProductPageEnrollResponse {
     payment_log_id: string;
     user_id: string;
+    user_plan_id?: string | null;
     status: string;
     message: string;
     enrolled_package_session_ids: string[];
@@ -123,7 +128,7 @@ export interface CouponValidateResponse {
     message: string;
 }
 
-export type ProductPageStep = 'CATALOG' | 'CART' | 'FORM' | 'PAYMENT' | 'SUCCESS';
+export type ProductPageStep = 'CATALOG' | 'CART' | 'FORM' | 'PAYMENT' | 'CPO_INSTALLMENTS' | 'SUCCESS';
 
 // ─── page_json types ──────────────────────────────────────────────────────────
 export type PageComponentType =

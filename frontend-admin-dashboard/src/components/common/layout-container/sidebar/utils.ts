@@ -22,7 +22,11 @@ import {
     Notebook,
 } from '@phosphor-icons/react';
 import { StorageKey } from '@/constants/storage/storage';
-import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    ContentTerms,
+    OtherTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 
@@ -384,6 +388,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Recent Leads',
                 subItemLink: '/audience-manager/recent-leads',
                 subItemId: 'recent-leads',
+            },
+            {
+                subItem: 'Follow-ups',
+                subItemLink: '/audience-manager/follow-ups',
+                subItemId: 'follow-ups',
             },
         ],
     },

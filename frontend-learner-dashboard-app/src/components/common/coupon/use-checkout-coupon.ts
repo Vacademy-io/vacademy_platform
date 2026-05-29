@@ -59,7 +59,11 @@ export const useCheckoutCoupon = ({
 
     const apply = useCallback(
         async (override?: string) => {
-            const code = (override ?? state.code).trim().toUpperCase();
+            // Defensive: if a caller wires this directly to onClick, React will
+            // pass the MouseEvent as the first argument — `override` would be
+            // truthy but not a string, and `.trim()` would throw.
+            const raw = typeof override === "string" ? override : state.code;
+            const code = raw.trim().toUpperCase();
             if (!code) {
                 setState((prev) => ({ ...prev, error: "Enter a coupon code first." }));
                 return;

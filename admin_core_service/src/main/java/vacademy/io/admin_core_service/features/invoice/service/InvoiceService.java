@@ -683,13 +683,21 @@ public class InvoiceService {
             log.warn("Using fallback description for payment log: {}", paymentLogId);
         }
 
-        // Main plan item - use payment amount from payment log
+        // Main plan item — show GROSS plan price (actualPrice) here so the
+        // discount line items can subtract from it visually. Using the net
+        // gateway-captured amount instead would render as
+        // "Course ₹450, Coupon −₹50" which sums to ₹400 instead of the ₹450
+        // actually charged. Falls back to paymentAmount when paymentPlan is
+        // unavailable so we don't blank the line.
+        BigDecimal grossUnitPrice = paymentPlan != null
+                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                : paymentAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
                 .quantity(1)
-                .unitPrice(paymentAmount)
-                .amount(paymentAmount)
+                .unitPrice(grossUnitPrice)
+                .amount(grossUnitPrice)
                 .sourceId(paymentLogId) // Store payment log ID as source
                 .build();
         lineItems.add(planItem);
@@ -956,14 +964,20 @@ public class InvoiceService {
                     : "Package Enrollment";
         }
 
-        // Main plan item - use total amount from payment log (which is the actual paid
-        // amount)
+        // Main plan item — show GROSS plan price so the discount line items
+        // subtract from it visually. The totalAmount passed in is the net
+        // (post-discount) figure from the payment log; using that for the
+        // course line would double-count the discount on the rendered
+        // invoice. Falls back to totalAmount when paymentPlan is unavailable.
+        BigDecimal grossUnitPrice = paymentPlan != null
+                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                : totalAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
                 .quantity(1)
-                .unitPrice(totalAmount)
-                .amount(totalAmount)
+                .unitPrice(grossUnitPrice)
+                .amount(grossUnitPrice)
                 .build();
         lineItems.add(planItem);
 
@@ -3163,6 +3177,49 @@ public class InvoiceService {
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())
                 .lineItems(lineItemDTOs)
+                .build();
+    }
+
+    public PublicInvoiceListResponse getInvoicesByEmailPublic(String email, String instituteId) {
+        String normalizedEmail = email.toLowerCase().trim();
+        UserDTO user = authService.getUserByEmail(normalizedEmail);
+        log.info("[invoice-by-email] email='{}' resolved userId={}", normalizedEmail,
+                user != null ? user.getId() : "null");
+        if (user == null || user.getId() == null) {
+            return new PublicInvoiceListResponse(normalizedEmail, 0, List.of());
+        }
+        List<InvoiceDTO> invoices = getInvoicesByUserId(user.getId(), instituteId);
+        log.info("[invoice-by-email] userId={} → {} invoice(s)", user.getId(), invoices.size());
+        List<PublicInvoiceDTO> publicInvoices = invoices.stream()
+                .map(this::toPublicInvoiceDTO)
+                .collect(Collectors.toList());
+        return new PublicInvoiceListResponse(normalizedEmail, publicInvoices.size(), publicInvoices);
+    }
+
+    private PublicInvoiceDTO toPublicInvoiceDTO(InvoiceDTO dto) {
+        List<PublicInvoiceLineItemDTO> items = dto.getLineItems() == null ? List.of() :
+                dto.getLineItems().stream()
+                        .map(li -> PublicInvoiceLineItemDTO.builder()
+                                .itemType(li.getItemType())
+                                .description(li.getDescription())
+                                .quantity(li.getQuantity())
+                                .unitPrice(li.getUnitPrice())
+                                .amount(li.getAmount())
+                                .build())
+                        .collect(Collectors.toList());
+        return PublicInvoiceDTO.builder()
+                .invoiceNumber(dto.getInvoiceNumber())
+                .invoiceDate(dto.getInvoiceDate())
+                .status(dto.getStatus())
+                .currency(dto.getCurrency())
+                .subtotal(dto.getSubtotal())
+                .discountAmount(dto.getDiscountAmount())
+                .taxAmount(dto.getTaxAmount())
+                .totalAmount(dto.getTotalAmount())
+                .taxIncluded(dto.getTaxIncluded())
+                .pdfUrl(dto.getPdfUrl())
+                .createdAt(dto.getCreatedAt())
+                .lineItems(items)
                 .build();
     }
 }

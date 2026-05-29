@@ -12,6 +12,7 @@ import {
     Sparkles,
     ArrowLeftRight,
     Tag,
+    ExternalLink,
 } from 'lucide-react';
 import type { ProductPageSettings } from '../-types/product-page-types';
 
@@ -352,6 +353,9 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
             {/* Suggested Courses expanded config */}
             {settings.suggestedCourses.enabled && (
                 <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm space-y-3">
+                    <p className="text-xs text-neutral-500">
+                        Configure how "people also buy" upsell courses appear to learners during checkout.
+                    </p>
                     <div>
                         <p className="mb-2 text-xs font-semibold text-violet-700 uppercase tracking-wide">Section Heading</p>
                         <Input
@@ -382,6 +386,53 @@ export const ProductPageSettingsCard = ({ settings, onChange }: ProductPageSetti
                     </div>
                 </div>
             )}
+
+            {/* Post Enrollment Configuration */}
+            <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+                {/* Header */}
+                <div className="flex items-center gap-3 border-b border-neutral-100 bg-neutral-50/60 px-5 py-3">
+                    <ExternalLink className="size-4 text-blue-500" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Post Enrollment Configuration</p>
+                </div>
+
+                {/* Redirect Path */}
+                <div className="px-5 py-4 space-y-2">
+                    <p className="text-sm font-semibold text-neutral-800">Redirect Path <span className="font-normal text-neutral-400">(Optional)</span></p>
+                    <Input
+                        placeholder="/dashboard or https://example.com"
+                        value={settings.afterPaymentRedirectUrl ?? ''}
+                        onChange={(e) => update({ afterPaymentRedirectUrl: e.target.value })}
+                        className="text-sm border-neutral-200 bg-neutral-50 focus:border-blue-400 focus:ring-blue-300"
+                    />
+                    <p className="text-[11px] text-neutral-400">If set, the user will be instantly redirected to this path after successful enrollment, skipping the success page.</p>
+                </div>
+
+                {/* Show Login Button toggle */}
+                <div className="flex items-center gap-4 border-t border-neutral-100 px-5 py-4">
+                    <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-neutral-800">Show Login Button</p>
+                        <p className="text-xs text-neutral-400">Display the login button on the success page if not redirecting immediately.</p>
+                    </div>
+                    <Toggle
+                        checked={settings.showLoginButton ?? true}
+                        onChange={() => update({ showLoginButton: !(settings.showLoginButton ?? true) })}
+                    />
+                </div>
+
+                {/* Success Page Content */}
+                <div className="border-t border-neutral-100 px-5 py-4 space-y-2">
+                    <p className="text-sm font-semibold text-neutral-800">Success Page Content <span className="font-normal text-neutral-400">(Optional)</span></p>
+                    <textarea
+                        rows={4}
+                        placeholder="HTML/Text Content"
+                        value={settings.successPageContent ?? ''}
+                        onChange={(e) => update({ successPageContent: e.target.value })}
+                        className="w-full rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-xs focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-300 resize-y"
+                    />
+                    <p className="text-[11px] text-neutral-400">Custom content to display on the success page. Overrides the default message. You may use HTML.</p>
+                </div>
+            </div>
+
         </div>
     );
 };

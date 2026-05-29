@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { validateCoupon } from '../-services/product-page-service';
@@ -71,6 +71,24 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             utmParams,
         );
     }, []);
+
+    // Cart changes invalidate the discount value computed for the previous
+    // basket — the BE will recompute against the new subtotal at enroll time.
+    // Drop the applied coupon and surface a gentle prompt so the learner
+    // knows to re-apply for the updated cart.
+    const prevCartKeyRef = useRef<string>(selectedPsOptionIds.slice().sort().join('|'));
+    useEffect(() => {
+        const currentKey = selectedPsOptionIds.slice().sort().join('|');
+        if (prevCartKeyRef.current !== currentKey) {
+            prevCartKeyRef.current = currentKey;
+            if (couponCode && discountAmount > 0) {
+                clearCoupon();
+                setCouponInput('');
+                setCouponSuccess(false);
+                setCouponError('Cart changed — please re-apply your coupon.');
+            }
+        }
+    }, [selectedPsOptionIds, couponCode, discountAmount, clearCoupon]);
 
     const couponMutation = useMutation({
         mutationFn: () => validateCoupon(pageData.code, couponInput.trim(), subtotal),

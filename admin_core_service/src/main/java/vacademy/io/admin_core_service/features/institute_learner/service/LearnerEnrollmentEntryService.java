@@ -104,11 +104,14 @@ public class LearnerEnrollmentEntryService {
 
     /**
      * Creates an ABANDONED_CART entry for initial form submission tracking.
-     * Backward-compatible signature — delegates to the userDTO-aware overload
-     * with null. The richer overload below should be preferred so workflows
-     * triggered by ABANDONED_CART have the same context shape as
-     * LEARNER_BATCH_ENROLLMENT (full `user`, `packageName`, etc.), letting
-     * one webhook template work for both events.
+     *
+     * @param userId                The user ID
+     * @param invitedPackageSession The INVITED package session
+     * @param actualPackageSession  The actual (destination) package session
+     * @param instituteId           The institute ID
+     * @param userPlanId            The user plan ID (can be null for form-fill
+     *                              step, updated later during payment)
+     * @return The created mapping
      */
     public StudentSessionInstituteGroupMapping createOnlyDetailsFilledEntry(
             String userId,
@@ -154,13 +157,16 @@ public class LearnerEnrollmentEntryService {
         mapping.setInstitute(institute);
 
         StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mapping);
-        log.info("Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
+        log.info(
+                "Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
                 saved.getId(), userId, actualPackageSession.getId(), instituteId, userPlanId);
 
         // Trigger ABANDONED_CART workflow.
-        // Context shape intentionally mirrors what StudentRegistrationManager.triggerEnrollmentWorkflow
+        // Context shape intentionally mirrors what
+        // StudentRegistrationManager.triggerEnrollmentWorkflow
         // builds for LEARNER_BATCH_ENROLLMENT, so the same webhook payload template
-        // (Name/Phone/Email/CourseName referencing #ctx['user'] and #ctx['packageName'])
+        // (Name/Phone/Email/CourseName referencing #ctx['user'] and
+        // #ctx['packageName'])
         // works for both events. Payment fields are intentionally absent — at
         // ABANDONED_CART time the learner hasn't paid yet.
         try {
@@ -170,6 +176,9 @@ public class LearnerEnrollmentEntryService {
             // Match the singular + plural keys LEARNER_BATCH_ENROLLMENT uses,
             // so SpEL like #ctx['packageSessionIds'] works in either workflow.
             contextData.put("packageSessionId", actualPackageSession.getId());
+            contextData.put("packageId",
+                    actualPackageSession.getPackageEntity() != null ? actualPackageSession.getPackageEntity().getId()
+                            : null);
             contextData.put("packageSessionIds", actualPackageSession.getId());
             if (actualPackageSession.getPackageEntity() != null) {
                 contextData.put("packageId", actualPackageSession.getPackageEntity().getId());
@@ -343,10 +352,10 @@ public class LearnerEnrollmentEntryService {
      * Updates ABANDONED_CART entries with the userPlanId when payment is initiated.
      * Called during the enroll/payment step after form-fill.
      *
-     * @param userId                 The user ID
+     * @param userId                       The user ID
      * @param destinationPackageSessionIds The destination package session IDs
-     * @param instituteId            The institute ID
-     * @param userPlanId             The user plan ID to set
+     * @param instituteId                  The institute ID
+     * @param userPlanId                   The user plan ID to set
      * @return Number of entries updated
      */
     public int updateAbandonedCartEntriesWithUserPlanId(
@@ -383,7 +392,8 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Finds existing ABANDONED_CART entries for a user and destination package sessions.
+     * Finds existing ABANDONED_CART entries for a user and destination package
+     * sessions.
      * Used to check if form-fill step was already completed.
      *
      * @param userId                       The user ID

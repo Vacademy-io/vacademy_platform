@@ -8,6 +8,7 @@ import { Topbar } from './Topbar';
 import { BottomTabBar } from './BottomTabBar';
 import { RecentTab } from './RecentTab';
 import { ReelsTab } from './ReelsTab';
+import { StudioTab } from '../studio/dashboard/StudioTab';
 import { AssetsTab } from './AssetsTab';
 import { AvatarsTab } from './AvatarsTab';
 import { BrandKitsTab } from './BrandKitsTab';
@@ -159,6 +160,7 @@ function DashboardShell() {
                         <div className="mx-auto max-w-5xl space-y-6">
                             {tab === 'recent' && <RecentTab />}
                             {tab === 'reels' && <ReelsTab />}
+                            {tab === 'studio' && <StudioTab />}
                             {tab === 'assets' && <AssetsTab />}
                             {tab === 'avatars' && <AvatarsTab />}
                             {tab === 'brand-kits' && <BrandKitsTab />}

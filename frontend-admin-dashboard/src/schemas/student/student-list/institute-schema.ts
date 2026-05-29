@@ -24,6 +24,7 @@ export const PackageSchema = z.object({
     id: z.string(),
     package_name: z.string(),
     thumbnail_id: z.string().nullable().optional(),
+    package_type: z.string().optional(),
 });
 
 export const BatchForSessionSchema = z.object({

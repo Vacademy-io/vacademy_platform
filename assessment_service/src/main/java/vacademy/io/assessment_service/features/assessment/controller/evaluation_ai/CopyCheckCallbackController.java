@@ -27,7 +27,8 @@ public class CopyCheckCallbackController {
 
     private final CopyCheckCallbackService callbackService;
 
-    @Value("${assessment.copy-check.internal-token:}")
+    // Match the same shared cluster secret ai_service signs callbacks with.
+    @Value("${internal.service.token:${assessment.copy-check.internal-token:}}")
     private String expectedToken;
 
     @PostMapping("/progress")

@@ -132,6 +132,15 @@ interface EnrollLearnerForPaymentProps {
   isUsingInstituteCustomFields?: boolean;
   // Optional User ID from form-submit step
   userId?: string;
+  // Optional billing contact details captured when the invite enabled the
+  // "Collect Billing Contact Details" toggle and the learner ticked "Add a
+  // separate billing contact" on the registration step.
+  billingContact?: {
+    hasSeparate: boolean;
+    name: string;
+    email: string;
+    role: string;
+  };
 }
 
 /**
@@ -390,6 +399,7 @@ export const handleEnrollLearnerForPayment = async ({
   isUsingInstituteCustomFields = false,
   userId,
   couponCode,
+  billingContact,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, full name, and password using helper functions
   const email = getEmailField(registrationData);
@@ -513,6 +523,16 @@ export const handleEnrollLearnerForPayment = async ({
           value: field.value,
         })),
     },
+    ...(billingContact?.hasSeparate &&
+    (billingContact.name || billingContact.email || billingContact.role)
+      ? {
+          learner_extra_details: {
+            billing_contact_name: billingContact.name || null,
+            billing_contact_email: billingContact.email || null,
+            billing_contact_role: billingContact.role || null,
+          },
+        }
+      : {}),
   };
 
   const response = await axios({

@@ -58,7 +58,10 @@ import {
   EnrollmentPolicyDialog,
   EnrollmentPolicyResponse,
   EnrollmentPolicyDialogType,
+  EMPTY_BILLING_CONTACT,
+  BillingContactState,
 } from "./-components";
+import { getCurrencySymbol } from "./-components/payment-selection-step";
 import {
   getPaymentVendor,
   PaymentVendor,
@@ -198,6 +201,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   // step). We persist just the string here — backend re-validates + fetches
   // the AppliedCouponDiscount + atomically decrements at UserPlan creation.
   const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null);
+  const [billingContact, setBillingContact] = useState<BillingContactState>(EMPTY_BILLING_CONTACT);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -238,6 +242,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     }
     return {};
   }, [inviteData?.setting_json]);
+
+  const collectBillingContact = Boolean(
+    (inviteConfig as { collectBillingContactDetails?: boolean })
+      ?.collectBillingContactDetails
+  );
 
   // Inject GTM if the institute has configured a container ID
   useEffect(() => {
@@ -949,6 +958,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           couponCode: appliedCouponCode,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
@@ -1010,6 +1020,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
@@ -1075,6 +1086,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           couponCode: appliedCouponCode,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
         });
 
         // Extract userPlanId from response (backend creates enrollment and returns it)
@@ -1195,6 +1207,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
 
@@ -1289,6 +1302,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         couponCode: appliedCouponCode,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+        billingContact: collectBillingContact ? billingContact : undefined,
         // userId: submittedUserId || undefined,
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
@@ -1361,6 +1375,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
             // userId: submittedUserId || undefined,
           });
 
@@ -1443,6 +1458,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           couponCode: appliedCouponCode,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
         });
 
         const userPlanId =
@@ -1747,6 +1763,9 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
+            collectBillingContact={collectBillingContact}
+            billingContact={billingContact}
+            onBillingContactChange={setBillingContact}
           />
         );
       case 1: {
@@ -1895,6 +1914,17 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             email={enrollmentData?.registrationData?.email?.value || ""}
             isAutoLoggingIn={isAutoLoggingIn}
             config={inviteConfig}
+            amountDisplay={
+              enrollmentData.selectedPayment
+                ? `${getCurrencySymbol(
+                    enrollmentData.selectedPayment.currency || ""
+                  )}${
+                    enrollmentData.selectedPayment.actual_price ??
+                    enrollmentData.selectedPayment.amount ??
+                    ""
+                  }`
+                : ""
+            }
           />
         );
       default:
@@ -1905,6 +1935,9 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
+            collectBillingContact={collectBillingContact}
+            billingContact={billingContact}
+            onBillingContactChange={setBillingContact}
           />
         );
     }

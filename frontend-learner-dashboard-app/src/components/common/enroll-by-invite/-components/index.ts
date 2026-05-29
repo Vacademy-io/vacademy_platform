@@ -1,4 +1,8 @@
 export { default as RegistrationStep } from "./registration-step";
+export {
+    EMPTY_BILLING_CONTACT,
+} from "./registration-step";
+export type { BillingContactState } from "./registration-step";
 export { default as PaymentSelectionStep } from "./payment-selection-step";
 export { default as ReviewStep } from "./review-step";
 export { default as PaymentInfoStep } from "./payment-info-step";

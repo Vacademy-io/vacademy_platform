@@ -311,7 +311,8 @@ export const inviteLinkSchema = z.object({
         redirectPath: z.string().optional(),
         showLoginButton: z.boolean().default(true),
         content: z.string().optional(),
-    }).default({ showLoginButton: true }),
+        collectBillingContactDetails: z.boolean().default(false),
+    }).default({ showLoginButton: true, collectBillingContactDetails: false }),
 });
 
 export type InviteLinkFormValues = z.infer<typeof inviteLinkSchema>;

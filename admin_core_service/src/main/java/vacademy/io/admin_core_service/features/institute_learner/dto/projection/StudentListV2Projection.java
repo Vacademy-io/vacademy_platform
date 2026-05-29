@@ -28,6 +28,9 @@ public interface StudentListV2Projection {
     String getExpiryDate();
     String getParentsToMotherMobileNumber();
     String getParentsToMotherEmail();
+    String getBillingContactName();
+    String getBillingContactEmail();
+    String getBillingContactRole();
     String getInstituteEnrollmentNumber();
     String getInstituteId();
     String getGroupId();

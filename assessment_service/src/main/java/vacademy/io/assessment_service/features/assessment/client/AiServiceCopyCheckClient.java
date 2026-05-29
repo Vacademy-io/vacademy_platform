@@ -5,11 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.JdkClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.util.retry.Retry;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.CopyCheckGradeRequestDto;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;
 
@@ -30,7 +32,17 @@ public class AiServiceCopyCheckClient {
             @Value("${ai.service.internal.token:}") String internalToken
     ) {
         this.internalToken = internalToken;
+        // ai_service runs uvicorn (HTTP/1.1-only). The JDK HttpClient that
+        // Spring uses under the hood defaults to HTTP/2 with an h2c upgrade
+        // probe, which uvicorn's h11 parser logs as "Unsupported upgrade
+        // request" + "Invalid HTTP request received" and drops the body.
+        // Forcing HTTP/1.1 makes the POST land on the FastAPI route.
+        HttpClient jdkClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
         this.webClient = WebClient.builder()
+                .clientConnector(new JdkClientHttpConnector(jdkClient))
                 .baseUrl(aiServiceBaseUrl.replaceAll("/$", "") + "/ai-service")
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)

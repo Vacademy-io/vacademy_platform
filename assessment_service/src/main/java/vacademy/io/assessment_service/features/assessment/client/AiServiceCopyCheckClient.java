@@ -29,7 +29,10 @@ public class AiServiceCopyCheckClient {
 
     public AiServiceCopyCheckClient(
             @Value("${ai.service.base.url:http://ai-service:8077}") String aiServiceBaseUrl,
-            @Value("${ai.service.internal.token:}") String internalToken
+            // The cluster already has a shared service-to-service secret in
+            // INTERNAL_SERVICE_TOKEN (set on both assessment-service and
+            // ai-service). Reuse it instead of introducing a separate one.
+            @Value("${internal.service.token:${ai.service.internal.token:}}") String internalToken
     ) {
         this.internalToken = internalToken;
         // ai_service runs uvicorn (HTTP/1.1-only). The JDK HttpClient that

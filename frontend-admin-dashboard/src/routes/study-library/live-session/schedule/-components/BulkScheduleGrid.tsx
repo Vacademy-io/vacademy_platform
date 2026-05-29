@@ -20,7 +20,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { WAITING_ROOM_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
-import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass } from '@phosphor-icons/react';
+import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -742,7 +742,7 @@ export function BulkScheduleGrid() {
     if (instituteLoading || !instituteDetails) {
         return (
             <div className="flex h-64 items-center justify-center">
-                <Loader2 className="size-8 animate-spin text-neutral-400" />
+                <CircleNotch className="size-8 animate-spin text-neutral-400" />
             </div>
         );
     }

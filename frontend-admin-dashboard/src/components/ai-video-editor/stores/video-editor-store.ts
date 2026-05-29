@@ -17,12 +17,15 @@ import {
 } from '../utils/caption-rendering';
 
 /**
- * Which backend table this timeline lives in. `'reel'` routes `/frame/*`
- * saves to `/external/reels/v1/frame/*` (which updates
- * `ai_reels.s3_urls.time_based_frame`) instead of the AI-gen-video table.
+ * Which backend table this timeline lives in + which `/frame/*` base
+ * `saveChanges` hits:
+ *   'video'  → `/external/video/v1/frame/*`  (ai_gen_video)
+ *   'reel'   → `/external/reels/v1/frame/*`  (ai_reels)
+ *   'studio' → `/external/studio/v1/builds/{id}/frame/*` (ai_studio_builds;
+ *              the build id is passed as `videoId`, in the PATH not the body)
  * Defaults to `'video'` for compatibility with every existing caller.
  */
-export type EditorKind = 'video' | 'reel';
+export type EditorKind = 'video' | 'reel' | 'studio';
 
 export interface InitParams {
     videoId: string;
@@ -1579,11 +1582,17 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         // Reels and AI-gen videos live in different DB tables, so frame
         // saves go to different endpoints. The payload shape diverges in
         // exactly one place: reels expect `reel_id` instead of `video_id`.
+        // Studio puts the build id in the PATH (not the body), so its
+        // frameBase embeds `videoId` (= build id) and the body's id field is
+        // harmless/ignored. Reels + video carry the id in the body.
         const isReel = kind === 'reel';
-        const frameBase = isReel
-            ? `${AI_SERVICE_BASE_URL}/external/reels/v1/frame`
-            : `${AI_SERVICE_BASE_URL}/external/video/v1/frame`;
-        const idField = isReel ? 'reel_id' : 'video_id';
+        const isStudio = kind === 'studio';
+        const frameBase = isStudio
+            ? `${AI_SERVICE_BASE_URL}/external/studio/v1/builds/${videoId}/frame`
+            : isReel
+              ? `${AI_SERVICE_BASE_URL}/external/reels/v1/frame`
+              : `${AI_SERVICE_BASE_URL}/external/video/v1/frame`;
+        const idField = isReel ? 'reel_id' : isStudio ? 'build_id' : 'video_id';
 
         // Collect entries that need saving
         const toSave = entries.filter(

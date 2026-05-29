@@ -105,6 +105,9 @@ public class LearnerEnrollRequestService {
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
+
+    @Autowired
     private ReenrollmentGapValidationService reenrollmentGapValidationService;
 
     @Autowired
@@ -218,6 +221,14 @@ public class LearnerEnrollRequestService {
         EnrollInvite enrollInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
         PaymentOption paymentOption = getValidatedPaymentOption(enrollDTO.getPaymentOptionId());
         PaymentPlan paymentPlan = getOptionalPaymentPlan(enrollDTO.getPlanId());
+
+        // Verify the FE-supplied (plan, option, package_session) triple all
+        // belong to the FE-supplied enroll_invite. Without this, a learner
+        // could combine a free invite's path with a paid plan's IDs and
+        // enroll into a paid course for nothing. See validateEnrollmentReferences
+        // for the per-rule rationale.
+        validateEnrollmentReferences(enrollInvite, paymentOption, paymentPlan,
+                enrollDTO.getPackageSessionIds());
 
         // Determine if this is a SubOrg enrollment and create SubOrg if needed
         String userPlanSource = UserPlanSourceEnum.USER.name();
@@ -699,6 +710,61 @@ public class LearnerEnrollRequestService {
         return Optional.ofNullable(enrollInviteId)
                 .map(enrollInviteService::findById)
                 .orElseThrow(() -> new IllegalArgumentException("Enroll Invite ID is required."));
+    }
+
+    /**
+     * Defense against FE-supplied reference tampering. The enroll request
+     * carries four IDs (invite, payment_option, plan, package_sessions);
+     * without verifying their relationships a learner could pair a free
+     * invite's code path with another course's paid plan and walk away
+     * with a paid enrollment for nothing. We assert:
+     *
+     *   1. If a plan was supplied, it belongs to the supplied payment option.
+     *   2. Every supplied package_session has an ACTIVE
+     *      (enroll_invite, payment_option, package_session) bridge row.
+     *
+     * Package-session-less flows (CPO with no package context) skip rule 2.
+     */
+    private void validateEnrollmentReferences(EnrollInvite enrollInvite,
+            PaymentOption paymentOption,
+            PaymentPlan paymentPlan,
+            List<String> packageSessionIds) {
+        if (paymentPlan != null
+                && paymentPlan.getPaymentOption() != null
+                && !paymentOption.getId().equals(paymentPlan.getPaymentOption().getId())) {
+            log.warn("Reference mismatch: plan {} belongs to option {}, supplied option {}",
+                    paymentPlan.getId(),
+                    paymentPlan.getPaymentOption().getId(),
+                    paymentOption.getId());
+            throw new VacademyException("Selected plan does not belong to the chosen payment option.");
+        }
+
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return;
+        }
+
+        java.util.List<vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption> bridges =
+                packageSessionLearnerInvitationToPaymentOptionRepository
+                        .findByEnrollInvite_IdInAndPaymentOption_IdInAndPackageSession_IdInAndStatusIn(
+                                java.util.List.of(enrollInvite.getId()),
+                                java.util.List.of(paymentOption.getId()),
+                                packageSessionIds,
+                                java.util.List.of("ACTIVE"));
+        java.util.Set<String> bridged = new java.util.HashSet<>();
+        for (var b : bridges) {
+            if (b.getPackageSession() != null) {
+                bridged.add(b.getPackageSession().getId());
+            }
+        }
+        for (String psId : packageSessionIds) {
+            if (psId != null && !bridged.contains(psId)) {
+                log.warn(
+                        "Reference mismatch: package_session {} not bridged to invite {} + option {}",
+                        psId, enrollInvite.getId(), paymentOption.getId());
+                throw new VacademyException(
+                        "Selected batch is not part of this invite. Please reload and try again.");
+            }
+        }
     }
 
     private PaymentOption getValidatedPaymentOption(String paymentOptionId) {

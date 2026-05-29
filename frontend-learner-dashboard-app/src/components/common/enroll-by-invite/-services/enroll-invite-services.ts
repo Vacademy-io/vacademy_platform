@@ -109,6 +109,14 @@ interface EnrollLearnerForPaymentProps {
    * creation (see backend V308 / V309). Null/blank = no coupon.
    */
   couponCode?: string | null;
+  /**
+   * Discount value (in plan currency) computed by the validate endpoint. We
+   * subtract this from the selected plan's price to derive the amount the
+   * gateway actually charges. The BE separately re-validates and decrements,
+   * so the FE-supplied number is only used for the gateway charge — not for
+   * the BE-recorded discount. Default 0 = full price.
+   */
+  couponDiscount?: number;
   returnUrl?: string;
   // Eway-specific payment data
   ewayPaymentData?: {
@@ -390,6 +398,7 @@ export const handleEnrollLearnerForPayment = async ({
   isUsingInstituteCustomFields = false,
   userId,
   couponCode,
+  couponDiscount = 0,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, full name, and password using helper functions
   const email = getEmailField(registrationData);
@@ -487,7 +496,18 @@ export const handleEnrollLearnerForPayment = async ({
       coupon_code: couponCode || null,
       payment_initiation_request: {
         vendor: paymentVendor,
-        amount: enrollmentData.selectedPayment.amount,
+        // Mirror the pricing-display fallback chain (actual_price → amount → 0)
+        // — some SelectedPayment construction paths only populate one field.
+        // Then subtract the validated coupon discount so the gateway charges
+        // what the learner agreed to pay. Floored at 0 to prevent negatives.
+        amount: Math.max(
+          0,
+          (typeof enrollmentData.selectedPayment.actual_price === "number"
+            ? enrollmentData.selectedPayment.actual_price
+            : typeof enrollmentData.selectedPayment.amount === "number"
+            ? enrollmentData.selectedPayment.amount
+            : 0) - (couponCode ? couponDiscount : 0)
+        ),
         currency:
           paymentVendor === "EWAY"
             ? "aud"

@@ -129,6 +129,22 @@ export const EnrollmentPaymentDialog: React.FC<
       (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
   );
 
+  // Plan switch invalidates the discount value the FE captured for the old
+  // plan: the BE will re-validate against the new plan at enroll time and
+  // may compute a different discount than what the gateway already charged.
+  // Drop the applied coupon so the learner sees a clean slate and re-applies
+  // for the new plan.
+  const prevPlanIdRef = useRef<string | null | undefined>(selectedPaymentPlan?.id);
+  useEffect(() => {
+    const currentId = selectedPaymentPlan?.id;
+    if (prevPlanIdRef.current !== currentId) {
+      prevPlanIdRef.current = currentId;
+      if (couponCtx.state.appliedCode) {
+        couponCtx.clear();
+      }
+    }
+  }, [selectedPaymentPlan?.id, couponCtx]);
+
   // OTP state variables
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState("");

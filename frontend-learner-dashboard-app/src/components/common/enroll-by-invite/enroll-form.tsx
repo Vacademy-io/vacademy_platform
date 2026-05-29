@@ -55,6 +55,7 @@ import {
   FinalCourseData,
   EnrollmentData,
   SelectedPayment,
+  getSelectedPaymentPrice,
   EnrollmentPolicyDialog,
   EnrollmentPolicyResponse,
   EnrollmentPolicyDialogType,
@@ -194,10 +195,21 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   const [referRequest, setReferRequest] = useState<ReferRequest | null>(null);
   // Ref to track the latest referRequest value (to avoid closure issues)
   const referRequestRef = useRef<ReferRequest | null>(null);
-  // Applied discount coupon code (resolved by CouponInput inside the review
-  // step). We persist just the string here — backend re-validates + fetches
-  // the AppliedCouponDiscount + atomically decrements at UserPlan creation.
+  // Applied discount coupon code + discount value (resolved by CouponInput
+  // inside the review step). BE re-validates + fetches the AppliedCouponDiscount
+  // + atomically decrements at UserPlan creation. The discount value is also
+  // subtracted from payment_initiation_request.amount so the gateway charges
+  // the discounted total — without that, BE records the coupon but the gateway
+  // captures the full price.
   const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const handleCouponChange = useCallback(
+    (code: string | null, discount: number) => {
+      setAppliedCouponCode(code);
+      setCouponDiscount(code ? discount : 0);
+    },
+    []
+  );
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -273,7 +285,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         courseName: courseData.course || "",
         paymentType,
         currency: enrollmentData.selectedPayment?.currency,
-        amount: enrollmentData.selectedPayment?.amount,
+        amount: getSelectedPaymentPrice(enrollmentData.selectedPayment),
         utmParams,
       });
     }
@@ -919,7 +931,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         paymentType,
         vendor: getPaymentVendor(inviteData) || "STRIPE",
         currency: enrollmentData.selectedPayment?.currency,
-        amount: enrollmentData.selectedPayment?.amount,
+        amount: getSelectedPaymentPrice(enrollmentData.selectedPayment),
         utmParams,
       });
     }
@@ -947,6 +959,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: currentReferRequest,
           couponCode: appliedCouponCode,
+          couponDiscount,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
           // userId: submittedUserId || undefined,
@@ -1007,6 +1020,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
           couponCode: appliedCouponCode,
+          couponDiscount,
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
@@ -1073,6 +1087,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
           couponCode: appliedCouponCode,
+          couponDiscount,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
@@ -1100,10 +1115,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         }
 
         const returnUrl = getCashfreeReturnUrl();
-        const amount =
-          enrollmentData.selectedPayment?.actual_price ??
-          enrollmentData.selectedPayment?.amount ??
-          0;
+        const amount = getSelectedPaymentPrice(enrollmentData.selectedPayment);
         const currency =
           enrollmentData.selectedPayment?.currency || "INR";
 
@@ -1192,6 +1204,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
           couponCode: appliedCouponCode,
+          couponDiscount,
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
@@ -1287,6 +1300,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
         referRequest: referRequest,
         couponCode: appliedCouponCode,
+        couponDiscount,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         // userId: submittedUserId || undefined,
@@ -1358,6 +1372,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
             referRequest: referRequest,
             couponCode: appliedCouponCode,
+            couponDiscount,
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
@@ -1441,6 +1456,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequestRef.current,
           couponCode: appliedCouponCode,
+          couponDiscount,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
         });
@@ -1471,10 +1487,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           const userEmail = getUserDetails().email;
           if (!userEmail) throw new Error("Email is required.");
 
-          const amount =
-            enrollmentData.selectedPayment?.actual_price ??
-            enrollmentData.selectedPayment?.amount ??
-            0;
+          const amount = getSelectedPaymentPrice(enrollmentData.selectedPayment);
           const cfResponse = await initiateCashfreePayment(
             instituteId,
             userPlanId,
@@ -1771,7 +1784,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               instituteId={instituteId}
               enrollInviteId={inviteData?.id || ""}
               userEmail={enrollmentData.registrationData?.email?.value as string | undefined}
-              onCouponChange={setAppliedCouponCode}
+              onCouponChange={handleCouponChange}
               initialCouponCode={appliedCouponCode}
             />
           );
@@ -1829,7 +1842,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             instituteId={instituteId}
             enrollInviteId={inviteData?.id || ""}
             userEmail={enrollmentData.registrationData?.email?.value as string | undefined}
-            onCouponChange={setAppliedCouponCode}
+            onCouponChange={handleCouponChange}
             initialCouponCode={appliedCouponCode}
           />
         );
@@ -1840,10 +1853,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           <PaymentInfoStep
             error={error}
             vendor={vendor}
-            amount={
-              enrollmentData.selectedPayment?.actual_price ||
-              enrollmentData.selectedPayment?.amount
-            }
+            amount={getSelectedPaymentPrice(enrollmentData.selectedPayment)}
             currency={enrollmentData.selectedPayment?.currency}
             onEwayPaymentReady={setEwayEncryptedData}
             onEwayError={setError}
@@ -2107,7 +2117,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                 <div className="flex-shrink-0 text-right">
                   <div className="text-lg font-semibold text-gray-900">
                     {enrollmentData.selectedPayment.currency?.toUpperCase()}{" "}
-                    {enrollmentData.selectedPayment.amount ?? enrollmentData.selectedPayment.actual_price}
+                    {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
                   </div>
                   {enrollmentData.selectedPayment.duration && (
                     <div className="text-xs text-gray-500">

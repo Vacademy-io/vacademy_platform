@@ -17,6 +17,7 @@ import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -114,6 +115,11 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 extraData, learnerExtraDetails, enrollInvite, userPlan);
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
+            // Snapshot the FE-supplied amount before any BE overrides — used
+            // by the mismatch-warning at the bottom of this block.
+            Double feSuppliedAmount =
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+
             if (extraData.containsKey("OVERRIDE_TOTAL_AMOUNT")) {
                 Object amountObj = extraData.get("OVERRIDE_TOTAL_AMOUNT");
                 if (amountObj instanceof Number) {
@@ -125,6 +131,45 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                 log.info("Setting subscription payment amount to {} from plan {}", paymentPlan.getActualPrice(),
                         paymentPlan.getId());
                 learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
+            }
+
+            // Apply the validated coupon discount to the first-payment amount.
+            // BE is authoritative for the gateway charge; the FE-supplied
+            // payment_initiation_request.amount is ignored. Subsequent renewal
+            // charges are full-price by design — see CouponValidationService
+            // (the coupon scoping covers first-payment only).
+            Double currentAmount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+            double discountedAmount = CouponDiscountUtil.applyDiscount(
+                    currentAmount, userPlan.getAppliedCouponDiscount());
+            if (currentAmount != null && Double.compare(currentAmount, discountedAmount) != 0) {
+                log.info("Coupon {} reduced subscription first-payment amount {} -> {} on plan {}",
+                        userPlan.getAppliedCouponDiscount() != null
+                                ? userPlan.getAppliedCouponDiscount().getName()
+                                : null,
+                        currentAmount, discountedAmount, paymentPlan.getId());
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(discountedAmount);
+            }
+
+            // Telemetry: warn if the FE-supplied amount and the BE-derived
+            // amount disagree by more than ₹0.01. Indicates a stale/buggy
+            // client, tampering, or a discount-calc divergence. Same
+            // rationale as the OneTime path — BE-derived has already won;
+            // the warn is purely for observability.
+            // Suppressed for multi-package children (PARENT_PAYMENT_LOG_ID)
+            // since FE sends the parent total but BE narrows to child plan.
+            Double finalAmount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+            boolean isMultiPackageChild = extraData.containsKey("PARENT_PAYMENT_LOG_ID");
+            if (!isMultiPackageChild && feSuppliedAmount != null && finalAmount != null
+                    && Math.abs(feSuppliedAmount - finalAmount) > 0.01) {
+                log.warn(
+                        "Gateway amount mismatch (subscription): fe_supplied={} be_derived={} user={} plan={} coupon={}",
+                        feSuppliedAmount,
+                        finalAmount,
+                        user.getId(),
+                        paymentPlan.getId(),
+                        userPlan.getAppliedCouponDiscount() != null
+                                ? userPlan.getAppliedCouponDiscount().getName()
+                                : null);
             }
 
             if (extraData.containsKey("PARENT_PAYMENT_LOG_ID")) {
@@ -148,8 +193,30 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
         learnerEnrollResponseDTO.setUser(user);
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
+            // First-payment amount fully covered by coupon → skip gateway,
+            // force-paid log. Same rationale as OneTimePaymentOptionOperation:
+            // Stripe/Razorpay reject 0-amount intents, so we record a paid
+            // log directly and let applyOperationsOnFirstPayment activate the
+            // subscription. Renewals run through the gateway normally.
+            boolean fullyDiscountedByCoupon =
+                    userPlan.getAppliedCouponDiscount() != null
+                            && learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount() != null
+                            && learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount() <= 0.0;
+
             PaymentResponseDTO paymentResponseDTO;
-            if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
+            if (fullyDiscountedByCoupon) {
+                log.info("Coupon fully covers subscription first payment for user {} on plan {} — skipping gateway",
+                        user.getId(), paymentPlan.getId());
+                Map<String, Object> paidExtras = new HashMap<>(extraData);
+                paidExtras.put("FORCE_PAID_STATUS", Boolean.TRUE);
+                paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan,
+                        paidExtras);
+            } else if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
                     && Boolean.TRUE.equals(extraData.get("SKIP_PAYMENT_INITIATION"))) {
                 paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
                         user,

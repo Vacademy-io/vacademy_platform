@@ -27,7 +27,7 @@ interface ReviewStepProps {
   instituteId: string;
   enrollInviteId: string;
   userEmail?: string;
-  onCouponChange?: (appliedCode: string | null) => void;
+  onCouponChange?: (appliedCode: string | null, discount: number) => void;
   // Restored from the parent on remount so the discount survives a
   // Review → Pay → Back round-trip. PaidPlanReview re-runs validate once
   // the plan is loaded.
@@ -215,7 +215,7 @@ const PaidPlanReview = ({
   instituteId: string;
   enrollInviteId: string;
   userEmail?: string;
-  onCouponChange?: (appliedCode: string | null) => void;
+  onCouponChange?: (appliedCode: string | null, discount: number) => void;
   initialCouponCode?: string | null;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
@@ -243,10 +243,16 @@ const PaidPlanReview = ({
       };
     },
   });
-  // Bubble the applied code up so enroll-form can include it in the payload.
+  // Bubble the applied code + discount up so enroll-form can both include
+  // the code in the payload AND subtract the discount from the gateway
+  // amount. Without the discount the BE records the coupon but the gateway
+  // charges the full price.
   useEffect(() => {
-    onCouponChange?.(couponCtx.state.appliedCode);
-  }, [couponCtx.state.appliedCode, onCouponChange]);
+    onCouponChange?.(
+      couponCtx.state.appliedCode,
+      couponCtx.state.appliedCode ? couponCtx.state.discount : 0
+    );
+  }, [couponCtx.state.appliedCode, couponCtx.state.discount, onCouponChange]);
 
   // Restore a previously-applied coupon after a Review → Pay → Back round-trip.
   // The parent persists the code; we re-run validate once the plan is loaded
@@ -272,7 +278,7 @@ const PaidPlanReview = ({
     if (couponCtx.state.isApplying) return;
     if (couponCtx.state.appliedCode) return; // restore succeeded
     if (!couponCtx.state.error) return; // hasn't resolved yet
-    onCouponChange?.(null);
+    onCouponChange?.(null, 0);
   }, [
     restoreAttempted,
     initialCouponCode,

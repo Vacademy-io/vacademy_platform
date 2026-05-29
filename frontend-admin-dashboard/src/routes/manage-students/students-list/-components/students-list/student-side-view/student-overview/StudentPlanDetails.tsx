@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
-<<<<<<< HEAD
+import { ProgressBar } from '@/components/design-system/progress-bar';
 import {
     Crown,
     Eye,
@@ -12,35 +12,21 @@ import {
     CaretUp,
     CreditCard,
     Clock,
-    type Icon as PhosphorIcon,
-} from '@phosphor-icons/react';
-import { useState, useEffect, useCallback } from 'react';
-=======
-import { ProgressBar } from '@/components/design-system/progress-bar';
-import {
-    Clock,
-    Eye,
     Warning,
-    ArrowsClockwise,
-    Calendar,
-    CheckCircle,
-    Prohibit,
-    CaretDown,
-    CaretUp,
     CurrencyDollar,
     Tag,
     TrendUp,
+    type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
-import { useCallback, useEffect, useState } from 'react';
->>>>>>> origin/main
+import { useState, useEffect, useCallback } from 'react';
 import { getUserPlans, UserPlan } from '@/services/user-plan';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { toast } from 'sonner';
-<<<<<<< HEAD
 import { formatDate, format } from 'date-fns';
 import { PolicyActionsTimeline } from '@/components/common/PolicyActionsTimeline';
 import type { PolicyDetails } from '@/types/membership-expiry';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { cn } from '@/lib/utils';
 import {
     ProfileSectionCard,
@@ -51,21 +37,12 @@ import {
     ProfileHero,
     ProfileMiniBar,
 } from '../profile-ui';
-=======
-import { format, formatDate } from 'date-fns';
-import { PolicyActionsTimeline } from '@/components/common/PolicyActionsTimeline';
-import type { PolicyDetails } from '@/types/membership-expiry';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { cn } from '@/lib/utils';
->>>>>>> origin/main
 
 interface StudentPlanDetailsProps {
     userId: string;
     instituteId?: string;
 }
 
-<<<<<<< HEAD
 const DAY_MS = 1000 * 60 * 60 * 24;
 
 // ── Tone helpers ──────────────────────────────────────────────────────────────
@@ -97,34 +74,19 @@ const computePlanMeta = (plan: UserPlan) => {
         pctElapsed = ((now - startMs) / (endMs - startMs)) * 100;
     } else if (endMs != null) {
         pctElapsed = (1 - daysLeft / 365) * 100;
-=======
-const getFirstPolicy = (plan: UserPlan): PolicyDetails | null => {
-    if (plan.policy_details && plan.policy_details.length > 0) {
-        return plan.policy_details[0] || null;
->>>>>>> origin/main
     }
     pctElapsed = Math.min(100, Math.max(0, pctElapsed));
 
     return { daysLeft, pctElapsed, tone: deriveTone(pctElapsed) };
 };
 
-<<<<<<< HEAD
-// ── Status pill ───────────────────────────────────────────────────────────────
+const getFirstPolicy = (plan: UserPlan): PolicyDetails | null => {
+    if (plan.policy_details && plan.policy_details.length > 0) {
+        return plan.policy_details[0] || null;
+    }
+    return null;
+};
 
-const StatusPill = ({ status }: { status: string }) => {
-    const upper = status?.toUpperCase();
-    const pill =
-        upper === 'ACTIVE'
-            ? 'bg-success-50 text-success-700 ring-success-200'
-            : upper === 'EXPIRED'
-              ? 'bg-danger-50 text-danger-700 ring-danger-200'
-              : upper === 'PENDING'
-                ? 'bg-warning-50 text-warning-700 ring-warning-200'
-                : upper === 'CANCELLED'
-                  ? 'bg-neutral-100 text-neutral-600 ring-neutral-200'
-                  : 'bg-neutral-100 text-neutral-600 ring-neutral-200';
-
-=======
 const getCurrencySymbol = (currency: string): string => {
     const symbols: Record<string, string> = {
         USD: '$',
@@ -262,29 +224,45 @@ const PlanStatusBadge = ({ status }: { status?: string }) => {
         label: normalized || 'Unknown',
         classes: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
     };
->>>>>>> origin/main
     return (
         <span
             className={cn(
                 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
-<<<<<<< HEAD
-                pill
-            )}
-        >
-            {status}
-=======
                 entry.classes
             )}
         >
             {entry.label}
->>>>>>> origin/main
         </span>
     );
 };
 
-<<<<<<< HEAD
-// ── Auto-Renewal Badge ────────────────────────────────────────────────────────
-=======
+// ── Status pill ───────────────────────────────────────────────────────────────
+
+const StatusPill = ({ status }: { status: string }) => {
+    const upper = status?.toUpperCase();
+    const pill =
+        upper === 'ACTIVE'
+            ? 'bg-success-50 text-success-700 ring-success-200'
+            : upper === 'EXPIRED'
+              ? 'bg-danger-50 text-danger-700 ring-danger-200'
+              : upper === 'PENDING'
+                ? 'bg-warning-50 text-warning-700 ring-warning-200'
+                : upper === 'CANCELLED'
+                  ? 'bg-neutral-100 text-neutral-600 ring-neutral-200'
+                  : 'bg-neutral-100 text-neutral-600 ring-neutral-200';
+
+    return (
+        <span
+            className={cn(
+                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1',
+                pill
+            )}
+        >
+            {status}
+        </span>
+    );
+};
+
 const EnrollmentStatusBadge = ({
     enrollmentStatus,
 }: {
@@ -335,7 +313,8 @@ const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string
         </div>
     );
 };
->>>>>>> origin/main
+
+// ── Auto-Renewal Badge ────────────────────────────────────────────────────────
 
 const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
     if (!policy?.on_expiry_policy) return null;
@@ -349,11 +328,7 @@ const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
                             'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1',
                             isEnabled
                                 ? 'bg-success-50 text-success-700 ring-success-200'
-<<<<<<< HEAD
                                 : 'bg-neutral-100 text-neutral-500 ring-neutral-200'
-=======
-                                : 'bg-neutral-100 text-neutral-600 ring-neutral-200'
->>>>>>> origin/main
                         )}
                     >
                         {isEnabled ? (
@@ -381,11 +356,8 @@ const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
     );
 };
 
-<<<<<<< HEAD
 // ── Policy Details Section ────────────────────────────────────────────────────
 
-=======
->>>>>>> origin/main
 const PolicyDetailsSection = ({
     policy,
     compact = false,
@@ -401,36 +373,22 @@ const PolicyDetailsSection = ({
     if (!hasExpiryPolicy && !hasReenrollmentPolicy && !hasPolicyActions) return null;
 
     return (
-<<<<<<< HEAD
         <div className="mt-3 space-y-2">
             {/* Expiry Policy */}
             {hasExpiryPolicy && (
                 <div className="rounded-md bg-neutral-50 p-2.5 space-y-2">
-=======
-        <div className="mt-2 space-y-2">
-            {hasExpiryPolicy && (
-                <div className="space-y-1.5 rounded-md bg-neutral-50 p-2">
->>>>>>> origin/main
                     <div className="flex items-center justify-between">
                         <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
                             Expiry Policy
                         </span>
                         <AutoRenewalBadge policy={policy} />
                     </div>
-<<<<<<< HEAD
 
                     <dl className="divide-y divide-neutral-100">
                         {policy.on_expiry_policy?.final_expiry_date && (
                             <div className="flex items-center gap-1.5 py-1">
                                 <Calendar className="size-3 text-danger-400 shrink-0" />
                                 <span className="text-xs text-neutral-600">
-=======
-                    <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                        {policy.on_expiry_policy?.final_expiry_date && (
-                            <div className="flex items-center gap-1">
-                                <Calendar className="size-3 text-danger-500" />
-                                <span className="text-neutral-600">
->>>>>>> origin/main
                                     Final:{' '}
                                     {format(
                                         new Date(policy.on_expiry_policy.final_expiry_date),
@@ -441,7 +399,6 @@ const PolicyDetailsSection = ({
                         )}
                         {policy.on_expiry_policy?.waiting_period_in_days !== undefined &&
                             policy.on_expiry_policy.waiting_period_in_days > 0 && (
-<<<<<<< HEAD
                                 <div className="flex items-center gap-1.5 py-1">
                                     <Clock className="size-3 text-warning-400 shrink-0" />
                                     <span className="text-xs text-neutral-600">
@@ -462,26 +419,6 @@ const PolicyDetailsSection = ({
                             <>
                                 <CheckCircle className="size-3.5 text-success-500 shrink-0" />
                                 <span className="text-xs text-neutral-600">
-=======
-                                <div className="flex items-center gap-1">
-                                    <Clock className="size-3 text-warning-500" />
-                                    <span className="text-neutral-600">
-                                        {policy.on_expiry_policy.waiting_period_in_days} day grace
-                                    </span>
-                                </div>
-                            )}
-                    </div>
-                </div>
-            )}
-
-            {hasReenrollmentPolicy && (
-                <div className="rounded-md bg-neutral-50 p-2">
-                    <div className="flex items-center gap-2 text-xs">
-                        {policy.reenrollment_policy?.allow_reenrollment_after_expiry ? (
-                            <>
-                                <CheckCircle className="size-3 text-success-500" />
-                                <span className="text-neutral-600">
->>>>>>> origin/main
                                     Re-enrollment{' '}
                                     {policy.reenrollment_policy.next_eligible_enrollment_date
                                         ? `from ${format(
@@ -492,11 +429,7 @@ const PolicyDetailsSection = ({
                                           )}`
                                         : 'available'}
                                     {policy.reenrollment_policy.reenrollment_gap_in_days > 0 && (
-<<<<<<< HEAD
                                         <span className="text-neutral-400 ml-1">
-=======
-                                        <span className="ml-1 text-neutral-400">
->>>>>>> origin/main
                                             ({policy.reenrollment_policy.reenrollment_gap_in_days}{' '}
                                             day gap)
                                         </span>
@@ -505,15 +438,10 @@ const PolicyDetailsSection = ({
                             </>
                         ) : (
                             <>
-<<<<<<< HEAD
                                 <Prohibit className="size-3.5 text-danger-400 shrink-0" />
                                 <span className="text-xs text-neutral-500">
                                     Re-enrollment not allowed
                                 </span>
-=======
-                                <Prohibit className="size-3 text-danger-500" />
-                                <span className="text-neutral-500">Re-enrollment not allowed</span>
->>>>>>> origin/main
                             </>
                         )}
                     </div>
@@ -521,25 +449,13 @@ const PolicyDetailsSection = ({
             )}
 
             {hasPolicyActions && !compact && (
-<<<<<<< HEAD
                 <div className="rounded-md bg-neutral-50 overflow-hidden">
-=======
-                <div className="overflow-hidden rounded-md bg-neutral-50">
->>>>>>> origin/main
                     <button
                         type="button"
                         onClick={() => setIsExpanded(!isExpanded)}
-<<<<<<< HEAD
                         className="w-full flex items-center justify-between px-2.5 py-2 text-xs font-medium text-neutral-500 uppercase tracking-wide hover:bg-neutral-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                     >
                         <span>Policy Actions ({policy.policy_actions.length})</span>
-=======
-                        className="flex w-full items-center justify-between p-2 text-xs font-medium text-neutral-500 transition-colors hover:bg-neutral-100"
-                    >
-                        <span className="uppercase tracking-wide">
-                            Policy Actions ({policy.policy_actions.length})
-                        </span>
->>>>>>> origin/main
                         {isExpanded ? (
                             <CaretUp className="size-3" />
                         ) : (
@@ -547,16 +463,11 @@ const PolicyDetailsSection = ({
                         )}
                     </button>
                     {isExpanded && (
-<<<<<<< HEAD
                         <div className="px-2.5 pb-2.5">
                             <PolicyActionsTimeline
                                 actions={policy.policy_actions}
                                 compact={true}
                             />
-=======
-                        <div className="px-2 pb-2">
-                            <PolicyActionsTimeline actions={policy.policy_actions} compact />
->>>>>>> origin/main
                         </div>
                     )}
                 </div>
@@ -565,7 +476,6 @@ const PolicyDetailsSection = ({
     );
 };
 
-<<<<<<< HEAD
 // ── Past Plan Row (compact rows inside the history card) ──────────────────────
 
 const PastPlanRows = ({
@@ -621,7 +531,10 @@ const PastPlanRows = ({
                 )}
             </dl>
             <PolicyDetailsSection policy={policy} />
-=======
+        </div>
+    );
+};
+
 // Pick the days-left tone for headline + progress + status label.
 const getDaysLeftTone = (daysLeft: number | null): { color: string; status: string } => {
     if (daysLeft === null) {
@@ -733,60 +646,28 @@ const PlanCard = ({
             <CouponAppliedRow plan={plan} currency={currency} />
 
             <PolicyDetailsSection policy={policy} compact />
->>>>>>> origin/main
         </div>
     );
 };
 
-<<<<<<< HEAD
 // ── Main component ────────────────────────────────────────────────────────────
 
-=======
->>>>>>> origin/main
 const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) => {
     const { selectedStudent } = useStudentSidebar();
-    const [activePlans, setActivePlans] = useState<UserPlan[]>([]);
+    const [activePlan, setActivePlan] = useState<UserPlan | null>(null);
     const [isLoadingActive, setIsLoadingActive] = useState(false);
-<<<<<<< HEAD
     const [hasError, setHasError] = useState(false);
     const [showDetailsDialog, setShowDetailsDialog] = useState(false);
-=======
-    const [showHistoryDialog, setShowHistoryDialog] = useState(false);
->>>>>>> origin/main
     const [allPlans, setAllPlans] = useState<UserPlan[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
     const pageSize = 5;
-<<<<<<< HEAD
 
     const loadActivePlan = useCallback(async () => {
         if (!userId) return;
-=======
->>>>>>> origin/main
-
-    // The selected learner row's package_session_id reflects the batch the admin
-    // is viewing them under. If the admin marked them INACTIVE in this batch, we
-    // tag the matching plan card with "Course Inactive" even though the plan is
-    // still running — because the user asked for that signal here.
-    const filteredPackageSessionId = selectedStudent?.package_session_id;
-    const filteredEnrollmentStatus = selectedStudent?.status;
-
-    const resolveEnrollmentStatus = useCallback(
-        (plan: UserPlan): 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | null => {
-            if (!filteredPackageSessionId || !filteredEnrollmentStatus) return null;
-            const planPsId = getFirstPolicy(plan)?.package_session_id;
-            if (!planPsId || planPsId !== filteredPackageSessionId) return null;
-            return filteredEnrollmentStatus;
-        },
-        [filteredPackageSessionId, filteredEnrollmentStatus]
-    );
-
-    const loadActivePlans = useCallback(async () => {
-        if (!userId) return;
         try {
             setIsLoadingActive(true);
-<<<<<<< HEAD
             setHasError(false);
             const response = await getUserPlans(1, 1, ['ACTIVE'], userId, instituteId);
 
@@ -801,25 +682,19 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
         } catch (error) {
             console.error('Error loading active plan:', error);
             setHasError(true);
-=======
-            const response = await getUserPlans(1, 50, ['ACTIVE'], userId, instituteId);
-            setActivePlans(response.content || []);
-        } catch (error) {
-            console.error('Error loading active plans:', error);
->>>>>>> origin/main
         } finally {
             setIsLoadingActive(false);
         }
     }, [userId, instituteId]);
 
     useEffect(() => {
-        loadActivePlans();
-    }, [loadActivePlans]);
+        loadActivePlan();
+    }, [loadActivePlan]);
 
-    const handleViewHistory = async () => {
+    const handleViewDetails = async () => {
         if (!userId) return;
         try {
-            setShowHistoryDialog(true);
+            setShowDetailsDialog(true);
             setCurrentPage(1);
             setIsLoadingHistory(true);
             const response = await getUserPlans(
@@ -861,7 +736,6 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
         }
     };
 
-<<<<<<< HEAD
     const getCurrencySymbol = (currency: string): string => {
         const symbols: { [key: string]: string } = {
             USD: '$',
@@ -1060,59 +934,12 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
             {/* Plans History Dialog */}
             <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
                 <DialogContent className="max-h-screen w-full max-w-2xl overflow-y-auto">
-=======
-    return (
-        <>
-            <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-neutral-800">Active Memberships</h3>
-                    {activePlans.length > 0 && (
-                        <MyButton onClick={handleViewHistory} buttonType="secondary" scale="small">
-                            <Eye className="mr-1 size-3" />
-                            View History
-                        </MyButton>
-                    )}
-                </div>
-
-                {isLoadingActive ? (
-                    <div className="flex items-center justify-center py-6">
-                        <DashboardLoader />
-                    </div>
-                ) : activePlans.length === 0 ? (
-                    <div className="flex items-center gap-2 rounded-md bg-info-50 p-3 text-xs text-info-700 ring-1 ring-info-200">
-                        <Warning className="size-4 shrink-0" />
-                        <span>No active membership for this learner.</span>
-                    </div>
-                ) : (
-                    <div className="space-y-2.5">
-                        {activePlans
-                            .slice()
-                            .sort((a, b) => {
-                                const ad = a.end_date ? new Date(a.end_date).getTime() : Infinity;
-                                const bd = b.end_date ? new Date(b.end_date).getTime() : Infinity;
-                                return ad - bd;
-                            })
-                            .map((plan) => (
-                                <PlanCard
-                                    key={plan.id}
-                                    plan={plan}
-                                    enrollmentStatus={resolveEnrollmentStatus(plan)}
-                                />
-                            ))}
-                    </div>
-                )}
-            </div>
-
-            <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
-                <DialogContent className="max-h-screen max-w-2xl overflow-y-auto">
->>>>>>> origin/main
                     <DialogHeader>
                         <DialogTitle>Membership History</DialogTitle>
                     </DialogHeader>
 
                     <div className="space-y-3 py-2">
                         {isLoadingHistory ? (
-<<<<<<< HEAD
                             <ProfileSkeleton blocks={2} />
                         ) : allPlans.length === 0 ? (
                             <ProfileEmpty
@@ -1140,34 +967,9 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                                         ))}
                                     </div>
                                 </ProfileSectionCard>
-=======
-                            <div className="flex items-center justify-center py-6">
-                                <DashboardLoader />
-                            </div>
-                        ) : allPlans.length === 0 ? (
-                            <div className="flex items-center gap-2 rounded-md bg-info-50 p-3 text-sm text-info-700 ring-1 ring-info-200">
-                                <Warning className="size-4 shrink-0" />
-                                <span>No plans found.</span>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="space-y-2.5">
-                                    {allPlans.map((plan) => (
-                                        <PlanCard
-                                            key={plan.id}
-                                            plan={plan}
-                                            enrollmentStatus={resolveEnrollmentStatus(plan)}
-                                        />
-                                    ))}
-                                </div>
->>>>>>> origin/main
 
                                 {totalPages > 1 && (
-<<<<<<< HEAD
                                     <div className="flex items-center justify-between border-t border-neutral-100 pt-4">
-=======
-                                    <div className="flex items-center justify-between border-t border-neutral-200 pt-3">
->>>>>>> origin/main
                                         <span className="text-sm text-neutral-600">
                                             Page {currentPage} of {totalPages}
                                         </span>

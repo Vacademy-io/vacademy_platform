@@ -240,45 +240,8 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
 
     return (
         <FormProvider {...formMethods}>
-<<<<<<< HEAD
             <div className="flex flex-col gap-3">
                 {picker}
-=======
-            <div className="flex flex-col gap-3 sm:gap-6">
-                {picker}
-                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-10">
-                    <div className="flex flex-col gap-3 sm:gap-6">
-                        <p className="text-title font-semibold text-primary-500">
-                            {batch?.package_dto.package_name}
-                        </p>
-                        <div className="flex flex-col gap-2">
-                            <p className="text-body">Session: {batch?.session.session_name}</p>
-                            <p className="text-body">Level: {batch?.level.level_name}</p>
-                        </div>
-                    </div>
-                    <div className="flex flex-col">
-                        <PercentCompletionStatus percentage={percentageCompleted} />
-                        <p className="text-caption">{percentageCompleted} % completed</p>
-                    </div>
-                </div>
-                <div className="flex items-center justify-between">
-                    <MyButton
-                        buttonType="secondary"
-                        scale="large"
-                        onClick={handleLearningTimeLineClick}
-                    >
-                        Check Learning Timeline
-                    </MyButton>
-                    <MyButton
-                        buttonType="secondary"
-                        scale="large"
-                        onClick={handleLearningProgressClick}
-                    >
-                        Check Learning Progress
-                    </MyButton>
-                </div>
-                <Separator />
->>>>>>> origin/main
 
                 {/* ── Hero ─────────────────────────────────────────────── */}
                 <ProfileHero

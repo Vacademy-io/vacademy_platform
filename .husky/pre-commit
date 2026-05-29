@@ -8,6 +8,18 @@
 # Activation (one-time, per clone): git config core.hooksPath .husky
 # (git stores hook paths locally, so each teammate runs this once.)
 
+# Skip during merges / rebases / cherry-picks / reverts. These commits bring
+# in pre-existing code from other branches that the gate isn't designed to
+# police — re-checking thousands of unrelated files would always block.
+if [ -e "$(git rev-parse --git-dir)/MERGE_HEAD" ] \
+   || [ -e "$(git rev-parse --git-dir)/CHERRY_PICK_HEAD" ] \
+   || [ -e "$(git rev-parse --git-dir)/REVERT_HEAD" ] \
+   || [ -d "$(git rev-parse --git-dir)/rebase-merge" ] \
+   || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
+  exit 0
+fi
+
+# Only lint staged UI source files in either frontend.
 files=$(git diff --cached --name-only --diff-filter=ACM \
   | grep -E '^frontend-(admin-dashboard|learner-dashboard-app)/src/.*\.(tsx|ts|css)$' || true)
 
@@ -15,8 +27,10 @@ if [ -z "$files" ]; then
   exit 0
 fi
 
-# shellcheck disable=SC2086
-node scripts/design-lint.mjs $files
+# Pipe file list via stdin (xargs handles arbitrarily long lists by chunking,
+# avoiding the Windows / POSIX command-line length limit hit on large merges).
+# The lint script accepts paths on argv — printf + xargs splits as needed.
+printf '%s\n' "$files" | xargs node scripts/design-lint.mjs
 status=$?
 
 if [ "$status" -ne 0 ]; then

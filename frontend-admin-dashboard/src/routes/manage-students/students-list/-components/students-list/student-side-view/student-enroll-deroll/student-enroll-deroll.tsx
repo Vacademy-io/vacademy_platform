@@ -382,7 +382,6 @@ export const StudentEnrollDeroll = () => {
 
             {/* Confirmation Dialog for Cancellations */}
             <AlertDialog open={isActionModalOpen} onOpenChange={setIsActionModalOpen}>
-<<<<<<< HEAD
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2 text-sm font-semibold text-neutral-800">
@@ -416,42 +415,6 @@ export const StudentEnrollDeroll = () => {
                             )}
                         </AlertDialogAction>
                     </AlertDialogFooter>
-=======
-                <AlertDialogContent className="rounded-2xl border-neutral-100 shadow-2xl overflow-hidden p-0 gap-0">
-                    <div className="h-2 w-full bg-rose-500" />
-                    <div className="p-4 sm:p-6">
-                        <AlertDialogHeader>
-                            <AlertDialogTitle className="flex items-center gap-3 text-h3 font-bold text-neutral-800 sm:text-h2">
-                                {handleActionIcon(currentAction?.label || '')}
-                                {currentAction?.label}
-                            </AlertDialogTitle>
-                            <AlertDialogDescription className="text-sm leading-relaxed text-neutral-500 pt-2">
-                                You are about to proceed with <strong>{currentAction?.label}</strong> for <strong>{selectedStudent?.full_name}</strong>.
-                                <br /><br />
-                                Termination is immediate and access will be revoked.
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter className="mt-8 gap-3">
-                            <AlertDialogCancel className="rounded-xl border-neutral-200 bg-neutral-50 hover:bg-neutral-100 h-11 px-8 font-semibold text-neutral-600">
-                                Cancel
-                            </AlertDialogCancel>
-                            <AlertDialogAction
-                                onClick={(e) => { e.preventDefault(); confirmAction(); }}
-                                disabled={cancelMutation.isPending}
-                                className="rounded-xl h-11 px-8 font-semibold text-white shadow-lg transition-all active:scale-95 bg-rose-500 hover:bg-rose-600"
-                            >
-                                {cancelMutation.isPending ? (
-                                    <div className="flex items-center gap-2">
-                                        <CircleNotch className="size-4 animate-spin" />
-                                        Processing...
-                                    </div>
-                                ) : (
-                                    'Confirm Action'
-                                )}
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </div>
->>>>>>> origin/main
                 </AlertDialogContent>
             </AlertDialog>
         </div>

@@ -4,7 +4,6 @@ import {
     Phone,
     MapPin,
     Users,
-<<<<<<< HEAD
     Clock,
     HandCoins,
     Tag,
@@ -14,11 +13,6 @@ import {
     MonitorPlay,
     Hourglass,
     type Icon as PhosphorIcon,
-=======
-    Copy,
-    Check,
-    HandCoinsIcon,
->>>>>>> origin/main
 } from '@phosphor-icons/react';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useEffect, useState } from 'react';
@@ -28,12 +22,9 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { EditStudentDetails } from './EditStudentDetails';
 import { useStudentCredentialsStore } from '@/stores/students/students-list/useStudentCredentialsStore';
 import { useGetStudentDetails } from '@/services/get-student-details';
-<<<<<<< HEAD
 import { getUserPlans, type UserPlan } from '@/services/user-plan';
 import { getInstituteId } from '@/constants/helper';
-=======
-import { DashboardLoader } from '@/components/core/dashboard-loader';
->>>>>>> origin/main
+import { useQuery } from '@tanstack/react-query';
 import { StudentTable } from '@/types/student-table-types';
 import { getFieldsForLocation, type FieldForLocation } from '@/lib/custom-fields/utils';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
@@ -164,6 +155,19 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
         error,
         refetch,
     } = useGetStudentDetails(userId || '');
+
+    // Fetch all ACTIVE plans for this user; render one Session Expiry card per plan
+    // that has a real expiry date set. Empty array → no cards (e.g., buy-only books).
+    const instituteIdForPlans = getInstituteId();
+    const { data: userPlansResponse } = useQuery({
+        queryKey: ['STUDENT_OVERVIEW_USER_PLANS', userId, instituteIdForPlans],
+        queryFn: () => getUserPlans(1, 50, ['ACTIVE'], userId || '', instituteIdForPlans || ''),
+        enabled: !!userId && !!instituteIdForPlans,
+        staleTime: 60_000,
+    });
+    const expiringPlans: UserPlan[] = (userPlansResponse?.content || []).filter(
+        (plan) => plan.end_date != null
+    );
 
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
     const { getCredentials } = useStudentCredentialsStore();
@@ -343,7 +347,6 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 <EditStudentDetails />
             </div>
 
-<<<<<<< HEAD
             {/* Renewal-urgency hero + remaining expiry cards.
                 The earliest-expiring plan is promoted to a ProfileHero so the
                 2-second-glance answer ("how long is this student's plan valid?")
@@ -401,55 +404,6 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                     </>
                 );
             })()}
-=======
-            {/* Compact overview sections */}
-            <div className="space-y-2.5">
-                {selectedStudent != null ? (
-                    overviewData?.map((studentDetail, key) => {
-                        // Skip Account Credentials (key === 0) as it's moved to Portal Access tab
-                        if (key === 0) return null;
-
-                        // Define icons and colors for each section
-                        const sectionConfig = {
-                            0: {
-                                icon: Key,
-                                color: 'primary',
-                                bg: 'from-primary-50 to-primary-100',
-                            },
-                            1: {
-                                icon: GraduationCap,
-                                color: 'blue',
-                                bg: 'from-blue-50 to-blue-100',
-                            },
-                            2: {
-                                icon: MonitorPlay,
-                                color: 'blue',
-                                bg: 'from-blue-50 to-blue-100',
-                            },
-                            3: {
-                                icon: HandCoinsIcon,
-                                color: 'blue',
-                                bg: 'from-blue-50 to-blue-100',
-                            },
-                            4: {
-                                icon: Phone,
-                                color: 'emerald',
-                                bg: 'from-emerald-50 to-emerald-100',
-                            },
-                            5: {
-                                icon: MapPin,
-                                color: 'orange',
-                                bg: 'from-orange-50 to-orange-100',
-                            },
-                            6: { icon: Users, color: 'purple', bg: 'from-purple-50 to-purple-100' },
-                        }[key] || {
-                            icon: User,
-                            color: 'neutral',
-                            bg: 'from-neutral-50 to-neutral-100',
-                        };
-
-                        const IconComponent = sectionConfig.icon;
->>>>>>> origin/main
 
             {/* Overview sections */}
             {selectedStudent != null ? (
@@ -516,7 +470,6 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                         </ProfileSectionCard>
                     ))}
 
-<<<<<<< HEAD
                     {customFields.length > 0 && (
                         <ProfileSectionCard icon={Tag} heading="Custom Fields">
                             <dl className="divide-y divide-neutral-100">
@@ -538,22 +491,6 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                     )}
                 </>
             )}
-=======
-                    <div className="space-y-1.5 px-1.5">
-                        <div className="flex items-center gap-2">
-                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                            <span className="text-xs font-medium text-neutral-600">Status: </span>
-                            {selectedStudent?.tnc_accepted ? (
-                                <span className="inline-flex items-center rounded-full bg-success-50 px-2 py-0.5 text-xs font-semibold text-success-700 ring-1 ring-success-200">
-                                    Signed
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold text-warning-700 ring-1 ring-warning-200">
-                                    Not Signed
-                                </span>
-                            )}
-                        </div>
->>>>>>> origin/main
 
             {/* Terms & Conditions */}
             <ProfileSectionCard icon={FileText} heading="Terms & Conditions">

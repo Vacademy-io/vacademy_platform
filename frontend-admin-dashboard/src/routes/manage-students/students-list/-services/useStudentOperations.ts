@@ -105,7 +105,9 @@ export const useExtendSessionMutation = () => {
 interface TerminateStudentRequest {
     students: {
         userId: string;
-        currentPackageSessionId: string;
+        // The package session(s) to terminate the learner from. The first entry is
+        // also sent as current_package_session_id for backend back-compat.
+        packageSessionIds: string[];
     }[];
 }
 
@@ -115,11 +117,12 @@ const terminateStudent = async ({ students }: TerminateStudentRequest) => {
     const INSTITUTE_ID = tokenData && Object.keys(tokenData.authorities)[0];
     const response = await authenticatedAxiosInstance.post(STUDENT_UPDATE_OPERATION, {
         operation: 'MAKE_INACTIVE',
-        requests: students.map(({ userId, currentPackageSessionId }) => ({
+        requests: students.map(({ userId, packageSessionIds }) => ({
             user_id: userId,
             new_state: 'INACTIVE',
             institute_id: INSTITUTE_ID,
-            current_package_session_id: currentPackageSessionId,
+            current_package_session_id: packageSessionIds[0],
+            package_session_ids: packageSessionIds,
         })),
     });
     return response.data;

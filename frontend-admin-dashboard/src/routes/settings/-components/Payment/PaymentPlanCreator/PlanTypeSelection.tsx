@@ -2,7 +2,7 @@ import React from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Globe, CreditCard, Heart, DollarSign } from 'lucide-react';
+import { Globe, CreditCard, Heart, DollarSign, Layers } from 'lucide-react';
 import { PaymentPlans, PaymentPlanType } from '@/types/payment';
 import { isFreePlanDisabled, getFreePlanRestrictionMessage, FreePlanInfo } from '../utils/utils';
 
@@ -208,6 +208,40 @@ export const PlanTypeSelection: React.FC<PlanTypeSelectionProps> = ({
                                         <br />
                                         ✓ Installment options
                                         <br />✓ No recurring charges
+                                    </div>
+                                </div>
+                            </div>
+                        </label>
+
+                        {/* Custom Payment Option (CPO) */}
+                        <label
+                            htmlFor="cpo"
+                            className={`cursor-pointer rounded-lg border-2 p-4 transition-all ${planType === PaymentPlans.CPO ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}
+                        >
+                            <div className="flex items-start space-x-3">
+                                <RadioGroupItem
+                                    value={PaymentPlans.CPO}
+                                    id="cpo"
+                                    className="mt-1"
+                                />
+                                <div className="flex-1">
+                                    <div className="mb-2 flex items-center space-x-2">
+                                        <Layers className="size-5 text-purple-600" />
+                                        <Label
+                                            htmlFor="cpo"
+                                            className="cursor-pointer font-medium text-gray-900"
+                                        >
+                                            Custom Payment Option
+                                        </Label>
+                                    </div>
+                                    <p className="text-sm text-gray-600">
+                                        Installment-based fee plans with multiple fee types linked to specific batches
+                                    </p>
+                                    <div className="mt-2 text-xs text-gray-500">
+                                        ✓ Multiple fee types (tuition, exam, hostel…)
+                                        <br />
+                                        ✓ Custom installment schedules
+                                        <br />✓ Linked to specific batches
                                     </div>
                                 </div>
                             </div>

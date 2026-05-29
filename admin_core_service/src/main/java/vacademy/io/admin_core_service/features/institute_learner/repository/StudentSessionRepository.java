@@ -250,14 +250,14 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
                                                                                 String source, String type, String typeId, String instituteId);
 
   /**
-   * Mark entries as DELETED for a user when re-enrolling or after payment status
-   * change.
-   * This marks previous ABANDONED_CART and PAYMENT_FAILED entries as DELETED.
+   * Hard-delete previous ABANDONED_CART / PAYMENT_FAILED entries for a user when
+   * re-enrolling. Using soft-delete (UPDATE status='DELETED') causes a unique
+   * constraint violation on uq_dest_pkg_inst_user_status when the same user makes
+   * a 3rd+ enrollment attempt (a DELETED row already exists from a prior cleanup).
    */
   @Modifying
   @Transactional
-  @Query(value = "UPDATE student_session_institute_group_mapping " +
-          "SET status = 'DELETED', updated_at = NOW() " +
+  @Query(value = "DELETE FROM student_session_institute_group_mapping " +
           "WHERE user_id = :userId " +
           "AND package_session_id = :packageSessionId " +
           "AND destination_package_session_id = :destinationPackageSessionId " +

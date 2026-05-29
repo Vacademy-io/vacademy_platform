@@ -52,7 +52,8 @@ export const PlanNavigation: React.FC<PlanNavigationProps> = ({
 
         if (
             (planType === PaymentPlans.FREE && currentStep === 2) ||
-            (planType === PaymentPlans.DONATION && currentStep === 2)
+            (planType === PaymentPlans.DONATION && currentStep === 2) ||
+            (planType === PaymentPlans.CPO && currentStep === 2)
         ) {
             return 'Create Plan';
         }
@@ -90,7 +91,7 @@ export const PlanNavigation: React.FC<PlanNavigationProps> = ({
                 </Button>
                 {currentStep < totalSteps ||
                 (currentStep === 2 &&
-                    (planType === PaymentPlans.FREE || planType === PaymentPlans.DONATION)) ? (
+                    (planType === PaymentPlans.FREE || planType === PaymentPlans.DONATION || planType === PaymentPlans.CPO)) ? (
                     <Button
                         onClick={onNext}
                         disabled={!canProceed() || isSaving}

@@ -51,4 +51,15 @@ public class OpenProductPageController {
         log.info("Course page enroll received for code={}", request.getProductPageCode());
         return ResponseEntity.ok(enrollmentService.enrollForProductPage(request));
     }
+
+    /**
+     * CPO-specific enrollment without payment: creates UserPlan + StudentFeePayment rows.
+     * The learner then selects installments and pays via /open/v1/fee/cpo-pay-installments.
+     */
+    @PostMapping("/cpo-enroll")
+    public ResponseEntity<ProductPageEnrollResponse> cpoEnroll(
+            @RequestBody ProductPageCpoEnrollRequest request) {
+        log.info("CPO product page enroll received for code={}", request.getProductPageCode());
+        return ResponseEntity.ok(enrollmentService.enrollCpoForProductPage(request));
+    }
 }

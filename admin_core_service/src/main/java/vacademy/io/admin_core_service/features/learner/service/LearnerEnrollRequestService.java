@@ -514,6 +514,7 @@ public class LearnerEnrollRequestService {
                     userPlan.getId());
         }
 
+        response.setUserPlanId(userPlan.getId());
         return response;
     }
 

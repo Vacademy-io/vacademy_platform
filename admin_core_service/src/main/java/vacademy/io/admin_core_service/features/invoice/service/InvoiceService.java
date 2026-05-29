@@ -3167,10 +3167,13 @@ public class InvoiceService {
     public PublicInvoiceListResponse getInvoicesByEmailPublic(String email, String instituteId) {
         String normalizedEmail = email.toLowerCase().trim();
         UserDTO user = authService.getUserByEmail(normalizedEmail);
+        log.info("[invoice-by-email] email='{}' resolved userId={}", normalizedEmail,
+                user != null ? user.getId() : "null");
         if (user == null || user.getId() == null) {
             return new PublicInvoiceListResponse(normalizedEmail, 0, List.of());
         }
         List<InvoiceDTO> invoices = getInvoicesByUserId(user.getId(), instituteId);
+        log.info("[invoice-by-email] userId={} → {} invoice(s)", user.getId(), invoices.size());
         List<PublicInvoiceDTO> publicInvoices = invoices.stream()
                 .map(this::toPublicInvoiceDTO)
                 .collect(Collectors.toList());

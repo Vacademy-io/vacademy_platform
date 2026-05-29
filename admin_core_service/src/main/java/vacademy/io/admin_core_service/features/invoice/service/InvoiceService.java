@@ -680,13 +680,21 @@ public class InvoiceService {
             log.warn("Using fallback description for payment log: {}", paymentLogId);
         }
 
-        // Main plan item - use payment amount from payment log
+        // Main plan item — show GROSS plan price (actualPrice) here so the
+        // discount line items can subtract from it visually. Using the net
+        // gateway-captured amount instead would render as
+        // "Course ₹450, Coupon −₹50" which sums to ₹400 instead of the ₹450
+        // actually charged. Falls back to paymentAmount when paymentPlan is
+        // unavailable so we don't blank the line.
+        BigDecimal grossUnitPrice = paymentPlan != null
+                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                : paymentAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
                 .quantity(1)
-                .unitPrice(paymentAmount)
-                .amount(paymentAmount)
+                .unitPrice(grossUnitPrice)
+                .amount(grossUnitPrice)
                 .sourceId(paymentLogId) // Store payment log ID as source
                 .build();
         lineItems.add(planItem);
@@ -953,14 +961,20 @@ public class InvoiceService {
                     : "Package Enrollment";
         }
 
-        // Main plan item - use total amount from payment log (which is the actual paid
-        // amount)
+        // Main plan item — show GROSS plan price so the discount line items
+        // subtract from it visually. The totalAmount passed in is the net
+        // (post-discount) figure from the payment log; using that for the
+        // course line would double-count the discount on the rendered
+        // invoice. Falls back to totalAmount when paymentPlan is unavailable.
+        BigDecimal grossUnitPrice = paymentPlan != null
+                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                : totalAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
                 .quantity(1)
-                .unitPrice(totalAmount)
-                .amount(totalAmount)
+                .unitPrice(grossUnitPrice)
+                .amount(grossUnitPrice)
                 .build();
         lineItems.add(planItem);
 

@@ -73,7 +73,12 @@ public class CouponValidationService {
 
         // 3. Validity window
         Date now = new Date();
-        if (coupon.getRedeemStartDate() != null && coupon.getRedeemStartDate().after(now)) {
+        // Start date is persisted as the FE's UTC midnight; on east-of-UTC
+        // servers that lands several hours after the admin's intended
+        // "starts today" wall-clock. Normalize to start-of-day in the server
+        // local TZ so the coupon goes live at the local midnight the admin
+        // expected, symmetric to the end-of-day handling below.
+        if (coupon.getRedeemStartDate() != null && startOfDay(coupon.getRedeemStartDate()).after(now)) {
             return invalid(CouponValidationMessages.NOT_STARTED);
         }
         // End date is typically persisted as midnight (java.sql.Date.valueOf) — treat
@@ -207,6 +212,16 @@ public class CouponValidationService {
         c.set(Calendar.MINUTE, 59);
         c.set(Calendar.SECOND, 59);
         c.set(Calendar.MILLISECOND, 999);
+        return c.getTime();
+    }
+
+    private static Date startOfDay(Date date) {
+        Calendar c = Calendar.getInstance();
+        c.setTime(date);
+        c.set(Calendar.HOUR_OF_DAY, 0);
+        c.set(Calendar.MINUTE, 0);
+        c.set(Calendar.SECOND, 0);
+        c.set(Calendar.MILLISECOND, 0);
         return c.getTime();
     }
 

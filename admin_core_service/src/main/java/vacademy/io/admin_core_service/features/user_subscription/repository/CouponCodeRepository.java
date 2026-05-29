@@ -88,11 +88,19 @@ public interface CouponCodeRepository extends JpaRepository<CouponCode, String> 
      * Count successful redemptions for a coupon by joining UserPlan rows that
      * reference any AppliedCouponDiscount tied to this coupon. Used to derive
      * the admin "Usage" column and to decide which fields are frozen on edit.
+     *
+     * Excludes PAYMENT_FAILED / CANCELED / TERMINATED — those rows represent
+     * coupons that were consumed at enroll time but never resulted in a
+     * paid/active membership, so they shouldn't count against the admin's
+     * "Usage" column or freeze discount edits. (NB: the underlying
+     * usage_limit was still decremented at enroll for those attempts; this
+     * count is the *user-facing* tally, not the raw decrement count.)
      */
     @Query("""
         SELECT COUNT(up)
         FROM UserPlan up
         WHERE up.appliedCouponDiscount.couponCode.id = :couponId
+          AND up.status NOT IN ('PAYMENT_FAILED', 'CANCELED', 'TERMINATED')
         """)
     long countRedemptions(@Param("couponId") String couponId);
 }

@@ -103,6 +103,26 @@ interface RawCouponSnapshot {
     name?: string;
 }
 
+/**
+ * Mirrors the BE's CouponDiscountUtil.computeDiscount so we can render the
+ * effective amount the learner actually paid (plan price minus this value)
+ * on the membership card. Plays it safe — never returns a negative number,
+ * never returns more than the cap when one is set.
+ */
+const computeCouponDiscount = (
+    grossAmount: number,
+    applied: { type: string | null; point: number | null; maxPoint: number | null } | null
+): number => {
+    if (!applied || applied.point == null) return 0;
+    const point = applied.point;
+    if ((applied.type || '').toUpperCase() === 'PERCENTAGE') {
+        const raw = (grossAmount * point) / 100;
+        const capped = applied.maxPoint != null ? Math.min(raw, applied.maxPoint) : raw;
+        return Math.max(0, Math.min(grossAmount, capped));
+    }
+    return Math.max(0, Math.min(grossAmount, point));
+};
+
 const parseAppliedCoupon = (plan: UserPlan) => {
     if (plan.applied_coupon) {
         const a = plan.applied_coupon;
@@ -397,6 +417,10 @@ const PlanCard = ({
     const expiryLabel = getExpiryLabel(plan);
     const amount = getPlanAmount(plan);
     const currency = getPlanCurrency(plan);
+    const appliedCoupon = parseAppliedCoupon(plan);
+    const couponDiscount = computeCouponDiscount(amount, appliedCoupon);
+    const finalAmount = Math.max(0, amount - couponDiscount);
+    const hasCouponDiscount = couponDiscount > 0 && finalAmount < amount;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-3 transition-all duration-200 hover:border-primary-200 hover:shadow-sm">
@@ -452,10 +476,23 @@ const PlanCard = ({
                 {currency !== 'N/A' && amount > 0 && (
                     <div className="flex items-center gap-1">
                         <CurrencyDollar className="size-3 text-neutral-400" />
-                        <span>
-                            {getCurrencySymbol(currency)}
-                            {amount}
-                        </span>
+                        {hasCouponDiscount ? (
+                            <span className="flex items-baseline gap-1">
+                                <span className="text-neutral-400 line-through">
+                                    {getCurrencySymbol(currency)}
+                                    {amount}
+                                </span>
+                                <span className="font-semibold text-success-700">
+                                    {getCurrencySymbol(currency)}
+                                    {finalAmount}
+                                </span>
+                            </span>
+                        ) : (
+                            <span>
+                                {getCurrencySymbol(currency)}
+                                {amount}
+                            </span>
+                        )}
                     </div>
                 )}
             </div>

@@ -313,13 +313,32 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
             if (psId) {
                 // If we have a psId, add it to selected list
                 if (!selectedPackages.find(p => p.package_session_id === psId)) {
-                    const newSelection = [...selectedPackages, { ...pkg, package_session_id: psId }];
+                    // Enrich the chip with level/session names so the chip
+                    // can render the full "Package · Level · Session" label
+                    // even when the API response only carried IDs. Looks up
+                    // names from the store as a fallback.
+                    const detailFromStore = getDetailsFromPackageSessionId({
+                        packageSessionId: psId,
+                    });
+                    const enriched: AutocompletePackage = {
+                        ...pkg,
+                        package_session_id: psId,
+                        level_id: pkg.level_id || detailFromStore?.level?.id,
+                        level_name: pkg.level_name || detailFromStore?.level?.level_name,
+                        session_id: pkg.session_id || detailFromStore?.session?.id,
+                        session_name: pkg.session_name || detailFromStore?.session?.session_name,
+                    };
+                    const newSelection = [...selectedPackages, enriched];
                     setSelectedPackages(newSelection);
 
                     setShowResults(false);
 
-                    if (pkg.level_id) setLevelId(pkg.level_id);
-                    if (pkg.session_id) setSessionId(pkg.session_id);
+                    // Reset the search + level + session so the admin can
+                    // immediately add another batch without manual cleanup.
+                    setSearchTerm('');
+                    setLevelId('');
+                    setSessionId('');
+                    setPackageId('');
 
                     onChange({
                         packageSessionId: psId,
@@ -393,8 +412,51 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
         }
     };
 
+    // Remove one chip from the multi-select list. Fires onChange with the
+    // remaining packageSessionIds so the parent stays in sync.
+    const handleRemoveSelectedPackage = (psId: string) => {
+        const newSelection = selectedPackages.filter(p => p.package_session_id !== psId);
+        setSelectedPackages(newSelection);
+        onChange({
+            packageSessionId: newSelection[newSelection.length - 1]?.package_session_id || null,
+            levelId,
+            sessionId,
+            packageId,
+            packageSessionIds: newSelection.map(p => p.package_session_id!).filter(Boolean),
+        });
+    };
+
     return (
         <div className={cn("space-y-4", className)} ref={containerRef}>
+            {/* Selected chips — only rendered in multi-select mode. Each chip
+                shows Package · Level · Session and an X to remove. */}
+            {multiSelect && selectedPackages.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {selectedPackages.map((pkg) => {
+                        const psId = pkg.package_session_id;
+                        if (!psId) return null;
+                        const segments = [pkg.package_name, pkg.level_name, pkg.session_name]
+                            .filter(Boolean)
+                            .join(' · ');
+                        return (
+                            <span
+                                key={psId}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs text-primary-700"
+                            >
+                                <span className="font-medium">{segments || psId}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveSelectedPackage(psId)}
+                                    className="rounded-full p-0.5 text-primary-500 hover:bg-primary-100 hover:text-primary-700"
+                                    aria-label="Remove"
+                                >
+                                    <X className="size-3" />
+                                </button>
+                            </span>
+                        );
+                    })}
+                </div>
+            )}
             <div className="flex flex-wrap items-end gap-4">
                 {/* 1. Package Autocomplete (First entry point) */}
                 <div className="relative flex items-center gap-2">

@@ -48,10 +48,29 @@ export const routeForFamily: Record<FileFamily, string> = {
     none: '/ai-center/ai-tools/vsmart-prompt',
 };
 
+// The server stores the human title inside the generated `result_json` payload
+// (e.g. "Respiration in Organisms - Class 10"), not on the task row itself. Prefer
+// it over the auto-generated `Task_<timestamp>` name when present.
+const titleFromResultJson = (raw: unknown): string | null => {
+    if (typeof raw !== 'string' || !raw) return null;
+    try {
+        const parsed = JSON.parse(raw) as { title?: unknown };
+        if (typeof parsed.title === 'string') {
+            const trimmed = parsed.title.trim();
+            if (trimmed) return trimmed;
+        }
+    } catch {
+        // result_json may be empty, partial, or non-JSON for in-progress/failed tasks
+    }
+    return null;
+};
+
 export const taskDisplayName = (
     task: AITaskIndividualListInterface,
     fallback = 'Untitled draft'
 ): string => {
+    const generatedTitle = titleFromResultJson(task.result_json);
+    if (generatedTitle) return generatedTitle;
     if (task.file_detail?.file_name) return stripExtension(task.file_detail.file_name);
     if (task.task_name && !/^Task_\d/.test(task.task_name)) return task.task_name;
     return fallback;

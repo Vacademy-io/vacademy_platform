@@ -1,3 +1,11 @@
+// jQuery must be on window BEFORE the quill chunk loads MathQuill (mathquill
+// reads window.jQuery at module-eval time). Importing the wrapper here at the
+// top of the main bundle entry guarantees this — the wrapper sets window.jQuery
+// synchronously when this module's import graph initializes, well before any
+// lazy chunk that contains MathQuill is fetched. See vite.config.ts for the
+// chunking rationale.
+import "./components/quill/jquery";
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Sentry from "@sentry/react";
 import { RouterProvider, createRouter } from "@tanstack/react-router";

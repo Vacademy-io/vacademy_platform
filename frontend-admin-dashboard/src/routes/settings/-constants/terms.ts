@@ -94,6 +94,7 @@ export const enum SettingsTabs {
     Tab = 'tab',
     Naming = 'naming',
     Payment = 'payment',
+    Invoice = 'invoice',
     Referral = 'referral',
     Course = 'course',
     Assessment = 'assessment',
@@ -115,6 +116,7 @@ export const enum SettingsTabs {
     LiveSession = 'liveSession',
     Youtube = 'youtube',
     Automations = 'automations',
+    Coupons = 'coupons',
 }
 
 export const DAYS_IN_MONTH = 30;

@@ -5,7 +5,7 @@ import { getInstituteId } from "@/constants/helper";
 import { BASE_URL, urlPublicCourseDetails } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
-import { BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 
@@ -133,7 +133,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                                                 {book.package_name}
                                             </p>
                                             {book.instructors?.[0] && (
-                                                <p className="text-[9px] font-medium text-muted-foreground truncate leading-none mt-0.5">
+                                                <p className="text-caption font-medium text-muted-foreground truncate leading-none mt-0.5">
                                                     {book.instructors[0].full_name}
                                                 </p>
                                             )}
@@ -143,14 +143,14 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                             </div>
                         ) : (
                             <div className="py-4 px-3 rounded-lg border border-dashed border-border flex flex-col items-center justify-center text-center bg-secondary/10">
-                                <p className="text-[11px] text-muted-foreground italic font-medium">No {activeTab} books available.</p>
+                                <p className="text-caption text-muted-foreground italic font-medium">No {activeTab} books available.</p>
                             </div>
                         )}
                     </div>
 
                     {totalBooks > 0 && (
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
-                            <span className="text-[9px] text-muted-foreground font-black uppercase tracking-tighter">
+                            <span className="text-caption text-muted-foreground font-black uppercase tracking-tighter">
                                 {totalBooks} {totalBooks === 1 ? "book" : "books"}
                                 {totalPages > 1 && ` · ${page + 1} / ${totalPages}`}
                             </span>
@@ -168,7 +168,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                                             fetchBooks(levelIdMap[levelKey], newPage);
                                         }}
                                     >
-                                        <ChevronLeft className="h-3.5 w-3.5" />
+                                        <CaretLeft className="h-3.5 w-3.5" />
                                     </Button>
                                     <Button
                                         variant="ghost"
@@ -182,7 +182,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                                             fetchBooks(levelIdMap[levelKey], newPage);
                                         }}
                                     >
-                                        <ChevronRight className="h-3.5 w-3.5" />
+                                        <CaretRight className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>
                             )}

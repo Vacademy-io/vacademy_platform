@@ -19,6 +19,10 @@ export type RichTextEditorProps = {
     className?: string;
     enableModalCompose?: boolean;
     modalMinHeight?: number | string;
+    /** Hide the toolbar for compact / inline use (e.g. answer options). */
+    hideToolbar?: boolean;
+    /** Show a slim, Slack-style toolbar (text formatting + lists + code only). */
+    minimalToolbar?: boolean;
 };
 
 /**
@@ -36,6 +40,8 @@ export function RichTextEditor({
     className,
     enableModalCompose = false,
     modalMinHeight = 360,
+    hideToolbar = false,
+    minimalToolbar = false,
 }: RichTextEditorProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [draft, setDraft] = useState<string>('');
@@ -50,6 +56,8 @@ export function RichTextEditor({
                     onBlur={onBlur}
                     placeholder={placeholder}
                     minHeight={minHeight ?? 70}
+                    hideToolbar={hideToolbar}
+                    minimalToolbar={minimalToolbar}
                 />
             </Suspense>
             {enableModalCompose && (

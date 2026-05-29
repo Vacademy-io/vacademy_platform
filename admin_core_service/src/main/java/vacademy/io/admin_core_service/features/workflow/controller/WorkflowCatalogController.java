@@ -215,6 +215,13 @@ public class WorkflowCatalogController {
         // CRM
         eventMeta.put("MEMBERSHIP_EXPIRY", new String[]{"Membership Expiry", "Fires when a user's membership/subscription is about to expire", "CRM", "USER_PLAN"});
         eventMeta.put("ENROLLMENT_REPORTS", new String[]{"Enrollment Reports", "Fires periodically for generating enrollment reports", "CRM", "INSTITUTE"});
+        // Lead TAT / Follow-up SLA (emit-only; the workflow you bind here decides the channel/template/recipients)
+        eventMeta.put("LEAD_ASSIGNED_TO_COUNSELOR", new String[]{"Lead Assigned to Counselor", "Fires when a lead is assigned or reassigned to a counselor", "CRM", "AUDIENCE"});
+        eventMeta.put("LEAD_TAT_REMINDER_BEFORE", new String[]{"Lead TAT Reminder (Before Breach)", "Fires when an unacted lead is approaching its TAT/SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("LEAD_TAT_OVERDUE", new String[]{"Lead TAT Overdue", "Fires when the counselor has not acted on a lead by its TAT/SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("FOLLOW_UP_DUE", new String[]{"Follow-up Due", "Fires when a lead follow-up is approaching its SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("FOLLOW_UP_OVERDUE", new String[]{"Follow-up Overdue", "Fires when a lead follow-up has crossed its SLA deadline", "CRM", "AUDIENCE"});
+        eventMeta.put("LEAD_STATUS_CHANGED", new String[]{"Lead Status Changed", "Fires when a lead's status/tier changes (carries oldStatus and newStatus)", "CRM", "AUDIENCE"});
         // Assessment
         eventMeta.put("ASSESSMENT_CREATE", new String[]{"Assessment Created", "Fires when a new assessment is created", "Assessment", "ASSESSMENT"});
         eventMeta.put("ASSESSMENT_START", new String[]{"Assessment Started", "Fires when a student starts an assessment attempt", "Assessment", "ASSESSMENT"});
@@ -260,6 +267,74 @@ public class WorkflowCatalogController {
                     .build());
         }
         return ResponseEntity.ok(types);
+    }
+
+    /**
+     * Context variables available per lead trigger event, so the "Create sample template" UI
+     * (Trigger workflow → Communication) can offer insertable tokens that map to the ctx keys
+     * the workflow engine reads via SpEL (e.g. {@code #ctx['parentName']}). Keys mirror what
+     * {@link vacademy.io.admin_core_service.features.audience.service.LeadTriggerContextBuilder}
+     * and the lead SLA scheduler put on the context. Returns a map of event name → list of
+     * {key, label}. Events not listed have no lead-specific variables.
+     */
+    @GetMapping("/trigger-context-variables")
+    public ResponseEntity<Map<String, List<Map<String, String>>>> getTriggerContextVariables() {
+        // Common keys present on every lead-row emit (forLead / SLA scheduler).
+        List<Map<String, String>> base = new ArrayList<>(List.of(
+                ctxVar("instituteId", "Institute ID"),
+                ctxVar("leadId", "Lead ID"),
+                ctxVar("userId", "Parent user ID"),
+                ctxVar("studentUserId", "Student user ID"),
+                ctxVar("enquiryId", "Enquiry ID"),
+                ctxVar("audienceId", "Campaign (audience) ID"),
+                ctxVar("poolId", "Counselor pool ID"),
+                ctxVar("campaignName", "Campaign name"),
+                ctxVar("counselorId", "Counselor user ID"),
+                ctxVar("counselorName", "Counselor name"),
+                ctxVar("counselorEmail", "Counselor email"),
+                ctxVar("counselorMobile", "Counselor mobile"),
+                ctxVar("leadName", "Lead name"),
+                ctxVar("leadEmail", "Lead email"),
+                ctxVar("leadMobile", "Lead mobile"),
+                ctxVar("tat", "Configured TAT (human-readable, e.g. '24 hours')"),
+                ctxVar("tatHours", "Configured TAT in hours (raw integer)"),
+                // Same values as lead-* above, kept for backward compat with older templates.
+                ctxVar("parentName", "Parent name (alias of leadName)"),
+                ctxVar("parentEmail", "Parent email (alias of leadEmail)"),
+                ctxVar("parentMobile", "Parent mobile (alias of leadMobile)")));
+
+        // TAT / follow-up reminders add SLA timing keys.
+        List<Map<String, String>> sla = new ArrayList<>(base);
+        sla.addAll(List.of(
+                ctxVar("tatStage", "SLA stage (TAT_BEFORE / TAT_OVERDUE / FOLLOW_UP_DUE / FOLLOW_UP_OVERDUE)"),
+                ctxVar("stageLabel", "Stage label (e.g. BEFORE_30M)"),
+                ctxVar("notifyRoles", "Roles to notify"),
+                ctxVar("dueAt", "Deadline (ISO timestamp)"),
+                ctxVar("minutesToBreach", "Minutes until breach")));
+
+        // Status changes add the old/new status keys.
+        List<Map<String, String>> status = new ArrayList<>(base);
+        status.addAll(List.of(
+                ctxVar("changeType", "Change type (CONVERSION_STATUS / TIER / ENQUIRY_STATUS / LEAD_STATUS)"),
+                ctxVar("oldStatus", "Previous status"),
+                ctxVar("newStatus", "New status"),
+                ctxVar("conversionStatus", "Conversion status")));
+
+        Map<String, List<Map<String, String>>> out = new LinkedHashMap<>();
+        out.put(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), base);
+        out.put(WorkflowTriggerEvent.LEAD_TAT_REMINDER_BEFORE.name(), sla);
+        out.put(WorkflowTriggerEvent.LEAD_TAT_OVERDUE.name(), sla);
+        out.put(WorkflowTriggerEvent.FOLLOW_UP_DUE.name(), sla);
+        out.put(WorkflowTriggerEvent.FOLLOW_UP_OVERDUE.name(), sla);
+        out.put(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), status);
+        return ResponseEntity.ok(out);
+    }
+
+    private static Map<String, String> ctxVar(String key, String label) {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("key", key);
+        m.put("label", label);
+        return m;
     }
 
     @GetMapping("/actions")

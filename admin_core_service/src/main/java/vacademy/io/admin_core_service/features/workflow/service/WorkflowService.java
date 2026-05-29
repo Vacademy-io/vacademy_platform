@@ -107,6 +107,8 @@ public class WorkflowService {
                     .triggerStatus(row.getTriggerStatus())
                     .triggerCreatedAt(row.getTriggerCreatedAt())
                     .triggerUpdatedAt(row.getTriggerUpdatedAt())
+                    .eventAppliedType(row.getEventAppliedType())
+                    .eventId(row.getEventId())
                     .build())
                 .toList();
 

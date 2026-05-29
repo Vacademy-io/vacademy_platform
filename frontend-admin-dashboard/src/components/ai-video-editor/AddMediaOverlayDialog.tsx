@@ -15,6 +15,7 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
 import { LayerOrderControl, FIT_LABELS } from './controls';
 import { AdvancedSection } from './AdvancedSection';
+import { MediaPicker } from './MediaPicker';
 
 interface AddMediaOverlayDialogProps {
     open: boolean;
@@ -50,6 +51,7 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
     const [entryIndex, setEntryIndex] = useState(0); // for user_driven
 
     const inputRef = useRef<HTMLInputElement>(null);
+    const [pickerOpen, setPickerOpen] = useState(false);
     // Track the active blob URL so we can revoke it (C17)
     const blobUrlRef = useRef<string>('');
 
@@ -77,6 +79,18 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
         reset();
         onClose();
     }, [reset, onClose]);
+
+    // Resolve a URL chosen from the media picker (stock/AI/library/upload tab).
+    const handlePickerSelect = useCallback(
+        (url: string) => {
+            revokeBlobUrl();
+            const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+            setMediaType(isVideo ? 'video' : 'image');
+            setPreviewUrl(url);
+            setUploadedSrc(url);
+        },
+        [revokeBlobUrl]
+    );
 
     const handleFileSelect = useCallback(
         async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -233,6 +247,15 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
                         />
                     </div>
 
+                    {/* Stock / AI / Library picker */}
+                    <button
+                        type="button"
+                        onClick={() => setPickerOpen(true)}
+                        className="w-full rounded-lg border border-gray-200 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                    >
+                        Browse stock, AI &amp; library…
+                    </button>
+
                     {/* Timing */}
                     {isTimeDriven ? (
                         <div className="grid grid-cols-2 gap-3">
@@ -358,6 +381,18 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
                     </Button>
                 </DialogFooter>
             </DialogContent>
+
+            <MediaPicker
+                open={pickerOpen}
+                accept="both"
+                orientation={
+                    (meta.dimensions?.height ?? 0) > (meta.dimensions?.width ?? 0)
+                        ? 'portrait'
+                        : 'landscape'
+                }
+                onSelect={handlePickerSelect}
+                onClose={() => setPickerOpen(false)}
+            />
         </Dialog>
     );
 }

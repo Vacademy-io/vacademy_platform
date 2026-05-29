@@ -25,10 +25,52 @@ logger = logging.getLogger("transcribe-worker")
 # Config (reuses same env vars as render worker)
 # ---------------------------------------------------------------------------
 
-AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
-AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+AWS_ACCESS_KEY = os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_KEY = os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION = os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1")
 S3_BUCKET = os.environ.get("AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public")
+
+# Apple Silicon GPU acceleration: prefer mlx-whisper when available — it
+# runs on the Mac's Metal GPU and is ~5-10× faster than faster-whisper CPU.
+# Falls back automatically on non-arm64 hosts or if the package isn't
+# installed. Disable explicitly with WHISPER_BACKEND=cpu.
+def _detect_mlx_backend() -> bool:
+    if os.environ.get("WHISPER_BACKEND", "auto").lower() == "cpu":
+        return False
+    import platform
+    if platform.machine() not in ("arm64", "aarch64"):
+        return False
+    try:
+        import mlx_whisper  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+USE_MLX_WHISPER = _detect_mlx_backend()
+
+# Faster-whisper uses raw model names ("base"); MLX uses HuggingFace repo
+# paths. This map covers the same five tiers admin-core requests.
+MLX_REPO_MAP = {
+    "tiny":   "mlx-community/whisper-tiny-mlx",
+    "base":   "mlx-community/whisper-base-mlx",
+    "small":  "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "large":  "mlx-community/whisper-large-v3-turbo",
+    "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+}
+
+# Local-disk fallback for dev when AWS creds are absent. Files are written
+# under LOCAL_TRANSCRIPT_DIR and served by the worker at LOCAL_PUBLIC_BASE
+# (mounted in main.py as a static route at /transcripts).
+LOCAL_TRANSCRIPT_DIR = os.environ.get("LOCAL_TRANSCRIPT_DIR", "/tmp/vacademy-transcripts")
+LOCAL_PUBLIC_BASE = os.environ.get("LOCAL_TRANSCRIPT_PUBLIC_BASE", "http://localhost:8090/transcripts")
+
+USE_LOCAL_STORAGE = not (AWS_ACCESS_KEY and AWS_SECRET_KEY)
+if USE_LOCAL_STORAGE:
+    logger.info(
+        f"AWS credentials absent — transcripts will be written to {LOCAL_TRANSCRIPT_DIR} "
+        f"and served from {LOCAL_PUBLIC_BASE}/<job_id>/..."
+    )
 
 # Limit concurrent model loads — only one model at a time
 MAX_TRANSCRIBE_CONCURRENT = int(os.environ.get("MAX_TRANSCRIBE_CONCURRENT", "1"))
@@ -53,18 +95,24 @@ class TranscribeWorker:
         model_size: str = "base",
         word_timestamps: bool = True,
         output_formats: Optional[list[str]] = None,
+        task: str = "transcribe",
         on_progress: Optional[Callable[[float], None]] = None,
     ) -> dict:
         """
         Full transcription pipeline.
 
-        Returns dict with keys: json_url, srt_url, vtt_url, txt_url,
-        duration_seconds, detected_language, language_probability, segment_count, word_count.
+        task:
+          - 'transcribe' (default): output is in the detected source language.
+          - 'translate': output is always English (Whisper's built-in translate).
+          - 'both': run the loaded model twice — source + English. Single decode.
         """
         import asyncio
 
         if output_formats is None:
             output_formats = ["json", "srt", "vtt", "txt"]
+
+        if task not in ("transcribe", "translate", "both"):
+            raise ValueError(f"task must be 'transcribe', 'translate', or 'both', got: {task}")
 
         def _progress(p: float):
             if on_progress:
@@ -75,7 +123,7 @@ class TranscribeWorker:
             None,
             self._transcribe_sync,
             job_id, source_url, language, model_size,
-            word_timestamps, output_formats, _progress,
+            word_timestamps, output_formats, task, _progress,
         )
 
     def _transcribe_sync(
@@ -86,6 +134,7 @@ class TranscribeWorker:
         model_size: str,
         word_timestamps: bool,
         output_formats: list[str],
+        task: str,
         on_progress: Callable[[float], None],
     ) -> dict:
         """Synchronous transcription pipeline (runs in thread pool)."""
@@ -104,63 +153,143 @@ class TranscribeWorker:
             self._demux_audio(source_path, wav_path)
             on_progress(20)
 
-            # Get audio duration
             duration_seconds = self._get_duration(wav_path)
             logger.info(f"[{job_id}] Audio duration: {duration_seconds:.1f}s ({duration_seconds / 60:.1f} min)")
 
-            # --- Stage 3: Transcribe with faster-whisper (20-85%) ---
+            # --- Stage 3: Load Whisper once, then run the requested passes (20-90%) ---
             whisper_language = self._resolve_language(language)
-            segments, info = self._run_whisper(
-                wav_path, model_size, whisper_language, word_timestamps, on_progress, job_id,
-            )
-            on_progress(85)
+            model = self._load_whisper_model(model_size, job_id)
 
-            detected_language = info.language
-            language_probability = round(info.language_probability, 3)
-            logger.info(f"[{job_id}] Detected language: {detected_language} (p={language_probability})")
+            do_transcribe = task in ("transcribe", "both")
+            do_translate = task in ("translate", "both")
 
-            # --- Stage 4: Build structured result (85-90%) ---
-            transcript_data = self._build_transcript(
-                segments, word_timestamps, detected_language, language_probability, duration_seconds,
-            )
+            source_segments = source_info = None
+            english_segments = english_info = None
+
+            if task == "both":
+                source_segments, source_info = self._run_whisper(
+                    model, wav_path, whisper_language, word_timestamps,
+                    task="transcribe", progress_range=(20, 55),
+                    on_progress=on_progress, job_id=job_id,
+                )
+                if source_info.language == "en":
+                    # Source is already English — skip the translate pass and
+                    # reuse the source transcript as the English output. Halves
+                    # wall time for English recordings.
+                    logger.info(f"[{job_id}] Source is English; skipping translate pass")
+                    english_segments, english_info = source_segments, source_info
+                    on_progress(90)
+                else:
+                    english_segments, english_info = self._run_whisper(
+                        model, wav_path, whisper_language, word_timestamps,
+                        task="translate", progress_range=(55, 90),
+                        on_progress=on_progress, job_id=job_id,
+                    )
+            elif task == "transcribe":
+                source_segments, source_info = self._run_whisper(
+                    model, wav_path, whisper_language, word_timestamps,
+                    task="transcribe", progress_range=(20, 85),
+                    on_progress=on_progress, job_id=job_id,
+                )
+            else:  # translate
+                english_segments, english_info = self._run_whisper(
+                    model, wav_path, whisper_language, word_timestamps,
+                    task="translate", progress_range=(20, 85),
+                    on_progress=on_progress, job_id=job_id,
+                )
+
             on_progress(90)
 
-            # --- Stage 5: Generate output formats & upload (90-100%) ---
-            output_urls = {}
+            language_info = source_info or english_info
+            detected_language = language_info.language
+            language_probability = round(language_info.language_probability, 3)
+            logger.info(f"[{job_id}] Detected language: {detected_language} (p={language_probability})")
 
-            if "json" in output_formats:
-                json_path = work_dir / "transcript.json"
-                json_path.write_text(json.dumps(transcript_data, ensure_ascii=False, indent=2))
-                output_urls["json_url"] = self._upload(json_path, f"{s3_base}/transcript.json", "application/json")
+            # --- Stage 4: Build + upload outputs per pass (90-100%) ---
+            output_urls_source = None
+            output_urls_english = None
+            source_transcript = None
+            english_transcript = None
 
-            if "srt" in output_formats:
-                srt_path = work_dir / "transcript.srt"
-                srt_path.write_text(self._generate_srt(transcript_data["segments"]), encoding="utf-8")
-                output_urls["srt_url"] = self._upload(srt_path, f"{s3_base}/transcript.srt", "text/plain")
+            if do_transcribe:
+                source_transcript = self._build_transcript(
+                    source_segments, word_timestamps,
+                    detected_language, language_probability, duration_seconds,
+                )
+                src_prefix = f"{s3_base}/source" if task == "both" else s3_base
+                output_urls_source = self._write_and_upload_formats(
+                    work_dir, source_transcript, output_formats, src_prefix, suffix="",
+                )
 
-            if "vtt" in output_formats:
-                vtt_path = work_dir / "transcript.vtt"
-                vtt_path.write_text(self._generate_vtt(transcript_data["segments"]), encoding="utf-8")
-                output_urls["vtt_url"] = self._upload(vtt_path, f"{s3_base}/transcript.vtt", "text/plain")
-
-            if "txt" in output_formats:
-                txt_path = work_dir / "transcript.txt"
-                txt_path.write_text(transcript_data["full_text"], encoding="utf-8")
-                output_urls["txt_url"] = self._upload(txt_path, f"{s3_base}/transcript.txt", "text/plain")
+            if do_translate:
+                english_transcript = self._build_transcript(
+                    english_segments, word_timestamps,
+                    detected_language, language_probability, duration_seconds,
+                )
+                if task == "both":
+                    output_urls_english = self._write_and_upload_formats(
+                        work_dir, english_transcript, output_formats,
+                        f"{s3_base}/english", suffix="",
+                    )
+                else:
+                    output_urls_english = self._write_and_upload_formats(
+                        work_dir, english_transcript, output_formats, s3_base, suffix=".en",
+                    )
 
             on_progress(100)
 
+            counts_transcript = source_transcript if do_transcribe else english_transcript
+            legacy = output_urls_source if do_transcribe else output_urls_english
+
             return {
-                **output_urls,
+                **(legacy or {}),
+                "output_urls_source": output_urls_source,
+                "output_urls_english": output_urls_english,
                 "duration_seconds": round(duration_seconds, 2),
                 "detected_language": detected_language,
                 "language_probability": language_probability,
-                "segment_count": len(transcript_data["segments"]),
-                "word_count": transcript_data["word_count"],
+                "segment_count": len(counts_transcript["segments"]),
+                "word_count": counts_transcript["word_count"],
             }
 
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _write_and_upload_formats(
+        self,
+        work_dir: Path,
+        transcript_data: dict,
+        output_formats: list[str],
+        s3_prefix: str,
+        suffix: str = "",
+    ) -> dict:
+        """Write the requested format files locally, upload to S3, return URL map.
+
+        suffix is inserted before the extension: e.g. suffix='.en' → transcript.en.srt.
+        """
+        urls = {}
+
+        if "json" in output_formats:
+            p = work_dir / f"transcript{suffix}.json"
+            p.write_text(json.dumps(transcript_data, ensure_ascii=False, indent=2))
+            urls["json_url"] = self._upload(p, f"{s3_prefix}/transcript{suffix}.json", "application/json")
+
+        if "srt" in output_formats:
+            p = work_dir / f"transcript{suffix}.srt"
+            p.write_text(self._generate_srt(transcript_data["segments"]), encoding="utf-8")
+            urls["srt_url"] = self._upload(p, f"{s3_prefix}/transcript{suffix}.srt", "text/plain")
+
+        if "vtt" in output_formats:
+            p = work_dir / f"transcript{suffix}.vtt"
+            p.write_text(self._generate_vtt(transcript_data["segments"]), encoding="utf-8")
+            urls["vtt_url"] = self._upload(p, f"{s3_prefix}/transcript{suffix}.vtt", "text/plain")
+
+        if "txt" in output_formats:
+            p = work_dir / f"transcript{suffix}.txt"
+            p.write_text(transcript_data["full_text"], encoding="utf-8")
+            urls["txt_url"] = self._upload(p, f"{s3_prefix}/transcript{suffix}.txt", "text/plain")
+
+        return urls
 
     # -----------------------------------------------------------------------
     # Download
@@ -175,8 +304,8 @@ class TranscribeWorker:
         ext = Path(clean_url).suffix or ".mp4"
         dest_with_ext = dest.with_suffix(ext)
 
-        if "s3.amazonaws.com" in url or "s3." in url:
-            # Parse S3 URL
+        is_presigned = "X-Amz-Signature=" in url or "X-Amz-Algorithm=" in url
+        if ("s3.amazonaws.com" in url or "s3." in url) and not is_presigned:
             bucket, key = self._parse_s3_url(url)
             self._s3.download_file(bucket, key, str(dest_with_ext))
         else:
@@ -263,43 +392,133 @@ class TranscribeWorker:
     # Whisper transcription
     # -----------------------------------------------------------------------
 
-    def _run_whisper(
+    def _load_whisper_model(self, model_size: str, job_id: str):
+        """Return a model handle.
+
+        For MLX: returns the HuggingFace repo path (a string). MLX downloads
+        and loads the weights inside its own transcribe() on first use, so
+        we don't pre-load here.
+
+        For faster-whisper: instantiates and returns a WhisperModel. Loaded
+        once per job, reused across the transcribe + translate passes.
+        """
+        if USE_MLX_WHISPER:
+            repo = MLX_REPO_MAP.get(model_size, MLX_REPO_MAP["base"])
+            logger.info(f"[{job_id}] Using mlx-whisper (Apple GPU): {repo}")
+            return repo
+
+        from faster_whisper import WhisperModel
+        logger.info(f"[{job_id}] Loading faster-whisper model: {model_size} (int8, CPU)")
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        logger.info(f"[{job_id}] Model loaded")
+        return model
+
+    def _run_whisper_mlx(
         self,
+        repo: str,
         wav_path: Path,
-        model_size: str,
         language: Optional[str],
         word_timestamps: bool,
+        task: str,
+        progress_range: tuple[float, float],
         on_progress: Callable[[float], None],
         job_id: str,
     ):
-        """Run faster-whisper. Returns (segments_list, info)."""
-        from faster_whisper import WhisperModel
+        """MLX inference path. Returns (segments_list, info) shaped like
+        faster-whisper output so the rest of the pipeline is unchanged."""
+        from types import SimpleNamespace
+        import mlx_whisper
 
-        logger.info(f"[{job_id}] Loading faster-whisper model: {model_size} (int8, CPU)")
-        model = WhisperModel(model_size, device="cpu", compute_type="int8")
-        logger.info(f"[{job_id}] Model loaded, starting transcription...")
+        logger.info(f"[{job_id}] MLX pass: task={task}")
+        start_pct, end_pct = progress_range
+        on_progress(start_pct)
+
+        result = mlx_whisper.transcribe(
+            str(wav_path),
+            path_or_hf_repo=repo,
+            word_timestamps=word_timestamps,
+            language=language,
+            task=task,
+            verbose=None,
+        )
+
+        on_progress(end_pct)
+        segments = []
+        for s in result.get("segments", []):
+            words = None
+            if word_timestamps and s.get("words"):
+                words = [
+                    SimpleNamespace(
+                        word=w.get("word", ""),
+                        start=float(w.get("start", 0.0)),
+                        end=float(w.get("end", 0.0)),
+                    )
+                    for w in s["words"]
+                ]
+            segments.append(SimpleNamespace(
+                start=float(s.get("start", 0.0)),
+                end=float(s.get("end", 0.0)),
+                text=s.get("text", ""),
+                words=words,
+            ))
+        # MLX doesn't expose language_probability; use a high placeholder.
+        info = SimpleNamespace(
+            language=result.get("language", language or "en"),
+            language_probability=0.99,
+        )
+        logger.info(f"[{job_id}] MLX pass complete ({task}): {len(segments)} segments")
+        return segments, info
+
+    def _run_whisper(
+        self,
+        model,
+        wav_path: Path,
+        language: Optional[str],
+        word_timestamps: bool,
+        task: str,
+        progress_range: tuple[float, float],
+        on_progress: Callable[[float], None],
+        job_id: str,
+    ):
+        """Run one pass on a pre-loaded model. Returns (segments_list, info).
+
+        task: 'transcribe' (source language) or 'translate' (English).
+        progress_range: (start_pct, end_pct) — segment end times are mapped
+                        linearly into this window.
+        """
+        # MLX path: model is a HF repo path (string); delegate.
+        if isinstance(model, str):
+            return self._run_whisper_mlx(
+                model, wav_path, language, word_timestamps, task,
+                progress_range, on_progress, job_id,
+            )
+
+        logger.info(f"[{job_id}] Whisper pass: task={task}, progress={progress_range}")
 
         segments_iter, info = model.transcribe(
             str(wav_path),
             word_timestamps=word_timestamps,
             language=language,
+            task=task,
+            beam_size=1,
+            condition_on_previous_text=False,
             vad_filter=True,
             vad_parameters=dict(
                 min_silence_duration_ms=500,
             ),
         )
 
-        # Consume iterator with progress tracking
-        # We estimate progress based on segment end times vs total duration
         duration = self._get_duration(wav_path)
+        start_pct, end_pct = progress_range
+        span = end_pct - start_pct
         segments_list = []
         for seg in segments_iter:
             segments_list.append(seg)
             if duration > 0:
-                pct = 20 + (seg.end / duration) * 65  # 20-85% range
-                on_progress(min(pct, 85))
+                pct = start_pct + (seg.end / duration) * span
+                on_progress(min(pct, end_pct))
 
-        logger.info(f"[{job_id}] Transcription complete: {len(segments_list)} segments")
+        logger.info(f"[{job_id}] Whisper pass complete ({task}): {len(segments_list)} segments")
         return segments_list, info
 
     # -----------------------------------------------------------------------
@@ -409,7 +628,19 @@ class TranscribeWorker:
     # -----------------------------------------------------------------------
 
     def _upload(self, local_path: Path, s3_key: str, content_type: str = "application/octet-stream") -> str:
-        """Upload a file to S3 and return the public URL."""
+        """Upload a file and return a fetchable URL.
+
+        When AWS credentials are set, uploads to S3. Otherwise (dev mode),
+        copies to LOCAL_TRANSCRIPT_DIR and returns a localhost URL served
+        by the static route mounted in main.py.
+        """
+        if USE_LOCAL_STORAGE:
+            import shutil
+            target = Path(LOCAL_TRANSCRIPT_DIR) / s3_key
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(local_path, target)
+            return f"{LOCAL_PUBLIC_BASE.rstrip('/')}/{s3_key}"
+
         self._s3.upload_file(
             str(local_path),
             S3_BUCKET,

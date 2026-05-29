@@ -5,21 +5,21 @@ import { Slider } from "@/components/ui/slider";
 import {
   Play,
   Pause,
-  RotateCcw,
+  ArrowCounterClockwise,
   Rewind,
   FastForward,
-  Volume2,
-  VolumeX,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
+  SpeakerHigh,
+  SpeakerSlash,
+  Gear,
+  CaretLeft,
+  CaretRight,
   Printer,
-  Maximize,
-  Minimize,
-  HelpCircle,
-  CheckCircle2,
+  ArrowsOut,
+  ArrowsIn,
+  Question,
+  CheckCircle,
   XCircle,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import type {
   ContentType,
   NavigationType,
@@ -951,7 +951,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   allow="autoplay"
                   title={`AI Video Layer ${frame.id}`}
                   style={{
-                    backgroundColor: index === 0 ? "#ffffff" : "transparent",
+                    backgroundColor: index === 0 ? "white" : "transparent",
                     pointerEvents: frame.id?.startsWith('branding-watermark') ? 'none' : 'auto',
                     ...frameStyle
                   }}
@@ -973,7 +973,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
               {/* Header */}
               <div className="flex items-center gap-2 mb-4">
-                <HelpCircle className="h-4 w-4 text-blue-400 shrink-0" />
+                <Question className="h-4 w-4 text-blue-400 shrink-0" />
                 <span className="text-blue-400 text-xs font-bold uppercase tracking-widest">Quick Check</span>
                 <div className="flex-1" />
                 <button
@@ -1020,7 +1020,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                         {String.fromCharCode(65 + i)}
                       </span>
                       <span className="flex-1">{option}</span>
-                      {hasAnswered && isCorrect && <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />}
+                      {hasAnswered && isCorrect && <CheckCircle className="h-4 w-4 text-green-400 shrink-0" />}
                       {hasAnswered && isSelected && !isCorrect && <XCircle className="h-4 w-4 text-red-400 shrink-0" />}
                     </button>
                   );
@@ -1065,7 +1065,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   return (
                     <div
                       key={`src-seg-${i}`}
-                      className="absolute top-1/2 -translate-y-1/2 h-[6px] rounded bg-indigo-500/40 pointer-events-none"
+                      className="absolute top-1/2 -translate-y-1/2 h-1.5 rounded bg-indigo-500/40 pointer-events-none"
                       style={{
                         left: `${(inT / duration) * 100}%`,
                         width: `${((exitT - inT) / duration) * 100}%`,
@@ -1080,10 +1080,10 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   max={duration || 100}
                   step={0.1}
                   onValueChange={handleSeek}
-                  className="relative z-[1]"
+                  className="relative z-1"
                 />
               </div>
-              <span className="text-white text-sm font-mono min-w-[60px] text-right">
+              <span className="text-white text-sm font-mono min-w-16 text-right">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
             </div>
@@ -1134,14 +1134,14 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   disabled={!audioRef.current && !!audioUrl}
                   title="Reset to beginning"
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <ArrowCounterClockwise className="h-4 w-4" />
                 </Button>
               </div>
 
               {/* Right Side: Volume and Speed Controls */}
               <div className="flex items-center gap-2">
                 {/* Volume Control */}
-                <div className="flex items-center gap-3 min-w-[80px] max-w-[120px]">
+                <div className="flex items-center gap-3 min-w-20 max-w-32">
                   <Button
                     variant="outline"
                     size="icon"
@@ -1150,9 +1150,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     title={isMuted ? "Unmute" : "Mute"}
                   >
                     {isMuted || volume === 0 ? (
-                      <VolumeX className="h-4 w-4" />
+                      <SpeakerSlash className="h-4 w-4" />
                     ) : (
-                      <Volume2 className="h-4 w-4" />
+                      <SpeakerHigh className="h-4 w-4" />
                     )}
                   </Button>
                   <Slider
@@ -1173,11 +1173,11 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8px-3"
                     title="Playback speed"
                   >
-                    <Settings className="h-3 w-3 mr-1" />
+                    <Gear className="h-3 w-3 mr-1" />
                     {playbackRate}x
                   </Button>
                   {showPlaybackSpeedMenu && (
-                    <div className="absolute bottom-full right-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[100px]">
+                    <div className="absolute bottom-full right-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-24">
                       {playbackSpeeds.map((speed) => (
                         <button
                           key={speed}
@@ -1204,7 +1204,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     }`}
                     title={questionsEnabled ? 'Disable quiz questions' : 'Enable quiz questions'}
                   >
-                    <HelpCircle className="h-3.5 w-3.5 mr-1" />
+                    <Question className="h-3.5 w-3.5 mr-1" />
                     Quiz {questionsEnabled ? 'ON' : 'OFF'}
                   </Button>
                 )}
@@ -1218,9 +1218,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
                 >
                   {isFullscreen ? (
-                    <Minimize className="h-4 w-4" />
+                    <ArrowsIn className="h-4 w-4" />
                   ) : (
-                    <Maximize className="h-4 w-4" />
+                    <ArrowsOut className="h-4 w-4" />
                   )}
                 </Button>
               </div>
@@ -1241,7 +1241,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 disabled:opacity-50"
                 title="Previous"
               >
-                <ChevronLeft className="h-4 w-4 mr-1" />
+                <CaretLeft className="h-4 w-4 mr-1" />
                 Previous
               </Button>
 
@@ -1258,7 +1258,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 title="Next"
               >
                 Next
-                <ChevronRight className="h-4 w-4 ml-1" />
+                <CaretRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
 
@@ -1270,7 +1270,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
               title="Reset to beginning"
             >
-              <RotateCcw className="h-4 w-4" />
+              <ArrowCounterClockwise className="h-4 w-4" />
             </Button>
           </div>
         )}
@@ -1285,7 +1285,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
               title="Reset"
             >
-              <RotateCcw className="h-4 w-4 mr-1" />
+              <ArrowCounterClockwise className="h-4 w-4 mr-1" />
               Reset
             </Button>
             <span className="text-gray-400 text-sm">

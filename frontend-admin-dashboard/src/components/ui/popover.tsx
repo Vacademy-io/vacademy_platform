@@ -11,9 +11,16 @@ const PopoverAnchor = PopoverPrimitive.Anchor;
 
 const PopoverContent = React.forwardRef<
     React.ElementRef<typeof PopoverPrimitive.Content>,
-    React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = 'center', sideOffset = 4, ...props }, ref) => (
-    <PopoverPrimitive.Portal>
+    React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
+        /**
+         * Render in a body portal (default). Set false to render inline — needed
+         * inside scroll-locked containers (Dialog/Sheet) so the content's own
+         * scroll isn't blocked by react-remove-scroll.
+         */
+        portal?: boolean;
+    }
+>(({ className, align = 'center', sideOffset = 4, portal = true, ...props }, ref) => {
+    const content = (
         <PopoverPrimitive.Content
             ref={ref}
             align={align}
@@ -24,8 +31,9 @@ const PopoverContent = React.forwardRef<
             )}
             {...props}
         />
-    </PopoverPrimitive.Portal>
-));
+    );
+    return portal ? <PopoverPrimitive.Portal>{content}</PopoverPrimitive.Portal> : content;
+});
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
 export { Popover, PopoverTrigger, PopoverContent, PopoverAnchor };

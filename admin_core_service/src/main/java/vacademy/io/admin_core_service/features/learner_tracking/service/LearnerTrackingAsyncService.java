@@ -205,6 +205,35 @@ public class LearnerTrackingAsyncService {
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }
 
+        // ==== SCORM Tracking ====
+        //
+        // SCORM packages POST to /scorm/tracking/v1/{slideId}/commit on every
+        // LMSCommit / LMSFinish (1.2) or Commit / Terminate (2004) fired by the
+        // content inside the iframe. ScormTrackingService persists the row in
+        // scorm_learner_progress and then calls this method with a percentage
+        // already derived per SCORM 2004 spec precedence (progress_measure >
+        // score.scaled > score.raw/max > completion-status fallback).
+        //
+        // SCORM is its own SlideTypeEnum and gets its own operation enum
+        // (PERCENTAGE_SCORM_COMPLETED). Both are added to the chapter cascade
+        // lists below so the rollup actually picks SCORM slides up. Before
+        // this fix, source_type=SCORM was excluded from the cascade's
+        // sourceTypeList entirely — SCORM completion was invisible to chapter
+        // / module / subject / course percentages (B1 in the ledger).
+        //
+        // Slide-level monotonic guard (B9) keeps the slide at its high-water
+        // mark — once a fully-completed run produces 100%, partial restarts
+        // can't lower it. Rollups still overwrite freely on each cascade run.
+        @Async
+        @Transactional
+        public void updateLearnerOperationsForScorm(String userId, String slideId, Double percentage,
+                        String chapterId, String moduleId, String subjectId, String packageSessionId) {
+                addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_SCORM_COMPLETED.name(), percentage);
+
+                updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+        }
+
         // ==== Coding Submission Tracking ====
         //
         // Code Editor slides are stored as source_type = DOCUMENT, so they live in
@@ -415,7 +444,8 @@ public class LearnerTrackingAsyncService {
                                 LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED.name(),
                                 LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name(),
                                 LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name(),
-                                LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name());
+                                LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name(),
+                                LearnerOperationEnum.PERCENTAGE_SCORM_COMPLETED.name());
                 List<String> slideStatusList = List.of(
                                 SlideStatus.PUBLISHED.name(),
                                 SlideStatus.UNSYNC.name());
@@ -425,7 +455,8 @@ public class LearnerTrackingAsyncService {
                                 List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(),
                                                 SlideTypeEnum.ASSIGNMENT.name(),
                                                 SlideTypeEnum.QUESTION.name(), SlideTypeEnum.QUIZ.name(),
-                                                SlideTypeEnum.HTML_VIDEO.name(), SlideTypeEnum.AUDIO.name()));
+                                                SlideTypeEnum.HTML_VIDEO.name(), SlideTypeEnum.AUDIO.name(),
+                                                SlideTypeEnum.SCORM.name()));
 
                 addOrUpdatePercentageOperation(
                                 userId,

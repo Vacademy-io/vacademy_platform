@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.invoice.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -7,8 +8,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.invoice.dto.AdminCreateInvoiceRequestDTO;
+import vacademy.io.admin_core_service.features.invoice.dto.AdminInvoicePaymentLinkResponseDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +24,9 @@ public class InvoiceController {
 
     @Autowired
     private InvoiceService invoiceService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.invoice.service.ManualReminderService manualReminderService;
 
     /**
      * Get invoice by ID
@@ -33,26 +41,46 @@ public class InvoiceController {
      * Get invoices by user ID
      */
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<InvoiceDTO>> getInvoicesByUser(@PathVariable String userId) {
-        List<InvoiceDTO> invoices = invoiceService.getInvoicesByUserId(userId);
+    public ResponseEntity<List<InvoiceDTO>> getInvoicesByUser(
+            @PathVariable String userId,
+            @RequestParam(required = false) String instituteId) {
+        List<InvoiceDTO> invoices = invoiceService.getInvoicesByUserId(userId, instituteId);
         return ResponseEntity.ok(invoices);
     }
 
     /**
-     * Download invoice PDF
-     * Note: This endpoint would need to be implemented to fetch PDF from S3
+     * Manually fire an {@code INSTALLMENT_DUE_REMINDER} workflow event for a single SFP
+     * (installment). Mirrors the per-row context the scheduled fee-reminder job builds,
+     * so any workflow already authored against that event runs unchanged.
+     *
+     * <p>Request: {@code POST /v1/invoices/sfp/{sfpId}/send-reminder}
+     * (no body — the SFP id is enough to derive recipient/amount/dueDate).
+     */
+    @PostMapping("/sfp/{sfpId}/send-reminder")
+    public ResponseEntity<java.util.Map<String, Object>> sendManualReminder(
+            @PathVariable String sfpId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
+        String triggeredBy = userDetails != null ? userDetails.getUserId() : null;
+        return ResponseEntity.ok(manualReminderService.triggerReminderForSfp(sfpId, triggeredBy));
+    }
+
+    /**
+     * Download invoice PDF — 302-redirects to a freshly-presigned S3 URL. If the
+     * persisted Invoice row has no {@code pdf_file_id} (typical when local-dev S3
+     * upload failed at create time), the service regenerates the PDF on demand,
+     * persists the new file id, and returns the URL — so this endpoint is the only
+     * thing the frontend needs to call regardless of whether the PDF was ever
+     * successfully uploaded the first time.
      */
     @GetMapping("/{invoiceId}/download")
     public ResponseEntity<String> downloadInvoice(@PathVariable String invoiceId) {
-        InvoiceDTO invoice = invoiceService.getInvoiceById(invoiceId);
-        if (invoice.getPdfUrl() != null) {
-            // Return redirect to PDF URL or implement actual download
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Location", invoice.getPdfUrl());
-            return new ResponseEntity<>(headers, HttpStatus.FOUND);
-        } else {
+        String url = invoiceService.resolveOrRegeneratePdfUrl(invoiceId);
+        if (url == null || url.isBlank()) {
             return ResponseEntity.notFound().build();
         }
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Location", url);
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
     /**
@@ -72,6 +100,41 @@ public class InvoiceController {
         Page<InvoiceDTO> invoices = invoiceService.getInvoicesByInstituteId(
                 instituteId, userId, status, startDate, endDate, page, size);
         return ResponseEntity.ok(invoices);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admin invoice endpoints
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Admin creates invoices for one or multiple users.
+     * No package session / enroll invite required.
+     * Returns one entry per userId with a shareable payment link.
+     *
+     * POST /admin-core-service/v1/invoices/admin/create
+     */
+    @PostMapping("/admin/create")
+    public ResponseEntity<List<AdminInvoicePaymentLinkResponseDTO>> createAdminInvoices(
+            @Valid @RequestBody AdminCreateInvoiceRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        List<AdminInvoicePaymentLinkResponseDTO> result = invoiceService.createAdminInvoices(request);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Initiates gateway payment for an admin-created invoice.
+     * Called when the user opens the payment link and clicks "Pay Now".
+     * Returns gateway order/session details for the frontend to complete payment.
+     *
+     * POST /admin-core-service/v1/invoices/{invoiceId}/initiate-payment?instituteId=xxx
+     */
+    @PostMapping("/{invoiceId}/initiate-payment")
+    public ResponseEntity<PaymentResponseDTO> initiatePaymentForAdminInvoice(
+            @PathVariable String invoiceId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails);
+        return ResponseEntity.ok(response);
     }
 
     /**

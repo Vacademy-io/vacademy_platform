@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { fetchPaymentOptions, PaymentOption } from "../-services/payment-options-api";
 import { getCurrencyWithPriority } from "@/utils/currency";
 import {
@@ -148,8 +148,8 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
           <button
             className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
@@ -161,7 +161,7 @@ export const CoursesDonationDialog: React.FC<CoursesDonationDialogProps> = ({
           {isInitializing ? (
             <div className="text-center space-y-6">
               <div className="flex justify-center">
-                <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+                <SpinnerGap className="w-12 h-12 text-blue-500 animate-spin" />
               </div>
               <h2 className="text-xl font-semibold text-gray-700">Loading...</h2>
             </div>

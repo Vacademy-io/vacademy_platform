@@ -146,9 +146,16 @@ public class Institute {
 
     @PrePersist
     @PreUpdate
-    private void normalizeEmails() {
+    private void applyDefaultsAndNormalize() {
         if (this.email != null) {
             this.email = this.email.toLowerCase();
+        }
+        // institutes.product is NOT NULL DEFAULT 'vacademy' (V226). The DB default only
+        // fires when the column is omitted from INSERT, but Hibernate always emits it
+        // with the bound value — so callers that never set product (e.g. sub-org creation
+        // in InstituteCustomFieldMapper) need an explicit default here.
+        if (this.product == null) {
+            this.product = "vacademy";
         }
     }
 

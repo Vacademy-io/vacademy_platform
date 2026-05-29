@@ -43,7 +43,7 @@ export const DonationAmountSelector: React.FC<DonationAmountSelectorProps> = ({
         {donationAmounts.map((amount) => (
           <div
             key={amount}
-            className={`h-11 min-w-[90px] flex items-center justify-center rounded border cursor-pointer select-none text-sm font-medium transition-colors duration-200
+            className={`h-11 min-w-reg-100 flex items-center justify-center rounded border cursor-pointer select-none text-sm font-medium transition-colors duration-200
               ${selectedAmount === amount ? 'bg-primary-500 text-white border-primary-500' : 'bg-white text-gray-800 border-gray-300 hover:bg-primary-50'}`}
             onClick={() => onAmountSelect(amount)}
             role="button"

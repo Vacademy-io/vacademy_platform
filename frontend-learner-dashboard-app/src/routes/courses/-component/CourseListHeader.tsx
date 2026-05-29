@@ -87,7 +87,7 @@ const CourseListHeader = ({
   ];
 
   return (
-    <nav className="min-h-[70px] sticky top-0 z-50 sm:min-h-[70px] bg-white py-1 sm:py-4 px-3 sm:px-4 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
+    <nav className="min-h-16 sticky top-0 z-50 sm:min-h-16 bg-white py-1 sm:py-4 px-3 sm:px-4 lg:px-10 flex flex-col lg:flex-row justify-between items-center shadow-sm relative">
       {/* Logo Section */}
       <div className="flex items-center justify-between w-full lg:w-auto mb-3 sm:mb-4 lg:mb-0">
         <div className="flex items-center relative h-6 sm:h-8 lg:h-10 w-16 sm:w-20 lg:w-24">

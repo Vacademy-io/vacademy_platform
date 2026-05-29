@@ -16,7 +16,7 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -613,7 +613,7 @@ public class ChatbotFlowEngine {
             outLog.setBody(messageBody);
             outLog.setSource("CHATBOT_FLOW");
             outLog.setSenderBusinessChannelId(context.getBusinessChannelId());
-            outLog.setNotificationDate(LocalDateTime.now());
+            outLog.setNotificationDate(Instant.now());
             outLog.setUserId(context.getUserId());
 
             notificationLogRepository.save(outLog);

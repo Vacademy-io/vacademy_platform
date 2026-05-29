@@ -9,7 +9,7 @@ const ExcalidrawViewer = lazy(() =>
 
 // Loading fallback for Excalidraw
 const ExcalidrawLoadingFallback = () => (
-  <div className="flex items-center justify-center w-full h-[80vh] bg-gray-50 rounded-lg border border-gray-200">
+  <div className="flex items-center justify-center w-full h-screen-80 bg-gray-50 rounded-lg border border-gray-200">
     <div className="flex flex-col items-center space-y-3">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       <p className="text-sm text-gray-600 font-medium">Loading presentation viewer...</p>
@@ -317,7 +317,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
   // If fileId is undefined, show error state
   if (!fileId) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px] bg-gray-50 rounded-lg border border-gray-200">
+      <div className="flex items-center justify-center h-full min-h-reg-400 bg-gray-50 rounded-lg border border-gray-200">
         <div className="text-center space-y-4 p-8 max-w-md mx-auto">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
             <FileX size={32} weight="duotone" className="text-gray-400" />
@@ -339,7 +339,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
     <div className="relative w-full h-full" onClick={handleUserActivity} onMouseMove={handleUserActivity}>
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -381,7 +381,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
 
       {/* Pause overlay */}
       {isPaused && (
-        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-sm mx-4 text-center">
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               Session Paused

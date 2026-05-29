@@ -8,6 +8,8 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +24,11 @@ import vacademy.io.admin_core_service.features.invoice.dto.*;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoiceLineItem;
 import vacademy.io.admin_core_service.features.invoice.entity.InvoicePaymentLogMapping;
+import vacademy.io.admin_core_service.features.payments.service.PaymentService;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceLineItemRepository;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoicePaymentLogMappingRepository;
 import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
@@ -92,6 +99,12 @@ public class InvoiceService {
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
+    // Used by buildSfpInvoiceDTOs() to walk SFP → PaymentLog → Invoice so the synthetic
+    // installment rows can carry the real Invoice's pdf_file_id / pdf_url. Avoids the
+    // "No PDF" state on PAID/PARTIAL rows that actually have a persisted invoice.
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.repository.StudentFeeAllocationLedgerRepository studentFeeAllocationLedgerRepository;
+
     @Autowired
     private StudentSessionRepository studentSessionRepository;
 
@@ -99,17 +112,152 @@ public class InvoiceService {
     private PackageSessionRepository packageSessionRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionInvitationRepository;
+
+    @Autowired
     private InstituteSettingService instituteSettingService;
 
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    @Lazy
+    private PaymentService paymentService;
+
+    @Autowired
+    private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    @Value("${default.learner.portal.url:https://learner.vacademy.io}")
+    private String learnerPortalUrl;
+
+    @Value("${default.learner.portal.invoice.pay.path:/pay/invoice}")
+    private String invoicePayPath;
+
     /** Type for institute invoice PDF layout templates (how line items, totals, etc. are shown in the PDF — like default_invoice.html). Not email templates. */
     private static final String INVOICE_TEMPLATE_TYPE = "INVOICE";
     private static final String INVOICE_STATUS_GENERATED = "GENERATED";
+
+    /**
+     * Builds the description text shown on a discount/coupon invoice line item.
+     * For COUPON-type rows we look up the actual coupon code (e.g. "SAVE20") via
+     * the line item's source_id (FK to AppliedCouponDiscount) so the receipt
+     * cites the redeemed code instead of a generic "Discount: coupon" label.
+     * Falls back to the legacy "Discount: <source>" string if anything is
+     * missing — we never want a malformed lookup to break invoice generation.
+     */
+    private String buildDiscountDescription(PaymentLogLineItem item) {
+        String source = item.getSource();
+        String type = item.getType();
+        boolean looksLikeCoupon = (type != null && type.toUpperCase().contains("COUPON"))
+                || (source != null && source.toLowerCase().contains("coupon"));
+        if (looksLikeCoupon && item.getSourceId() != null) {
+            try {
+                String code = appliedCouponDiscountRepository.findById(item.getSourceId())
+                        .map(acd -> acd.getCouponCode() != null ? acd.getCouponCode().getCode() : null)
+                        .orElse(null);
+                if (code != null && !code.isBlank()) {
+                    return "Coupon " + code;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to resolve coupon code for invoice line item {}: {}",
+                        item.getId(), e.getMessage());
+            }
+        }
+        return source != null ? "Discount: " + source : "Discount";
+    }
+    private static final String INVOICE_STATUS_PENDING_PAYMENT = "PENDING_PAYMENT";
+    private static final String INVOICE_STATUS_PAID = "PAID";
     private static final String DEFAULT_INVOICE_PREFIX = "INV";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter DISPLAY_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
+
+    /**
+     * Unicode font for the invoice PDF. Candidates are checked in order; the first
+     * one present on the classpath is embedded (under the family names templates
+     * use) so glyphs like the rupee sign (₹) render. If NONE is present, the PDF
+     * falls back to the base-14 font (current behavior) and currency symbols fall
+     * back to ASCII — so this is fully backward compatible.
+     *
+     * To enable the real symbols, drop a Unicode TTF (e.g. NotoSans-Regular.ttf or
+     * DejaVuSans.ttf) into src/main/resources/fonts/.
+     */
+    private static final String[] INVOICE_FONT_CANDIDATES = {
+            "/fonts/NotoSans-Regular.ttf",
+            "/fonts/DejaVuSans.ttf",
+    };
+    private static final String RESOLVED_INVOICE_FONT_PATH = resolveInvoiceFontResource();
+    private static final boolean UNICODE_INVOICE_FONT_AVAILABLE = RESOLVED_INVOICE_FONT_PATH != null;
+
+    private static String resolveInvoiceFontResource() {
+        for (String path : INVOICE_FONT_CANDIDATES) {
+            try (java.io.InputStream is = InvoiceService.class.getResourceAsStream(path)) {
+                if (is != null) {
+                    return path;
+                }
+            } catch (Exception ignored) {
+                // try next candidate
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Looks up the Invoice by id and returns a usable presigned PDF URL. If the row's
+     * {@code pdf_file_id} is null (typical when local-dev S3 upload failed at create
+     * time), regenerates the PDF, persists the new fileId, and returns the URL — so
+     * subsequent reads hit the fast path. Returns null only when the invoice doesn't
+     * exist or regeneration fails.
+     *
+     * <p>This is the single canonical "give me a downloadable PDF for this invoice"
+     * path. {@code /v1/invoices/{invoiceId}/download} routes through here; the listing
+     * surfaces real invoice ids on synthetic SFP rows (see {@link #buildSfpInvoiceDTOs})
+     * so the same endpoint serves both real-Invoice and SFP-derived listings.
+     */
+    @Transactional
+    public String resolveOrRegeneratePdfUrl(String invoiceId) {
+        if (invoiceId == null || invoiceId.isBlank()) return null;
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        if (invoice == null) return null;
+        if (StringUtils.hasText(invoice.getPdfFileId())) {
+            String url = mediaService.getFilePublicUrlById(invoice.getPdfFileId());
+            if (StringUtils.hasText(url)) return url;
+        }
+        // Missing or unresolvable fileId → regenerate on demand.
+        String regenFileId = regenerateInvoicePdf(invoice);
+        if (!StringUtils.hasText(regenFileId)) return null;
+        invoice.setPdfFileId(regenFileId);
+        invoiceRepository.save(invoice);
+        return mediaService.getFilePublicUrlById(regenFileId);
+    }
+
+    /**
+     * Rebuilds the invoice PDF from the persisted Invoice's data and re-uploads to S3.
+     * Returns the new file id, or null if any step fails. Caller is responsible for
+     * persisting the new id on the Invoice row.
+     */
+    private String regenerateInvoicePdf(Invoice invoice) {
+        try {
+            // Reuse the same builder path generateInvoice uses, but driven from the
+            // already-persisted PaymentLog mappings on the Invoice row.
+            List<PaymentLog> paymentLogs = invoicePaymentLogMappingRepository
+                    .findPaymentLogsByInvoiceId(invoice.getId());
+            if (paymentLogs.isEmpty()) return null;
+            InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(
+                    paymentLogs, invoice.getInstituteId());
+            // Preserve the original invoice number; this is a PDF refresh, not a new bill.
+            invoiceData.setInvoiceNumber(invoice.getInvoiceNumber());
+            String templateHtml = loadInvoiceTemplate(invoice.getInstituteId());
+            String filledTemplate = replaceTemplatePlaceholders(templateHtml, invoiceData);
+            byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
+            return uploadInvoiceToS3(pdfBytes, invoice.getInvoiceNumber(), invoice.getInstituteId());
+        } catch (Exception e) {
+            log.warn("regenerateInvoicePdf failed for invoice {}: {}", invoice.getId(), e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * Main method to generate invoice after payment confirmation
@@ -324,6 +472,19 @@ public class InvoiceService {
         BigDecimal taxRate = BigDecimal.valueOf(taxRateValue);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
+        // Per-package-type tax components (INVOICE_SETTING.country). When any components
+        // are configured, tax is computed PER LINE ITEM by the line's package type
+        // (falling back to the default list); otherwise the legacy single-rate path
+        // (taxRate) runs unchanged so existing institutes are unaffected.
+        Map<String, Object> countryConfig = asStringObjectMap(invoiceSettings.get("country"));
+        List<Map<String, Object>> defaultTaxComponents = asComponentList(countryConfig.get("taxComponents"));
+        Map<String, Object> taxComponentsByType = asStringObjectMap(countryConfig.get("taxComponentsByPackageType"));
+        boolean hasComponentConfig = !defaultTaxComponents.isEmpty() || !taxComponentsByType.isEmpty();
+        // label -> [rate, summed amount], insertion-ordered for stable rendering.
+        java.util.LinkedHashMap<String, BigDecimal[]> componentAccumulator = new java.util.LinkedHashMap<>();
+        BigDecimal componentSubtotalSum = BigDecimal.ZERO;
+        BigDecimal componentTaxSum = BigDecimal.ZERO;
+
         // Aggregate data from all payment logs
         BigDecimal totalPaymentAmount = BigDecimal.ZERO;
         BigDecimal totalPlanPrice = BigDecimal.ZERO;
@@ -384,6 +545,36 @@ public class InvoiceService {
             }
             totalPaymentAmount = totalPaymentAmount.add(paymentAmount);
 
+            // Per-line tax by package type (only when components are configured).
+            if (hasComponentConfig) {
+                String packageType = resolvePackageType(paymentLog);
+                List<Map<String, Object>> comps = effectiveTaxComponents(
+                        defaultTaxComponents, taxComponentsByType, packageType);
+                BigDecimal rateFraction = totalComponentRateFraction(comps);
+                BigDecimal lineSubtotal = paymentAmount.divide(
+                        BigDecimal.ONE.add(rateFraction), 2, RoundingMode.HALF_UP);
+                componentSubtotalSum = componentSubtotalSum.add(lineSubtotal);
+                componentTaxSum = componentTaxSum.add(paymentAmount.subtract(lineSubtotal));
+                for (Map<String, Object> comp : comps) {
+                    String label = comp.get("label") != null ? comp.get("label").toString() : "";
+                    if (label.isEmpty()) {
+                        continue;
+                    }
+                    BigDecimal rate;
+                    try {
+                        rate = new BigDecimal(comp.get("rate") != null ? comp.get("rate").toString() : "0");
+                    } catch (NumberFormatException e) {
+                        rate = BigDecimal.ZERO;
+                    }
+                    BigDecimal amt = lineSubtotal.multiply(rate)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    final BigDecimal compRate = rate;
+                    BigDecimal[] acc = componentAccumulator.computeIfAbsent(label,
+                            k -> new BigDecimal[] { compRate, BigDecimal.ZERO });
+                    acc[1] = acc[1].add(amt);
+                }
+            }
+
             // Calculate discount for line items display
             BigDecimal discountAmount = calculateDiscountAmount(paymentLogLineItems, planPrice);
 
@@ -399,28 +590,38 @@ public class InvoiceService {
         // Use payment amount from payment log as the total amount
         BigDecimal totalAmount = totalPaymentAmount;
 
-        // Calculate tax and subtotal based on payment amount
+        // Calculate tax and subtotal.
         BigDecimal subtotal;
         BigDecimal taxAmount;
+        String taxLineDescription;
+        List<Map<String, Object>> aggregatedTaxComponents = null;
 
-        if (taxIncluded) {
-            // Tax is already included in payment amount
-            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
-            subtotal = totalAmount.divide(divisor, 2, RoundingMode.HALF_UP);
-            taxAmount = totalAmount.subtract(subtotal);
+        if (hasComponentConfig) {
+            // Per-line per-package-type tax, summed across the invoice.
+            subtotal = componentSubtotalSum;
+            taxAmount = componentTaxSum;
+            taxLineDescription = taxLabel;
+            aggregatedTaxComponents = new ArrayList<>();
+            for (Map.Entry<String, BigDecimal[]> e : componentAccumulator.entrySet()) {
+                Map<String, Object> m = new HashMap<>();
+                m.put("label", e.getKey());
+                m.put("rate", e.getValue()[0]);
+                m.put("amount", e.getValue()[1]);
+                aggregatedTaxComponents.add(m);
+            }
         } else {
-            // Tax is additional, so payment amount = subtotal + tax
-            // We need to work backwards: if paymentAmount = subtotal * (1 + taxRate)
+            // Legacy single-rate path: payment amount treated as tax-inclusive total.
             BigDecimal divisor = BigDecimal.ONE.add(taxRate);
             subtotal = totalAmount.divide(divisor, 2, RoundingMode.HALF_UP);
             taxAmount = totalAmount.subtract(subtotal);
+            taxLineDescription = taxLabel + " @ " + taxRate.multiply(BigDecimal.valueOf(100)).setScale(0) + "%";
         }
 
         // Add tax as line item if applicable
         if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             InvoiceLineItemData taxItem = InvoiceLineItemData.builder()
                     .itemType("TAX")
-                    .description(taxLabel + " @ " + taxRate.multiply(BigDecimal.valueOf(100)).setScale(0) + "%")
+                    .description(taxLineDescription)
                     .quantity(1)
                     .unitPrice(taxAmount)
                     .amount(taxAmount)
@@ -451,6 +652,7 @@ public class InvoiceService {
                 .transactionId(transactionId)
                 .paymentDate(paymentDate)
                 .lineItems(allLineItems)
+                .aggregatedTaxComponents(aggregatedTaxComponents)
                 .build();
 
         log.debug("Invoice data built successfully from {} payment logs", paymentLogs.size());
@@ -506,7 +708,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
+                            .description(buildDiscountDescription(item))
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -779,7 +981,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
+                            .description(buildDiscountDescription(item))
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -986,7 +1188,7 @@ public class InvoiceService {
         if ("#".equals(currencySymbol) || currencySymbol == null || currencySymbol.trim().isEmpty()) {
             log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'",
                     invoiceCurrency);
-            currencySymbol = "₹";
+            currencySymbol = inrCurrencySymbol();
         }
 
         log.info("Currency symbol resolved: '{}' for currency code: '{}'", currencySymbol, invoiceCurrency);
@@ -1013,6 +1215,40 @@ public class InvoiceService {
                 invoiceData.getPaymentDate() != null ? invoiceData.getPaymentDate().format(DISPLAY_DATE_FORMATTER)
                         : "");
 
+        // Country & tax registration details (from INVOICE_SETTING.country).
+        // These let templates render the operating country, the institute's tax
+        // registration number (GSTIN/VAT no.) and a breakdown of tax components.
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        String countryName = "";
+        String countryCode = "";
+        String taxRegistrationNumber = "";
+        String hsnSacCode = "";
+        String taxComponentsHtml = "";
+        Object countryObj = invoiceSettings.get("country");
+        if (countryObj instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> country = (Map<String, Object>) countryObj;
+            countryName = country.get("name") != null ? country.get("name").toString() : "";
+            countryCode = country.get("code") != null ? country.get("code").toString() : "";
+            taxRegistrationNumber = country.get("taxRegistrationNumber") != null
+                    ? country.get("taxRegistrationNumber").toString() : "";
+            hsnSacCode = country.get("hsnSacCode") != null ? country.get("hsnSacCode").toString() : "";
+        }
+        // Tax components are computed per line item by package type during buildInvoiceData;
+        // render the aggregated breakdown (label, rate %, computed amount).
+        List<Map<String, Object>> aggComps = invoiceData.getAggregatedTaxComponents();
+        if (aggComps != null && !aggComps.isEmpty()) {
+            taxComponentsHtml = renderTaxComponentsHtml(aggComps, currencySymbol);
+        }
+        filled = filled.replace("{{country}}", countryName);
+        filled = filled.replace("{{country_code}}", countryCode.toUpperCase());
+        filled = filled.replace("{{tax_registration_number}}", taxRegistrationNumber);
+        filled = filled.replace("{{hsn_code}}", hsnSacCode);
+        filled = filled.replace("{{tax_components}}", taxComponentsHtml);
+        filled = filled.replace("{{tax_label}}",
+                invoiceSettings.get("taxLabel") != null ? invoiceSettings.get("taxLabel").toString() : "Tax");
+        filled = filled.replace("{{tax_rate}}", formatRate(invoiceSettings.get("taxRate")));
+
         // Line items table
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
@@ -1032,6 +1268,143 @@ public class InvoiceService {
         }
 
         return filled;
+    }
+
+    /**
+     * Render the aggregated tax-component breakdown (computed per line item by
+     * package type in buildInvoiceData) into the {{tax_components}} HTML table.
+     * Each entry holds: label, rate (percent), amount (already summed). Returns an
+     * empty string when nothing is configured so templates can hide the section.
+     */
+    private String renderTaxComponentsHtml(List<Map<String, Object>> components, String currencySymbol) {
+        if (components == null || components.isEmpty()) {
+            return "";
+        }
+        String symbol = currencySymbol != null ? currencySymbol : "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("<table class=\"tax-components\" style=\"border-collapse:collapse;font-size:12px;\">");
+        for (Map<String, Object> comp : components) {
+            if (comp == null) {
+                continue;
+            }
+            String label = comp.get("label") != null ? comp.get("label").toString() : "";
+            String rate = formatRate(comp.get("rate"));
+            if (label.isEmpty() && rate.isEmpty()) {
+                continue;
+            }
+            String amount = comp.get("amount") != null ? comp.get("amount").toString() : "0";
+            sb.append("<tr>")
+                    .append("<td style=\"padding:2px 12px 2px 0;\">").append(escapeXmlAttributeValue(label))
+                    .append("</td>")
+                    .append("<td style=\"padding:2px 12px 2px 0;text-align:right;\">")
+                    .append(escapeXmlAttributeValue(rate))
+                    .append(rate.isEmpty() ? "" : "%")
+                    .append("</td>")
+                    .append("<td style=\"padding:2px 0;text-align:right;\">")
+                    .append(escapeXmlAttributeValue(symbol + amount))
+                    .append("</td>")
+                    .append("</tr>");
+        }
+        sb.append("</table>");
+        return sb.toString();
+    }
+
+    /** Cast a settings value to a String->Object map, or empty map. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asStringObjectMap(Object o) {
+        return o instanceof Map ? (Map<String, Object>) o : new HashMap<>();
+    }
+
+    /** Cast a settings value to a list of component maps, or empty list. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> asComponentList(Object o) {
+        return o instanceof List ? (List<Map<String, Object>>) o : new ArrayList<>();
+    }
+
+    /**
+     * Pick the tax components for a package type: the per-type list when configured
+     * and non-empty, otherwise the institute's default list.
+     */
+    private List<Map<String, Object>> effectiveTaxComponents(List<Map<String, Object>> defaultComponents,
+            Map<String, Object> byPackageType, String packageType) {
+        if (packageType != null && byPackageType != null) {
+            List<Map<String, Object>> forType = asComponentList(byPackageType.get(packageType));
+            if (!forType.isEmpty()) {
+                return forType;
+            }
+        }
+        return defaultComponents;
+    }
+
+    /** Sum of component rates as a fraction (e.g. CGST 9 + SGST 9 -> 0.18). */
+    private BigDecimal totalComponentRateFraction(List<Map<String, Object>> components) {
+        BigDecimal total = BigDecimal.ZERO;
+        if (components == null) {
+            return total;
+        }
+        for (Map<String, Object> comp : components) {
+            if (comp == null || comp.get("rate") == null) {
+                continue;
+            }
+            try {
+                total = total.add(new BigDecimal(comp.get("rate").toString()));
+            } catch (NumberFormatException ignored) {
+                // skip non-numeric rates
+            }
+        }
+        return total.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Resolve the package type for a payment log's line, via
+     * UserPlan -> EnrollInvite -> PackageSessionLearnerInvitationToPaymentOption ->
+     * PackageSession -> PackageEntity.packageType. Returns the first non-blank type
+     * found, or null when it can't be resolved (caller falls back to default tax).
+     */
+    private String resolvePackageType(PaymentLog paymentLog) {
+        try {
+            if (paymentLog == null || paymentLog.getUserPlan() == null
+                    || paymentLog.getUserPlan().getEnrollInvite() == null) {
+                return null;
+            }
+            String enrollInviteId = paymentLog.getUserPlan().getEnrollInvite().getId();
+            if (enrollInviteId == null) {
+                return null;
+            }
+            var rows = packageSessionInvitationRepository
+                    .findByEnrollInviteIdAndStatusWithPackageSession(enrollInviteId, List.of("ACTIVE"));
+            for (var row : rows) {
+                if (row.getPackageSession() != null && row.getPackageSession().getPackageEntity() != null) {
+                    String type = row.getPackageSession().getPackageEntity().getPackageType();
+                    if (type != null && !type.isBlank()) {
+                        return type;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve package type for payment log {}: {}",
+                    paymentLog != null ? paymentLog.getId() : null, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Format a tax rate value (Number or String) into a clean display string:
+     * whole numbers drop the trailing ".0" (9.0 -> "9"), others keep their value.
+     */
+    private String formatRate(Object rateObj) {
+        if (rateObj == null) {
+            return "";
+        }
+        try {
+            double d = Double.parseDouble(rateObj.toString());
+            if (d == Math.floor(d) && !Double.isInfinite(d)) {
+                return String.valueOf((long) d);
+            }
+            return String.valueOf(d);
+        } catch (NumberFormatException e) {
+            return rateObj.toString();
+        }
     }
 
     /**
@@ -1058,8 +1431,13 @@ public class InvoiceService {
                 String safeAlt = escapeXmlAttributeValue(
                         (institute.getInstituteName() != null ? institute.getInstituteName() : "Logo")
                                 + " Logo");
-                return "<div class=\"logo-container\"><img src=\"" + safeLogoUrl + "\" alt=\""
-                        + safeAlt + "\" /></div>";
+                // Inline size constraints so the logo never overflows, regardless of
+                // whether the template defines .logo-container CSS (custom / sample
+                // templates often don't).
+                return "<div class=\"logo-container\" style=\"max-width:200px;\">"
+                        + "<img src=\"" + safeLogoUrl + "\" alt=\"" + safeAlt + "\""
+                        + " style=\"max-width:200px;max-height:80px;width:auto;height:auto;display:block;\" />"
+                        + "</div>";
             }
         } catch (Exception e) {
             log.warn("Failed to get logo URL for institute: {}. Error: {}",
@@ -1135,7 +1513,7 @@ public class InvoiceService {
         if ("#".equals(currencySymbol) || currencySymbol == null || currencySymbol.trim().isEmpty()) {
             log.error("CRITICAL: Currency symbol is '#', null, or empty! Defaulting to ₹. Currency was: '{}'",
                     currency);
-            currencySymbol = "₹";
+            currencySymbol = inrCurrencySymbol();
         }
 
         StringBuilder html = new StringBuilder();
@@ -1316,6 +1694,11 @@ public class InvoiceService {
         return "INR";
     }
 
+    /** INR symbol: the ₹ glyph when a Unicode font is embedded, else ASCII "Rs. ". */
+    private String inrCurrencySymbol() {
+        return UNICODE_INVOICE_FONT_AVAILABLE ? "₹" : "Rs. ";
+    }
+
     /**
      * Get currency symbol based on currency code
      * This method ensures we never return "#" or invalid symbols
@@ -1323,7 +1706,7 @@ public class InvoiceService {
     private String getCurrencySymbol(String currencyCode) {
         if (currencyCode == null || currencyCode.trim().isEmpty()) {
             log.debug("Currency code is null or empty, defaulting to INR symbol");
-            return "₹"; // Default to INR symbol
+            return inrCurrencySymbol();
         }
 
         // Normalize currency code: trim whitespace and convert to uppercase
@@ -1333,7 +1716,7 @@ public class InvoiceService {
         if (normalizedCurrency.length() < 3 || normalizedCurrency.equals("#") ||
                 normalizedCurrency.matches("^[#\\$€£¥₹]+$")) {
             log.warn("Invalid currency code detected: '{}', defaulting to INR symbol", currencyCode);
-            return "₹";
+            return inrCurrencySymbol();
         }
 
         // Log the currency code being used for debugging
@@ -1342,7 +1725,7 @@ public class InvoiceService {
 
         switch (normalizedCurrency) {
             case "INR":
-                return "₹";
+                return inrCurrencySymbol();
             case "USD":
                 return "$";
             case "EUR":
@@ -1358,13 +1741,13 @@ public class InvoiceService {
             case "SGD":
                 return "S$";
             case "AED":
-                return "د.إ"; // UAE Dirham
+                return "AED "; // UAE Dirham (ASCII so it renders in the PDF font)
             default:
                 log.warn("Unknown currency code: '{}', defaulting to INR symbol instead of using code as symbol",
                         normalizedCurrency);
                 // Always default to INR symbol for unknown currencies to avoid showing invalid
                 // symbols
-                return "₹";
+                return inrCurrencySymbol();
         }
     }
 
@@ -1384,17 +1767,27 @@ public class InvoiceService {
                         htmlContent + "</body></html>";
             }
 
+            // Force the embedded Unicode font everywhere so glyphs like ₹ always render,
+            // regardless of the template's own font-family (an unmatched family would fall
+            // back to a base-14 font that lacks ₹ and render it as '#'). No-op when no
+            // Unicode font is bundled (keeps the base-14 behavior).
+            if (UNICODE_INVOICE_FONT_AVAILABLE) {
+                String forceFontStyle =
+                        "<style>*{font-family:'DejaVu Sans','NotoSans',sans-serif !important;}</style>";
+                if (htmlWithCss.toLowerCase().contains("</head>")) {
+                    htmlWithCss = htmlWithCss.replaceFirst("(?i)</head>", forceFontStyle + "</head>");
+                } else if (htmlWithCss.toLowerCase().contains("<body")) {
+                    htmlWithCss = htmlWithCss.replaceFirst("(?i)(<body[^>]*>)", "$1" + forceFontStyle);
+                } else {
+                    htmlWithCss = forceFontStyle + htmlWithCss;
+                }
+            }
+
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
 
-            builder.useFont(() -> {
-                try {
-                    return this.getClass().getResourceAsStream("/fonts/Arial.ttf");
-                } catch (Exception e) {
-                    return null;
-                }
-            }, "Arial");
+            registerInvoicePdfFonts(builder);
 
             String processedHtml = processImagesForPdf(htmlWithCss);
             String sanitized = sanitizeToXhtml(processedHtml);
@@ -1424,6 +1817,23 @@ public class InvoiceService {
         } catch (Exception e) {
             log.error("Error generating PDF from HTML", e);
             throw new VacademyException("Failed to generate PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Register the embedded Unicode font (if present) under the family names that
+     * invoice templates commonly reference, so existing, custom and sample
+     * templates all pick it up and render glyphs like ₹. When no font is bundled,
+     * this is a no-op and the renderer uses its base-14 fallback (unchanged
+     * behavior) — nothing breaks.
+     */
+    private void registerInvoicePdfFonts(PdfRendererBuilder builder) {
+        if (!UNICODE_INVOICE_FONT_AVAILABLE) {
+            return;
+        }
+        String[] families = { "Arial", "Helvetica", "Cairo", "sans-serif", "NotoSans", "DejaVu Sans" };
+        for (String family : families) {
+            builder.useFont(() -> InvoiceService.class.getResourceAsStream(RESOLVED_INVOICE_FONT_PATH), family);
         }
     }
 
@@ -1776,6 +2186,25 @@ public class InvoiceService {
                     .replace("{{user_name}}", learnerName)
                     .replace("{{learner_name}}", learnerName);
 
+            // Institute placeholders (name/address/contact) — the email template can use
+            // {{institute_name}} etc., which the body-replace above did not cover.
+            try {
+                Institute emailInstitute = instituteRepository.findById(instituteId).orElse(null);
+                if (emailInstitute != null) {
+                    String instName = emailInstitute.getInstituteName() != null ? emailInstitute.getInstituteName() : "";
+                    String instAddr = emailInstitute.getAddress() != null ? emailInstitute.getAddress() : "";
+                    String instContact = emailInstitute.getMobileNumber() != null ? emailInstitute.getMobileNumber()
+                            : (emailInstitute.getEmail() != null ? emailInstitute.getEmail() : "");
+                    body = body.replace("{{institute_name}}", instName)
+                            .replace("{{institute_address}}", instAddr)
+                            .replace("{{institute_contact}}", instContact);
+                    subject = subject.replace("{{institute_name}}", instName);
+                }
+            } catch (Exception e) {
+                log.warn("Could not resolve institute placeholders for invoice email (institute {}): {}",
+                        instituteId, e.getMessage());
+            }
+
             if (attachPdf) {
                 String attachmentName = "invoice_" + (invoice.getInvoiceNumber() != null ? invoice.getInvoiceNumber() : invoice.getId()) + ".pdf";
                 AttachmentUsersDTO.AttachmentDTO attachmentDTO = new AttachmentUsersDTO.AttachmentDTO();
@@ -1858,10 +2287,37 @@ public class InvoiceService {
      * webhooks).
      */
     public List<InvoiceDTO> getInvoicesByUserId(String userId) {
-        List<Invoice> invoices = invoiceRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        return getInvoicesByUserId(userId, null);
+    }
+
+    public List<InvoiceDTO> getInvoicesByUserId(String userId, String instituteId) {
+        List<Invoice> invoices = StringUtils.hasText(instituteId)
+                ? invoiceRepository.findByUserIdAndInstituteIdOrderByCreatedAtDesc(userId, instituteId)
+                : invoiceRepository.findByUserIdOrderByCreatedAtDesc(userId);
         List<InvoiceDTO> result = invoices.stream().map(this::mapToDTO).collect(Collectors.toList());
 
-        result.addAll(buildSfpInvoiceDTOs(userId));
+        // Synthetic per-installment rows. Dedupe vs real-Invoice rows already in
+        // `result` by invoice id — buildSfpInvoiceDTOs now writes the real Invoice's
+        // id onto its synthetic DTO when one exists, so we must avoid emitting both
+        // the real-Invoice row AND the synthetic-with-real-id row for the same id.
+        // The synthetic row is preferred because it carries the per-installment
+        // status/due-date the admin actually wants to see in this listing.
+        java.util.Set<String> realInvoiceIds = new java.util.HashSet<>();
+        for (InvoiceDTO existing : result) {
+            if (existing.getId() != null) realInvoiceIds.add(existing.getId());
+        }
+        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId);
+        java.util.Set<String> sfpRowsTakingOverRealId = new java.util.HashSet<>();
+        for (InvoiceDTO sfpRow : sfpRows) {
+            String id = sfpRow.getId();
+            if (id != null && !id.startsWith("sfp:") && realInvoiceIds.contains(id)) {
+                sfpRowsTakingOverRealId.add(id);
+            }
+        }
+        if (!sfpRowsTakingOverRealId.isEmpty()) {
+            result.removeIf(r -> r.getId() != null && sfpRowsTakingOverRealId.contains(r.getId()));
+        }
+        result.addAll(sfpRows);
 
         // Sort: invoices with a due_date first by due_date asc, then created_at desc.
         result.sort((a, b) -> {
@@ -1895,6 +2351,55 @@ public class InvoiceService {
      */
     private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId) {
         List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserId(userId);
+
+        // Pre-build a sfpId → (realInvoiceId, pdfFileId, pdfUrl) lookup so each
+        // synthetic row exposes the actual Invoice it corresponds to. Once the real
+        // invoice id is on the DTO, the frontend hits the canonical
+        // /v1/invoices/{invoiceId}/download endpoint — same path the manage-students
+        // payment-history surface uses. The endpoint regenerates the PDF on the fly
+        // when the persisted Invoice has no fileId (the dev-S3-fail case), so a
+        // missing fileId at this point is fine — we still surface the real id.
+        //
+        // Path: SFP → StudentFeeAllocationLedger (latest by createdAt) → PaymentLog
+        //       → InvoicePaymentLogMapping → Invoice. We pick the MOST RECENT
+        // allocation per SFP because a partial payment can produce multiple ledger
+        // rows over time; the latest one corresponds to the invoice the admin wants.
+        Map<String, String[]> sfpIdToPdfInfo = new HashMap<>();
+        try {
+            List<String> sfpIds = sfps.stream()
+                    .map(StudentFeePayment::getId)
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.toList());
+            if (!sfpIds.isEmpty()) {
+                List<vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger> ledgers =
+                        studentFeeAllocationLedgerRepository
+                                .findByStudentFeePaymentIdInOrderByCreatedAtDesc(sfpIds);
+                Map<String, String> sfpIdToPaymentLogId = new HashMap<>();
+                for (var ledger : ledgers) {
+                    // findByStudentFeePaymentIdInOrderByCreatedAtDesc is sorted desc, so
+                    // putIfAbsent keeps the most-recent PaymentLog per SFP.
+                    sfpIdToPaymentLogId.putIfAbsent(
+                            ledger.getStudentFeePaymentId(), ledger.getPaymentLogId());
+                }
+                for (Map.Entry<String, String> e : sfpIdToPaymentLogId.entrySet()) {
+                    invoicePaymentLogMappingRepository
+                            .findFirstByPaymentLogId(e.getValue())
+                            .ifPresent(mapping -> {
+                                Invoice inv = mapping.getInvoice();
+                                if (inv == null) return;
+                                String realInvoiceId = inv.getId();
+                                String pdfFileId = inv.getPdfFileId();
+                                String url = StringUtils.hasText(pdfFileId)
+                                        ? mediaService.getFilePublicUrlById(pdfFileId)
+                                        : null;
+                                sfpIdToPdfInfo.put(e.getKey(),
+                                        new String[]{realInvoiceId, pdfFileId, url});
+                            });
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not enrich SFP DTOs with invoice PDFs for user {}: {}", userId, e.getMessage());
+        }
         List<InvoiceDTO> dtos = new ArrayList<>();
         for (StudentFeePayment sfp : sfps) {
             String status = sfp.getStatus();
@@ -1926,8 +2431,17 @@ public class InvoiceService {
             LocalDateTime createdAt = sfp.getCreatedAt();
             String prefix = invoiceNumberPrefixForStatus(status);
 
+            String[] pdfInfo = sfpIdToPdfInfo.get(sfp.getId());
+            String realInvoiceId = pdfInfo != null ? pdfInfo[0] : null;
+            String pdfFileId = pdfInfo != null ? pdfInfo[1] : null;
+            String pdfUrl = pdfInfo != null ? pdfInfo[2] : null;
+            // When a real Invoice exists for this SFP, expose its id so the FE's
+            // existing /v1/invoices/{id}/download path can resolve (and regenerate
+            // if needed) the PDF without a per-SFP endpoint. Otherwise fall back to
+            // the synthetic "sfp:..." marker so the row remains uniquely-keyed.
+            String dtoId = StringUtils.hasText(realInvoiceId) ? realInvoiceId : ("sfp:" + sfp.getId());
             dtos.add(InvoiceDTO.builder()
-                    .id("sfp:" + sfp.getId())
+                    .id(dtoId)
                     .invoiceNumber(prefix + "-" + sfp.getId())
                     .userId(sfp.getUserId())
                     .userPlanId(sfp.getUserPlanId())
@@ -1943,6 +2457,8 @@ public class InvoiceService {
                     .status(mapSfpStatusToInvoiceStatus(status))
                     .createdAt(createdAt)
                     .updatedAt(sfp.getUpdatedAt())
+                    .pdfFileId(pdfFileId)
+                    .pdfUrl(pdfUrl)
                     .lineItems(java.util.Collections.emptyList())
                     .build());
         }
@@ -2217,6 +2733,353 @@ public class InvoiceService {
             log.error("Test: Failed to generate invoice for single payment log: {}", paymentLogId, e);
             throw new VacademyException("Failed to generate invoice: " + e.getMessage());
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admin-created invoice: create, pay, and mark paid
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Admin creates one invoice per userId in the request (bulk or single).
+     * No UserPlan or PackageSession required — line items are free-form.
+     */
+    @Transactional
+    public List<AdminInvoicePaymentLinkResponseDTO> createAdminInvoices(AdminCreateInvoiceRequestDTO request) {
+        List<AdminInvoicePaymentLinkResponseDTO> results = new ArrayList<>();
+
+        Institute institute = instituteRepository.findById(request.getInstituteId())
+                .orElseThrow(() -> new VacademyException("Institute not found: " + request.getInstituteId()));
+
+        // Read institute invoice settings once for all users in this bulk request
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        Boolean taxIncluded = (Boolean) invoiceSettings.getOrDefault("taxIncluded", false);
+        Double taxRateValue = invoiceSettings.get("taxRate") != null
+                ? ((Number) invoiceSettings.get("taxRate")).doubleValue() : 0.0;
+        // taxRateValue is stored as a percentage (e.g. 18 for 18%); convert to fraction for math
+        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue)
+                .divide(BigDecimal.valueOf(100), 10, java.math.RoundingMode.HALF_UP);
+        String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
+
+        // Subtotal = sum of (unitPrice * quantity) from line items
+        BigDecimal subtotal = request.getLineItems().stream()
+                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Apply tax from INVOICE_SETTING
+        BigDecimal taxAmount;
+        BigDecimal totalAmount;
+        if (taxIncluded) {
+            // Admin entered tax-inclusive prices; back-compute tax component
+            BigDecimal divisor = BigDecimal.ONE.add(taxRate);
+            BigDecimal netSubtotal = subtotal.divide(divisor, 2, java.math.RoundingMode.HALF_UP);
+            taxAmount = subtotal.subtract(netSubtotal);
+            totalAmount = subtotal; // total == subtotal when tax is included
+        } else {
+            taxAmount = subtotal.multiply(taxRate).setScale(2, java.math.RoundingMode.HALF_UP);
+            totalAmount = subtotal.add(taxAmount);
+        }
+
+        for (String userId : request.getUserIds()) {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+            if (users.isEmpty()) {
+                log.warn("User not found for ID: {}, skipping invoice creation", userId);
+                continue;
+            }
+            UserDTO user = users.get(0);
+
+            String invoiceNumber = generateInvoiceNumber(request.getInstituteId());
+
+            Invoice invoice = new Invoice();
+            invoice.setInvoiceNumber(invoiceNumber);
+            invoice.setUserId(userId);
+            invoice.setInstituteId(request.getInstituteId());
+            invoice.setInvoiceDate(LocalDateTime.now());
+            invoice.setDueDate(request.getDueDate());
+            invoice.setSubtotal(subtotal);
+            invoice.setDiscountAmount(BigDecimal.ZERO);
+            invoice.setTaxAmount(taxAmount);
+            invoice.setTotalAmount(totalAmount);
+            invoice.setCurrency(request.getCurrency());
+            invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
+            invoice.setTaxIncluded(taxIncluded);
+
+            if (StringUtils.hasText(request.getNotes())) {
+                try {
+                    invoice.setInvoiceDataJson(new ObjectMapper().writeValueAsString(Map.of("notes", request.getNotes())));
+                } catch (Exception ignored) {}
+            }
+
+            invoice = invoiceRepository.save(invoice);
+
+            // Save line items
+            for (AdminInvoiceLineItemRequestDTO itemReq : request.getLineItems()) {
+                BigDecimal lineAmount = itemReq.getUnitPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
+                InvoiceLineItem lineItem = new InvoiceLineItem();
+                lineItem.setInvoice(invoice);
+                lineItem.setItemType(StringUtils.hasText(itemReq.getItemType()) ? itemReq.getItemType() : "SERVICE");
+                lineItem.setDescription(itemReq.getDescription());
+                lineItem.setQuantity(itemReq.getQuantity());
+                lineItem.setUnitPrice(itemReq.getUnitPrice());
+                lineItem.setAmount(lineAmount);
+                invoiceLineItemRepository.save(lineItem);
+            }
+
+            // Generate PDF immediately so the admin can share it
+            String pdfFileId = null;
+            try {
+                pdfFileId = generateAndUploadAdminInvoicePdf(invoice, user, institute,
+                        request.getLineItems(), subtotal, taxAmount, totalAmount,
+                        request.getCurrency(), taxIncluded, taxRate, taxLabel);
+                invoice.setPdfFileId(pdfFileId);
+                invoice = invoiceRepository.save(invoice);
+            } catch (Exception e) {
+                log.error("Failed to generate PDF for admin invoice {}: {}", invoiceNumber, e.getMessage(), e);
+            }
+
+            String pdfUrl = pdfFileId != null ? mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId) : null;
+            String paymentLink = buildPaymentLink(institute, invoice.getId());
+
+            // Notify the learner via in-app system alert
+            try {
+                String amountStr = request.getCurrency() + " " + totalAmount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+                String alertTitle = "New Invoice: " + amountStr;
+                String alertBody = "You have a new invoice (" + invoiceNumber + ") of " + amountStr
+                        + " due by " + (request.getDueDate() != null ? request.getDueDate().toLocalDate().toString() : "N/A")
+                        + ". Tap to pay: " + paymentLink;
+                notificationService.createSystemAlertAnnouncement(
+                        request.getInstituteId(),
+                        List.of(userId),
+                        alertTitle,
+                        alertBody,
+                        "system",
+                        institute.getInstituteName() != null ? institute.getInstituteName() : "Institute",
+                        "ADMIN",
+                        Map.of("priority", 3, "isDismissible", true, "showBadge", true, "isActive", true));
+            } catch (Exception e) {
+                log.warn("Failed to send invoice system alert to user {}: {}", userId, e.getMessage());
+            }
+
+            results.add(AdminInvoicePaymentLinkResponseDTO.builder()
+                    .invoiceId(invoice.getId())
+                    .invoiceNumber(invoiceNumber)
+                    .userId(userId)
+                    .totalAmount(totalAmount)
+                    .currency(request.getCurrency())
+                    .status(INVOICE_STATUS_PENDING_PAYMENT)
+                    .dueDate(request.getDueDate())
+                    .paymentLink(paymentLink)
+                    .pdfUrl(pdfUrl)
+                    .build());
+        }
+
+        return results;
+    }
+
+    /**
+     * Initiates gateway payment for an admin-created invoice.
+     * Creates PaymentLog (userPlan=null) and links it to the invoice.
+     */
+    @Transactional
+    public PaymentResponseDTO initiatePaymentForAdminInvoice(String invoiceId, String instituteId,
+            CustomUserDetails userDetails) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+
+        if (!invoice.getInstituteId().equals(instituteId)) {
+            throw new VacademyException("Invoice does not belong to this institute");
+        }
+
+        // Get institute's configured gateway
+        InstitutePaymentGatewayMappingService.VendorInfo vendorInfo =
+                institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(instituteId);
+
+        PaymentInitiationRequestDTO paymentRequest = new PaymentInitiationRequestDTO();
+        paymentRequest.setAmount(invoice.getTotalAmount().doubleValue());
+        paymentRequest.setCurrency(invoice.getCurrency());
+        paymentRequest.setVendor(vendorInfo.getVendor());
+        paymentRequest.setVendorId(vendorInfo.getVendorId());
+        paymentRequest.setInstituteId(instituteId);
+        paymentRequest.setDescription("Admin Invoice " + invoice.getInvoiceNumber());
+
+        // Fetch full UserDTO for gateway customer creation
+        String userId = invoice.getUserId();
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+        if (users.isEmpty()) {
+            throw new VacademyException("User not found: " + userId);
+        }
+        UserDTO user = users.get(0);
+        if (StringUtils.hasText(user.getEmail())) {
+            paymentRequest.setEmail(user.getEmail());
+        }
+
+        // Create PaymentLog with userPlan=null
+        String paymentLogId = createAdminInvoicePaymentLog(userId, invoice.getTotalAmount().doubleValue(),
+                vendorInfo.getVendor(), vendorInfo.getVendorId(), invoice.getCurrency());
+
+        paymentRequest.setOrderId(paymentLogId);
+
+        // Link PaymentLog → Invoice
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
+                .orElseThrow(() -> new VacademyException("PaymentLog not found after creation"));
+        InvoicePaymentLogMapping mapping = new InvoicePaymentLogMapping();
+        mapping.setInvoice(invoice);
+        mapping.setPaymentLog(paymentLog);
+        invoicePaymentLogMappingRepository.save(mapping);
+
+        // Call gateway
+        PaymentResponseDTO response = paymentService.makePayment(
+                vendorInfo.getVendor(), instituteId, user, paymentRequest);
+
+        // Update PaymentLog with gateway response
+        Map<String, Object> logData = new HashMap<>();
+        logData.put("response", response);
+        logData.put("originalRequest", paymentRequest);
+        String paymentStatus = response.getResponseData() != null
+                ? (String) response.getResponseData().get("paymentStatus")
+                : null;
+        if (!StringUtils.hasText(paymentStatus)) {
+            paymentStatus = "PAYMENT_PENDING";
+        }
+        paymentLog.setStatus("ACTIVE");
+        paymentLog.setPaymentStatus(paymentStatus);
+        try {
+            paymentLog.setPaymentSpecificData(new ObjectMapper().writeValueAsString(logData));
+        } catch (Exception ignored) {}
+        paymentLogRepository.save(paymentLog);
+
+        response.setOrderId(paymentLogId);
+        return response;
+    }
+
+    /**
+     * Called by webhook handlers when a PaymentLog with no UserPlan (admin invoice)
+     * is marked as PAID. Updates the linked invoice status and sends email.
+     */
+    @Transactional
+    public void markAdminInvoicePaidByPaymentLog(String paymentLogId, String instituteId) {
+        InvoicePaymentLogMapping mapping = invoicePaymentLogMappingRepository
+                .findFirstByPaymentLogId(paymentLogId).orElse(null);
+        if (mapping == null) {
+            log.info("No admin invoice found for paymentLogId={}, skipping markAdminInvoicePaid", paymentLogId);
+            return;
+        }
+
+        // Load the invoice directly (not via lazy proxy) so Hibernate tracks it as a
+        // managed entity in the current persistence context before we mutate its status.
+        String invoiceId = mapping.getInvoice().getId();
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        if (invoice == null) {
+            log.warn("Invoice {} not found for paymentLogId={}, skipping", invoiceId, paymentLogId);
+            return;
+        }
+        if (INVOICE_STATUS_PAID.equals(invoice.getStatus())) {
+            log.info("Invoice {} already marked as PAID, skipping", invoice.getId());
+            return;
+        }
+
+        invoice.setStatus(INVOICE_STATUS_PAID);
+        invoiceRepository.saveAndFlush(invoice);
+        log.info("Admin invoice {} marked as PAID via paymentLogId={}", invoice.getInvoiceNumber(), paymentLogId);
+
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()));
+            if (!users.isEmpty()) {
+                byte[] pdfBytes = invoice.getPdfFileId() != null
+                        ? fetchPdfBytesFromS3(invoice.getPdfFileId())
+                        : null;
+                sendInvoiceEmail(invoice, users.get(0), instituteId, pdfBytes);
+            }
+        } catch (Exception e) {
+            log.error("Failed to send paid invoice email for invoice {}: {}", invoice.getId(), e.getMessage(), e);
+        }
+    }
+
+    private String createAdminInvoicePaymentLog(String userId, double amount, String vendor, String vendorId,
+            String currency) {
+        PaymentLog log = new PaymentLog();
+        log.setStatus("INITIATED");
+        log.setPaymentAmount(amount);
+        log.setUserId(userId);
+        log.setPaymentStatus(null);
+        log.setVendor(vendor);
+        log.setVendorId(vendorId);
+        log.setDate(new java.util.Date());
+        log.setCurrency(currency);
+        log.setUserPlan(null);
+        return paymentLogRepository.save(log).getId();
+    }
+
+    private String generateAndUploadAdminInvoicePdf(Invoice invoice, UserDTO user, Institute institute,
+            List<AdminInvoiceLineItemRequestDTO> lineItems,
+            BigDecimal subtotal, BigDecimal taxAmount, BigDecimal totalAmount,
+            String currency, Boolean taxIncluded, BigDecimal taxRate, String taxLabel) {
+        List<InvoiceLineItemData> lineItemData = lineItems.stream()
+                .map(item -> InvoiceLineItemData.builder()
+                        .itemType(StringUtils.hasText(item.getItemType()) ? item.getItemType() : "SERVICE")
+                        .description(item.getDescription())
+                        .quantity(item.getQuantity())
+                        .unitPrice(item.getUnitPrice())
+                        .amount(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                        .build())
+                .collect(Collectors.toList());
+
+        InvoiceData invoiceData = InvoiceData.builder()
+                .user(user)
+                .institute(institute)
+                .invoiceNumber(invoice.getInvoiceNumber())
+                .invoiceDate(invoice.getInvoiceDate())
+                .dueDate(invoice.getDueDate())
+                .subtotal(subtotal)
+                .discountAmount(BigDecimal.ZERO)
+                .taxAmount(taxAmount)
+                .totalAmount(totalAmount)
+                .currency(currency)
+                .taxIncluded(taxIncluded)
+                .taxRate(taxRate)
+                .taxLabel(taxLabel)
+                .paymentMethod("")
+                .transactionId("")
+                .paymentDate(LocalDateTime.now())
+                .lineItems(lineItemData)
+                .build();
+
+        String templateHtml = loadInvoiceTemplate(institute.getId());
+        String filled = replaceTemplatePlaceholders(templateHtml, invoiceData);
+        byte[] pdfBytes = generatePdfFromHtml(filled);
+        return uploadInvoiceToS3(pdfBytes, invoice.getInvoiceNumber(), institute.getId());
+    }
+
+    private byte[] fetchPdfBytesFromS3(String pdfFileId) {
+        try {
+            String pdfUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(pdfFileId);
+            if (!StringUtils.hasText(pdfUrl)) return null;
+            java.net.URL url = new java.net.URL(pdfUrl);
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(15000);
+            if (conn.getResponseCode() == 200) {
+                try (java.io.InputStream is = conn.getInputStream();
+                     java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                    byte[] buf = new byte[4096];
+                    int n;
+                    while ((n = is.read(buf)) != -1) out.write(buf, 0, n);
+                    return out.toByteArray();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch PDF bytes for pdfFileId={}: {}", pdfFileId, e.getMessage());
+        }
+        return null;
+    }
+
+    private String buildPaymentLink(Institute institute, String invoiceId) {
+        String base = StringUtils.hasText(institute.getLearnerPortalBaseUrl())
+                ? institute.getLearnerPortalBaseUrl()
+                : learnerPortalUrl;
+        if (!base.startsWith("http")) {
+            base = "https://" + base;
+        }
+        return base.replaceAll("/$", "") + invoicePayPath + "/" + invoiceId;
     }
 
     /**

@@ -12,6 +12,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.service.BulkLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
 import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
 import vacademy.io.admin_core_service.features.session.dto.SessionDTOWithDetails;
@@ -30,6 +31,11 @@ public class LiveSessionController {
     private final BulkLiveSessionService bulkLiveSessionService;
 
     @PostMapping("create/step1")
+    @Auditable(
+            entityType = "LIVE_SESSION",
+            action = "CREATE",
+            entityIdExpr = "#result?.body?.id",
+            descriptionExpr = "'scheduled live session ' + #SessionRequest?.title")
     ResponseEntity< LiveSession> addLiveSessionStep1(@RequestBody LiveSessionStep1RequestDTO SessionRequest,
                                     @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(step1Service.step1AddService(SessionRequest , user));
@@ -49,6 +55,10 @@ public class LiveSessionController {
     }
 
     @PostMapping("/delete")
+    @Auditable(
+            entityType = "LIVE_SESSION",
+            action = "DELETE",
+            descriptionExpr = "'deleted ' + (#request?.ids?.size() ?: 0) + ' live session(s)'")
     public ResponseEntity<?> deleteLiveSessions(
             @RequestBody DeleteLiveSessionRequest request,
             @RequestAttribute("user") CustomUserDetails user) {

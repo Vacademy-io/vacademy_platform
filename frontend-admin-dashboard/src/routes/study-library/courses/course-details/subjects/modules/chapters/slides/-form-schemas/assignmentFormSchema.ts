@@ -31,8 +31,63 @@ export const assignmentFormSchema = z.object({
     ),
     totalMarks: z.number().optional(),
     passingMarks: z.number().optional(),
+    allowedFileTypes: z.array(z.string()).optional(),
     totalParticipants: z.number().optional(),
     submittedParticipants: z.number().optional(),
+}).superRefine((v, ctx) => {
+    if (
+        v.hasDateRange &&
+        v.startDate &&
+        v.endDate &&
+        new Date(v.startDate) >= new Date(v.endDate)
+    ) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['endDate'],
+            message: 'End must be after start',
+        });
+    }
 });
 
 export type AssignmentFormType = z.infer<typeof assignmentFormSchema>;
+
+// File types an admin can allow learners to upload. PDF is always allowed.
+export const ALLOWED_FILE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: 'pdf', label: 'PDF' },
+    { value: 'image', label: 'Image (PNG, JPG, GIF)' },
+    { value: 'doc', label: 'Document (DOC, DOCX)' },
+    { value: 'video', label: 'Video (MP4, MOV, WEBM)' },
+    { value: 'audio', label: 'Audio (MP3, WAV, M4A)' },
+];
+
+// The selection is round-tripped through the existing `comma_separated_media_ids`
+// column on assignment_slide (which is otherwise unused). A sentinel prefix lets
+// us tell our payload apart from a real media-id list if anyone ever starts
+// using that field for its original purpose.
+export const ALLOWED_TYPES_FIELD_PREFIX = 'types:';
+
+const KNOWN_TYPE_VALUES = new Set(ALLOWED_FILE_TYPE_OPTIONS.map((o) => o.value));
+
+export function encodeAllowedFileTypes(types: string[] | undefined | null): string {
+    const cleaned = Array.from(
+        new Set(
+            (types ?? [])
+                .map((t) => t.trim().toLowerCase())
+                .filter((t) => KNOWN_TYPE_VALUES.has(t))
+        )
+    );
+    return `${ALLOWED_TYPES_FIELD_PREFIX}${cleaned.join(',')}`;
+}
+
+export function decodeAllowedFileTypes(raw: string | undefined | null): string[] {
+    if (!raw || !raw.startsWith(ALLOWED_TYPES_FIELD_PREFIX)) return [];
+    return Array.from(
+        new Set(
+            raw
+                .slice(ALLOWED_TYPES_FIELD_PREFIX.length)
+                .split(',')
+                .map((t) => t.trim().toLowerCase())
+                .filter((t) => KNOWN_TYPE_VALUES.has(t))
+        )
+    );
+}

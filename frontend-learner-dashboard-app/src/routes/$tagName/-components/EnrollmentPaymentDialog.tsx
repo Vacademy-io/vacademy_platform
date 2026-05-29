@@ -7,12 +7,12 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
-import { Loader2 } from "lucide-react";
+import { SpinnerGap } from "@phosphor-icons/react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { SiStripe } from "react-icons/si";
-import { Lock } from "lucide-react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand logo (no Phosphor equivalent)
+import { Lock } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
@@ -30,6 +30,9 @@ import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 import axios from "axios";
 import { toast } from "sonner";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 interface EnrollmentPaymentDialogProps {
   open: boolean;
@@ -97,6 +100,34 @@ export const EnrollmentPaymentDialog: React.FC<
   const [paymentError, setPaymentError] = useState<string>("");
   const [stripePromise, setStripePromise] = useState<any>(null);
   const [currency, setCurrency] = useState<string>("USD");
+
+  // Institute-level coupon kill switch (admin Settings → Coupons).
+  const couponsEnabled = useCouponsEnabled();
+  // Coupon state — re-validated by BE at enroll time + atomically decremented
+  // (V308/V309). `appliedDiscount` is the live discount value from validate.
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: courseData.enrollInviteId || null,
+      packageSessionId:
+        selectedPaymentPlan?.package_session_id ||
+        (courseData as { package_session_id?: string }).package_session_id ||
+        null,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      userEmail: email || null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  // Effective amount the gateway should actually charge, after coupon discount.
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
 
   // OTP state variables
   const [otpSent, setOtpSent] = useState(false);
@@ -462,8 +493,8 @@ export const EnrollmentPaymentDialog: React.FC<
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60" />
-        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none">
           <button
             className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
@@ -475,7 +506,7 @@ export const EnrollmentPaymentDialog: React.FC<
           {isInitializing ? (
             <div className="text-center space-y-6">
               <div className="flex justify-center">
-                <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+                <SpinnerGap className="w-12 h-12 text-blue-500 animate-spin" />
               </div>
               <h2 className="text-xl font-semibold text-gray-700">
                 Loading...
@@ -628,7 +659,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         >
                           {isLoadingOtp ? (
                             <>
-                              <Loader2
+                              <SpinnerGap
                                 size={16}
                                 className="animate-spin mr-2"
                               />
@@ -671,7 +702,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           >
                             {isLoadingOtp ? (
                               <>
-                                <Loader2
+                                <SpinnerGap
                                   size={16}
                                   className="animate-spin mr-2"
                                 />
@@ -693,7 +724,7 @@ export const EnrollmentPaymentDialog: React.FC<
                           >
                             {isVerifyingOtp ? (
                               <>
-                                <Loader2
+                                <SpinnerGap
                                   size={16}
                                   className="animate-spin mr-2"
                                 />
@@ -870,9 +901,41 @@ export const EnrollmentPaymentDialog: React.FC<
                         </div>
                       )}
 
+                      {/* Discount Coupon — institute-level toggle gates whether
+                          the UI is visible at all. The applied discount is
+                          subtracted from `effectiveAmount` below so the gateway
+                          actually charges the discounted price. */}
+                      {couponsEnabled && (
+                        <div className="mb-4">
+                          <CouponInput
+                            state={couponCtx.state}
+                            onChange={couponCtx.setCode}
+                            onApply={couponCtx.apply}
+                            onClear={couponCtx.clear}
+                            currencySymbol={getCurrencySymbol(currency || "")}
+                          />
+                          {couponCtx.state.appliedCode &&
+                            couponCtx.state.discount > 0 && (
+                              <div className="mt-3 flex justify-between text-sm">
+                                <span className="text-gray-600">
+                                  Subtotal {getCurrencySymbol(currency)}
+                                  {selectedPaymentPlan.actual_price.toFixed(2)} ·
+                                  Coupon ({couponCtx.state.appliedCode}) −
+                                  {getCurrencySymbol(currency)}
+                                  {couponCtx.state.discount.toFixed(2)}
+                                </span>
+                                <span className="font-semibold text-gray-900">
+                                  You pay {getCurrencySymbol(currency)}
+                                  {effectiveAmount.toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                        </div>
+                      )}
+
                       {vendor === "CASHFREE" ? (
                         <CashfreePaymentForm
-                          amount={selectedPaymentPlan.actual_price}
+                          amount={effectiveAmount}
                           currency={currency}
                           email={email}
                           fullName={fullName}
@@ -887,7 +950,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         />
                       ) : vendor === "RAZORPAY" ? (
                         <PaymentForm
-                          amount={selectedPaymentPlan.actual_price}
+                          amount={effectiveAmount}
                           currency={currency}
                           email={email}
                           fullName={fullName}
@@ -904,7 +967,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       ) : stripePromise ? (
                         <Elements stripe={stripePromise}>
                           <StripeConnectedPaymentForm
-                            amount={selectedPaymentPlan.actual_price}
+                            amount={effectiveAmount}
                             currency={currency}
                             email={email}
                             fullName={fullName}
@@ -954,7 +1017,7 @@ export const EnrollmentPaymentDialog: React.FC<
                   >
                     {loading ? (
                       <>
-                        <Loader2 size={18} className="animate-spin mr-2" />
+                        <SpinnerGap size={18} className="animate-spin mr-2" />
                         Loading...
                       </>
                     ) : (selectedPaymentPlan?.actual_price === 0 || (availablePaymentPlans.length > 0 && availablePaymentPlans.every(p => p.actual_price === 0))) ? (
@@ -1075,6 +1138,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
                 ?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
+            coupon_code: couponCtx.state.appliedCode || null,
             payment_initiation_request: {
               vendor: "CASHFREE",
               amount,
@@ -1166,7 +1230,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
   if (cashfreeInitLoading || !cashfreeSessionData) {
     return (
       <div className="flex flex-col items-center justify-center py-8 space-y-4">
-        <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+        <SpinnerGap className="w-10 h-10 text-blue-500 animate-spin" />
         <p className="text-sm text-gray-600">Preparing payment...</p>
       </div>
     );
@@ -1361,6 +1425,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
+          coupon_code: couponCtx.state.appliedCode || null,
           payment_initiation_request: {
             vendor: "RAZORPAY",
             amount: amount,
@@ -1519,6 +1584,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               enrollmentData?.package_session_to_payment_options?.[0]
                 ?.payment_option?.id || null,
             enroll_invite_id: finalEnrollInviteId,
+            coupon_code: couponCtx.state.appliedCode || null,
             payment_initiation_request: {
               amount: 0,
               currency: "USD",
@@ -1609,6 +1675,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
+            coupon_code: couponCtx.state.appliedCode || null,
             payment_initiation_request: {
               vendor: "RAZORPAY",
               amount: amount,
@@ -1770,6 +1837,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               ?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
+          coupon_code: couponCtx.state.appliedCode || null,
           payment_initiation_request: {
             vendor: "STRIPE",
             amount: amount,
@@ -1833,20 +1901,20 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     <div className="space-y-4">
       {/* Card Element Container - Only show for paid courses */}
       {amount > 0 && vendor === "STRIPE" && (
-        <div className="min-h-[48px] border border-gray-300 rounded-md p-3 bg-white">
+        <div className="min-h-12 border border-gray-300 rounded-md p-3 bg-white">
           <CardElement
             options={{
               style: {
                 base: {
                   fontSize: "16px",
-                  color: "#374151",
+                  color: "#374151", // design-lint-ignore: page-builder default color
                   fontFamily: "system-ui, -apple-system, sans-serif",
                   "::placeholder": {
-                    color: "#9CA3AF",
+                    color: "#9CA3AF", // design-lint-ignore: page-builder default color
                   },
                 },
                 invalid: {
-                  color: "#DC2626",
+                  color: "#DC2626", // design-lint-ignore: page-builder default color
                 },
               },
             }}
@@ -1925,7 +1993,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         >
           {isProcessing ? (
             <>
-              <Loader2 size={18} className="animate-spin" />
+              <SpinnerGap size={18} className="animate-spin" />
               {amount === 0 ? "Enrolling..." : "Processing..."}
             </>
           ) : (

@@ -24,7 +24,7 @@ export const Route = createFileRoute("/study-library/courses/course-details/")({
         console.error("Course load error:", error);
         return (
             <LayoutContainer>
-                <div className="flex flex-col items-center justify-center p-12 text-center h-[70vh]">
+                <div className="flex flex-col items-center justify-center p-12 text-center h-screen-70">
                     <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
                         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                     </div>

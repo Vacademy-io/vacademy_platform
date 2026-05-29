@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, RotateCcw, Download, Loader2 } from "lucide-react";
+import { CaretLeft, CaretRight, ArrowCounterClockwise, DownloadSimple, SpinnerGap } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { EXPORT_AI_REPORT } from "@/constants/urls";
 import { Preferences } from "@capacitor/preferences";
@@ -69,8 +69,8 @@ const MASTERY_VARIANT: Record<string, string> = {
 };
 
 const BLOOM_COLORS: Record<string, string> = {
-  remember: "#10b981", understand: "#3b82f6", apply: "#8b5cf6",
-  analyze: "#f59e0b", evaluate: "#f97316", create: "#ef4444",
+  remember: "#10b981", understand: "#3b82f6", apply: "#8b5cf6", // design-lint-ignore: chart series colors
+  analyze: "#f59e0b", evaluate: "#f97316", create: "#ef4444", // design-lint-ignore: chart series colors
 };
 
 const BLOOM_BG: Record<string, string> = {
@@ -140,7 +140,7 @@ export default function AIReportDetailsPage({
         </div>
         <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloading}
           className={`gap-1.5 ${dlError ? "border-destructive text-destructive" : ""}`}>
-          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          {downloading ? <SpinnerGap className="h-4 w-4 animate-spin" /> : <DownloadSimple className="h-4 w-4" />}
           {downloading ? "Generating..." : dlError ? "Failed" : "Download PDF"}
         </Button>
       </div>
@@ -154,13 +154,13 @@ export default function AIReportDetailsPage({
               <div className="text-2xl font-bold text-emerald-600 font-mono">
                 {comparisonData.student_marks ?? 0}/{comparisonData.total_marks ?? 0}
               </div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-1">Marks Obtained</div>
+              <div className="text-3xs text-muted-foreground uppercase tracking-wide mt-1">Marks Obtained</div>
             </div>
             <div className="text-center p-4 bg-white border rounded-xl">
               <div className="text-2xl font-bold text-violet-600 font-mono">
                 #{comparisonData.student_rank ?? "-"}
               </div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-1">
+              <div className="text-3xs text-muted-foreground uppercase tracking-wide mt-1">
                 Rank (of {comparisonData.total_participants ?? "-"})
               </div>
             </div>
@@ -168,7 +168,7 @@ export default function AIReportDetailsPage({
               <div className="text-2xl font-bold text-cyan-600 font-mono">
                 {comparisonData.student_percentile ?? 0}%
               </div>
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-1">Percentile</div>
+              <div className="text-3xs text-muted-foreground uppercase tracking-wide mt-1">Percentile</div>
             </div>
           </div>
         )}
@@ -277,8 +277,8 @@ export default function AIReportDetailsPage({
               <div className="flex items-center gap-6 mb-4">
                 <div className="relative w-20 h-20 flex-shrink-0">
                   <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="#f0f0f0" strokeWidth="10" />
-                    <circle cx="60" cy="60" r="50" fill="none" stroke="#8b5cf6" strokeWidth="10"
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#f0f0f0" strokeWidth="10" /> {/* design-lint-ignore: chart series colors */}
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="#8b5cf6" strokeWidth="10" // design-lint-ignore: chart series colors
                       strokeDasharray={`${(report.confidence_estimation.overall_confidence / 100) * 314} 314`}
                       strokeLinecap="round" />
                   </svg>
@@ -308,13 +308,13 @@ export default function AIReportDetailsPage({
               )}
               {confEntries.length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">Confidence Per Question</p>
+                  <p className="text-3xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">Confidence Per Question</p>
                   <div className="grid grid-cols-5 gap-2">
                     {confEntries.map(([q, c]) => (
                       <div key={q} className={`rounded-lg p-2 text-center border ${c >= 70 ? "bg-emerald-50 border-emerald-200" : c >= 40 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"}`}>
-                        <p className="text-[10px] text-muted-foreground">{q}</p>
+                        <p className="text-3xs text-muted-foreground">{q}</p>
                         <p className={`text-lg font-bold font-mono ${c >= 70 ? "text-emerald-600" : c >= 40 ? "text-amber-600" : "text-red-500"}`}>{c}%</p>
-                        <p className={`text-[9px] font-bold ${c >= 70 ? "text-emerald-600" : c >= 40 ? "text-amber-600" : "text-red-500"}`}>{c >= 70 ? "HIGH" : c >= 40 ? "MED" : "LOW"}</p>
+                        <p className={`text-3xs font-bold ${c >= 70 ? "text-emerald-600" : c >= 40 ? "text-amber-600" : "text-red-500"}`}>{c >= 70 ? "HIGH" : c >= 40 ? "MED" : "LOW"}</p>
                       </div>
                     ))}
                   </div>
@@ -334,10 +334,10 @@ export default function AIReportDetailsPage({
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
-                  <PolarGrid stroke="#e5e7eb" />
+                  <PolarGrid stroke="#e5e7eb" /> {/* design-lint-ignore: chart series colors */}
                   <PolarAngleAxis dataKey="topic" tick={{ fontSize: 11 }} />
                   <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 10 }} />
-                  <Radar dataKey="accuracy" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} strokeWidth={2.5} dot={{ fill: "#8b5cf6", r: 4 }} />
+                  <Radar dataKey="accuracy" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} strokeWidth={2.5} dot={{ fill: "#8b5cf6", r: 4 }} /> {/* design-lint-ignore: chart series colors */}
                 </RadarChart>
               </ResponsiveContainer>
               <div className="overflow-x-auto mt-2">
@@ -412,7 +412,7 @@ export default function AIReportDetailsPage({
               <p className="text-xs text-muted-foreground mt-0.5">How you performed at different thinking levels — from basic recall to higher-order analysis and problem solving.</p>
             </CardHeader>
             <CardContent>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">Performance by Cognitive Level</p>
+              <p className="text-3xs uppercase tracking-wider text-muted-foreground font-semibold mb-3">Performance by Cognitive Level</p>
               <div className="space-y-2.5 mb-5">
                 {bloomsData.map(d => (
                   <div key={d.key} className="flex items-center gap-3">
@@ -427,12 +427,12 @@ export default function AIReportDetailsPage({
               </div>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={bloomsData} barCategoryGap="20%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" /> {/* design-lint-ignore: chart series colors */}
                   <XAxis dataKey="level" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
                   <Tooltip contentStyle={{ borderRadius: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }} formatter={(v: number) => `${v}%`} />
                   <Bar dataKey="accuracy" radius={[6, 6, 0, 0]}>
-                    {bloomsData.map(d => <Cell key={d.key} fill={BLOOM_COLORS[d.key] || "#8b5cf6"} />)}
+                    {bloomsData.map(d => <Cell key={d.key} fill={BLOOM_COLORS[d.key] || "#8b5cf6"} />)} {/* design-lint-ignore: chart series colors */}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -481,7 +481,7 @@ export default function AIReportDetailsPage({
                   if (!val) return null;
                   return (
                     <div key={item.k} className={`p-3 rounded-lg border-l-4 ${item.c}`}>
-                      <p className={`text-[10px] font-bold uppercase tracking-wide mb-1 ${item.tc}`}>{item.l}</p>
+                      <p className={`text-3xs font-bold uppercase tracking-wide mb-1 ${item.tc}`}>{item.l}</p>
                       <p className="text-sm text-muted-foreground">{val}</p>
                     </div>
                   );
@@ -541,7 +541,7 @@ export default function AIReportDetailsPage({
               <div className="flex flex-col items-center gap-4">
                 <div
                   onClick={() => setShowAnswer(!showAnswer)}
-                  className={`w-full max-w-md min-h-[200px] rounded-xl border-2 cursor-pointer transition-all hover:shadow-md flex items-center justify-center p-6 ${showAnswer ? "bg-emerald-50/50 border-emerald-200" : "bg-violet-50/50 border-violet-200"}`}
+                  className={`w-full max-w-md min-h-reg-200 rounded-xl border-2 cursor-pointer transition-all hover:shadow-md flex items-center justify-center p-6 ${showAnswer ? "bg-emerald-50/50 border-emerald-200" : "bg-violet-50/50 border-violet-200"}`}
                 >
                   <div className="text-center">
                     <p className={`text-xs font-semibold uppercase tracking-wider mb-2 ${showAnswer ? "text-emerald-600" : "text-violet-600"}`}>
@@ -554,12 +554,12 @@ export default function AIReportDetailsPage({
                 </div>
                 <div className="flex items-center gap-3">
                   <Button variant="outline" size="sm" onClick={() => { setFlashIdx(p => p === 0 ? report.flashcards.length - 1 : p - 1); setShowAnswer(false); }}
-                    disabled={report.flashcards.length <= 1}><ChevronLeft size={16} /></Button>
+                    disabled={report.flashcards.length <= 1}><CaretLeft size={16} /></Button>
                   <Button variant="outline" size="sm" onClick={() => setShowAnswer(!showAnswer)}>
-                    <RotateCcw size={14} className="mr-1" /> Flip
+                    <ArrowCounterClockwise size={14} className="mr-1" /> Flip
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => { setFlashIdx(p => p === report.flashcards.length - 1 ? 0 : p + 1); setShowAnswer(false); }}
-                    disabled={report.flashcards.length <= 1}><ChevronRight size={16} /></Button>
+                    disabled={report.flashcards.length <= 1}><CaretRight size={16} /></Button>
                 </div>
               </div>
             </CardContent>

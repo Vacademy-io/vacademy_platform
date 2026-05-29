@@ -1,6 +1,6 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
-import { Trash2, UserPlus, Plus } from 'lucide-react';
-import { ArrowSquareOut, NotePencil } from '@phosphor-icons/react';
+import { Trash, UserPlus, ArrowSquareOut } from '@phosphor-icons/react';
+import { LeadActivityNotesCell } from '@/components/shared/lead-activity-notes-cell';
 import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
@@ -9,6 +9,12 @@ import {
     CampaignFormCustomField,
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { TatStatusBadge } from '@/components/shared/tat-status-badge';
+import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
+import { LeadStatusChip } from '@/components/shared/lead-status-chip';
+import { LeadStatusSelect } from '@/components/shared/lead-status-select';
+import { type LeadStatus } from '@/hooks/use-lead-statuses';
+import type { CustomLeadStatus } from '@/hooks/use-lead-settings';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 import type { LatestNoteSummary } from '@/hooks/use-latest-notes-batch';
 import {
@@ -67,6 +73,17 @@ export interface CampaignUserTable {
         profile_pic_file_id?: string | null;
     };
     _custom_field_values?: Record<string, string | null>;
+    // TAT / follow-up SLA deadlines + badge (visual only)
+    _tat_due_at?: string | null;
+    _first_response_at?: string | null; // drives "Responded in N" in the Reach-out-by cell
+    _follow_up_due_at?: string | null;
+    _tat_overdue?: boolean | null;
+    _tat_due_soon?: boolean | null;
+    _follow_up_overdue?: boolean | null;
+    // Custom pipeline status (enquiry_status)
+    _lead_status?: string | null;
+    // Audience response id — required to update the lead status inline.
+    _response_id?: string | null;
     [key: string]: any; // Allow dynamic custom field properties
 }
 
@@ -130,7 +147,11 @@ export const generateDynamicColumns = (
     leadProfiles?: Record<string, LeadProfileSummary>,
     latestNotes?: Record<string, LatestNoteSummary>,
     onAddNote?: (userId: string, userName: string) => void,
-    onAssignCounsellor?: (userId: string, userName: string) => void
+    onAssignCounsellor?: (userId: string, userName: string) => void,
+    customStatuses?: CustomLeadStatus[],
+    // Full status catalog (with ids) + refetch enable the inline editable status.
+    leadStatusCatalog?: LeadStatus[],
+    onLeadStatusUpdated?: () => void
 ): ColumnDef<CampaignUserTable>[] => {
     // When a select-row callback is provided, render a "Details" column first —
     // matching manage-students and manage-contacts so the side-view affordance is
@@ -345,12 +366,21 @@ export const generateDynamicColumns = (
                         >
                             <div className="flex flex-col gap-0.5">
                                 <span>{displayValue}</span>
-                                {leadProfile && leadProfile.conversion_status !== 'CONVERTED' && (
-                                    <LeadScoreBadge
-                                        score={leadProfile.best_score}
-                                        tier={leadProfile.lead_tier}
-                                        size="sm"
-                                    />
+                                {isNameFieldCell && (
+                                    <div className="flex flex-wrap items-center gap-1">
+                                        {leadProfile && leadProfile.conversion_status !== 'CONVERTED' && (
+                                            <LeadScoreBadge
+                                                score={leadProfile.best_score}
+                                                tier={leadProfile.lead_tier}
+                                                size="sm"
+                                            />
+                                        )}
+                                        <TatStatusBadge
+                                            tatOverdue={row.original._tat_overdue}
+                                            tatDueSoon={row.original._tat_due_soon}
+                                            followUpOverdue={row.original._follow_up_overdue}
+                                        />
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -360,6 +390,80 @@ export const generateDynamicColumns = (
         });
     } catch (error) {
         console.error('❌ Error generating dynamic columns:', error);
+    }
+
+    // Lead status (custom pipeline stage) column — inline-editable chip when the
+    // full catalog + a response id are available, otherwise a read-only chip.
+    const hasEditableStatus = !!(leadStatusCatalog && leadStatusCatalog.length > 0);
+    if (hasEditableStatus || (customStatuses && customStatuses.length > 0)) {
+        columns.push({
+            id: 'lead_status',
+            header: 'Status',
+            size: 160,
+            minSize: 120,
+            maxSize: 200,
+            cell: ({ row }) => {
+                if (hasEditableStatus && row.original._response_id) {
+                    return (
+                        <div className="p-3">
+                            <LeadStatusSelect
+                                responseId={row.original._response_id}
+                                currentStatus={row.original._lead_status}
+                                statuses={leadStatusCatalog as LeadStatus[]}
+                                onUpdated={onLeadStatusUpdated}
+                            />
+                        </div>
+                    );
+                }
+                return row.original._lead_status ? (
+                    <div className="p-3">
+                        <LeadStatusChip
+                            status={row.original._lead_status}
+                            statuses={customStatuses ?? []}
+                        />
+                    </div>
+                ) : (
+                    <div className="p-3 text-sm text-neutral-400">—</div>
+                );
+            },
+        });
+    }
+
+    // SLA deadline columns (reach-out / follow-up) — shown with the other lead-ops columns.
+    if (onAssignCounsellor) {
+        columns.push({
+            id: 'reach_out_by',
+            header: 'Reach out in',
+            size: 160,
+            minSize: 130,
+            maxSize: 200,
+            cell: ({ row }) => (
+                <div className="p-3">
+                    <SlaDeadlineCell
+                        mode="response"
+                        dueAt={row.original._tat_due_at}
+                        overdue={row.original._tat_overdue}
+                        respondedAt={row.original._first_response_at}
+                        baselineAt={row.original.submittedAt}
+                    />
+                </div>
+            ),
+        });
+        columns.push({
+            id: 'follow_up_by',
+            header: 'Follow up at',
+            size: 150,
+            minSize: 120,
+            maxSize: 180,
+            cell: ({ row }) => (
+                <div className="p-3">
+                    <SlaDeadlineCell
+                        dueAt={row.original._follow_up_due_at}
+                        overdue={row.original._follow_up_overdue}
+                    />
+                </div>
+            ),
+        });
     }
 
     // Counsellor column — uses the batched LeadProfileSummary so we don't
@@ -387,7 +491,7 @@ export const generateDynamicColumns = (
                     return (
                         <div className="flex items-center justify-between gap-2 p-3">
                             <div className="flex min-w-0 items-center gap-2">
-                                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700">
+                                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700">
                                     {counselorName[0]?.toUpperCase()}
                                 </div>
                                 <span className="truncate text-sm text-neutral-800">
@@ -400,7 +504,7 @@ export const generateDynamicColumns = (
                                     e.stopPropagation();
                                     onAssignCounsellor(userId, userName);
                                 }}
-                                className="shrink-0 text-[11px] text-neutral-400 hover:text-primary-600"
+                                className="shrink-0 text-xs text-neutral-400 hover:text-primary-600"
                             >
                                 Reassign
                             </button>
@@ -438,88 +542,21 @@ export const generateDynamicColumns = (
             maxSize: 420,
             cell: ({ row }) => {
                 const userId = row.original._user_id;
+                if (!userId) {
+                    return <div className="p-3 text-sm text-neutral-400">—</div>;
+                }
                 const userName =
                     (row.original.full_name as string) ||
                     row.original._user?.full_name ||
                     '';
-                const summary = userId && latestNotes ? latestNotes[userId] : undefined;
-                if (!userId) {
-                    return <div className="p-3 text-sm text-neutral-400">—</div>;
-                }
-                const recent = summary?.recent ?? [];
-                if (recent.length === 0) {
-                    return (
-                        <div className="p-3">
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onAddNote(userId, userName);
-                                }}
-                                className="inline-flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-primary-300 hover:text-primary-600"
-                            >
-                                <Plus className="size-3.5" />
-                                Add Note
-                            </button>
-                        </div>
-                    );
-                }
-                const overflow = (summary?.count ?? recent.length) - recent.length;
+                const summary = latestNotes ? latestNotes[userId] : undefined;
                 return (
-                    <div className="flex items-start justify-between gap-2 p-2">
-                        <div className="min-w-0 flex-1 space-y-1.5">
-                            {recent.map((n) => {
-                                const desc = n.description?.trim();
-                                const ts = n.created_at
-                                    ? new Date(n.created_at).toLocaleDateString('en-IN', {
-                                          day: '2-digit',
-                                          month: 'short',
-                                          year: '2-digit',
-                                      })
-                                    : '';
-                                return (
-                                    <div
-                                        key={n.id}
-                                        className="rounded-md bg-neutral-50 px-2 py-1.5"
-                                    >
-                                        <div className="flex items-center gap-1.5">
-                                            <NotePencil
-                                                weight="fill"
-                                                className="size-3 text-neutral-500"
-                                            />
-                                            <span className="truncate text-xs font-medium text-neutral-800">
-                                                {n.title}
-                                            </span>
-                                        </div>
-                                        {desc && (
-                                            <p className="mt-0.5 line-clamp-2 text-[11px] text-neutral-600">
-                                                {desc}
-                                            </p>
-                                        )}
-                                        <p className="mt-0.5 text-[10px] text-neutral-400">
-                                            {ts}
-                                            {n.actor_name ? ` · by ${n.actor_name}` : ''}
-                                        </p>
-                                    </div>
-                                );
-                            })}
-                            {overflow > 0 && (
-                                <p className="text-[10px] text-neutral-400">
-                                    +{overflow} more
-                                </p>
-                            )}
-                        </div>
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onAddNote(userId, userName);
-                            }}
-                            title="Add note"
-                            className="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-primary-600"
-                        >
-                            <Plus className="size-3.5" />
-                        </button>
+                    <div className="p-2">
+                        <LeadActivityNotesCell
+                            recent={summary?.recent ?? []}
+                            count={summary?.count ?? 0}
+                            onAdd={() => onAddNote(userId, userName)}
+                        />
                     </div>
                 );
             },
@@ -553,7 +590,7 @@ export const generateDynamicColumns = (
                         className="text-neutral-400 transition-colors hover:text-red-500"
                         title="Delete lead"
                     >
-                        <Trash2 className="size-4" />
+                        <Trash className="size-4" />
                     </button>
                 </div>
             ),

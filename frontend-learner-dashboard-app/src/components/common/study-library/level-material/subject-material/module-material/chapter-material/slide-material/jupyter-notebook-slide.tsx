@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ExternalLink, BookOpen } from "lucide-react";
+import { ArrowSquareOut, BookOpen } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 
@@ -498,7 +498,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
     <div className="h-full p-1 relative">
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-[10000] animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -587,7 +587,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
                 }}
                 className="flex items-center gap-1.5"
               >
-                <ExternalLink size={14} />
+                <ArrowSquareOut size={14} />
                 Open in New Tab
               </Button>
             </div>

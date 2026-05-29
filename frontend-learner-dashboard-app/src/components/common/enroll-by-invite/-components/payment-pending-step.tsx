@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Clock, ArrowRight, ExternalLink } from "lucide-react";
+import { Clock, ArrowRight, ArrowSquareOut } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { getCurrencySymbol } from "./payment-selection-step";
 import { getPaymentCompletionStatus } from "../-services/enroll-invite-services";
@@ -187,7 +187,7 @@ const PaymentPendingStep = ({
           className="w-full sm:w-auto bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
         >
           View Invoice
-          <ExternalLink className="w-5 h-5 ml-2" />
+          <ArrowSquareOut className="w-5 h-5 ml-2" />
         </MyButton>
       </div>
 

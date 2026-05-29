@@ -8,7 +8,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { CreditCard } from 'lucide-react';
+import { CreditCard } from '@phosphor-icons/react';
 import { SubscriptionPlanPreview } from '../SubscriptionPlanPreview';
 import { DonationPlanPreview } from '../DonationPlanPreview';
 import { PaymentPlanEditor } from '../PaymentPlanEditor';
@@ -393,7 +393,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
     if (editingPlan) {
         return (
             <Dialog open={isOpen} onOpenChange={onClose}>
-                <DialogContent className="max-h-[90vh] min-w-[800px] overflow-y-auto">
+                <DialogContent className="max-h-[90vh] w-full max-w-4xl overflow-y-auto">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <CreditCard className="size-5" />
@@ -419,7 +419,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-h-[90vh] min-w-[800px] overflow-y-auto">
+            <DialogContent className="max-h-[90vh] w-full max-w-4xl overflow-y-auto">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
                 <div>
                     <div className="flex items-center justify-between">
                         <DialogTitle className="flex items-center gap-2">

@@ -1,10 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle } from "@phosphor-icons/react";
 import { getCurrencySymbol } from "./payment-selection-step";
 import { SelectedPayment } from "./types";
 import { ReferralCodeComponent, ReferralBenefit } from "./apply-referral";
-import { useState } from "react";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
+import { useEffect, useState } from "react";
 import { safeJsonParse } from "../-utils/helper";
 import { ReferRequest } from "../-services/enroll-invite-services";
 interface ReviewStepProps {
@@ -19,6 +22,16 @@ interface ReviewStepProps {
   refCode: string | null;
   onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
   onReferralApplied?: () => void;
+  // Discount-coupon plumbing (§6). Required only to surface the coupon input;
+  // payload wiring lives in enroll-form.tsx via onCouponChange.
+  instituteId: string;
+  enrollInviteId: string;
+  userEmail?: string;
+  onCouponChange?: (appliedCode: string | null) => void;
+  // Restored from the parent on remount so the discount survives a
+  // Review → Pay → Back round-trip. PaidPlanReview re-runs validate once
+  // the plan is loaded.
+  initialCouponCode?: string | null;
 }
 
 const ReviewStep = ({
@@ -30,6 +43,11 @@ const ReviewStep = ({
   refCode,
   onUnappliedCodeChange,
   onReferralApplied,
+  instituteId,
+  enrollInviteId,
+  userEmail,
+  onCouponChange,
+  initialCouponCode,
 }: ReviewStepProps) => {
   return (
     <div className="space-y-6">
@@ -77,6 +95,11 @@ const ReviewStep = ({
                 refCode={refCode}
                 onUnappliedCodeChange={onUnappliedCodeChange}
                 onReferralApplied={onReferralApplied}
+                instituteId={instituteId}
+                enrollInviteId={enrollInviteId}
+                userEmail={userEmail}
+                onCouponChange={onCouponChange}
+                initialCouponCode={initialCouponCode}
               />
             ) : (
               <FreePlanReview
@@ -177,6 +200,11 @@ const PaidPlanReview = ({
   refCode,
   onUnappliedCodeChange,
   onReferralApplied,
+  instituteId,
+  enrollInviteId,
+  userEmail,
+  onCouponChange,
+  initialCouponCode,
 }: {
   plan: SelectedPayment | null;
   package_session_id: string;
@@ -184,8 +212,76 @@ const PaidPlanReview = ({
   refCode: string | null;
   onUnappliedCodeChange?: (hasUnappliedCode: boolean) => void;
   onReferralApplied?: () => void;
+  instituteId: string;
+  enrollInviteId: string;
+  userEmail?: string;
+  onCouponChange?: (appliedCode: string | null) => void;
+  initialCouponCode?: string | null;
 }) => {
   const [couponVerified, setCouponVerified] = useState(false);
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => {
+      // Mirror the pricing-display fallback chain (actual_price → amount → 0).
+      // Some SelectedPayment construction paths only set `amount`, not
+      // `actual_price`; without the fallback the validate call sends
+      // total_amount=0 and the BE percentage discount comes back as 0.
+      const totalAmount =
+        typeof plan?.actual_price === "number"
+          ? plan.actual_price
+          : typeof plan?.amount === "number"
+          ? plan.amount
+          : 0;
+      return {
+        couponCode: code,
+        instituteId,
+        enrollInviteId,
+        packageSessionId: package_session_id || null,
+        paymentPlanId: plan?.id ?? null,
+        userEmail: userEmail || null,
+        totalAmount,
+      };
+    },
+  });
+  // Bubble the applied code up so enroll-form can include it in the payload.
+  useEffect(() => {
+    onCouponChange?.(couponCtx.state.appliedCode);
+  }, [couponCtx.state.appliedCode, onCouponChange]);
+
+  // Restore a previously-applied coupon after a Review → Pay → Back round-trip.
+  // The parent persists the code; we re-run validate once the plan is loaded
+  // so the discount and IDs are re-derived. Guarded so we don't loop on
+  // failures (e.g. coupon expired since the original apply).
+  const [restoreAttempted, setRestoreAttempted] = useState(false);
+  useEffect(() => {
+    if (restoreAttempted) return;
+    if (!initialCouponCode) return;
+    if (!plan) return; // wait until the price source exists
+    if (couponCtx.state.appliedCode || couponCtx.state.isApplying) return;
+    setRestoreAttempted(true);
+    couponCtx.setCode(initialCouponCode);
+    void couponCtx.apply(initialCouponCode);
+  }, [initialCouponCode, plan, couponCtx, restoreAttempted]);
+
+  // If the restore validate fails (coupon got expired / exhausted / scope
+  // changed since we last saw it), drop it from the parent so the enroll
+  // payload doesn't carry a stale code that the BE would also reject.
+  useEffect(() => {
+    if (!restoreAttempted) return;
+    if (!initialCouponCode) return;
+    if (couponCtx.state.isApplying) return;
+    if (couponCtx.state.appliedCode) return; // restore succeeded
+    if (!couponCtx.state.error) return; // hasn't resolved yet
+    onCouponChange?.(null);
+  }, [
+    restoreAttempted,
+    initialCouponCode,
+    couponCtx.state.isApplying,
+    couponCtx.state.appliedCode,
+    couponCtx.state.error,
+    onCouponChange,
+  ]);
+
   if (!plan) return null;
 
   const formatValidity = (validityInDays: number) => {
@@ -293,6 +389,18 @@ const PaidPlanReview = ({
         />
       )}
 
+      {/* Discount Coupon Section — sibling to Referral. Gated by the
+          institute-level toggle (admin Settings → Coupons). */}
+      {couponsEnabled && (
+        <CouponInput
+          state={couponCtx.state}
+          onChange={couponCtx.setCode}
+          onApply={couponCtx.apply}
+          onClear={couponCtx.clear}
+          currencySymbol={getCurrencySymbol(plan.currency || "")}
+        />
+      )}
+
       {/* Pricing Section */}
       <div className="bg-gray-50 rounded-lg p-4">
         <h3 className="text-subtitle font-semibold text-gray-900 mb-3">Pricing</h3>
@@ -336,6 +444,21 @@ const PaidPlanReview = ({
               </div>
             )}
 
+          {/* Discount Coupon line — appears when learner has applied a coupon
+              in the section above. The discount value comes from the BE's
+              validate response (CouponDiscountUtil math). */}
+          {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">
+                Coupon ({couponCtx.state.appliedCode}):
+              </span>
+              <span className="text-green-600 font-medium">
+                -{getCurrencySymbol(plan.currency || "")}
+                {couponCtx.state.discount.toFixed(2)}
+              </span>
+            </div>
+          )}
+
           <div className="flex justify-between items-center border-t pt-2">
             <span className="text-gray-600">Total Price:</span>
             <span className="font-bold text-subtitle text-primary-600">
@@ -359,6 +482,11 @@ const PaidPlanReview = ({
                     finalPrice
                   );
                   finalPrice = finalPrice - discountAmount;
+                }
+
+                // Subtract applied coupon discount (BE-validated value).
+                if (couponCtx.state.appliedCode) {
+                  finalPrice = finalPrice - couponCtx.state.discount;
                 }
 
                 return Math.max(0, finalPrice).toFixed(2);

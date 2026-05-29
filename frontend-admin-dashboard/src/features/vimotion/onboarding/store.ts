@@ -1,7 +1,21 @@
 import { create } from 'zustand';
 import type { CompanySize, VimotionAccountType } from '../api/types';
 
-export type OnboardingStep = 'contact' | 'otp' | 'account-type' | 'studio-details';
+export type OnboardingStep =
+    | 'invite-code'
+    | 'contact'
+    | 'otp'
+    | 'account-type'
+    | 'studio-details';
+
+export type InviteCodeKind = 'locked' | 'open';
+
+export interface InviteCodeState {
+    code: string;
+    kind: InviteCodeKind;
+    prefillEmail?: string | null;
+    prefillPhone?: string | null;
+}
 
 export interface ContactDetails {
     fullName: string;
@@ -31,12 +45,14 @@ interface OnboardingState {
     signupTokenExpiresAt: number | null;
     accountType: VimotionAccountType | null;
     studio: StudioDetails;
+    inviteCode: InviteCodeState | null;
 
     setStep: (step: OnboardingStep) => void;
     setContact: (contact: Partial<ContactDetails>) => void;
     setSignupToken: (token: string, expiresAt: number) => void;
     setAccountType: (type: VimotionAccountType) => void;
     setStudio: (studio: Partial<StudioDetails>) => void;
+    setInviteCode: (invite: InviteCodeState | null) => void;
     reset: () => void;
 }
 
@@ -61,6 +77,7 @@ export const useVimotionOnboardingStore = create<OnboardingState>((set) => ({
     signupTokenExpiresAt: null,
     accountType: null,
     studio: initialStudio,
+    inviteCode: null,
 
     setStep: (step) => set({ step }),
     setContact: (contact) => set((s) => ({ contact: { ...s.contact, ...contact } })),
@@ -68,6 +85,7 @@ export const useVimotionOnboardingStore = create<OnboardingState>((set) => ({
         set({ signupToken, signupTokenExpiresAt }),
     setAccountType: (accountType) => set({ accountType }),
     setStudio: (studio) => set((s) => ({ studio: { ...s.studio, ...studio } })),
+    setInviteCode: (inviteCode) => set({ inviteCode }),
     reset: () =>
         set({
             step: 'contact',
@@ -76,5 +94,6 @@ export const useVimotionOnboardingStore = create<OnboardingState>((set) => ({
             signupTokenExpiresAt: null,
             accountType: null,
             studio: initialStudio,
+            inviteCode: null,
         }),
 }));

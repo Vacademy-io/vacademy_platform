@@ -89,7 +89,12 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                     tags: null,
                 }
             );
-            setInvites(response.data?.content || []);
+            setInvites(
+                (response.data?.content || []).filter((inv: EnrollInviteProjection) => {
+                    const tag = (inv.tag ?? '').trim().toUpperCase();
+                    return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+                })
+            );
         } catch {
             setInvites([]);
         } finally {
@@ -341,7 +346,7 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
             {!config.isAutoMode && config.selectedInvite && !expanded && (
                 <div className="border-t border-neutral-100 bg-neutral-50/60 px-4 py-3">
                     {/* Invite details row */}
-                    <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                    <div className="mb-2 grid grid-cols-1 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-2">
                         {/* Invite info */}
                         <div>
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
@@ -422,7 +427,7 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                     </div>
 
                     {/* Plan details row */}
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-2 text-[11px] sm:grid-cols-2">
                         <div>
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
                                 Plan

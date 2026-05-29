@@ -5,7 +5,7 @@ import { ProductPageShell } from './-components/ProductPageShell';
 import { PaymentGatewayWrapper } from '@/components/common/enroll-by-invite/-components/payment-gateway-wrapper';
 import { handleGetProductPage } from './-services/product-page-service';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { AlertTriangle } from 'lucide-react';
+import { Warning } from "@phosphor-icons/react";
 import { resolveDomainRouting, getCurrentDomainInfo } from '@/services/domain-routing';
 import type { PaymentVendor } from '@/components/common/enroll-by-invite/-utils/payment-vendor-helper';
 
@@ -31,7 +31,7 @@ function ErrorScreen({ title, message }: { title: string; message: string }) {
     return (
         <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
             <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-red-100">
-                <AlertTriangle className="size-10 text-red-500" />
+                <Warning className="size-10 text-red-500" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
             <p className="mt-3 max-w-sm text-sm text-gray-500">{message}</p>

@@ -24,9 +24,9 @@ import {
   Timer,
   CheckCircle,
   XCircle,
-  ExternalLink,
-  CalendarDays,
-} from "lucide-react";
+  ArrowSquareOut,
+  CalendarDots,
+} from "@phosphor-icons/react";
 
 interface InterviewAssessmentModuleProps {
   child: ChildProfile;
@@ -77,7 +77,7 @@ export function InterviewAssessmentModule({
         >
           <Card className="shadow-sm">
             <CardContent className="py-10 text-center">
-              <CalendarDays
+              <CalendarDots
                 size={28}
                 className="mx-auto text-muted-foreground/40 mb-3"
               />
@@ -112,7 +112,7 @@ export function InterviewAssessmentModule({
             result={interview.result}
             feedback={interview.feedback}
             icon={
-              <Video
+              <VideoCamera
                 size={20}
                 className="text-violet-600 dark:text-violet-400"
               />
@@ -252,7 +252,7 @@ function ScheduleCard({
         {/* Date & Time */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2 text-sm">
-            <CalendarDays size={14} className="text-muted-foreground" />
+            <CalendarDots size={14} className="text-muted-foreground" />
             <span className="text-foreground">{dateStr}</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
@@ -268,7 +268,7 @@ function ScheduleCard({
         {/* Location / Mode */}
         <div className="flex items-center gap-2 text-sm">
           {mode === "ONLINE" ? (
-            <Video size={14} className="text-muted-foreground" />
+            <VideoCamera size={14} className="text-muted-foreground" />
           ) : (
             <MapPin size={14} className="text-muted-foreground" />
           )}
@@ -279,7 +279,7 @@ function ScheduleCard({
                 ? "Hybrid"
                 : location || "On campus"}
           </span>
-          <Badge variant="outline" className="text-[10px] ml-auto">
+          <Badge variant="outline" className="text-caption ml-auto">
             {mode}
           </Badge>
         </div>
@@ -292,9 +292,9 @@ function ScheduleCard({
             className="w-full sm:w-auto gap-1.5 text-xs h-8"
             onClick={() => window.open(meetingLink, "_blank")}
           >
-            <Video size={12} />
+            <VideoCamera size={12} />
             Join Online Session
-            <ExternalLink size={10} />
+            <ArrowSquareOut size={10} />
           </Button>
         )}
 

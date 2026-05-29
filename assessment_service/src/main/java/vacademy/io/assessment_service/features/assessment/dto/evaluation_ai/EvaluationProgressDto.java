@@ -48,6 +48,15 @@ public class EvaluationProgressDto {
         @JsonProperty("file_id")
         private String fileId;
 
+        @JsonProperty("layout_map_url")
+        private String layoutMapUrl;
+
+        @JsonProperty("rubric_version")
+        private Integer rubricVersion;
+
+        @JsonProperty("ai_service_job_id")
+        private String aiServiceJobId;
+
         @Data
         @Builder
         @NoArgsConstructor

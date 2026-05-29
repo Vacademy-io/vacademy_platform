@@ -24,7 +24,13 @@ Thank you for your interest in contributing to Vacademy! We welcome contribution
    ```bash
    git checkout -b feat/your-feature-name
    ```
-4. Make your changes, write tests where applicable, and commit using [conventional commits](#commit-message-conventions).
+4. **Enable the shared git hooks** (one time, after cloning) so the design-system commit gate runs:
+   ```bash
+   node scripts/setup-hooks.mjs
+   ```
+   (Equivalent to `git config core.hooksPath .husky`. Git stores hook paths per clone, so this can't
+   be shared automatically — run it once.)
+5. Make your changes, write tests where applicable, and commit using [conventional commits](#commit-message-conventions).
 5. **Push** your branch to your fork:
    ```bash
    git push origin feat/your-feature-name
@@ -90,6 +96,31 @@ python main.py
 
 - **Java (backend):** Follow standard Java conventions. Use meaningful variable and method names. Keep methods short and focused. Format code consistently (IDE defaults for IntelliJ or VS Code with Java extensions are fine).
 - **TypeScript/React (frontend):** Use functional components and hooks. Prefer named exports. Use TypeScript types over `any`. Keep components small and composable.
+
+### Frontend UI & Design System (required)
+
+All new or changed UI in **both** frontends must follow the Vacademy Design System. The full standard
+lives in [`frontend-admin-dashboard/docs/design-system/`](frontend-admin-dashboard/docs/design-system/README.md).
+
+The essentials:
+
+- **Reuse canonical components** (`MyButton`, `MyInput`, `MyDropdown`, `MyTable`, `MyDialog`, …) from
+  `src/components/design-system/*` and `src/components/ui/*`. Don't hand-roll buttons, inputs,
+  dropdowns, modals, or tables.
+- **Design tokens only** — no raw hex (`#3b82f6`), no arbitrary Tailwind values (`bg-[#fff]`,
+  `text-[13px]`, `p-[7px]`), no inline `style` for color/spacing/typography.
+- **Icons:** `@phosphor-icons/react` only.
+- Every screen handles **loading / empty / error / success** states and is responsive.
+
+**How this is enforced (automatic):**
+
+- A **commit gate** (`.husky/pre-commit`, enabled via `node scripts/setup-hooks.mjs`) blocks commits
+  that introduce these violations in staged UI files. Run it manually anytime:
+  ```bash
+  node scripts/design-lint.mjs <file-or-dir>
+  ```
+- If you use **Claude Code**, the `ui-design-guardian` agent builds and fixes UI to spec
+  automatically. Try: *"use ui-design-guardian to build/fix &lt;component&gt;"*.
 - **Python (AI service):** Follow PEP 8. Use type hints where possible.
 - **General:** Remove unused imports, avoid commented-out code in PRs, and write descriptive variable names.
 

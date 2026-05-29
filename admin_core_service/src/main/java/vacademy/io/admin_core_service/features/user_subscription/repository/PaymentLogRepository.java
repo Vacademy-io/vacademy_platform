@@ -104,12 +104,119 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
   @Query("""
       SELECT DISTINCT pl FROM PaymentLog pl
       LEFT JOIN FETCH pl.userPlan up
+      LEFT JOIN FETCH up.enrollInvite
       LEFT JOIN FETCH up.paymentOption po
       LEFT JOIN FETCH up.paymentPlan pp
       WHERE pl.id IN :ids
       ORDER BY pl.createdAt DESC
       """)
   List<PaymentLog> findPaymentLogsWithRelationshipsByIds(@Param("ids") List<String> ids);
+
+  /**
+   * Combined paginated query: returns payment log IDs from both regular (via user_plan/enroll_invite)
+   * and admin-created invoice paths (via invoice_payment_log_mapping).
+   *
+   * PostgreSQL cannot determine the type of a NULL List parameter in "? IS NULL" checks, so we use
+   * typed boolean flags instead: when a filter flag is true the corresponding IN clause is skipped,
+   * and the list param is always a non-null sentinel (e.g. "__none__") so the JDBC binding succeeds.
+   * includeInvoiceLogs is false whenever any user-plan-specific filter is active (those filters don't
+   * apply to invoice-path logs).
+   */
+  @Query(value = """
+      SELECT combined.id FROM (
+        SELECT pl.id, pl.created_at
+        FROM payment_log pl
+        JOIN user_plan up ON pl.user_plan_id = up.id
+        JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
+        WHERE ei.institute_id = :instituteId
+          AND pl.created_at >= :startDate
+          AND pl.created_at <= :endDate
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
+          AND (:noSourceFilter = true OR up.source IN (:sources))
+          AND (:noEnrollInviteFilter = true OR ei.id IN (:enrollInviteIds))
+          AND (:noPackageSessionFilter = true OR EXISTS (
+                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
+                WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
+                  AND psli.package_session_id IN (:packageSessionIds)))
+          AND (:userId IS NULL OR up.user_id = :userId)
+          AND NOT EXISTS (
+                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli_int
+                WHERE psli_int.enroll_invite_id = ei.id
+                  AND psli_int.package_session_id IN (
+                    SELECT ps.id FROM package_session ps
+                    JOIN package pe ON ps.package_id = pe.id
+                    WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
+        UNION
+        SELECT pl.id, pl.created_at
+        FROM payment_log pl
+        JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
+        JOIN invoice i ON iplm.invoice_id = i.id
+        WHERE :includeInvoiceLogs = true
+          AND i.institute_id = :instituteId
+          AND pl.created_at >= :startDate
+          AND pl.created_at <= :endDate
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:userId IS NULL OR i.user_id = :userId)
+      ) combined
+      ORDER BY combined.created_at DESC
+      """,
+      countQuery = """
+      SELECT COUNT(*) FROM (
+        SELECT pl.id
+        FROM payment_log pl
+        JOIN user_plan up ON pl.user_plan_id = up.id
+        JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
+        WHERE ei.institute_id = :instituteId
+          AND pl.created_at >= :startDate
+          AND pl.created_at <= :endDate
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:noUserPlanStatusFilter = true OR up.status IN (:userPlanStatuses))
+          AND (:noSourceFilter = true OR up.source IN (:sources))
+          AND (:noEnrollInviteFilter = true OR ei.id IN (:enrollInviteIds))
+          AND (:noPackageSessionFilter = true OR EXISTS (
+                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli
+                WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
+                  AND psli.package_session_id IN (:packageSessionIds)))
+          AND (:userId IS NULL OR up.user_id = :userId)
+          AND NOT EXISTS (
+                SELECT 1 FROM package_session_learner_invitation_to_payment_option psli_int
+                WHERE psli_int.enroll_invite_id = ei.id
+                  AND psli_int.package_session_id IN (
+                    SELECT ps.id FROM package_session ps
+                    JOIN package pe ON ps.package_id = pe.id
+                    WHERE pe.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')))
+        UNION
+        SELECT pl.id
+        FROM payment_log pl
+        JOIN invoice_payment_log_mapping iplm ON pl.id = iplm.payment_log_id
+        JOIN invoice i ON iplm.invoice_id = i.id
+        WHERE :includeInvoiceLogs = true
+          AND i.institute_id = :instituteId
+          AND pl.created_at >= :startDate
+          AND pl.created_at <= :endDate
+          AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:userId IS NULL OR i.user_id = :userId)
+      ) count_q
+      """,
+      nativeQuery = true)
+  Page<String> findCombinedPaymentLogIdsPaginated(
+      @Param("instituteId") String instituteId,
+      @Param("startDate") LocalDateTime startDate,
+      @Param("endDate") LocalDateTime endDate,
+      @Param("paymentStatuses") List<String> paymentStatuses,
+      @Param("noPaymentStatusFilter") boolean noPaymentStatusFilter,
+      @Param("userPlanStatuses") List<String> userPlanStatuses,
+      @Param("noUserPlanStatusFilter") boolean noUserPlanStatusFilter,
+      @Param("sources") List<String> sources,
+      @Param("noSourceFilter") boolean noSourceFilter,
+      @Param("enrollInviteIds") List<String> enrollInviteIds,
+      @Param("noEnrollInviteFilter") boolean noEnrollInviteFilter,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("noPackageSessionFilter") boolean noPackageSessionFilter,
+      @Param("userId") String userId,
+      @Param("includeInvoiceLogs") boolean includeInvoiceLogs,
+      Pageable pageable);
 
   /**
    * NATIVE QUERY REPLACEMENT for the Specification

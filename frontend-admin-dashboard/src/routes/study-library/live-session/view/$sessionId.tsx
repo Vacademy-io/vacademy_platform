@@ -1,42 +1,48 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
+import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, processRecording, getTranscriptionStatus } from '../-services/utils';
-import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus } from '../-services/utils';
+import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
+import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
+// Migrated from lucide-react to @phosphor-icons/react per design-system
+// governance (`docs/design-system/06-governance.md` — banned-icon-library
+// rule). Phosphor uses slightly different names for some glyphs, so
+// `as`-aliases keep all existing usage sites untouched.
 import {
-    CalendarRange,
+    CalendarDots as CalendarRange,
     Timer,
-    UsersRound,
-    Link2,
+    UsersThree as UsersRound,
+    Link as Link2,
     MonitorPlay,
     MapPin,
-    Edit,
+    PencilSimple as Edit,
     ArrowLeft,
-    CheckCircle2,
+    CheckCircle as CheckCircle2,
     Copy,
     Bell,
     FileText,
-    Share2,
+    ShareNetwork as Share2,
     List,
     Calendar as CalendarIcon,
     Users,
-    Video,
+    VideoCamera as Video,
     Play,
-    Download,
+    DownloadSimple as Download,
     Clock,
-    RefreshCw,
-    CloudDownload,
-    AlertTriangle,
+    ArrowsClockwise as RefreshCw,
+    CloudArrowDown as CloudDownload,
+    Warning as AlertTriangle,
     FileAudio,
-    Languages,
-} from 'lucide-react';
+    Translate as Languages,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { SessionCalendarView } from '../-components/session-calendar-view';
 import { format, addMinutes, isAfter, isBefore, parseISO } from 'date-fns';
@@ -545,7 +551,7 @@ function ViewLiveSession() {
     if (error || !sessionData) {
         return (
             <LayoutContainer>
-                <div className="flex h-[calc(100vh-100px)] items-center justify-center">
+                <div className="flex min-h-screen items-center justify-center">
                     <div className="text-center">
                         <h2 className="text-2xl font-bold text-destructive">Error</h2>
                         <p className="mt-2 text-muted-foreground">
@@ -792,7 +798,7 @@ function ViewLiveSession() {
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                                <TableHead className="pl-6 w-[50%]">Field Label</TableHead>
+                                                <TableHead className="pl-6 w-1/2">Field Label</TableHead>
                                                 <TableHead>Type</TableHead>
                                                 <TableHead className="text-right pr-6">Required</TableHead>
                                             </TableRow>
@@ -804,13 +810,13 @@ function ViewLiveSession() {
                                                         {field.label}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge variant="secondary" className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                                                        <Badge variant="secondary" className="font-mono text-xs uppercase tracking-wider text-muted-foreground/80">
                                                             {field.type}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right pr-6">
                                                         {field.required ? (
-                                                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px] font-medium uppercase tracking-wider">
+                                                            <Badge variant="destructive" className="h-5 px-1.5 text-xs font-medium uppercase tracking-wider">
                                                                 Required
                                                             </Badge>
                                                         ) : (
@@ -957,54 +963,61 @@ function ViewLiveSession() {
                                     </div>
                                 </CardHeader>
                                 <Separator />
-                                <CardContent className="space-y-3 p-6">
-                                    {allRecordings.map((rec, idx) => (
-                                        <div
-                                            key={rec.recordingId || idx}
-                                            className="flex items-center justify-between rounded-lg border bg-card p-4 transition-all hover:bg-muted/30"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex size-10 items-center justify-center rounded-full bg-red-50 text-red-500">
-                                                    <Play className="size-4" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-sm font-medium">
-                                                        {RECORDING_LABELS[rec.type ?? ''] ?? `Recording ${idx + 1}`}
+                                <CardContent className="space-y-3 p-4 sm:p-6">
+                                    {allRecordings.map((rec, idx) => {
+                                        const url =
+                                            rec.playbackUrl ||
+                                            (rec.fileId && recordingUrls[rec.fileId]) ||
+                                            null;
+                                        return (
+                                            <div
+                                                key={rec.recordingId || idx}
+                                                className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                                            >
+                                                {/* Info column */}
+                                                <div className="flex min-w-0 items-center gap-3">
+                                                    <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500">
+                                                        <Play className="size-4" />
                                                     </div>
-                                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                        {isRecurring && (
-                                                            <span>{format(new Date(rec.date), 'MMM d, yyyy')}</span>
-                                                        )}
-                                                        {rec.startTime && (
-                                                            <span className="flex items-center gap-1">
-                                                                <Clock className="size-3" />
-                                                                {format(new Date(rec.startTime), 'p')}
-                                                            </span>
-                                                        )}
-                                                        {rec.durationSeconds > 0 && (
-                                                            <span className="flex items-center gap-1">
-                                                                <Timer className="size-3" />
-                                                                {formatDuration(rec.durationSeconds)}
-                                                            </span>
-                                                        )}
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate text-sm font-medium text-foreground">
+                                                            {RECORDING_LABELS[rec.type ?? ''] ?? `Recording ${idx + 1}`}
+                                                        </div>
+                                                        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                                            {isRecurring && (
+                                                                <span className="whitespace-nowrap">
+                                                                    {format(new Date(rec.date), 'MMM d, yyyy')}
+                                                                </span>
+                                                            )}
+                                                            {rec.startTime && (
+                                                                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                                                    <Clock className="size-3" />
+                                                                    {format(new Date(rec.startTime), 'p')}
+                                                                </span>
+                                                            )}
+                                                            {rec.durationSeconds > 0 && (
+                                                                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                                                                    <Timer className="size-3" />
+                                                                    {formatDuration(rec.durationSeconds)}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                {(() => {
-                                                    const url = rec.playbackUrl || (rec.fileId && recordingUrls[rec.fileId]) || null;
-                                                    if (!url) return (
+
+                                                {/* Actions — uniform monochrome ghost buttons. Wrap on narrow widths so nothing clips. */}
+                                                <div className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
+                                                    {!url ? (
                                                         <span className="text-xs text-muted-foreground">
-                                                            {rec.fileId ? 'Loading...' : 'No URL available'}
+                                                            {rec.fileId ? 'Loading…' : 'No URL available'}
                                                         </span>
-                                                    );
-                                                    return (
+                                                    ) : (
                                                         <>
                                                             <a
                                                                 href={url}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+                                                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                                                             >
                                                                 <Play className="size-3" />
                                                                 Play
@@ -1013,25 +1026,28 @@ function ViewLiveSession() {
                                                                 href={url}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
+                                                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
                                                             >
                                                                 <Download className="size-3" />
                                                                 Download
                                                             </a>
                                                         </>
-                                                    );
-                                                })()}
-                                                <RecordingYoutubeAction
-                                                    rec={rec}
-                                                    featureEnabled={youtubeFeatureEnabled}
-                                                />
-                                                <RecordingTranscribeAction
-                                                    rec={rec}
-                                                    batches={sessionData?.schedule?.package_session_details ?? undefined}
-                                                />
+                                                    )}
+                                                    <RecordingYoutubeAction
+                                                        rec={rec}
+                                                        featureEnabled={youtubeFeatureEnabled}
+                                                    />
+                                                    <RecordingTranscribeAction
+                                                        rec={rec}
+                                                        batches={
+                                                            sessionData?.schedule
+                                                                ?.package_session_details ?? undefined
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </CardContent>
                             </Card>
                         ) : groupedSchedules.some((day) =>
@@ -1422,7 +1438,7 @@ function ViewLiveSession() {
                                             <div className="flex items-center justify-between">
                                                 <Badge
                                                     variant="outline"
-                                                    className="border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                                                    className="border-primary/20 bg-primary/5 text-xs font-semibold uppercase tracking-wider text-primary"
                                                 >
                                                     {notification.type.replace(/_/g, ' ')}
                                                 </Badge>
@@ -1435,13 +1451,13 @@ function ViewLiveSession() {
                                             </div>
                                             <div className="flex flex-wrap gap-2">
                                                 {notification.notifyBy.mail && (
-                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-[10px] font-medium">
+                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-xs font-medium">
                                                         <div className="size-1.5 rounded-full bg-blue-500" />
                                                         Email
                                                     </Badge>
                                                 )}
                                                 {notification.notifyBy.whatsapp && (
-                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-[10px] font-medium">
+                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-xs font-medium">
                                                         <div className="size-1.5 rounded-full bg-green-500" />
                                                         WhatsApp
                                                     </Badge>
@@ -1467,7 +1483,7 @@ function ViewLiveSession() {
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thumbnail</span>
-                                                <Badge variant="outline" className="text-[10px] text-green-600 border-green-200 bg-green-50">Attached</Badge>
+                                                <Badge variant="outline" className="text-xs text-green-600 border-green-200 bg-green-50">Attached</Badge>
                                             </div>
                                             {thumbnailUrl ? (
                                                 <div className="group relative aspect-video w-full overflow-hidden rounded-md border bg-muted shadow-sm">
@@ -1558,7 +1574,7 @@ function InfoItem({
                 {icon}
             </div>
             <div className="flex-1 space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors group-hover:text-muted-foreground">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors group-hover:text-muted-foreground">
                     {label}
                 </div>
                 <div className="text-sm font-medium text-foreground">{value}</div>
@@ -1670,15 +1686,86 @@ function RecordingTranscribeAction({
     const [detectedLanguage, setDetectedLanguage] = useState<string | undefined>(rec.detectedLanguage);
     const [errorMessage, setErrorMessage] = useState<string | undefined>(rec.transcriptionError);
     const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
+    const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
+    // When the teacher reuses a past paper from the Transcript dialog, we
+    // stash the artifact here and pass it as `initialArtifact` so the
+    // assessment modal opens straight into Preview state — skipping the
+    // form + LLM call.
+    const [reuseArtifact, setReuseArtifact] = useState<AssessmentArtifact | null>(null);
+    const [sourceTextUrl, setSourceTextUrl] = useState<string | undefined>();
+    const [englishTextUrl, setEnglishTextUrl] = useState<string | undefined>();
+    // Cached LLM-generated study notes. Populated from the transcription
+    // status response and refreshed whenever the user regenerates (the
+    // dialog calls saveStudyNotes and returns the updated row).
+    const [savedNotesMarkdown, setSavedNotesMarkdown] = useState<string | undefined>();
+    const [savedNotesGeneratedAt, setSavedNotesGeneratedAt] = useState<string | undefined>();
+
+    // Institute-level kill switch for the transcription feature. Defaults to
+    // false (see `DEFAULT_LIVE_SESSION_SETTINGS.recordingTranscriptionEnabled`)
+    // so transcription stays opt-in until an admin turns it on in
+    // Settings → Live Session Settings → Recording Transcription.
+    const { settings: liveSessionSettings } = useLiveSessionSettings();
 
     const handleData = useCallback((data: RecordingTranscriptionStatus) => {
         setStatus(data.status);
         setDetectedLanguage(data.detectedLanguage ?? undefined);
         setErrorMessage(data.errorMessage ?? undefined);
+        setSourceTextUrl(data.sourceTextUrl ?? undefined);
+        setEnglishTextUrl(data.englishTextUrl ?? undefined);
+        setSavedNotesMarkdown(data.savedNotesMarkdown ?? undefined);
+        setSavedNotesGeneratedAt(data.savedNotesGeneratedAt ?? undefined);
     }, []);
 
+    // Alert the user on the RUNNING → COMPLETED transition. Two channels:
+    //   1. Sonner toast (only visible when the tab has focus).
+    //   2. Web Notifications API (visible even when the tab is in the
+    //      background or another app is foreground), best-effort.
+    // We only fire on a real transition — not when the COMPLETED status
+    // is loaded on initial mount — so the user isn't spammed every time
+    // they re-open the page.
+    const prevStatusRef = useRef<TranscriptStatus | null>(rec.transcriptStatus ?? null);
+    useEffect(() => {
+        const prev = prevStatusRef.current;
+        prevStatusRef.current = status;
+        if (status !== 'COMPLETED') return;
+        if (prev !== 'QUEUED' && prev !== 'RUNNING') return;
+        const labelTitle = 'Transcript ready';
+        const labelBody = detectedLanguage
+            ? `Your recording transcript (${detectedLanguage.toUpperCase()}) finished processing.`
+            : 'Your recording transcript finished processing.';
+        toast.success(`${labelTitle} — ${labelBody}`);
+        // Web Notifications — request permission lazily on the first
+        // transcript completion the user sees. If they decline once,
+        // the browser remembers and we never re-prompt.
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+            const fire = () => {
+                try {
+                    new Notification(labelTitle, {
+                        body: labelBody,
+                        icon: '/favicon.ico',
+                        tag: `transcript-${rec.recordingId}`,
+                    });
+                } catch {
+                    // Some browsers throw if the page is sandboxed —
+                    // safe to swallow, the toast already fired.
+                }
+            };
+            if (Notification.permission === 'granted') {
+                fire();
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then((perm) => {
+                    if (perm === 'granted') fire();
+                });
+            }
+        }
+    }, [status, detectedLanguage, rec.recordingId]);
+
     // Polling: only active while a job is in flight. Halts on terminal state.
+    // We still do one initial fetch on mount even when COMPLETED so we can
+    // load the sourceTextUrl/englishTextUrl needed by the viewer modal —
+    // the list endpoint doesn't include those fields.
     const polling = status === 'QUEUED' || status === 'RUNNING';
+    const needsUrls = status === 'COMPLETED' && !sourceTextUrl && !englishTextUrl;
     useQuery({
         queryKey: ['recording-transcribe', rec.scheduleId, rec.recordingId],
         queryFn: async () => {
@@ -1686,8 +1773,8 @@ function RecordingTranscribeAction({
             handleData(data);
             return data;
         },
-        enabled: polling,
-        refetchInterval: 30_000,
+        enabled: polling || needsUrls,
+        refetchInterval: polling ? 30_000 : false,
         refetchOnWindowFocus: false,
     });
 
@@ -1698,11 +1785,24 @@ function RecordingTranscribeAction({
             toast.success('Transcription started');
         },
         onError: (err: unknown) => {
-            const httpStatus =
-                (err as { response?: { status?: number } })?.response?.status;
-            const msg =
-                (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-            if (httpStatus === 409) {
+            // Backend ErrorInfo is { url, ex, responseCode, date } — there is no
+            // `message` field, and the gateway maps the service's 409 to HTTP 511,
+            // so neither `response.data.message` nor `response.status === 409` ever
+            // matched (every failure fell through to the generic "Could not start
+            // transcription"). The human-readable reason lives in `ex`/`responseCode`,
+            // formatted like: 409 CONFLICT "Transcription already in progress (status=RUNNING)".
+            const data = (
+                err as {
+                    response?: { data?: { ex?: string; responseCode?: string; message?: string } };
+                }
+            )?.response?.data;
+            const raw = data?.ex ?? data?.responseCode ?? data?.message;
+            // Prefer the quoted reason; fall back to the raw string.
+            const msg = raw?.match(/"([^"]+)"/)?.[1] ?? raw;
+            // HTTP status is unreliable (511), so detect the "already in progress"
+            // conflict from the message text itself.
+            const alreadyRunning = /already in progress|CONFLICT/i.test(raw ?? '');
+            if (alreadyRunning) {
                 toast.info(msg ?? 'Transcription is already in progress');
             } else {
                 toast.error(msg ?? 'Could not start transcription');
@@ -1711,41 +1811,64 @@ function RecordingTranscribeAction({
     });
 
     if (status === 'COMPLETED') {
+        // Single entrypoint when transcript is ready — opens an actions
+        // dialog where the teacher picks between generating an assessment
+        // or generating study notes. Keeps the recording row uncluttered.
         return (
             <>
-                <span
-                    className="flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700"
-                    title={detectedLanguage ? `Detected language: ${detectedLanguage}` : 'Transcript ready'}
+                <button
+                    onClick={() => setTranscriptModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-primary-300 bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
+                    title="View transcript and choose a next action"
                 >
                     <FileAudio className="size-3" />
-                    Transcript Ready
-                    {detectedLanguage && (
-                        <span className="ml-0.5 flex items-center gap-0.5 rounded bg-green-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-green-800">
-                            <Languages className="size-2.5" />
-                            {detectedLanguage}
-                        </span>
-                    )}
-                </span>
-
-                {/* Follow-up action: opens CreateAssessmentFromRecordingModal which
-                    drives the Layer-3 backend pipeline (admin-core fetches transcript,
-                    calls ai-service Gemini, stores generated questions). */}
-                <button
-                    onClick={() => setAssessmentModalOpen(true)}
-                    className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
-                    title="Generate an assessment (MCQs + title) from this transcript"
-                >
-                    <FileText className="size-3" />
-                    Create Assessment
+                    Show Transcript
                 </button>
+
+                <TranscriptActionsDialog
+                    open={transcriptModalOpen}
+                    onOpenChange={setTranscriptModalOpen}
+                    scheduleId={rec.scheduleId}
+                    recordingId={rec.recordingId}
+                    sourceTextUrl={sourceTextUrl}
+                    englishTextUrl={englishTextUrl}
+                    detectedLanguage={detectedLanguage}
+                    recordingTitle={rec.recordingId}
+                    savedNotesMarkdown={savedNotesMarkdown}
+                    savedNotesGeneratedAt={savedNotesGeneratedAt}
+                    onSavedNotesChange={(markdown, generatedAt) => {
+                        setSavedNotesMarkdown(markdown);
+                        setSavedNotesGeneratedAt(generatedAt);
+                    }}
+                    onCreateAssessment={() => {
+                        setReuseArtifact(null);
+                        setTranscriptModalOpen(false);
+                        setAssessmentModalOpen(true);
+                    }}
+                    onOpenArtifact={(artifact) => {
+                        setReuseArtifact(artifact);
+                        setAssessmentModalOpen(true);
+                    }}
+                />
 
                 <CreateAssessmentFromRecordingModal
                     open={assessmentModalOpen}
-                    onOpenChange={setAssessmentModalOpen}
+                    onOpenChange={(next) => {
+                        setAssessmentModalOpen(next);
+                        if (!next) {
+                            // Clear the reuse artifact on close so the next
+                            // "Create Assessment" click lands in the empty
+                            // form state, not Preview with stale data.
+                            setReuseArtifact(null);
+                        }
+                    }}
                     scheduleId={rec.scheduleId}
                     recordingId={rec.recordingId}
                     detectedLanguage={detectedLanguage}
                     batches={batches}
+                    sourceTextUrl={sourceTextUrl}
+                    englishTextUrl={englishTextUrl}
+                    initialArtifact={reuseArtifact}
                 />
             </>
         );
@@ -1766,6 +1889,16 @@ function RecordingTranscribeAction({
     }
 
     const inFlight = polling || isPending;
+
+    // Hide the "Process Recording" entry point when the institute has the
+    // transcription feature disabled. We only gate the *new-job* affordance —
+    // the COMPLETED / FAILED / RUNNING / QUEUED branches above remain
+    // reachable so existing transcripts stay viewable and in-flight jobs
+    // keep polling regardless of the toggle.
+    if (!liveSessionSettings.recordingTranscriptionEnabled) {
+        return null;
+    }
+
     return (
         <button
             onClick={() => mutate()}

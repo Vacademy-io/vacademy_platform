@@ -1,0 +1,171 @@
+name: Deploy to Stage Server (standalone k3s)
+
+# Deploys the standalone chart to the single-node stage server (Hetzner k3s) over
+# SSH. Pick the BRANCH (whose chart/config to use) and the IMAGE TAG to run.
+#
+# Frontend images ARE built here (from the selected branch) as the first job —
+# they exist only for stage/standalone, so they're rebuilt on-demand per deploy
+# (uncheck "rebuild_frontends" if only the backend changed). BACKEND service
+# images are NOT built here — produce them first via the per-service build
+# workflows (or a push to main) so the chosen IMAGE TAG already exists in ECR.
+#
+# Requires these Actions secrets (REPO or ORG — same ${{ secrets.* }} namespace):
+#   STAGE_SSH_KEY        - private key authorized as root on the stage server
+#   STAGE_HOST           - stage server IP/host (e.g. 188.245.114.166)
+#   AWS_ACCESS_KEY / AWS_SECRET_ACCESS_KEY - push FE images to public ECR
+# If set at the ORG level, the secret's "Repository access" must include this
+# repo (All repositories, or Selected repositories -> vacademy_platform), else
+# ${{ secrets.* }} resolves to empty and the SSH steps fail.
+# The server must already be bootstrapped once via vacademy_devops/install.sh
+# (k3s + cert-manager + values.secret.yaml present at /root/vacademy-services).
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch whose chart/config to deploy"
+        required: true
+        default: main
+      image_tag:
+        description: "Image tag to run (must already be pushed to ECR; 'latest' = current main)"
+        required: true
+        default: latest
+      optional_services:
+        description: "Optional services to enable (comma-sep: assessment,ai,notification,community)"
+        required: false
+        default: "assessment,ai,notification,community"
+      rebuild_frontends:
+        description: "Rebuild the FE images from this branch before deploying (uncheck if only backend changed)"
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  # Build the two frontend images FROM THE SELECTED BRANCH and push them to ECR
+  # (tag = image_tag, plus :latest). The standalone FE images exist only for
+  # stage/clients (cloud prod uses Cloudflare), so they're built on-demand here
+  # as part of a manual stage deploy rather than on every main push. Backend
+  # service images are built separately via the per-service build workflows.
+  build-frontends:
+    if: ${{ github.event.inputs.rebuild_frontends != 'false' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: admin
+            context: frontend-admin-dashboard
+            repository: frontend-admin-dashboard/frontend-admin-dashboard-repo
+          - name: learner
+            context: frontend-learner-dashboard-app
+            repository: frontend-learner-dashboard-app/frontend-learner-dashboard-repo
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build and push ${{ matrix.name }} frontend
+        working-directory: ./${{ matrix.context }}
+        env:
+          ECR_REGISTRY: public.ecr.aws/e0x1f4p4
+          REPOSITORY: ${{ matrix.repository }}
+          IMAGE_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          docker build -t "$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG" -t "$ECR_REGISTRY/$REPOSITORY:latest" .
+          docker push "$ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$REPOSITORY:latest"
+          echo "Pushed $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG (+ :latest)"
+
+  deploy:
+    needs: build-frontends
+    # Run after the FE build succeeds, OR when it was skipped (rebuild_frontends=false).
+    # Skips if the FE build failed, so we never deploy on a broken frontend image.
+    if: ${{ always() && (needs.build-frontends.result == 'success' || needs.build-frontends.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Set up SSH to the stage server
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.STAGE_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.STAGE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # Keepalives: the helm upgrade + rollout-status waits can sit silent for
+          # minutes (e.g. a slow admin-core roll), and an idle SSH session gets
+          # dropped ("client_loop: send disconnect: Broken pipe") — which fails the
+          # job even though the deploy on the box succeeded. Probe every 30s and
+          # tolerate ~15m of silence so the session survives long rollouts.
+          cat > ~/.ssh/config <<'CFG'
+          Host *
+            ServerAliveInterval 30
+            ServerAliveCountMax 30
+            TCPKeepAlive yes
+          CFG
+          chmod 600 ~/.ssh/config
+
+      - name: Sync chart to server (preserving values.secret.yaml)
+        run: |
+          # Ship the branch's chart; the server keeps its existing values.secret.yaml
+          tar czf - -C vacademy_devops vacademy-services \
+            | ssh -i ~/.ssh/id_ed25519 root@${{ secrets.STAGE_HOST }} \
+              'tar xzf - -C /root/ && echo "chart synced"'
+
+      - name: Helm upgrade on stage
+        run: |
+          TAG='${{ github.event.inputs.image_tag }}'
+          OPT='${{ github.event.inputs.optional_services }}'
+          # Build --set flags: pin every image to TAG, toggle optional services
+          SETS="--set frontends.admin.image.tag=$TAG --set frontends.learner.image.tag=$TAG"
+          for s in auth_service admin_core_service media_service assessment_service community_service notification_service ai_service; do
+            SETS="$SETS --set services.$s.image.tag=$TAG"
+          done
+          # default optional services to disabled, then enable the chosen ones
+          for s in assessment_service ai_service notification_service community_service; do
+            SETS="$SETS --set services.$s.enabled=false"
+          done
+          IFS=',' read -ra CHOSEN <<< "$OPT"
+          for c in "${CHOSEN[@]}"; do
+            c=$(echo "$c" | tr -d ' ')
+            [ -n "$c" ] && SETS="$SETS --set services.${c}_service.enabled=true"
+          done
+          ssh -i ~/.ssh/id_ed25519 root@${{ secrets.STAGE_HOST }} bash -s <<EOF
+            set -e
+            export KUBECONFIG=/etc/rancher/k3s/k3s.yaml PATH=\$PATH:/usr/local/bin
+            cd /root/vacademy-services
+            [ -f values.secret.yaml ] || { echo "ERROR: values.secret.yaml missing — run install.sh first"; exit 1; }
+            helm upgrade --install vac . \
+              -f values.yaml -f values-standalone.yaml -f values.secret.yaml \
+              $SETS --wait --timeout 20m
+            # ':latest' is a moving tag: a same-tag helm upgrade yields an
+            # identical pod spec, so Kubernetes does NOT recreate pods and the
+            # freshly-pushed image is never pulled. Force a rollout so every
+            # deploy re-pulls (imagePullPolicy: Always does the rest). Harmless
+            # for unique tags too, since the spec change already triggers one.
+            for d in auth-service admin-core-service media-service assessment-service community-service notification-service ai-service admin-frontend learner-frontend; do
+              kubectl get deploy "\$d" >/dev/null 2>&1 && kubectl rollout restart deploy "\$d"
+            done
+            for d in auth-service admin-core-service media-service assessment-service community-service notification-service ai-service admin-frontend learner-frontend; do
+              kubectl get deploy "\$d" >/dev/null 2>&1 && kubectl rollout status deploy "\$d" --timeout=300s || true
+            done
+            kubectl get pods
+          EOF
+
+      - name: Summary
+        run: echo "Deployed branch '${{ github.event.inputs.branch }}' (images :${{ github.event.inputs.image_tag }}) to stage."

@@ -96,6 +96,39 @@ public class AudienceResponse {
     @Column(name = "primary_response_id")
     private String primaryResponseId;
 
+    // ── TAT / Follow-up SLA reminder dedup state ──────────────
+    // Linear stage machine: BEFORE_* -> OVERDUE -> FOLLOW_UP_DUE -> FOLLOW_UP_OVERDUE.
+    // The scheduler only EMITS workflow triggers; these columns guarantee one emit per stage.
+
+    /** Number of reminder stages emitted for this lead (monotonic). */
+    @Column(name = "tat_reminder_count")
+    @Builder.Default
+    private Integer tatReminderCount = 0;
+
+    /** Last stage emitted (e.g. BEFORE_30M, OVERDUE, FOLLOW_UP_DUE, FOLLOW_UP_OVERDUE). */
+    @Column(name = "tat_reminder_stage", length = 40)
+    private String tatReminderStage;
+
+    /** Race guard: {leadId}_{counselorId}_{stage}; backed by a partial-unique index. */
+    @Column(name = "tat_reminder_dedup_key", length = 255)
+    private String tatReminderDedupKey;
+
+    /** Counselor the last reminder was emitted for; a different current counselor resets the cycle. */
+    @Column(name = "tat_reminder_assignee_id", length = 255)
+    private String tatReminderAssigneeId;
+
+    /** Denormalized TAT deadline (submitted_at + tatHours) for scanning + the frontend badge. */
+    @Column(name = "tat_due_at")
+    private Timestamp tatDueAt;
+
+    /** Current pipeline status (FK to lead_status.id). Replaces the JSON/enquiry_status approach. */
+    @Column(name = "lead_status_id")
+    private String leadStatusId;
+
+    /** Snapshot of audience.defaultInitialScore at creation time. Null for leads created before this feature → treated as 0 in scoring. */
+    @Column(name = "initial_score")
+    private Integer initialScore;
+
     /**
      * Constructor from DTO
      */

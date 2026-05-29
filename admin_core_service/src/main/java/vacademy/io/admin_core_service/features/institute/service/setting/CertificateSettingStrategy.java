@@ -48,10 +48,14 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
             Map<String, SettingDto> existingSettings = instituteSettingDto.getSetting();
             if (existingSettings == null) existingSettings = new HashMap<>();
 
-            // Check if the naming setting already exists
+            // Re-save path: certificate setting already exists for this
+            // institute. Delegate to rebuildInstituteSetting under the
+            // CERTIFICATE_SETTING key. (Earlier this passed NAMING_SETTING by
+            // mistake — a copy-paste from the naming strategy — which silently
+            // wrote each subsequent save into the wrong slot, so the UI saw
+            // stale data and looked "reset" after every save.)
             if (existingSettings.containsKey(SettingKeyEnums.CERTIFICATE_SETTING.name())) {
-                // Just rebuild using rebuildInstituteSetting if already present
-                return rebuildInstituteSetting(institute, certificateSettingRequest, SettingKeyEnums.NAMING_SETTING.name());
+                return rebuildInstituteSetting(institute, certificateSettingRequest, SettingKeyEnums.CERTIFICATE_SETTING.name());
             }
 
             // Otherwise, create a new naming setting and add it
@@ -72,15 +76,38 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
     }
 
     private CertificateSettingDataDto createCertificateSettingFromRequest(CertificateSettingRequest certificateSettingRequest) {
+        return createCertificateSettingFromRequest(certificateSettingRequest, java.util.Collections.emptyMap());
+    }
+
+    /**
+     * Build the persisted DTO list from the inbound request, falling back to
+     * any matching existing record when a request field is null. The "preserve
+     * on null" merge lets Visual-mode saves keep the admin's authored HTML
+     * intact (htmlEditorTemplate) and lets HTML-mode saves keep the visual
+     * editor state intact (imageTemplateJson). Without this both editors
+     * would clobber the other's data on save.
+     */
+    private CertificateSettingDataDto createCertificateSettingFromRequest(
+            CertificateSettingRequest certificateSettingRequest,
+            Map<String, CertificateSettingDto> existingByKey) {
         List<CertificateSettingDto> certificateSetting = certificateSettingRequest.getRequest().entrySet().stream()
                 .map(entry -> {
+                    CertificateSettingDto incoming = entry.getValue();
+                    CertificateSettingDto existing = existingByKey.getOrDefault(entry.getKey(), new CertificateSettingDto());
                     CertificateSettingDto dto = new CertificateSettingDto();
                     dto.setKey(entry.getKey());
-                    dto.setIsDefaultCertificateSettingOn(entry.getValue().getIsDefaultCertificateSettingOn()); // assuming system value is same as key
-                    dto.setCustomHtmlCertificateTemplate(entry.getValue().getCustomHtmlCertificateTemplate());
-                    dto.setCurrentHtmlCertificateTemplate(entry.getValue().getCurrentHtmlCertificateTemplate());
-                    dto.setDefaultHtmlCertificateTemplate(entry.getValue().getDefaultHtmlCertificateTemplate());
-                    dto.setPlaceHoldersMapping(entry.getValue().getPlaceHoldersMapping());
+                    dto.setIsDefaultCertificateSettingOn(incoming.getIsDefaultCertificateSettingOn() != null ? incoming.getIsDefaultCertificateSettingOn() : existing.getIsDefaultCertificateSettingOn());
+                    dto.setCustomHtmlCertificateTemplate(incoming.getCustomHtmlCertificateTemplate() != null ? incoming.getCustomHtmlCertificateTemplate() : existing.getCustomHtmlCertificateTemplate());
+                    dto.setCurrentHtmlCertificateTemplate(incoming.getCurrentHtmlCertificateTemplate() != null ? incoming.getCurrentHtmlCertificateTemplate() : existing.getCurrentHtmlCertificateTemplate());
+                    dto.setDefaultHtmlCertificateTemplate(incoming.getDefaultHtmlCertificateTemplate() != null ? incoming.getDefaultHtmlCertificateTemplate() : existing.getDefaultHtmlCertificateTemplate());
+                    dto.setPlaceHoldersMapping(incoming.getPlaceHoldersMapping() != null ? incoming.getPlaceHoldersMapping() : existing.getPlaceHoldersMapping());
+                    dto.setAutoIssuePercentage(incoming.getAutoIssuePercentage() != null ? incoming.getAutoIssuePercentage() : existing.getAutoIssuePercentage());
+                    dto.setAspectRatio(incoming.getAspectRatio() != null ? incoming.getAspectRatio() : existing.getAspectRatio());
+                    dto.setCustomWidthMm(incoming.getCustomWidthMm() != null ? incoming.getCustomWidthMm() : existing.getCustomWidthMm());
+                    dto.setCustomHeightMm(incoming.getCustomHeightMm() != null ? incoming.getCustomHeightMm() : existing.getCustomHeightMm());
+                    dto.setImageTemplateJson(incoming.getImageTemplateJson() != null ? incoming.getImageTemplateJson() : existing.getImageTemplateJson());
+                    dto.setHtmlEditorTemplate(incoming.getHtmlEditorTemplate() != null ? incoming.getHtmlEditorTemplate() : existing.getHtmlEditorTemplate());
+                    dto.setPreferredEditorMode(incoming.getPreferredEditorMode() != null ? incoming.getPreferredEditorMode() : existing.getPreferredEditorMode());
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -88,6 +115,29 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
         CertificateSettingDataDto dataDto = new CertificateSettingDataDto();
         dataDto.setData(certificateSetting);
         return dataDto;
+    }
+
+    /**
+     * Pull the existing CertificateSettingDto records out of the saved JSON
+     * so a follow-up save can preserve fields the new request didn't include.
+     * Tolerates malformed or missing data — returns an empty map on any error.
+     */
+    private Map<String, CertificateSettingDto> extractExistingByKey(SettingDto existingSetting) {
+        Map<String, CertificateSettingDto> out = new HashMap<>();
+        if (existingSetting == null || existingSetting.getData() == null) return out;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            String json = mapper.writeValueAsString(existingSetting.getData());
+            CertificateSettingDataDto data = mapper.readValue(json, CertificateSettingDataDto.class);
+            if (data.getData() != null) {
+                for (CertificateSettingDto d : data.getData()) {
+                    if (d != null && d.getKey() != null) out.put(d.getKey(), d);
+                }
+            }
+        } catch (Exception ignored) {
+            // best-effort; if the existing JSON is unparseable just skip the merge
+        }
+        return out;
     }
 
     private String handleCaseWhereNoSettingPresent(Institute institute, Object settingRequest) {
@@ -147,8 +197,12 @@ public class CertificateSettingStrategy extends IInstituteSettingStrategy{
                 instituteSettingDto.setSetting(settingMap);
             }
             else{
-                newData = createCertificateSettingFromRequest(certificateSettingRequest);
+                // Merge with the previously persisted CertificateSettingDto
+                // values so a save from one editor (Visual or HTML) doesn't
+                // wipe the other editor's data — both must coexist.
                 SettingDto settingDto = settingMap.get(key);
+                Map<String, CertificateSettingDto> existingByKey = extractExistingByKey(settingDto);
+                newData = createCertificateSettingFromRequest(certificateSettingRequest, existingByKey);
                 settingDto.setData(newData);
 
                 // Replace and return updated JSON

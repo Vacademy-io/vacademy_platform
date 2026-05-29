@@ -82,7 +82,7 @@ const HeroSectionCourseCatalog: React.FC = () => {
   }
 
   return (
-    <div className='h-[430px]'>
+    <div className='h-catalog-hero'>
       {bannerContent}
     </div>
   );

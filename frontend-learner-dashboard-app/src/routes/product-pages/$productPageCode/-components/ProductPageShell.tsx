@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS: ProductPageSettings = {
 };
 
 const DEFAULT_PAGE_JSON: PageJson = {
-  globalSettings: { primaryColor: "#4F46E5", logoFileId: "" },
+  globalSettings: { primaryColor: "#4F46E5", logoFileId: "" }, // design-lint-ignore: page-builder default color
   components: [],
 };
 
@@ -120,7 +120,7 @@ export const ProductPageShell = ({
     DEFAULT_SETTINGS,
   );
   const pageJson = parseSafeJson<PageJson>(pageData.page_json, DEFAULT_PAGE_JSON);
-  const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5";
+  const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
   const vendor = (pageData.vendor || "FREE").toUpperCase();
 
   // Determine if the current selection is all-CPO (routes to CPO installments step)

@@ -15,7 +15,7 @@ import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
 import { BookingType } from '../-types/booking-types';
 import { Textarea } from '@/components/ui/textarea';
-import { Check, ChevronsUpDown, X } from 'lucide-react';
+import { Check, CaretUpDown, X } from '@phosphor-icons/react';
 import {
     Command,
     CommandEmpty,
@@ -157,7 +157,7 @@ export const AddEventDialog = ({ open, onOpenChange, bookingType }: AddEventDial
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="overflow-visible sm:max-w-[600px]">
+            <DialogContent className="overflow-visible sm:max-w-2xl">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>Quick Add Event</DialogTitle>
@@ -194,10 +194,10 @@ export const AddEventDialog = ({ open, onOpenChange, bookingType }: AddEventDial
                                             className="w-full justify-between"
                                         >
                                             Add participants...
-                                            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                                            <CaretUpDown className="ml-2 size-4 shrink-0 opacity-50" />
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-[400px] p-0" align="start">
+                                    <PopoverContent className="w-96 max-w-[calc(100vw-2rem)] p-0" align="start">{/* design-lint-ignore: clamp popover to viewport on mobile */}
                                         <Command shouldFilter={false}>
                                             <CommandInput
                                                 placeholder="Search user by name or email..."

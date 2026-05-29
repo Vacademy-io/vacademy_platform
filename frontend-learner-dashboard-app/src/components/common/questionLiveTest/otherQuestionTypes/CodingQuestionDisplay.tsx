@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Play, Check, X, Loader2 } from "lucide-react";
+import { Play, Check, X, SpinnerGap } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import { Button } from "@/components/ui/button";
 import {
@@ -281,7 +281,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
             <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
                     <Select value={language} onValueChange={(v) => setLanguage(v as LangId)}>
-                        <SelectTrigger className="w-[180px]">
+                        <SelectTrigger className="w-reg-180">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -298,7 +298,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                         size="sm"
                     >
                         {running ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                            <SpinnerGap className="mr-1 h-4 w-4 animate-spin" />
                         ) : (
                             <Play className="mr-1 h-4 w-4" />
                         )}
@@ -306,7 +306,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                     </Button>
                     {pythonBlocked && (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <SpinnerGap className="h-3 w-3 animate-spin" />
                             Loading Python runtime…
                         </span>
                     )}
@@ -319,7 +319,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                         </Badge>
                     )}
                 </div>
-                <div className="h-[320px] overflow-hidden rounded border">
+                <div className="h-reg-320 overflow-hidden rounded border">
                     <Editor
                         height="100%"
                         language={LANGUAGE_REGISTRY[language]?.monacoLang ?? "plaintext"}
@@ -375,7 +375,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                                                 </span>
                                             )}
                                             {r?.error && (
-                                                <span className="text-[11px] text-red-600">
+                                                <span className="text-2xs text-red-600">
                                                     {r.error}
                                                 </span>
                                             )}
@@ -405,7 +405,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                                                         <div className="text-red-600">
                                                             Compiler / runtime error
                                                         </div>
-                                                        <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-[11px] text-red-900">
+                                                        <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-2xs text-red-900">
                                                             {r.stderr}
                                                         </pre>
                                                     </div>
@@ -442,7 +442,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                                         </span>
                                         <Badge
                                             variant="outline"
-                                            className="text-[10px]"
+                                            className="text-3xs"
                                         >
                                             hidden
                                         </Badge>
@@ -462,7 +462,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                                             <div className="text-xs font-medium">
                                                 {r.label || `Test ${i + 1}`}
                                             </div>
-                                            <div className="mt-1 text-[11px] text-muted-foreground">
+                                            <div className="mt-1 text-2xs text-muted-foreground">
                                                 stdout
                                             </div>
                                             <pre className="whitespace-pre-wrap text-xs">
@@ -470,10 +470,10 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                                             </pre>
                                             {r.stderr && (
                                                 <>
-                                                    <div className="mt-1 text-[11px] text-red-600">
+                                                    <div className="mt-1 text-2xs text-red-600">
                                                         stderr / compiler
                                                     </div>
-                                                    <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-[11px] text-red-900">
+                                                    <pre className="whitespace-pre-wrap rounded bg-red-50 p-2 text-2xs text-red-900">
                                                         {r.stderr}
                                                     </pre>
                                                 </>

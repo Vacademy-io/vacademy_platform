@@ -2,10 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
-import { Lock } from "lucide-react";
-import { SiStripe } from "react-icons/si";
-import { EnvelopeSimple } from "@phosphor-icons/react";
-import { Loader2, CreditCard } from "lucide-react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: brand logo, no phosphor equivalent
+import { EnvelopeSimple, Lock, SpinnerGap, CreditCard } from "@phosphor-icons/react";
 import {
   formatCurrency,
   getCurrencySymbol,
@@ -23,6 +21,9 @@ import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -78,6 +79,27 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
   const [cardElementError, setCardElementError] = useState<string>('');
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
   const cardElementRef = useRef<HTMLDivElement>(null);
+
+  // Discount coupon — gated by institute toggle. Subscription: first payment only.
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
 
   const getCurrency = (): string => {
     return getCurrencyWithPriority(selectedPaymentPlan, selectedPaymentOption, enrollmentData);
@@ -154,15 +176,15 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
             style: {
               base: {
                 fontSize: '16px',
-                color: '#374151',
+                color: '#374151', // design-lint-ignore: Stripe SDK element style data
                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 '::placeholder': {
-                  color: '#9CA3AF',
+                  color: '#9CA3AF', // design-lint-ignore: Stripe SDK element style data
                 },
                 padding: '8px 0',
               },
               invalid: {
-                color: '#DC2626',
+                color: '#DC2626', // design-lint-ignore: Stripe SDK element style data
               },
             },
             hidePostalCode: true,
@@ -261,11 +283,12 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         paymentGatewayData: paymentGatewayData!,
         selectedPaymentPlan,
         selectedPaymentOption,
-        amount: selectedPaymentPlan.actual_price,
+        amount: effectiveAmount,
         currency: getCurrency(),
         description: `Subscription for ${selectedPaymentPlan.name}`,
         paymentType: 'subscription',
         paymentMethod,
+        couponCode: couponCtx.state.appliedCode,
         token,
         returnUrl: window.location.origin + "/courses", // Default return URL
       });
@@ -318,12 +341,12 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     return (
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading subscription options...</p>
             </div>
           </DialogPrimitive.Content>
@@ -337,9 +360,9 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     return (
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-6">
               <p className="text-red-600 mb-4">{error}</p>
@@ -361,9 +384,9 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     <>
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white shadow-xl focus:outline-none flex flex-col"
+          className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white shadow-xl focus:outline-none flex flex-col"
         >
           <button
             className="absolute right-4 top-4 text-gray-400 hover:text-gray-700 focus:outline-none z-10"
@@ -484,17 +507,44 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 )}
               </div>
               
+              {/* Discount coupon — institute toggle gates visibility. */}
+              {couponsEnabled && (
+                <div>
+                  <CouponInput
+                    state={couponCtx.state}
+                    onChange={couponCtx.setCode}
+                    onApply={couponCtx.apply}
+                    onClear={couponCtx.clear}
+                    currencySymbol={selectedPaymentPlan?.currency === "INR" ? "₹" : "$"}
+                  />
+                  {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                    <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                      <span className="text-gray-600">
+                        First payment subtotal {selectedPaymentPlan?.actual_price?.toFixed(2)} ·
+                        Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        You pay {effectiveAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500">
+                    Discount applies to the first payment only.
+                  </p>
+                </div>
+              )}
+
               {/* Card Details */}
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-gray-900">💳 Secure Payment</h3>
                 <p className="text-gray-600 text-sm">Enter your card details below.</p>
-                
+
                 <div className={`border rounded-lg p-4 bg-white ${
                   cardElementError ? 'border-red-500 bg-red-50' : 'border-gray-300'
                 }`}>
                   {!cardElementReady && (
                     <div className="flex items-center justify-center h-12 text-gray-500">
-                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
                       Loading payment form...
                     </div>
                   )}
@@ -520,7 +570,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                   >
                     {processingPayment ? (
                       <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <SpinnerGap className="w-5 h-5 animate-spin" />
                         Processing Payment...
                       </>
                     ) : (

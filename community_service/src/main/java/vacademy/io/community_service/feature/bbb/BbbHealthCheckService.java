@@ -93,36 +93,7 @@ public class BbbHealthCheckService {
     @Scheduled(cron = "0 50 14 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledHealthCheck() {
         log.info("[BBB Pool HealthCheck] Scheduled check triggered");
-
-        List<Map<String, Object>> runningServers = getRunningServers();
-
-        if (runningServers.isEmpty()) {
-            // Fallback to legacy single-server check
-            log.info("[BBB Pool HealthCheck] No pool servers found, checking legacy endpoint");
-            runHealthCheck(bbbHostname, bbbApiUrl);
-            return;
-        }
-
-        for (Map<String, Object> server : runningServers) {
-            String slug = (String) server.get("slug");
-            String domain = (String) server.get("domain");
-            String apiUrl = (String) server.get("apiUrl");
-
-            if (apiUrl == null || apiUrl.isBlank()) {
-                apiUrl = "https://" + domain + "/bigbluebutton/api";
-            }
-
-            log.info("[BBB Pool HealthCheck] Checking server: {} ({})", slug, domain);
-            Map<String, Object> result = runHealthCheck(domain, apiUrl);
-
-            // Update health status in admin_core_service
-            try {
-                String healthStatus = (String) result.get("status");
-                updateServerHealth(slug, healthStatus);
-            } catch (Exception e) {
-                log.warn("[BBB Pool HealthCheck] Failed to update health for {}: {}", slug, e.getMessage());
-            }
-        }
+        runPoolHealthCheck(true);
     }
 
     /**
@@ -154,34 +125,7 @@ public class BbbHealthCheckService {
     @Scheduled(cron = "0 45 9 * * SUN", zone = "Asia/Kolkata")
     public void scheduledHealthCheckSunday() {
         log.info("[BBB Pool HealthCheck] Scheduled check (Sunday) triggered");
-
-        List<Map<String, Object>> runningServers = getRunningServers();
-
-        if (runningServers.isEmpty()) {
-            log.info("[BBB Pool HealthCheck] No pool servers found, checking legacy endpoint");
-            runHealthCheck(bbbHostname, bbbApiUrl);
-            return;
-        }
-
-        for (Map<String, Object> server : runningServers) {
-            String slug = (String) server.get("slug");
-            String domain = (String) server.get("domain");
-            String apiUrl = (String) server.get("apiUrl");
-
-            if (apiUrl == null || apiUrl.isBlank()) {
-                apiUrl = "https://" + domain + "/bigbluebutton/api";
-            }
-
-            log.info("[BBB Pool HealthCheck] Checking server: {} ({})", slug, domain);
-            Map<String, Object> result = runHealthCheck(domain, apiUrl);
-
-            try {
-                String healthStatus = (String) result.get("status");
-                updateServerHealth(slug, healthStatus);
-            } catch (Exception e) {
-                log.warn("[BBB Pool HealthCheck] Failed to update health for {}: {}", slug, e.getMessage());
-            }
-        }
+        runPoolHealthCheck(true);
     }
 
     /**
@@ -253,10 +197,47 @@ public class BbbHealthCheckService {
     // -----------------------------------------------------------------------
 
     public Map<String, Object> runHealthCheck() {
-        return runHealthCheck(bbbHostname, bbbApiUrl);
+        return runHealthCheck(bbbHostname, bbbApiUrl, true);
     }
 
     public Map<String, Object> runHealthCheck(String hostname, String apiUrl) {
+        return runHealthCheck(hostname, apiUrl, true);
+    }
+
+    /**
+     * Iterate the running pool and check each server. Updates DB health status.
+     * Set notify=false to skip WhatsApp (used by manual UI button).
+     */
+    public Map<String, Object> runPoolHealthCheck(boolean notify) {
+        List<Map<String, Object>> running = getRunningServers();
+        if (running.isEmpty()) {
+            log.info("[BBB Pool HealthCheck] No pool servers, checking legacy endpoint");
+            Map<String, Object> legacy = runHealthCheck(bbbHostname, bbbApiUrl, notify);
+            legacy.put("slug", "legacy");
+            return Map.of("results", List.of(legacy), "checked", 1, "source", "legacy");
+        }
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Map<String, Object> server : running) {
+            String slug = (String) server.get("slug");
+            String domain = (String) server.get("domain");
+            String apiUrl = (String) server.get("apiUrl");
+            if (apiUrl == null || apiUrl.isBlank()) {
+                apiUrl = "https://" + domain + "/bigbluebutton/api";
+            }
+            log.info("[BBB Pool HealthCheck] Checking server: {} ({})", slug, domain);
+            Map<String, Object> r = runHealthCheck(domain, apiUrl, notify);
+            r.put("slug", slug);
+            try {
+                updateServerHealth(slug, (String) r.get("status"));
+            } catch (Exception e) {
+                log.warn("[BBB Pool HealthCheck] Failed to update health for {}: {}", slug, e.getMessage());
+            }
+            results.add(r);
+        }
+        return Map.of("results", results, "checked", results.size(), "source", "pool");
+    }
+
+    public Map<String, Object> runHealthCheck(String hostname, String apiUrl, boolean notify) {
         Map<String, Object> result = new LinkedHashMap<>();
         String timestamp = ZonedDateTime.now(ZoneId.of("Asia/Kolkata")).format(IST_FORMATTER);
         result.put("timestamp", timestamp);
@@ -300,11 +281,13 @@ public class BbbHealthCheckService {
         result.put("status", status);
         result.put("details", details);
 
-        try {
-            sendWhatsApp(status, serverIp, details, timestamp, hostname);
-        } catch (Exception e) {
-            log.error("[BBB HealthCheck] WhatsApp failed: {}", e.getMessage());
-            result.put("notificationError", e.getMessage());
+        if (notify) {
+            try {
+                sendWhatsApp(status, serverIp, details, timestamp, hostname);
+            } catch (Exception e) {
+                log.error("[BBB HealthCheck] WhatsApp failed: {}", e.getMessage());
+                result.put("notificationError", e.getMessage());
+            }
         }
 
         return result;

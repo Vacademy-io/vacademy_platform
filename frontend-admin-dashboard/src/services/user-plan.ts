@@ -95,6 +95,18 @@ export interface UserPlan {
     plan_json: string;
     applied_coupon_discount_id: string;
     applied_coupon_discount_json: string;
+    /**
+     * Structured projection of the coupon snapshot, populated by the BE
+     * (see CouponSnapshotDTO). Prefer reading from this over parsing the
+     * JSON string yourself. Null when no coupon was applied.
+     */
+    applied_coupon?: {
+        coupon_code?: string | null;
+        discount_type?: string | null;
+        discount_point?: number | null;
+        max_discount_point?: number | null;
+        discount_source?: string | null;
+    } | null;
     enroll_invite_id: string;
     payment_option_id: string;
     payment_option_json: string;

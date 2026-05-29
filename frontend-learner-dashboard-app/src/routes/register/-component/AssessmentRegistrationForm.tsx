@@ -80,7 +80,7 @@ const MetaChip = ({
       {icon}
     </div>
     <div className="flex flex-col min-w-0">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">
+      <span className="text-caption font-medium uppercase tracking-wide text-neutral-500">
         {label}
       </span>
       <span className="text-xs font-semibold text-neutral-800 truncate">
@@ -110,13 +110,13 @@ const DateBlock = ({
     </div>
     <div className="flex flex-col gap-1 text-xs">
       <div className="flex items-center gap-1.5">
-        <span className="inline-flex items-center rounded-md bg-success-50 px-1.5 py-0.5 text-[10px] font-semibold text-success-700">
+        <span className="inline-flex items-center rounded-md bg-success-50 px-1.5 py-0.5 text-caption font-semibold text-success-700">
           START
         </span>
         <span className="text-neutral-700">{start}</span>
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="inline-flex items-center rounded-md bg-danger-50 px-1.5 py-0.5 text-[10px] font-semibold text-danger-700">
+        <span className="inline-flex items-center rounded-md bg-danger-50 px-1.5 py-0.5 text-caption font-semibold text-danger-700">
           END
         </span>
         <span className="text-neutral-700">{end}</span>
@@ -624,7 +624,7 @@ const AssessmentRegistrationForm = () => {
                 showName={false}
               />
               <div className="flex flex-col items-center gap-2 -mt-8">
-                <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 border border-warning-200 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-warning-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning-50 border border-warning-200 px-3 py-0.5 text-caption font-semibold uppercase tracking-wide text-warning-700">
                   <span className="size-1.5 rounded-full bg-warning-500 animate-pulse" />
                   Registration Not Yet Open
                 </span>
@@ -777,7 +777,7 @@ const AssessmentRegistrationForm = () => {
                   showName={false}
                 />
                 <div className="flex flex-col items-center gap-2 -mt-8">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-success-50 border border-success-200 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-success-700">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success-50 border border-success-200 px-3 py-0.5 text-caption font-semibold uppercase tracking-wide text-success-700">
                     <span className="size-1.5 rounded-full bg-success-500 animate-pulse" />
                     Registration Open
                   </span>
@@ -963,7 +963,7 @@ const AssessmentRegistrationForm = () => {
                 </div>
               )}
               <FormProvider {...form}>
-                <form className="w-full flex flex-col gap-6 mt-5 sm:max-h-[70vh] sm:overflow-auto pr-1">
+                <form className="w-full flex flex-col gap-6 mt-5 sm:max-h-screen-70 sm:overflow-auto pr-1">
                   {Object.entries(form.getValues()).map(([key, value]) => {
                     if (key === "phone_number") {
                       return (
@@ -979,7 +979,6 @@ const AssessmentRegistrationForm = () => {
                                   placeholder="123 456 7890"
                                   name={`${key}.value`}
                                   control={form.control}
-                                  country="in"
                                   required
                                 />
                               </FormControl>

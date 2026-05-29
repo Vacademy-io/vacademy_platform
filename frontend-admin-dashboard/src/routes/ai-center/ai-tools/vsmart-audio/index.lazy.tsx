@@ -19,7 +19,7 @@ function RouteComponent() {
           onClick={() => window.history.back()}
           className="cursor-pointer"
         />
-        <div>VSmart AI Tools</div>
+        <div>Questions from Audio</div>
       </div>
     )
 

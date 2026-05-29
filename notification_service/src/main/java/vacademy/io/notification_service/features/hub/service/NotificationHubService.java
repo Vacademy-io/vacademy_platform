@@ -13,7 +13,9 @@ import vacademy.io.notification_service.features.notification_log.repository.Ema
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.features.send.repository.SendBatchRepository;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -30,8 +32,12 @@ public class NotificationHubService {
     private final SendBatchRepository sendBatchRepository;
 
     public HubOverviewDTO getOverview(String instituteId, int windowDays) {
-        LocalDateTime sinceTs = LocalDateTime.now().minusDays(windowDays);
-        String since = sinceTs.toString();
+        // notification_log.notification_date is stored as a UTC timestamp; build the cutoff as an
+        // Instant so its ISO form (with trailing Z) round-trips cleanly through the count* queries.
+        // SendBatch still uses LocalDateTime for its own column, so we keep that variable too.
+        Instant sinceInstant = Instant.now().minus(java.time.Duration.ofDays(windowDays));
+        String since = sinceInstant.toString();
+        LocalDateTime sinceTs = LocalDateTime.ofInstant(sinceInstant, ZoneOffset.UTC);
 
         List<String> emailFromAddresses = getInstituteEmailAddresses(instituteId);
         List<String> waChannelIds = getInstituteWhatsAppChannelIds(instituteId);

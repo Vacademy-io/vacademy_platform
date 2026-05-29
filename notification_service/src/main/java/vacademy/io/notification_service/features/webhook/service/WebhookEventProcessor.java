@@ -17,8 +17,7 @@ import vacademy.io.notification_service.features.notification_log.entity.Notific
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 import vacademy.io.notification_service.features.webhook.dto.UnifiedWebhookEvent;
 
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -122,11 +121,14 @@ public class WebhookEventProcessor {
         }
 
         // Notification date from event timestamp
-        if (event.getTimestamp() != null) {
-            notificationLog.setNotificationDate(
-                    LocalDateTime.ofInstant(event.getTimestamp(), ZoneId.systemDefault()));
-        } else {
-            notificationLog.setNotificationDate(LocalDateTime.now());
+        notificationLog.setNotificationDate(
+                event.getTimestamp() != null ? event.getTimestamp() : Instant.now());
+
+        // Resolve institute_id from the business channel id so the Hub's WA Inbox can
+        // scope by institute without re-joining channel_to_institute_mapping at read time.
+        if (event.getBusinessChannelId() != null) {
+            channelMappingRepository.findById(event.getBusinessChannelId())
+                    .ifPresent(m -> notificationLog.setInstituteId(m.getInstituteId()));
         }
 
         // Store raw payload as JSON

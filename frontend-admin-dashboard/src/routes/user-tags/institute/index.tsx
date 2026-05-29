@@ -6,10 +6,22 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Trash } from '@phosphor-icons/react';
+import {
     getAllTags,
     getInstituteTags,
     getDefaultTags,
     createInstituteTag,
+    deleteInstituteTag,
     getUserCountsByTags,
     getUserDetailsByTags,
     type TagItem,
@@ -46,6 +58,11 @@ function RouteComponent() {
     // "Assign Courses" dialog state
     const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
     const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+
+    // "Delete tag" confirmation state. Backend rejects default tags, but we
+    // also gate the UI so the trash button never appears for system tags.
+    const [tagToDelete, setTagToDelete] = useState<TagItem | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         setNavHeading('User Tags');
@@ -96,6 +113,30 @@ function RouteComponent() {
             toast.error(msg);
         } finally {
             setCreating(false);
+        }
+    };
+
+    const onConfirmDelete = async () => {
+        if (!tagToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteInstituteTag(tagToDelete.id);
+            toast.success(`Tag "${tagToDelete.tagName}" deleted`);
+            // If this tag was selected in the bulk-assign picker, drop it
+            // so the assign button doesn't reference a gone tag.
+            setSelectedTagIds((prev) => {
+                if (!prev.has(tagToDelete.id)) return prev;
+                const next = new Set(prev);
+                next.delete(tagToDelete.id);
+                return next;
+            });
+            setTagToDelete(null);
+            await fetchAll();
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : 'Failed to delete tag';
+            toast.error(msg);
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -208,6 +249,20 @@ function RouteComponent() {
                     >
                         View Users
                     </button>
+                    {!isDefault && (
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setTagToDelete(tag);
+                            }}
+                            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                            title="Delete tag"
+                            aria-label={`Delete tag ${tag.tagName}`}
+                        >
+                            <Trash className="size-4" weight="bold" />
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -428,6 +483,58 @@ function RouteComponent() {
                 open={assignDialogOpen}
                 onOpenChange={setAssignDialogOpen}
             />
+
+            {/* ── Delete Tag Confirmation ── */}
+            <AlertDialog
+                open={!!tagToDelete}
+                onOpenChange={(open) => {
+                    if (!open && !isDeleting) setTagToDelete(null);
+                }}
+            >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            Delete tag &ldquo;{tagToDelete?.tagName}&rdquo;?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {tagToDelete && (counts[tagToDelete.tagName] ?? 0) > 0 ? (
+                                <>
+                                    This tag is currently applied to{' '}
+                                    <span className="font-medium text-neutral-800">
+                                        {counts[tagToDelete.tagName]}{' '}
+                                        {counts[tagToDelete.tagName] === 1
+                                            ? 'user'
+                                            : 'users'}
+                                    </span>
+                                    . Deleting will mark the tag inactive — it will no longer
+                                    appear in the institute tag list, but historical user
+                                    associations are preserved.
+                                </>
+                            ) : (
+                                <>
+                                    This will mark the tag inactive. You can&apos;t undo this
+                                    from the UI.
+                                </>
+                            )}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={(e) => {
+                                // Prevent the default close-on-click so the dialog
+                                // stays open until the request resolves.
+                                e.preventDefault();
+                                onConfirmDelete();
+                            }}
+                            disabled={isDeleting}
+                            className="bg-red-600 hover:bg-red-700 focus-visible:ring-red-300"
+                        >
+                            {isDeleting ? 'Deleting…' : 'Delete'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

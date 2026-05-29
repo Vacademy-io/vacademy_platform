@@ -197,6 +197,64 @@ def require_internal_service_token(
             detail="Invalid X-Internal-Service-Token",
         )
 
+
+def get_institute_id_or_internal(
+    x_institute_key: Optional[str] = Header(None, description="API Key for institute auth"),
+    x_internal_service_token: Optional[str] = Header(
+        None, description="Server-to-server token (admin-core ↔ ai-service)"
+    ),
+) -> tuple[Optional[str], str]:
+    """
+    Dual-auth dependency: either an institute API key OR an internal
+    service token (e.g. from admin_core_service).
+
+    Returns (resolved_institute_id_or_None, mode):
+      - mode='INSTITUTE': caller presented X-Institute-Key, institute_id is resolved.
+      - mode='INTERNAL':  caller presented X-Internal-Service-Token, institute_id
+        must be supplied by the handler from the request body.
+
+    The DB session is created lazily inside the INSTITUTE branch so callers
+    using INTERNAL auth don't require DB connectivity at all.
+    """
+    if x_institute_key:
+        db_gen = db_dependency()
+        db = next(db_gen)
+        try:
+            settings_service = InstituteSettingsService(db)
+            institute_id = settings_service.validate_api_key(x_institute_key)
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+        if not institute_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or inactive API Key",
+            )
+        return institute_id, "INSTITUTE"
+
+    if x_internal_service_token:
+        expected = get_settings().internal_service_token
+        if not expected:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Internal service token is not configured on this server",
+            )
+        import hmac
+        if not hmac.compare_digest(x_internal_service_token, expected):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid X-Internal-Service-Token",
+            )
+        return None, "INTERNAL"
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing auth: provide X-Institute-Key or X-Internal-Service-Token",
+    )
+
+
 def get_embedding_service(db: Session = Depends(db_dependency)) -> EmbeddingService:
     """Create an EmbeddingService with a fresh DB session."""
     api_key_resolver = ApiKeyResolver(db)

@@ -1,5 +1,5 @@
 import type { IntervalType } from "../-types/types";
-import { Calendar, CalendarDays, CalendarClock, ListTodo } from "lucide-react";
+import { Calendar, CalendarDots, CalendarDot, ListChecks } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 
 export type PlanningPeriod = IntervalType | "all";
@@ -15,10 +15,10 @@ export default function IntervalTypeSelector({
 }: IntervalTypeSelectorProps) {
   const options: { id: PlanningPeriod; label: string; icon: any }[] = [
     { id: "weekly", label: "Today", icon: Calendar },
-    { id: "monthly", label: "This Week", icon: CalendarDays },
-    { id: "yearly_month", label: "This Month", icon: CalendarClock },
-    { id: "yearly_quarter", label: "This Quarter", icon: CalendarClock },
-    { id: "all", label: "All Plannings", icon: ListTodo },
+    { id: "monthly", label: "This Week", icon: CalendarDots },
+    { id: "yearly_month", label: "This Month", icon: CalendarDot },
+    { id: "yearly_quarter", label: "This Quarter", icon: CalendarDot },
+    { id: "all", label: "All Plannings", icon: ListChecks },
   ];
 
   return (

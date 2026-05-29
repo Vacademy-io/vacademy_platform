@@ -82,6 +82,22 @@ export function activePhraseAt(phrases: CaptionPhrase[], t: number): CaptionPhra
 /** Caption position. Mirrors RenderSettings.captionPosition. */
 export type CaptionPosition = 'top' | 'bottom';
 
+/** Caption style — phrase shows the whole line, karaoke highlights the active word. */
+export type CaptionStyle = 'phrase' | 'karaoke';
+
+/**
+ * Caption font family. Limited to the set already loaded by the render harness
+ * (`render_harness.py:19` + `dispatcher_install_js.py:126`) so the render server
+ * doesn't have to fetch new CDN fonts mid-render.
+ *  - `system` — the existing `-apple-system, BlinkMacSystemFont, ...` stack
+ *  - `inter` / `montserrat` / `noto-sans` / `fira-code` — harness Google Fonts
+ */
+export type CaptionFontFamily = 'system' | 'inter' | 'montserrat' | 'noto-sans' | 'fira-code';
+
+/** Quick named style packs. `custom` is the implicit fallback when the user has tweaked
+ *  past any preset — `detectPreset` derives it via structural compare, it isn't persisted. */
+export type CaptionPreset = 'youtube' | 'tiktok' | 'karaoke' | 'cinema' | 'branded' | 'custom';
+
 /**
  * Editor-side caption settings. Field names mirror RenderSettings so they map
  * 1:1 to the render dialog and downstream `caption_*` API fields.
@@ -100,6 +116,22 @@ export interface CaptionEditorSettings {
     bgColor: string;
     /** 0..1 (RenderSettings uses 0..100; we keep 0..1 internally for direct rgba use). */
     bgOpacity: number;
+    /** Phrase shows the whole line; karaoke highlights the currently-spoken word.
+     *  Defaults to 'phrase' (existing behavior). */
+    style: CaptionStyle;
+    /** 'system' (current default) or one of the four harness-loaded Google Fonts. */
+    fontFamily: CaptionFontFamily;
+    /** 400 / 500 / 600 / 700 / 800 / 900. Defaults to 400 (existing behavior). */
+    fontWeight: number;
+    /** Text outline width in "px at 1920w canvas"; 0 = no stroke. */
+    textStrokeWidth: number;
+    /** Hex color for the stroke. Ignored when `textStrokeWidth` is 0. */
+    textStrokeColor: string;
+    /** Hex color used to paint the active word in karaoke style. */
+    highlightColor: string;
+    /** Informational — UI shows which preset (if any) is currently selected. Field values
+     *  are the source of truth; presets are just shortcuts. */
+    preset?: CaptionPreset;
 }
 
 export const CAPTION_SIZE_S = 36;
@@ -113,6 +145,13 @@ export const DEFAULT_CAPTION_EDITOR_SETTINGS: CaptionEditorSettings = {
     textColor: '#ffffff',
     bgColor: '#000000',
     bgOpacity: 0.6,
+    style: 'phrase',
+    fontFamily: 'system',
+    fontWeight: 400,
+    textStrokeWidth: 0,
+    textStrokeColor: '#000000',
+    highlightColor: '#fbbf24',
+    preset: 'youtube',
 };
 
 /** Snap any pixel size to the nearest S/M/L bucket. Used when round-tripping
@@ -128,6 +167,30 @@ export function snapSizeToBucket(px: number): 'S' | 'M' | 'L' {
 }
 
 // ─── CSS emission (mirrors generate_video.py:1629-1641) ─────────────────────
+
+const SYSTEM_FONT_STACK =
+    "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif";
+
+/**
+ * Resolve a `CaptionFontFamily` to a CSS `font-family` value. Each Google-Font
+ * choice falls back to the system stack so a missed load doesn't blank the
+ * caption.
+ */
+export function resolveCaptionFontFamily(f: CaptionFontFamily): string {
+    switch (f) {
+        case 'inter':
+            return `'Inter', ${SYSTEM_FONT_STACK}`;
+        case 'montserrat':
+            return `'Montserrat', ${SYSTEM_FONT_STACK}`;
+        case 'noto-sans':
+            return `'Noto Sans', ${SYSTEM_FONT_STACK}`;
+        case 'fira-code':
+            return `'Fira Code', ui-monospace, monospace`;
+        case 'system':
+        default:
+            return SYSTEM_FONT_STACK;
+    }
+}
 
 /**
  * Caption container CSS for the editor canvas.
@@ -169,10 +232,9 @@ export function captionContainerCss(
         borderRadius: '8px',
         background: `rgba(${r},${g},${b},${a})`,
         textAlign: 'center',
-        fontFamily:
-            "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",
+        fontFamily: resolveCaptionFontFamily(settings.fontFamily),
         fontSize: `${fontSize}px`,
-        fontWeight: 400,
+        fontWeight: settings.fontWeight,
         color: settings.textColor,
         textShadow: '0 1px 3px rgba(0,0,0,0.4)',
         lineHeight: 1.5,
@@ -193,7 +255,85 @@ export function captionContainerCss(
     };
 }
 
+/**
+ * CSS for the inner text node — kept separate so callers can spread it onto
+ * either the single phrase node OR each per-word `<span>` in karaoke mode.
+ * Stroke is applied here so it wraps the actual glyphs (the outer container
+ * has `display:flex; min-height:44px` and shouldn't carry stroke).
+ */
+export function captionInnerCss(settings: CaptionEditorSettings, canvasW: number): CSSProperties {
+    const scale = canvasW / 1920;
+    // Scale stroke alongside font so it stays visually proportional on portrait.
+    const strokeW = Math.max(0, Math.floor(settings.textStrokeWidth * scale));
+    const base: CSSProperties = {
+        display: 'inline-block',
+        textShadow: '0 1px 3px rgba(0,0,0,0.4)',
+    };
+    if (strokeW > 0) {
+        // `paint-order: stroke fill` lays the stroke UNDER the fill so the glyph
+        // edges stay readable even at thick widths. WebKit prefix covers all
+        // Chromium / Safari / Edge — Firefox supports unprefixed (renderer ignores
+        // the unprefixed one because we don't set it, but Chromium is the target).
+        return {
+            ...base,
+            WebkitTextStrokeWidth: `${strokeW}px`,
+            WebkitTextStrokeColor: settings.textStrokeColor,
+            paintOrder: 'stroke fill',
+        };
+    }
+    return base;
+}
+
+/**
+ * @deprecated kept for backwards-compat exports; use `captionInnerCss(settings, canvasW)`
+ * which applies the stroke + scales it to the canvas.
+ */
 export const CAPTION_INNER_CSS: CSSProperties = {
     display: 'inline-block',
     textShadow: '0 1px 3px rgba(0,0,0,0.4)',
 };
+
+// ─── Karaoke per-word coloring (mirrors CaptionDisplay.tsx:62-99) ───────────
+
+export interface KaraokeWordSpan {
+    text: string;
+    /** Color to paint this word — highlight for current, textColor for past/upcoming. */
+    color: string;
+    /** Font weight — bumps to 600 on the current word, settings.fontWeight otherwise. */
+    fontWeight: number;
+    /** Opacity — past words fade to 0.5 to look "spoken". */
+    opacity: number;
+}
+
+/**
+ * Build the per-word coloring data for karaoke style at time `t`. Mirrors the
+ * three-bucket comparison in [CaptionDisplay.tsx:73-90](../components/ai-video-player/components/CaptionDisplay.tsx)
+ * EXACTLY so the render server and the two preview surfaces agree on which
+ * word is "current" at every frame:
+ *   - `t >= word.start && t < word.end`  → current   (highlightColor, weight+200)
+ *   - `t >= word.end`                    → past      (textColor, 50% opacity)
+ *   - otherwise                          → upcoming  (textColor, full opacity)
+ *
+ * Whitespace between words is the caller's responsibility (typically a `' '`
+ * suffix on each span's text).
+ */
+export function karaokeWordSpans(
+    phrase: CaptionPhrase,
+    t: number,
+    settings: CaptionEditorSettings
+): KaraokeWordSpan[] {
+    const out: KaraokeWordSpan[] = [];
+    const base = settings.fontWeight;
+    const heavy = Math.min(900, base + 200);
+    for (const w of phrase.words) {
+        const isCurrent = t >= w.start && t < w.end;
+        const isPast = t >= w.end;
+        out.push({
+            text: w.word,
+            color: isCurrent ? settings.highlightColor : settings.textColor,
+            fontWeight: isCurrent ? heavy : base,
+            opacity: isPast ? 0.5 : 1,
+        });
+    }
+    return out;
+}

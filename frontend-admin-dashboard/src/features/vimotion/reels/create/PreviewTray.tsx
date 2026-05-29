@@ -15,16 +15,18 @@
  * scan params work and how every competing product (Opus / Vizard / Klap)
  * frames it.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
     CheckCircle2,
+    Scissors,
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type {
+    CutSpan,
     EnrichedCandidate,
     ReelCandidate,
 } from '../services/reels-api';
@@ -91,7 +93,10 @@ export function PreviewTray({
     // backend dedup catches anything that slips past (different tab, etc.).
     const renderingCandidateRef = useRef<string | null>(null);
 
-    const handleRender = (enriched: EnrichedCandidate) => {
+    const handleRender = (
+        enriched: EnrichedCandidate,
+        cutPlanOverrides?: CutSpan[],
+    ) => {
         if (renderingCandidateRef.current === enriched.candidate_id) return;
         // Soft validation: nudge the user to fill in URLs they asked for.
         // Backend would silently fall back to defaults if these are missing,
@@ -134,6 +139,10 @@ export function PreviewTray({
                 background_video_url: renderConfig.background_video_url,
                 ducking: renderConfig.ducking,
                 captions: renderConfig.captions,
+                cut_plan_overrides:
+                    cutPlanOverrides && cutPlanOverrides.length > 0
+                        ? cutPlanOverrides
+                        : undefined,
             },
             {
                 onSuccess: (reel) => {
@@ -184,6 +193,7 @@ export function PreviewTray({
                         preview={preview}
                         candidatesById={candidatesById}
                         onRender={handleRender}
+                        speedMultiplier={renderConfig.pace?.speed_multiplier ?? 1.0}
                         renderInflight={render.isPending}
                         renderingCandidateId={
                             render.isPending ? render.variables?.candidate_id ?? null : null
@@ -241,6 +251,7 @@ function PreviewTrayBody({
     preview,
     candidatesById,
     onRender,
+    speedMultiplier,
     renderInflight,
     renderingCandidateId,
     renderConfig,
@@ -248,7 +259,8 @@ function PreviewTrayBody({
 }: {
     preview: ReturnType<typeof usePreview>;
     candidatesById: Map<string, ReelCandidate>;
-    onRender: (enriched: EnrichedCandidate) => void;
+    onRender: (enriched: EnrichedCandidate, cutPlanOverrides?: CutSpan[]) => void;
+    speedMultiplier: number;
     renderInflight: boolean;
     renderingCandidateId: string | null;
     renderConfig: RenderConfigValue;
@@ -312,7 +324,8 @@ function PreviewTrayBody({
                     key={e.candidate_id}
                     enriched={e}
                     source={candidatesById.get(e.candidate_id)}
-                    onRender={() => onRender(e)}
+                    speedMultiplier={speedMultiplier}
+                    onRender={(overrides) => onRender(e, overrides)}
                     busy={renderInflight}
                     isRenderingThis={renderingCandidateId === e.candidate_id}
                 />
@@ -325,16 +338,56 @@ function PreviewTrayBody({
 // Single enriched-candidate card inside the tray
 // ---------------------------------------------------------------------------
 
+/** Group consecutive user-cut word indices into contiguous CutSpans of
+ *  kind="user". Two indices are "consecutive" when the next word's t_start
+ *  is within MERGE_GAP_S of the previous word's t_end (handles tiny gaps
+ *  between adjacent words in the transcript without breaking the span).
+ *  Returns spans sorted by t_start, matching the server-side validator's
+ *  expectation. */
+const MERGE_GAP_S = 0.10;
+/** PB5: matches MIN_CUT_SPAN_S in reels_preview_service.py. A user-cut
+ *  span shorter than this fails server-side validation, so we pre-check on
+ *  the FE and surface a clear toast instead of letting the user discover
+ *  it via a 400 response. */
+const MIN_USER_CUT_SPAN_S = 0.08;
+function buildUserCutSpans(
+    words: EnrichedCandidate['word_importance'],
+    userCutIndices: ReadonlySet<number>,
+): CutSpan[] {
+    if (userCutIndices.size === 0) return [];
+    const sortedIdx = Array.from(userCutIndices)
+        .filter((i) => i >= 0 && i < words.length)
+        .sort((a, b) => a - b);
+    if (sortedIdx.length === 0) return [];
+    const spans: CutSpan[] = [];
+    let curStart = words[sortedIdx[0]!]!.t_start;
+    let curEnd = words[sortedIdx[0]!]!.t_end;
+    for (let k = 1; k < sortedIdx.length; k++) {
+        const w = words[sortedIdx[k]!]!;
+        if (w.t_start - curEnd <= MERGE_GAP_S) {
+            curEnd = Math.max(curEnd, w.t_end);
+        } else {
+            spans.push({ t_start: curStart, t_end: curEnd, kind: 'user' });
+            curStart = w.t_start;
+            curEnd = w.t_end;
+        }
+    }
+    spans.push({ t_start: curStart, t_end: curEnd, kind: 'user' });
+    return spans;
+}
+
 function EnrichedCard({
     enriched,
     source,
+    speedMultiplier,
     onRender,
     busy,
     isRenderingThis,
 }: {
     enriched: EnrichedCandidate;
     source: ReelCandidate | undefined;
-    onRender: () => void;
+    speedMultiplier: number;
+    onRender: (overrides?: CutSpan[]) => void;
     busy: boolean;
     isRenderingThis: boolean;
 }) {
@@ -361,6 +414,38 @@ function EnrichedCard({
         return { sourceStartS: 0, sourceEndS: 0 };
     }, [source, enriched.word_importance]);
 
+    // B4 — edit-cuts mode + user-toggled word indices.
+    const [editMode, setEditMode] = useState(false);
+    const [userCutIndices, setUserCutIndices] = useState<Set<number>>(new Set());
+
+    const handleToggleWord = useCallback((wordIdx: number) => {
+        setUserCutIndices((prev) => {
+            const next = new Set(prev);
+            if (next.has(wordIdx)) next.delete(wordIdx);
+            else next.add(wordIdx);
+            return next;
+        });
+    }, []);
+
+    // Live duration recompute. The server's `predicted_output_duration_s`
+    // is post-cuts but PRE-speedup (see reels_preview_service.py L505),
+    // matching the existing display semantics. So we just subtract the
+    // raw source-time of user cuts — same scale. Speed multiplier is
+    // applied later at render and intentionally isn't reflected in either
+    // baseline or live numbers (pre-existing UX).
+    const overrides = useMemo(
+        () => buildUserCutSpans(enriched.word_importance, userCutIndices),
+        [enriched.word_importance, userCutIndices],
+    );
+    const overrideRawSeconds = overrides.reduce(
+        (acc, s) => acc + (s.t_end - s.t_start),
+        0,
+    );
+    const liveDuration = Math.max(
+        0,
+        enriched.predicted_output_duration_s - overrideRawSeconds,
+    );
+
     return (
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
             <div className="flex items-start justify-between gap-4">
@@ -372,9 +457,21 @@ function EnrichedCard({
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-neutral-500">
                         <span>
                             Predicted output:{' '}
-                            <span className="font-medium text-neutral-900">
-                                {enriched.predicted_output_duration_s.toFixed(1)}s
+                            <span
+                                className={cn(
+                                    'font-medium',
+                                    overrides.length > 0
+                                        ? 'text-orange-700'
+                                        : 'text-neutral-900',
+                                )}
+                            >
+                                {liveDuration.toFixed(1)}s
                             </span>
+                            {overrides.length > 0 && (
+                                <span className="ml-1 text-neutral-500">
+                                    (was {enriched.predicted_output_duration_s.toFixed(1)}s)
+                                </span>
+                            )}
                         </span>
                         <span>·</span>
                         <span>
@@ -383,27 +480,89 @@ function EnrichedCard({
                         </span>
                         <span>·</span>
                         <span>
-                            {enriched.cut_plan.length} cut
+                            {enriched.cut_plan.length} auto cut
                             {enriched.cut_plan.length === 1 ? '' : 's'}
                         </span>
+                        {overrides.length > 0 && (
+                            <>
+                                <span>·</span>
+                                <span className="text-orange-700">
+                                    {overrides.length} user cut
+                                    {overrides.length === 1 ? '' : 's'}
+                                </span>
+                            </>
+                        )}
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={onRender}
-                    disabled={busy}
-                    className={cn(
-                        'inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-4 text-sm font-medium text-white shadow-sm transition-colors',
-                        busy ? 'cursor-not-allowed bg-neutral-400' : 'bg-neutral-900 hover:bg-neutral-800'
+                <div className="flex shrink-0 items-center gap-2">
+                    {editMode && userCutIndices.size > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setUserCutIndices(new Set())}
+                            disabled={busy}
+                            className={cn(
+                                'inline-flex h-10 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50',
+                                busy && 'cursor-not-allowed opacity-60',
+                            )}
+                            title="Clear all user cuts on this clip"
+                        >
+                            Clear cuts
+                        </button>
                     )}
-                >
-                    {isRenderingThis ? (
-                        <VimotionLoader size={16} className="text-white" label="Starting" />
-                    ) : (
-                        <CheckCircle2 className="size-4" />
-                    )}
-                    {isRenderingThis ? 'Starting…' : 'Render this clip'}
-                </button>
+                    <button
+                        type="button"
+                        onClick={() => setEditMode((v) => !v)}
+                        disabled={busy}
+                        className={cn(
+                            'inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors',
+                            editMode
+                                ? 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100'
+                                : 'border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50',
+                            busy && 'cursor-not-allowed opacity-60',
+                        )}
+                        title={
+                            editMode
+                                ? 'Exit edit-cuts mode (cuts are preserved)'
+                                : 'Click low-importance words in the transcript to add user cuts'
+                        }
+                    >
+                        <Scissors className="size-4" />
+                        {editMode ? 'Done editing' : 'Edit cuts'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            // PB5: pre-check span durations match server's
+                            // MIN_CUT_SPAN_S so the user gets an actionable
+                            // toast instead of a 400 response.
+                            const shortSpan = overrides.find(
+                                (s) => s.t_end - s.t_start < MIN_USER_CUT_SPAN_S,
+                            );
+                            if (shortSpan) {
+                                const ms = Math.round(
+                                    (shortSpan.t_end - shortSpan.t_start) * 1000,
+                                );
+                                toast.error(
+                                    `One of your cuts is only ${ms}ms long. Include adjacent words to extend the cut to at least ${MIN_USER_CUT_SPAN_S * 1000}ms.`,
+                                );
+                                return;
+                            }
+                            onRender(overrides.length > 0 ? overrides : undefined);
+                        }}
+                        disabled={busy}
+                        className={cn(
+                            'inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-medium text-white shadow-sm transition-colors',
+                            busy ? 'cursor-not-allowed bg-neutral-400' : 'bg-neutral-900 hover:bg-neutral-800'
+                        )}
+                    >
+                        {isRenderingThis ? (
+                            <VimotionLoader size={16} className="text-white" label="Starting" />
+                        ) : (
+                            <CheckCircle2 className="size-4" />
+                        )}
+                        {isRenderingThis ? 'Starting…' : 'Render this clip'}
+                    </button>
+                </div>
             </div>
 
             <div className="mt-4">
@@ -412,6 +571,9 @@ function EnrichedCard({
                     sourceEndS={sourceEndS}
                     words={enriched.word_importance}
                     cuts={enriched.cut_plan}
+                    editable={editMode}
+                    userCutIndices={userCutIndices}
+                    onToggleWordCut={handleToggleWord}
                 />
             </div>
         </div>

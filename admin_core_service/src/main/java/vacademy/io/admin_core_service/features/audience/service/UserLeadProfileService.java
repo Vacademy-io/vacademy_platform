@@ -13,12 +13,17 @@ import vacademy.io.admin_core_service.features.audience.entity.Audience;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
+import vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.LeadScoreRepository;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.timeline.repository.TimelineEventRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.sql.Timestamp;
 import java.util.*;
@@ -49,6 +54,10 @@ public class UserLeadProfileService {
     private final LeadScoreRepository leadScoreRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final TimelineEventRepository timelineEventRepository;
+    private final WorkflowTriggerService workflowTriggerService;
+    private final LeadTriggerContextBuilder leadTriggerContextBuilder;
+    private final AuthService authService;
+    private final LeadSlaConfigService leadSlaConfigService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -130,9 +139,12 @@ public class UserLeadProfileService {
         return userLeadProfileRepository
                 .findByUserIdAndInstituteId(userId, instituteId)
                 .map(profile -> {
+                    Timestamp now = new Timestamp(System.currentTimeMillis());
                     profile.setConversionStatus("CONVERTED");
-                    profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
-                    profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+                    profile.setConvertedAt(now);
+                    // Note: first_response_at is NOT stamped here. TAT is measured strictly as
+                    // counsellor-activity time (MIN timeline_event by counsellor), not status flips.
+                    profile.setUpdatedAt(now);
                     userLeadProfileRepository.save(profile);
                     return true;
                 })
@@ -152,9 +164,12 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        Timestamp now = new Timestamp(System.currentTimeMillis());
         profile.setConversionStatus("CONVERTED");
-        profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
-        profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        profile.setConvertedAt(now);
+        // Note: first_response_at is NOT stamped here. TAT is measured strictly as
+        // counsellor-activity time (MIN timeline_event by counsellor), not status flips.
+        profile.setUpdatedAt(now);
         return userLeadProfileRepository.save(profile);
     }
 
@@ -172,16 +187,23 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        String oldStatus = profile.getConversionStatus();
+        Timestamp now = new Timestamp(System.currentTimeMillis());
         profile.setConversionStatus(status);
-        profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        profile.setUpdatedAt(now);
 
         if ("CONVERTED".equals(status)) {
-            profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
+            profile.setConvertedAt(now);
         } else {
             profile.setConvertedAt(null);
         }
+        // Note: first_response_at is NOT stamped here. TAT is measured strictly as the time
+        // the counsellor took to log their first activity (timeline_event by the assigned
+        // counsellor) — status changes by admins don't count toward TAT.
 
-        return userLeadProfileRepository.save(profile);
+        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+        emitStatusChanged(saved, "CONVERSION_STATUS", oldStatus, status);
+        return saved;
     }
 
     /**
@@ -203,6 +225,7 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
+        String oldTier = profile.getLeadTier();
         String requested = tier.toUpperCase();
         String scoreDerived = profile.computeTier();
 
@@ -214,7 +237,164 @@ public class UserLeadProfileService {
         profile.setLeadTier(requested.equalsIgnoreCase(scoreDerived) ? null : requested);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
 
-        return userLeadProfileRepository.save(profile);
+        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+        emitStatusChanged(saved, "TIER", oldTier, requested);
+        return saved;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Workflow trigger emission (emit-only; the workflow engine handles delivery)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Emit LEAD_STATUS_CHANGED for a conversion-status or tier change on a user's lead profile. */
+    private void emitStatusChanged(UserLeadProfile profile, String changeType, String oldStatus, String newStatus) {
+        if (profile == null || Objects.equals(oldStatus, newStatus)) return;
+        Map<String, Object> ctx = leadTriggerContextBuilder.forUser(
+                profile.getInstituteId(), profile.getUserId(),
+                profile.getAssignedCounselorId(), profile.getAssignedCounselorName());
+        leadTriggerContextBuilder.put(ctx, "changeType", changeType);
+        leadTriggerContextBuilder.put(ctx, "oldStatus", oldStatus);
+        leadTriggerContextBuilder.put(ctx, "newStatus", newStatus);
+        enrichWithLeadContact(ctx, profile.getUserId());
+        enrichTatInfo(ctx, profile.getInstituteId());
+        safeEmit(WorkflowTriggerEvent.LEAD_STATUS_CHANGED.name(), profile.getUserId(),
+                profile.getInstituteId(), ctx);
+    }
+
+    /** Fire a workflow trigger, never letting an automation failure break the lead operation. */
+    private void safeEmit(String eventName, String eventId, String instituteId, Map<String, Object> ctx) {
+        if (instituteId == null || instituteId.isBlank()) return;
+        try {
+            workflowTriggerService.handleTriggerEvents(eventName, eventId, instituteId, ctx);
+        } catch (Exception ex) {
+            log.warn("[LeadTrigger] Failed to emit {} for eventId={}: {}", eventName, eventId, ex.getMessage());
+        }
+    }
+
+    /**
+     * Add the lead's parent contact + pool to a user-grain ctx so communication workflows
+     * (SEND_EMAIL / SEND_WHATSAPP) have a recipient — the same fields AUDIENCE_LEAD_SUBMISSION
+     * and the TAT scheduler already carry. Sourced from the user's audience_response (prefers
+     * one that actually has a contact). Best-effort; never breaks the emit.
+     */
+    private void enrichWithLeadContact(Map<String, Object> ctx, String userId) {
+        if (userId == null || userId.isBlank()) return;
+        try {
+            // user_lead_profile.user_id can be either the parent or the student (it's the auth
+            // user id of whoever the lead is keyed on). audience_response carries them in two
+            // separate columns (user_id = parent, student_user_id = student) — query both so
+            // we resolve the lead's audience whether this user is the parent OR the student.
+            // Without this, student-grain leads silently miss enrichment and the pool-scoped
+            // trigger never matches because ctx['poolId'] isn't set.
+            List<AudienceResponse> responses =
+                    audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+            if (responses == null || responses.isEmpty()) {
+                // No audience response — still try auth-service so {{parentName}} / {{parentEmail}}
+                // resolve to the user's own record (typical for admin-created leads).
+                fallbackParentFromAuthService(ctx, userId);
+                return;
+            }
+            // Merge best-available values across all of the user's responses, so a row with a
+            // null parent_email doesn't shadow a sibling row that has one. This is what makes
+            // {{parentName}} / {{parentEmail}} / {{parentMobile}} resolve in production for
+            // leads whose first audience_response wasn't fully populated.
+            String parentName = null, parentEmail = null, parentMobile = null;
+            String audienceId = null, enquiryId = null, studentUserId = null;
+            for (AudienceResponse r : responses) {
+                if (parentName == null && r.getParentName() != null && !r.getParentName().isBlank())
+                    parentName = r.getParentName();
+                if (parentEmail == null && r.getParentEmail() != null && !r.getParentEmail().isBlank())
+                    parentEmail = r.getParentEmail();
+                if (parentMobile == null && r.getParentMobile() != null && !r.getParentMobile().isBlank())
+                    parentMobile = r.getParentMobile();
+                if (audienceId == null && r.getAudienceId() != null) audienceId = r.getAudienceId();
+                if (enquiryId == null && r.getEnquiryId() != null) enquiryId = r.getEnquiryId();
+                if (studentUserId == null && r.getStudentUserId() != null) studentUserId = r.getStudentUserId();
+            }
+            leadTriggerContextBuilder.put(ctx, "parentName", parentName);
+            leadTriggerContextBuilder.put(ctx, "parentEmail", parentEmail);
+            leadTriggerContextBuilder.put(ctx, "parentMobile", parentMobile);
+            // Cleaner lead-* aliases — for the lead list the lead IS the user, so {{leadName}}
+            // reads more naturally than {{parentName}}. Both keys carry the same value.
+            leadTriggerContextBuilder.put(ctx, "leadName", parentName);
+            leadTriggerContextBuilder.put(ctx, "leadEmail", parentEmail);
+            leadTriggerContextBuilder.put(ctx, "leadMobile", parentMobile);
+            leadTriggerContextBuilder.put(ctx, "audienceId", audienceId);
+            leadTriggerContextBuilder.put(ctx, "enquiryId", enquiryId);
+            leadTriggerContextBuilder.put(ctx, "studentUserId", studentUserId);
+            leadTriggerContextBuilder.put(ctx, "poolId",
+                    leadTriggerContextBuilder.resolvePoolId(audienceId));
+
+            // Look up the campaign name from audience so {{campaignName}} substitutes.
+            if (audienceId != null) {
+                try {
+                    audienceRepository.findById(audienceId).ifPresent(a ->
+                            leadTriggerContextBuilder.put(ctx, "campaignName", a.getCampaignName()));
+                } catch (Exception ignored) { /* best-effort */ }
+            }
+
+            // For any parent_* still missing on the audience_response snapshot, try the live
+            // auth-service user record — for admin-created / direct-student leads that's where
+            // the name + email + mobile actually live.
+            if (parentName == null || parentEmail == null || parentMobile == null) {
+                fallbackParentFromAuthService(ctx, userId);
+            }
+        } catch (Exception e) {
+            log.warn("[LeadTrigger] Failed to enrich lead contact for user {}: {}", userId, e.getMessage());
+        }
+    }
+
+    /**
+     * Add {@code tat} (human-readable e.g. "24 hours") and {@code tatHours} (raw int) to ctx
+     * so templates can render copy like "Please reach out before {{tat}}". Falls back to a
+     * generic "the earliest" string when TAT isn't configured for the institute — that way
+     * the template still reads sensibly instead of leaving a literal `tat` placeholder.
+     */
+    private void enrichTatInfo(Map<String, Object> ctx, String instituteId) {
+        String tat = "the earliest";
+        Integer tatHours = null;
+        if (instituteId != null && !instituteId.isBlank()) {
+            try {
+                LeadSlaConfigDTO config = leadSlaConfigService.getSchedulerConfig(instituteId);
+                if (config != null && config.getTatReminder() != null
+                        && config.getTatReminder().getTatHours() != null) {
+                    tatHours = config.getTatReminder().getTatHours();
+                    tat = tatHours == 1 ? "1 hour" : tatHours + " hours";
+                }
+            } catch (Exception e) {
+                log.debug("[LeadTrigger] TAT lookup failed for institute {}: {}",
+                        instituteId, e.getMessage());
+            }
+        }
+        leadTriggerContextBuilder.put(ctx, "tat", tat);
+        if (tatHours != null) leadTriggerContextBuilder.put(ctx, "tatHours", tatHours);
+    }
+
+    /**
+     * Resolve the lead user's own name/email/mobile from auth-service and fill any
+     * parent_* fields the audience_response didn't have. Best-effort; the put() helper
+     * is null-safe and won't overwrite values already set.
+     */
+    private void fallbackParentFromAuthService(Map<String, Object> ctx, String userId) {
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+            if (users == null || users.isEmpty()) return;
+            UserDTO u = users.get(0);
+            if (!ctx.containsKey("parentName") && u.getFullName() != null && !u.getFullName().isBlank()) {
+                leadTriggerContextBuilder.put(ctx, "parentName", u.getFullName());
+                leadTriggerContextBuilder.put(ctx, "leadName", u.getFullName());
+            }
+            if (!ctx.containsKey("parentEmail") && u.getEmail() != null && !u.getEmail().isBlank()) {
+                leadTriggerContextBuilder.put(ctx, "parentEmail", u.getEmail());
+                leadTriggerContextBuilder.put(ctx, "leadEmail", u.getEmail());
+            }
+            if (!ctx.containsKey("parentMobile") && u.getMobileNumber() != null && !u.getMobileNumber().isBlank()) {
+                leadTriggerContextBuilder.put(ctx, "parentMobile", u.getMobileNumber());
+                leadTriggerContextBuilder.put(ctx, "leadMobile", u.getMobileNumber());
+            }
+        } catch (Exception e) {
+            log.debug("[LeadTrigger] auth-service fallback failed for user {}: {}", userId, e.getMessage());
+        }
     }
 
     /**
@@ -484,7 +664,19 @@ public class UserLeadProfileService {
         profile.setAssignedCounselorId(counselorId);
         profile.setAssignedCounselorName(counselorName);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
-        return userLeadProfileRepository.save(profile);
+        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+
+        // Emit workflow trigger only on actual assignment (not on clear).
+        // Journey event logging (COUNSELOR_ASSIGNED) is done by the caller (AudienceController)
+        // to keep TimelineEventService free of circular dependencies.
+        if (counselorId != null && !counselorId.isBlank()) {
+            Map<String, Object> ctx = leadTriggerContextBuilder.forUser(
+                    instituteId, userId, counselorId, counselorName);
+            enrichWithLeadContact(ctx, userId);
+            enrichTatInfo(ctx, instituteId);
+            safeEmit(WorkflowTriggerEvent.LEAD_ASSIGNED_TO_COUNSELOR.name(), userId, instituteId, ctx);
+        }
+        return saved;
     }
 
     private UserLeadProfileDTO toDTO(UserLeadProfile p) {

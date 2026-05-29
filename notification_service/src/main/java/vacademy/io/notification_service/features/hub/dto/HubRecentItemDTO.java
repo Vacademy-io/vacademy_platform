@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Data
 @Builder
@@ -24,5 +24,5 @@ public class HubRecentItemDTO {
     private String userId;
     /** Subject (email) or message preview (WhatsApp), truncated to ~120 chars. */
     private String preview;
-    private LocalDateTime timestamp;
+    private Instant timestamp;
 }

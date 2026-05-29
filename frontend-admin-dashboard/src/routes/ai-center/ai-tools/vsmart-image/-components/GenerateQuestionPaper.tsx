@@ -1,18 +1,39 @@
 import { getInstituteId } from '@/constants/helper';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     handleGenerateAssessmentImage,
+    handleQueryGetListIndividualTopics,
     handleStartProcessUploadedFile,
 } from '@/routes/ai-center/-services/ai-center-service';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { GenerateCard } from '@/routes/ai-center/-components/GenerateCard';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAICenter } from '@/routes/ai-center/-contexts/useAICenterContext';
 import AITasksList from '@/routes/ai-center/-components/AITasksList';
 import { jsPDF } from 'jspdf';
 import { UseFormReturn } from 'react-hook-form';
 import { SectionFormType } from '@/types/assessments/assessment-steps';
 import { getRandomTaskName } from '@/routes/ai-center/-utils/helper';
+import { FileImage, Sparkle, UploadSimple, X } from '@phosphor-icons/react';
+import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
+import {
+    relativeTime,
+    statusLabel,
+    statusStyles,
+    taskDisplayName,
+} from '@/routes/ai-center/-utils/format';
+import { GeneratingState } from '@/routes/ai-center/-components/GeneratingState';
+import { DraftingDonePanel } from '@/routes/ai-center/-components/DraftingDonePanel';
+import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
+import {
+    QuestionConfigPanel,
+    buildQuestionPrompt,
+} from '@/routes/ai-center/-components/QuestionConfigPanel';
+import { languageSupport } from '@/constants/dummy-data';
+
+const ACCEPTED_FORMATS = '.jpg,.jpeg,.png';
+const ACCEPTED_EXTENSIONS = ['jpg', 'jpeg', 'png'];
+
+type Phase = 'idle' | 'uploading' | 'processing' | 'ready' | 'generating' | 'done';
 
 interface ConvertImageToPDFResult {
     pdfFile: File;
@@ -31,35 +52,24 @@ const convertImageToPDF = async (file: File): Promise<ConvertImageToPDFResult> =
                         unit: 'mm',
                         format: 'a4',
                     });
-
-                    // Calculate dimensions to fit the page while maintaining aspect ratio
                     const pageWidth = pdf.internal.pageSize.getWidth();
                     const pageHeight = pdf.internal.pageSize.getHeight();
                     const imgRatio = img.width / img.height;
                     let imgWidth = pageWidth;
                     let imgHeight = pageWidth / imgRatio;
-
                     if (imgHeight > pageHeight) {
                         imgHeight = pageHeight;
                         imgWidth = pageHeight * imgRatio;
                     }
-
-                    // Center the image on the page
                     const x = (pageWidth - imgWidth) / 2;
                     const y = (pageHeight - imgHeight) / 2;
-
                     pdf.addImage(img, 'JPEG', x, y, imgWidth, imgHeight);
-
-                    // Convert PDF to blob and then to File
                     const pdfBlob = pdf.output('blob');
                     const pdfFile = new File(
                         [pdfBlob],
                         `${file.name.replace(/\.[^/.]+$/, '')}.pdf`,
-                        {
-                            type: 'application/pdf',
-                        }
+                        { type: 'application/pdf' }
                     );
-
                     resolve({ pdfFile, pdfBlob });
                 };
                 img.onerror = reject;
@@ -84,53 +94,51 @@ const GenerateAiQuestionFromImageComponent = ({
     const instituteId = getInstituteId();
     const { uploadFile } = useFileUpload();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const { setLoader, key, setKey } = useAICenter();
-    const [fileUploading, setFileUploading] = useState(false);
+    const { setLoader, setKey } = useAICenter();
 
-    const handleUploadClick = () => {
-        setKey('image');
-        fileInputRef.current?.click();
-    };
+    const [phase, setPhase] = useState<Phase>('idle');
+    const [fileName, setFileName] = useState('');
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isDragActive, setIsDragActive] = useState(false);
+    const [enableTasksDialog, setEnableTasksDialog] = useState(false);
+    const [uploadedFilePDFId, setUploadedFilePDFId] = useState('');
 
-    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            try {
-                const { pdfFile } = await convertImageToPDF(file);
-                console.log('PDF file created:', pdfFile);
+    const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
+    const [readyTask, setReadyTask] = useState<AITaskIndividualListInterface | null>(null);
+    const [openPreviewDialog, setOpenPreviewDialog] = useState(false);
 
-                const response1 = await uploadFile({
-                    file: pdfFile,
-                    setIsUploading: setFileUploading,
-                    userId: 'your-user-id',
-                    source: instituteId,
-                    sourceId: 'STUDENTS',
-                });
-                console.log('Upload response:', response1);
+    const [numQuestions, setNumQuestions] = useState('10');
+    const [questionType, setQuestionType] = useState('MCQ');
+    const [difficulty, setDifficulty] = useState('Medium');
+    const [language, setLanguage] = useState(languageSupport[0]);
 
-                if (response1) {
-                    try {
-                        const response = await handleStartProcessUploadedFile(response1);
-                        console.log('Process response:', response);
+    const { data: recentTasksData } = useQuery({
+        ...handleQueryGetListIndividualTopics('IMAGE_TO_QUESTIONS'),
+        staleTime: 30 * 1000,
+        refetchInterval:
+            pendingTaskId !== null && readyTask === null ? 5000 : false,
+    });
 
-                        if (response) {
-                            generateAssessmentMutation.mutate({
-                                pdfId: response.pdf_id,
-                                userPrompt: '',
-                                taskName: getRandomTaskName(),
-                                taskId: '',
-                            });
-                        }
-                    } catch (processError) {
-                        console.error('Error in handleStartProcessUploadedFile:', processError);
-                    }
-                }
-            } catch (error) {
-                console.error('Error in file processing:', error);
-            }
-            event.target.value = '';
+    useEffect(() => {
+        if (!pendingTaskId || !Array.isArray(recentTasksData)) return;
+        const match = recentTasksData.find(
+            (t: AITaskIndividualListInterface) => t.id === pendingTaskId
+        );
+        if (!match) return;
+        if (match.status === 'COMPLETED') {
+            setReadyTask(match);
+        } else if (match.status === 'FAILED') {
+            setErrorMessage("We couldn't finish this extraction. Want to try again?");
+            setPendingTaskId(null);
         }
-    };
+    }, [recentTasksData, pendingTaskId]);
+
+    const recentTasks = useMemo(() => {
+        const list: AITaskIndividualListInterface[] = Array.isArray(recentTasksData)
+            ? recentTasksData
+            : [];
+        return [...list].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)).slice(0, 3);
+    }, [recentTasksData]);
 
     const generateAssessmentMutation = useMutation({
         mutationFn: ({
@@ -148,9 +156,12 @@ const GenerateAiQuestionFromImageComponent = ({
             setKey('image');
             return handleGenerateAssessmentImage(pdfId, userPrompt, taskName, taskId);
         },
-        onSuccess: () => {
+        onSuccess: (response: unknown) => {
             setLoader(false);
             setKey(null);
+            const taskId = (response as { taskId?: string } | null)?.taskId ?? null;
+            setPendingTaskId(taskId);
+            setReadyTask(null);
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['GET_INDIVIDUAL_AI_LIST_DATA'] });
             }, 100);
@@ -158,37 +169,240 @@ const GenerateAiQuestionFromImageComponent = ({
         onError: () => {
             setLoader(false);
             setKey(null);
+            setPhase('idle');
+            setErrorMessage("We couldn't extract questions from this image. Try a clearer photo?");
         },
     });
 
-    useEffect(() => {
-        if (key === 'image') {
-            if (fileUploading == true) setLoader(true);
+    const resetFile = () => {
+        setPhase('idle');
+        setFileName('');
+        setUploadedFilePDFId('');
+        setErrorMessage(null);
+    };
+
+    const handleGenerate = () => {
+        if (!uploadedFilePDFId) return;
+        setPhase('generating');
+        generateAssessmentMutation.mutate({
+            pdfId: uploadedFilePDFId,
+            userPrompt: buildQuestionPrompt(numQuestions, questionType, difficulty, language),
+            taskName: getRandomTaskName(),
+            taskId: '',
+        });
+    };
+
+    const processFile = async (file: File) => {
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+            setErrorMessage(`We can't read .${ext} files. Try JPG or PNG.`);
+            return;
         }
-    }, [fileUploading, key]);
+        setErrorMessage(null);
+        setFileName(file.name);
+        setPhase('uploading');
+        setKey('image');
+        try {
+            const { pdfFile } = await convertImageToPDF(file);
+            const fileId = await uploadFile({
+                file: pdfFile,
+                setIsUploading: () => {},
+                userId: 'your-user-id',
+                source: instituteId,
+                sourceId: 'STUDENTS',
+            });
+            if (!fileId) {
+                setErrorMessage("Upload didn't complete. Want to try again?");
+                resetFile();
+                return;
+            }
+            setPhase('processing');
+            const response = await handleStartProcessUploadedFile(fileId);
+            if (response?.pdf_id) {
+                setUploadedFilePDFId(response.pdf_id);
+                setPhase('ready');
+            } else {
+                setErrorMessage("We couldn't read this image. Try a clearer one?");
+                resetFile();
+            }
+        } catch (err) {
+            console.error(err);
+            setErrorMessage('Something went wrong reading your image. Try again?');
+            resetFile();
+        }
+    };
+
+    const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) await processFile(file);
+        e.target.value = '';
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragActive(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) await processFile(file);
+    };
+
+    const fileChosen = phase !== 'idle' && fileName !== '';
+    const isWorking = phase === 'uploading' || phase === 'processing' || phase === 'generating';
+    const workingLabel =
+        phase === 'uploading'
+            ? 'Reading your photo…'
+            : phase === 'processing'
+              ? 'Looking at the questions…'
+              : phase === 'generating'
+                ? 'Pulling questions out — usually takes ~30 seconds.'
+                : '';
 
     return (
-        <>
-            <GenerateCard
-                handleUploadClick={handleUploadClick}
-                fileInputRef={fileInputRef}
-                handleFileChange={handleFileChange}
-                cardTitle="Extract Questions from Image"
-                cardDescription="Upload JPG/JPEG/PNG"
-                inputFormat=".jpg,.jpeg,.png"
-                keyProp="image"
+        <div className="flex w-full flex-col gap-8 px-4 pb-12 sm:px-8">
+            <header className="flex flex-col gap-1">
+                <h1 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
+                    Questions from a Photo
+                </h1>
+                <p className="text-sm text-gray-500">
+                    Snap or upload a photo of a printed question paper. We&apos;ll turn it into
+                    an editable digital set.
+                </p>
+            </header>
+
+            {!fileChosen ? (
+                <div
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        if (!isDragActive) setIsDragActive(true);
+                    }}
+                    onDragLeave={() => setIsDragActive(false)}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed bg-white p-10 text-center transition-colors sm:p-14 ${
+                        isDragActive
+                            ? 'border-primary-400 bg-primary-50'
+                            : 'border-neutral-200 hover:border-primary-300 hover:bg-neutral-50'
+                    }`}
+                >
+                    <div className="flex size-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                        <UploadSimple size={26} weight="bold" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <p className="text-base font-medium text-gray-900">
+                            Drop a photo here, or click to choose
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                            JPG or PNG — clear photos work best, even handwritten ones.
+                        </p>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex w-full flex-col gap-4">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                <FileImage size={20} weight="fill" />
+                            </div>
+                            <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-sm font-medium text-gray-900">
+                                    {fileName}
+                                </span>
+                                <span className="text-xs text-neutral-500">
+                                    {phase === 'uploading' && 'Uploading…'}
+                                    {phase === 'processing' && 'Reading…'}
+                                    {phase === 'ready' && 'Ready to extract'}
+                                    {phase === 'generating' && 'Extracting questions'}
+                                    {phase === 'done' && 'Done'}
+                                </span>
+                            </div>
+                        </div>
+                        {!isWorking && (
+                            <button
+                                type="button"
+                                onClick={resetFile}
+                                className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                                aria-label="Remove file"
+                            >
+                                <X size={18} />
+                            </button>
+                        )}
+                    </div>
+
+                    {readyTask ? (
+                        <DraftingDonePanel
+                            readyTask={readyTask}
+                            openPreview={openPreviewDialog}
+                            setOpenPreview={setOpenPreviewDialog}
+                            heading="Vsmart Image"
+                            sectionsForm={form}
+                            currentSectionIndex={currentSectionIndex}
+                            onDraftAnother={() => {
+                                setReadyTask(null);
+                                setPendingTaskId(null);
+                                setErrorMessage(null);
+                                setNumQuestions('10');
+                                setQuestionType('MCQ');
+                                setDifficulty('Medium');
+                                setLanguage(languageSupport[0]);
+                                resetFile();
+                            }}
+                        />
+                    ) : phase === 'generating' || (pendingTaskId && !readyTask) ? (
+                        <GeneratingState
+                            title="Pulling questions out"
+                            subtitle="Reading your photo and digitizing each question. Usually ~30 seconds."
+                        />
+                    ) : isWorking ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                            <div className="size-4 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                            <p className="text-sm text-blue-900">{workingLabel}</p>
+                        </div>
+                    ) : phase === 'ready' ? (
+                        <QuestionConfigPanel
+                            numQuestions={numQuestions}
+                            setNumQuestions={setNumQuestions}
+                            questionType={questionType}
+                            setQuestionType={setQuestionType}
+                            difficulty={difficulty}
+                            setDifficulty={setDifficulty}
+                            language={language}
+                            setLanguage={setLanguage}
+                            onSubmit={handleGenerate}
+                            ctaLabel="Extract questions"
+                        />
+                    ) : null}
+                </div>
+            )}
+
+            {errorMessage && (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                    {errorMessage}
+                </div>
+            )}
+
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileInputChange}
+                className="hidden"
+                accept={ACCEPTED_FORMATS}
+            />
+
+            <RecentFilesPanel
+                tasks={recentTasks}
+                onOpenAll={() => setEnableTasksDialog(true)}
+                title="Your recent extractions"
+                emptyHint="Your extracted question sets will appear here. Drop a photo above to start."
+                fallbackLabel="Untitled extraction"
+            />
+
+            <AITasksList
+                heading="Vsmart Image"
+                enableDialog={enableTasksDialog}
+                setEnableDialog={setEnableTasksDialog}
                 sectionsForm={form}
                 currentSectionIndex={currentSectionIndex}
             />
-            {generateAssessmentMutation.status === 'success' && (
-                <AITasksList
-                    heading="Vsmart Image"
-                    enableDialog={true}
-                    sectionsForm={form}
-                    currentSectionIndex={currentSectionIndex}
-                />
-            )}
-        </>
+        </div>
     );
 };
 

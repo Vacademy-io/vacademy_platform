@@ -9,6 +9,7 @@ import {
     Globe,
     ClipboardText,
     Article,
+    FileText,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -65,7 +66,7 @@ const SettingRow = ({
             <div className="text-sm font-medium text-neutral-800">{title}</div>
             <div className="mt-0.5 text-xs text-neutral-500">{description}</div>
             {disabled && disabledReason && (
-                <div className="mt-1 text-[11px] text-amber-600">{disabledReason}</div>
+                <div className="mt-1 text-xs text-amber-600">{disabledReason}</div>
             )}
         </div>
         <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
@@ -424,6 +425,32 @@ export default function LiveSessionSettings() {
                         description="Show the 'Custom Action Button' card while scheduling so admins can configure the button's text, URL and colors."
                         checked={settings.customActionButtonEnabled}
                         onChange={(v) => togglePrimitive('customActionButtonEnabled', v)}
+                    />
+                </CardContent>
+            </Card>
+
+            {/* Recording transcription */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <FileText size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">Recording Transcription</CardTitle>
+                        <CardDescription>
+                            Generates a searchable transcript and English translation from each
+                            Vacademy Meet recording using Whisper. Costs compute per minute of
+                            audio, so this is off by default — turn on when you&apos;re ready to
+                            use transcripts for assessment generation or study notes.
+                        </CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title="Show the 'Process Recording' button"
+                        description="Adds a Process Recording action next to each recording in the live-session view so admins/teachers can kick off transcription. Existing transcripts remain viewable regardless of this setting — only the entry point to start new ones is hidden when off."
+                        checked={settings.recordingTranscriptionEnabled}
+                        onChange={(v) => togglePrimitive('recordingTranscriptionEnabled', v)}
                     />
                 </CardContent>
             </Card>

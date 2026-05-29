@@ -146,7 +146,8 @@ async function scheduleNarration(
     ctx: AudioContext,
     gen: number,
     url: string,
-    playheadStart: number
+    playheadStart: number,
+    narrationStart: number
 ) {
     try {
         const buffer = await decodeForContext(ctx, url);
@@ -154,7 +155,13 @@ async function scheduleNarration(
         const scheduled = scheduleBuffer({
             ctx,
             buffer,
-            timelineStart: 0,
+            // The master narration MP3 has NO leading intro silence — its t=0
+            // sits at master-timeline `audio_start_at` (the intro duration).
+            // The render server compensates via ffmpeg `adelay` and the player
+            // delays the <audio> element; the editor must do the same or
+            // narration plays `audio_start_at` seconds too early when an intro
+            // exists.
+            timelineStart: narrationStart,
             playheadStart,
             volume: 1,
             fadeIn: 0,
@@ -190,20 +197,49 @@ async function scheduleTrack(
     }
 }
 
+/**
+ * Whether per-entry clips should drive narration (and the master MP3 be
+ * muted). Incremental "entry owns its audio clip": this is true ONLY when the
+ * timeline is explicitly flagged fully-migrated (`meta.entries_own_audio`) AND
+ * at least one narration clip is actually present. Until then the master MP3
+ * stays authoritative and per-entry narration clips are skipped to avoid
+ * double-play — the per-entry refs the BE writes on regen/silence ride along
+ * as the future source of truth without changing what you hear today.
+ */
+function entriesOwnAudio(entries: Entry[], entriesOwnFlag: boolean | undefined): boolean {
+    if (!entriesOwnFlag) return false;
+    return entries.some((e) => e.audio?.policy === 'narration_only' && !!e.audio.clip_url);
+}
+
 async function schedulePerEntryAudio(
     ctx: AudioContext,
     gen: number,
     entries: Entry[],
-    playheadStart: number
+    playheadStart: number,
+    ownAudio: boolean
 ) {
-    // Per-entry `audio_url` is mostly used in user_driven mode but some
-    // time_driven shots also carry one. Schedule each so it begins at the
-    // entry's inTime (or `start`) and offsets correctly when starting mid-way.
+    // Resolve each entry's audio source under the dual-read model:
+    //  - new `entry.audio` ref: 'silent' → nothing; 'intrinsic' → always
+    //    layered (source-clip/Veo audio over a muted master window);
+    //    'narration_only' → only when `ownAudio` (else the master MP3 carries it).
+    //  - legacy `entry.audio_url` (no ref): scheduled as before — this is the
+    //    user_driven path where there is no master MP3.
     for (const e of entries) {
-        if (!e.audio_url) continue;
+        let clipUrl: string | undefined;
+        const ref = e.audio;
+        if (ref) {
+            if (ref.policy === 'silent') continue;
+            if (ref.policy === 'intrinsic') clipUrl = ref.clip_url;
+            else if (ownAudio)
+                clipUrl = ref.clip_url; // narration_only
+            else continue; // narration_only but master is authoritative
+        } else if (e.audio_url) {
+            clipUrl = e.audio_url;
+        }
+        if (!clipUrl) continue;
         const timelineStart = e.inTime ?? e.start ?? 0;
         try {
-            const buffer = await decodeForContext(ctx, e.audio_url);
+            const buffer = await decodeForContext(ctx, clipUrl);
             if (isStale(ctx, gen)) return;
             const scheduled = scheduleBuffer({
                 ctx,
@@ -217,6 +253,52 @@ async function schedulePerEntryAudio(
             if (scheduled) sources.push(scheduled);
         } catch {
             /* ignore individual failures */
+        }
+    }
+}
+
+/**
+ * Schedule per-entry sound-effect cues (Sound Planner output). Each cue carries
+ * `absolute_time` — the global master-clock second, already offset by any intro
+ * by the backend — and a one-shot `url`. We reuse `scheduleBuffer` with
+ * `timelineStart = absolute_time` so a future cue fires sample-accurately on the
+ * AudioContext clock; cues whose start is before the playhead are skipped
+ * (forward-only one-shot, matching the read-only player's seek semantics).
+ *
+ * No sidechain ducking here — the read-only player dips narration −4 dB during
+ * cues, but the editor keeps preview simple: SFX layer on top at their own
+ * volume. (Decode is shared via the audio-decode cache.)
+ */
+async function scheduleSoundCues(
+    ctx: AudioContext,
+    gen: number,
+    entries: Entry[],
+    playheadStart: number
+) {
+    for (const e of entries) {
+        const cues = e.sound_cues;
+        if (!cues || cues.length === 0) continue;
+        const entryStart = e.inTime ?? e.start ?? 0;
+        for (const cue of cues) {
+            if (!cue.url) continue;
+            const absT = cue.absolute_time ?? entryStart + (cue.t ?? 0);
+            if (absT < playheadStart - 0.05) continue; // already past — don't replay
+            try {
+                const buffer = await decodeForContext(ctx, cue.url);
+                if (isStale(ctx, gen)) return;
+                const scheduled = scheduleBuffer({
+                    ctx,
+                    buffer,
+                    timelineStart: absT,
+                    playheadStart,
+                    volume: Math.max(0, Math.min(1, cue.volume ?? 1)),
+                    fadeIn: 0,
+                    fadeOut: 0,
+                });
+                if (scheduled) sources.push(scheduled);
+            } catch {
+                /* ignore individual cue failures (CORS / unreachable) */
+            }
         }
     }
 }
@@ -252,11 +334,21 @@ export async function play() {
     };
     rafId = requestAnimationFrame(tick);
 
-    // Schedule audio sources in parallel
+    // Schedule audio sources in parallel. When entries own their audio (fully
+    // migrated), the master narration MP3 is muted and per-entry narration
+    // clips drive playback; otherwise the master plays and per-entry narration
+    // clips are skipped (only intrinsic/legacy per-entry audio layers).
+    const ownAudio = entriesOwnAudio(state.entries, state.meta.entries_own_audio);
+    const narrationStart = state.meta.audio_start_at ?? 0;
     const promises: Promise<void>[] = [];
-    if (state.audioUrl) promises.push(scheduleNarration(ctx, gen, state.audioUrl, startAt));
+    if (state.audioUrl && !ownAudio)
+        promises.push(scheduleNarration(ctx, gen, state.audioUrl, startAt, narrationStart));
     for (const track of state.audioTracks) promises.push(scheduleTrack(ctx, gen, track, startAt));
-    promises.push(schedulePerEntryAudio(ctx, gen, state.entries, startAt));
+    promises.push(schedulePerEntryAudio(ctx, gen, state.entries, startAt, ownAudio));
+    // Sound-effect cues (Sound Planner). Each cue carries an absolute master-
+    // clock time; the editor previously never played them (only the read-only
+    // player's useSoundScheduler did), so SFX were silent in the editor.
+    promises.push(scheduleSoundCues(ctx, gen, state.entries, startAt));
     await Promise.all(promises);
 }
 

@@ -11,8 +11,8 @@ import { MyInput } from "@/components/design-system/input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { User, Lock, RefreshCw, Shield, Eye, EyeOff } from "lucide-react";
-import { VscError } from "react-icons/vsc";
+import { User, Lock, ArrowsClockwise, Shield, Eye, EyeSlash } from "@phosphor-icons/react";
+import { XCircle } from "@phosphor-icons/react";
 
 import { TokenKey } from "@/constants/auth/tokens";
 import {
@@ -360,7 +360,7 @@ export function ModalUsernameLogin({
                                                                 className="text-gray-400 hover:text-gray-600 transition-colors duration-200 z-10"
                                                             >
                                                                 {showPassword ? (
-                                                                    <EyeOff className="w-4 h-4" />
+                                                                    <EyeSlash className="w-4 h-4" />
                                                                 ) : (
                                                                     <Eye className="w-4 h-4" />
                                                                 )}
@@ -371,8 +371,8 @@ export function ModalUsernameLogin({
                                                     {form.formState.errors
                                                         .password?.message && (
                                                         <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
-                                                            <VscError />
-                                                            <span className="mt-[3px]">
+                                                            <XCircle />
+                                                            <span className="mt-0.5">
                                                                 {
                                                                     form
                                                                         .formState
@@ -428,7 +428,7 @@ export function ModalUsernameLogin({
                                             ease: "linear",
                                         }}
                                     >
-                                        <RefreshCw className="w-4 h-4" />
+                                        <ArrowsClockwise className="w-4 h-4" />
                                     </motion.div>
                                     <span className="text-sm">
                                         Signing in...

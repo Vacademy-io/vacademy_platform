@@ -6,7 +6,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
 } from "../../ui/dropdown-menu";
-import { FaChevronDown, FaChevronUp, FaCheck } from "react-icons/fa6";
+import { CaretDown, CaretUp, Check } from "@phosphor-icons/react";
 import { useSyncLanguage } from "@/hooks/useSyncLanguage";
 
 export const LanguageDropdown = () => {
@@ -25,7 +25,7 @@ export const LanguageDropdown = () => {
             <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
                 <DropdownMenuTrigger className="flex w-48 items-center justify-between rounded-md border border-neutral-300 bg-neutral-50 px-3 py-1 text-neutral-600">
                     <div>{language}</div>
-                    {isOpen ? <FaChevronUp /> : <FaChevronDown />}
+                    {isOpen ? <CaretUp /> : <CaretDown />}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48 border border-neutral-300 bg-neutral-50 p-0 text-neutral-600 outline-none">
                     <DropdownMenuItem
@@ -33,14 +33,14 @@ export const LanguageDropdown = () => {
                         onClick={() => handleChangeLanguage("English")}
                     >
                         <div>English</div>
-                        {language === "English" && <FaCheck className="text-primary-400" />}
+                        {language === "English" && <Check className="text-primary-400" />}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                         className="flex items-center justify-between px-3 hover:cursor-pointer focus:bg-primary-100 focus:text-neutral-600"
                         onClick={() => handleChangeLanguage("हिन्दी")}
                     >
                         <div>हिन्दी</div>
-                        {language === "हिन्दी" && <FaCheck className="text-primary-400" />}
+                        {language === "हिन्दी" && <Check className="text-primary-400" />}
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>

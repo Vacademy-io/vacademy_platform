@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronRight, BookOpen, Clock } from "lucide-react";
+import { CaretRight, BookOpen, Clock } from "@phosphor-icons/react";
 import { IconRocket, IconMoodSmile, IconAdjustments } from "@tabler/icons-react";
 import BoringAvatar from "boring-avatars";
 import { useRouter } from "@tanstack/react-router";
@@ -15,6 +15,9 @@ import { Card, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMinutesHuman } from "@/utils/courseTime";
+
+// Avatar gradient ramp passed to boring-avatars (illustration palette, not theme tokens).
+const INSTRUCTOR_AVATAR_RAMP = ["#FFE5CC", "#FFCDA8", "#FFA85C", "#E8751A", "#C45A00"]; // design-lint-ignore: illustration ramp
 
 interface Instructor {
     id: string;
@@ -179,10 +182,10 @@ const CourseCard: React.FC<CourseCardProps> = ({
 
             "[.ui-vibrant_&]:shadow-sm [.ui-vibrant_&]:hover:shadow-md",
 
-            // Play Styles - Rounded, bouncy, fun
-            "[.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:shadow-[0_6px_0_hsl(var(--primary-200))]",
-            "[.ui-play_&]:hover:shadow-[0_9px_0_hsl(var(--primary-200))] [.ui-play_&]:hover:-translate-y-1",
-            "[.ui-play_&]:transition-all [.ui-play_&]:duration-150"
+            // Play Styles — radius + shadow handled by .ui-play .card rule in play-theme.css
+            "[.ui-play_&]:rounded-2xl",
+            "[.ui-play_&]:hover:-translate-y-1",
+            "[.ui-play_&]:transition-all [.ui-play_&]:duration-200"
         )}>
             {/* Background gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg pointer-events-none"></div>
@@ -286,13 +289,13 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                         size={32}
                                         name={instructorName}
                                         variant="beam"
-                                        colors={["#FFE5CC", "#FFCDA8", "#FFA85C", "#E8751A", "#C45A00"]}
+                                        colors={INSTRUCTOR_AVATAR_RAMP}
                                     />
                                 </div>
                             )}
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="text-[11px] text-muted-foreground font-medium mb-0.5">
+                            <p className="text-caption text-muted-foreground font-medium mb-0.5">
                                 {toTitleCase(getTerminology(RoleTerms.Teacher, SystemTerms.Teacher))}
                             </p>
                             <div className="text-sm font-medium truncate">
@@ -308,7 +311,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                 )}
 
                 {/* Tags */}
-                <div className="min-h-[24px]">
+                <div className="min-h-6">
                     {tags && tags.length > 0 && (
                         <div className="flex flex-wrap items-center gap-1.5">
                             {tags.slice(0, 3).map((tag) => (
@@ -351,7 +354,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         {cappedPercentageCompleted === 0 ? (
                             <Badge
                                 variant="outline"
-                                className="w-fit gap-1 border-dashed border-neutral-300 text-neutral-500 font-medium text-[11px] px-2 py-0.5"
+                                className="w-fit gap-1 border-dashed border-neutral-300 text-neutral-500 font-medium text-caption px-2 py-0.5"
                             >
                                 <Clock size={12} />
                                 Not started
@@ -371,7 +374,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                     <ProgressRing value={cappedPercentageCompleted} size={44} strokeWidth={4} />
                                     <div className="flex flex-col">
                                         <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% Complete</span>
-                                        <span className="text-[10px] text-muted-foreground">Keep going!</span>
+                                        <span className="text-caption text-muted-foreground">Keep going!</span>
                                     </div>
                                 </div>
                             </>
@@ -390,9 +393,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         "[.ui-vibrant_&]:shadow-md",
                         // Play mode: rounded, 3D press effect
                         "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold",
-                        "[.ui-play_&]:shadow-[0_4px_0_hsl(var(--primary-400))]",
-                        "[.ui-play_&]:hover:shadow-[0_6px_0_hsl(var(--primary-400))] [.ui-play_&]:hover:-translate-y-0.5",
-                        "[.ui-play_&]:active:shadow-[0_1px_0_hsl(var(--primary-400))] [.ui-play_&]:active:translate-y-0.5"
+                        "[.ui-play_&]:shadow-play-4-primary",
+                        "[.ui-play_&]:hover:shadow-play-6-primary [.ui-play_&]:hover:-translate-y-0.5",
+                        "[.ui-play_&]:active:shadow-play-1-primary [.ui-play_&]:active:translate-y-0.5"
                     )}
                     onClick={() => handleViewCoureseDetails(courseId)}
                 >
@@ -407,7 +410,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             SystemTerms.Course
                         )}
                     </span>
-                    <ChevronRight
+                    <CaretRight
                         size={16}
                         className="ml-1 transition-transform duration-300 group-hover/btn:translate-x-1"
                     />

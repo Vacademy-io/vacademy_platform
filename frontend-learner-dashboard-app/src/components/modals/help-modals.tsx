@@ -12,7 +12,7 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
-import { AlertCircle } from "lucide-react";
+import { WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import useAlertsStore from "@/stores/alerts-store";
@@ -122,7 +122,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
           <div className="space-y-4 mt-4">
             {alerts.length === 0 ? (
               <div className="flex items-center gap-2 text-yellow-600">
-                <AlertCircle className="h-5 w-5" />
+                <WarningCircle className="h-5 w-5" />
                 <p>No active alerts at this time.</p>
               </div>
             ) : (
@@ -131,7 +131,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
                   key={alert.id}
                   className="flex items-start gap-2 bg-yellow-50 p-3 rounded-lg"
                 >
-                  <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
+                  <WarningCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
                   <div>
                     <p className="text-sm text-yellow-700">{alert.message}</p>
                     <p className="text-xs text-yellow-600 mt-1">
@@ -148,7 +148,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
         return (
           <div className="space-y-4">
             <div className="flex items-start gap-2 bg-red-50 p-3 rounded-lg mt-4">
-              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5" />
+              <WarningCircle className="h-5 w-5 text-red-500 mt-0.5" />
               <p className="text-sm text-red-600">
                 Please provide a reason for requesting a{" "}
                 {type === "reattempt" ? "reattempt" : "time extension"} for the
@@ -159,7 +159,7 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder="Type your reason here"
-              className="min-h-[100px]"
+              className="min-h-reg-100"
             />
             <Button
               className="w-full bg-primary-500"

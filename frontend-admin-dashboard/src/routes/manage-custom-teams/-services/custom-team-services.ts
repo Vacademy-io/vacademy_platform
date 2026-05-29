@@ -226,6 +226,10 @@ export interface CreateSubOrgSubscriptionRequest {
     allowed_team_roles?: string[];
     /** Required when payment_type === 'CPO'. */
     complex_payment_option_id?: string;
+    /** Permissions stamped on the sub-org admin's FSPSSM rows when they're enrolled
+     *  (e.g. ["FULL"], ["CREATE_COURSE"]). Persisted on settingJson.ADMIN_PERMISSIONS.
+     *  Empty / undefined → defaults to "FULL" (legacy behaviour). */
+    admin_permissions?: string[];
 }
 
 export interface CreateSubOrgSubscriptionResponse {
@@ -278,6 +282,80 @@ export const updateSubOrgTeamRoles = async (
         url,
         params: { parentInstituteId },
         data: { allowed_team_roles: allowedTeamRoles },
+    });
+    return response.data;
+};
+
+export interface SubOrgConfigurationUpdate {
+    auth_roles?: string[];
+    allowed_team_roles?: string[];
+    admin_permissions?: string[];
+    member_count?: number;
+    validity_in_days?: number;
+    /**
+     * Add-only list of new PS ids to link to this sub-org. Existing PSes can't be
+     * removed via this surface — removing would orphan already-enrolled learners.
+     * The backend returns the actual subset added under `applied.added_package_session_ids`
+     * so duplicates are surfaced as such in the FE toast.
+     */
+    add_package_session_ids?: string[];
+}
+
+/**
+ * Consolidated sub-org config edit. Each field is optional — only present fields are
+ * applied. Used by the "Edit Sub-Org" modal on the institute-admin deep page. Returns
+ * the subset the backend actually applied so the FE can show precise feedback.
+ */
+export const updateSubOrgConfiguration = async (
+    subOrgId: string,
+    update: SubOrgConfigurationUpdate
+): Promise<{ sub_org_id: string; applied: SubOrgConfigurationUpdate }> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/configuration`;
+    const response = await authenticatedAxiosInstance({
+        method: 'PATCH',
+        url,
+        params: { parentInstituteId },
+        data: update,
+    });
+    return response.data;
+};
+
+/**
+ * Re-run the SUBORG_LEARNER mirror logic for every PS already linked to this sub-org's
+ * org-level invite. Idempotent — only creates invites for institute-wide PaymentOptions
+ * that aren't already mirrored. Used by the "Re-sync invites" button on the deep page.
+ */
+export const resyncSubOrgInvites = async (
+    subOrgId: string
+): Promise<{ sub_org_id: string; created_count: number; package_session_count: number }> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/resync-invites`;
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url,
+        params: { parentInstituteId },
+    });
+    return response.data;
+};
+
+/**
+ * Replace the ADMIN_PERMISSIONS list for a sub-org (FSPSSM access_permission CSV).
+ * Pass an empty list to clear and fall back to the legacy "FULL" default. Existing
+ * FSPSSM rows are not back-filled; only admin users enrolled after this call pick
+ * up the new value. Parent institute admin only.
+ */
+export const updateSubOrgAdminPermissions = async (
+    subOrgId: string,
+    adminPermissions: string[]
+): Promise<{ sub_org_id: string; admin_permissions: string[] }> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/admin-permissions`;
+    const response = await authenticatedAxiosInstance({
+        method: 'PATCH',
+        url,
+        params: { parentInstituteId },
+        data: { admin_permissions: adminPermissions },
     });
     return response.data;
 };
@@ -624,10 +702,59 @@ export interface InvoiceSummary {
     invoiceDate?: string;
     pdfUrl?: string;
     pdf_url?: string;
+    /**
+     * Server-stored S3 file id on the persisted Invoice row. When present (with no
+     * `pdf_url`), the FE opens `/v1/invoices/{id}/download` which 302-redirects to a
+     * freshly-presigned URL — matches the manage-students payment-history pattern.
+     */
+    pdf_file_id?: string;
+    pdfFileId?: string;
     fileId?: string;
     file_id?: string;
     [key: string]: unknown;
 }
+
+/**
+ * Record an offline payment against an existing sub-org admin's UserPlan. Same backend
+ * endpoint manage-students uses (`CpoSideViewController.recordOfflinePayment`). Inlined
+ * here so the sub-org call site is decoupled from the shared `POST_USER_PLAN_OFFLINE_PAYMENT`
+ * constant other surfaces depend on.
+ */
+export const recordSubOrgAdminOfflinePayment = async (
+    userPlanId: string,
+    body: {
+        amount: number;
+        payment_date?: string;
+        reference?: string | null;
+        currency?: string;
+        generate_invoice?: boolean;
+    }
+): Promise<unknown> => {
+    const url = `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url,
+        data: body,
+    });
+    return response.data;
+};
+
+/**
+ * Manually fire a single-SFP installment-due reminder via the workflow engine. Backend
+ * resolves recipient (student or linked parent) + builds the same context shape the
+ * scheduled job uses, so existing workflow templates work unchanged.
+ */
+export const triggerInvoiceReminderForSfp = async (
+    sfpId: string
+): Promise<{
+    student_fee_payment_id: string;
+    reminder_type: string;
+    recipient_email: string;
+}> => {
+    const url = `${BASE_URL}/admin-core-service/v1/invoices/sfp/${sfpId}/send-reminder`;
+    const response = await authenticatedAxiosInstance({ method: 'POST', url });
+    return response.data;
+};
 
 export const getInvoicesByUser = async (userId: string): Promise<InvoiceSummary[]> => {
     const response = await authenticatedAxiosInstance({

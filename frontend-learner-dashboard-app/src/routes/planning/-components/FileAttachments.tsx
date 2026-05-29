@@ -1,14 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  FileText,
-  ExternalLink,
-  File,
-  Image as ImageIcon,
-  FileVideo,
-  Loader2,
-} from "lucide-react";
+import { FileText, ArrowSquareOut, File, Image as ImageIcon, FileVideo, SpinnerGap } from "@phosphor-icons/react";
 import { getPublicUrl } from "@/services/upload_file";
 import { cn } from "@/lib/utils";
 
@@ -140,9 +133,9 @@ export default function FileAttachments({
                     title="Open in new tab"
                   >
                     {file.loading ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <SpinnerGap className="size-4 animate-spin" />
                     ) : (
-                      <ExternalLink className="size-4" />
+                      <ArrowSquareOut className="size-4" />
                     )}
                   </Button>
                 </div>

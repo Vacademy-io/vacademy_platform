@@ -37,26 +37,26 @@ export function MarksBreakdownComponent({ marksData }: { marksData: MarksRespons
         {
             responseType: "correct",
             value: marksData.correct,
-            fill: "#97D4B4",
+            fill: "#97D4B4", // design-lint-ignore: chart series colors
         },
         {
             responseType: "partiallyCorrect",
             value: marksData.partiallyCorrect,
-            fill: "#FFDD82",
+            fill: "#FFDD82", // design-lint-ignore: chart series colors
         },
         {
             responseType: "wrongResponse",
             value: marksData.wrongResponse,
-            fill: "#F49898",
+            fill: "#F49898", // design-lint-ignore: chart series colors
         },
         {
             responseType: "skipped",
             value: marksData.skipped,
-            fill: "#EEE",
+            fill: "#EEE", // design-lint-ignore: chart series colors
         },
     ];
     return (
-        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[180px]">
+        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-reg-180">
             <PieChart>
                 <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                 <Pie

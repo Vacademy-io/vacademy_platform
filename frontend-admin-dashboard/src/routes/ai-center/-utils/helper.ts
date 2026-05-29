@@ -167,6 +167,35 @@ export function convertSVGsToBase64(htmlString: string) {
         svg.replaceWith(img);
     });
 
+    // 5. Gracefully handle placeholder / known-broken images.
+    // The backend image-generation pipeline is supposed to swap `src="placeholder.png"`
+    // with a real generated image URL. When that pipeline fails or doesn't run,
+    // the placeholder makes it to the frontend and we get a broken image icon.
+    // Replace those with a styled inline note so the teacher still sees the intent.
+    const imgs = doc.querySelectorAll('img');
+    imgs.forEach((img) => {
+        const src = img.getAttribute('src') || '';
+        const isPlaceholder =
+            !src ||
+            src === '' ||
+            src.endsWith('placeholder.png') ||
+            src.endsWith('placeholder.jpg') ||
+            src === '#';
+        if (!isPlaceholder) return;
+        const alt = (img.getAttribute('alt') || '').trim();
+        const promptHint = (img.getAttribute('data-img-prompt') || '').trim();
+        const caption = alt || promptHint || 'Diagram not available';
+        const replacement = document.createElement('span');
+        replacement.className = 'ai-missing-image';
+        replacement.setAttribute('data-original-alt', alt);
+        replacement.setAttribute(
+            'style',
+            'display:inline-flex;align-items:center;gap:6px;padding:6px 10px;margin:4px 0;border:1px dashed #d1d5db;border-radius:8px;background:#f9fafb;color:#6b7280;font-size:12px;font-style:italic;'
+        );
+        replacement.textContent = `\u{1F4F7} ${caption}`;
+        img.replaceWith(replacement);
+    });
+
     const result = doc.body.innerHTML;
     console.log('🔄 convertSVGsToBase64 OUTPUT:', result.substring(0, 100) + '...');
     return result;

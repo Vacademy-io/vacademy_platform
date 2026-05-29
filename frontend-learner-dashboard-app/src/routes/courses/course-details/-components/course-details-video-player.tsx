@@ -25,7 +25,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const vimeoId = getVimeoVideoId(src);
     if (vimeoId) {
       return (
-        <div className={`w-[500px] overflow-hidden rounded-lg shadow-xl ${className}`}>
+        <div className={`w-card-500 overflow-hidden rounded-lg shadow-xl ${className}`}>
           <div className="relative aspect-video bg-black">
             <iframe
               src={`https://player.vimeo.com/video/${vimeoId}?badge=0&autopause=0&player_id=0`}
@@ -42,7 +42,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Otherwise, use the regular video element
   return (
-    <div className={`w-[500px] overflow-hidden rounded-lg shadow-xl ${className}`}>
+    <div className={`w-card-500 overflow-hidden rounded-lg shadow-xl ${className}`}>
       <div className="relative aspect-video bg-black">
         <video
           src={src}

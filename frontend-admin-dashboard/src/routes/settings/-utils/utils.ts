@@ -22,6 +22,8 @@ import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
 import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
 import { AutomationSettings } from '../-components/Automations';
+import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
+import CouponSettings from '../-components/Coupons/CouponSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -57,6 +59,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Payment,
             value: 'Payment Settings',
             component: PaymentSettings,
+        },
+        {
+            tab: SettingsTabs.Invoice,
+            value: 'Invoice Settings',
+            component: InvoiceSettings,
         },
         {
             tab: SettingsTabs.Referral,
@@ -142,6 +149,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Youtube,
             value: 'YouTube Integration',
             component: YoutubeIntegrationSettings,
+        },
+        {
+            tab: SettingsTabs.Coupons,
+            value: 'Coupon Settings',
+            component: CouponSettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

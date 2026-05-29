@@ -3,10 +3,10 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Lock } from "lucide-react";
-import { SiStripe } from "react-icons/si";
+import { Lock } from "@phosphor-icons/react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: Stripe brand logo (Simple Icons; no Phosphor equivalent)
 import { EnvelopeSimple } from "@phosphor-icons/react";
-import { Loader2, CheckCircle, CreditCard } from "lucide-react";
+import { SpinnerGap, CheckCircle, CreditCard } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
   formatCurrency,
@@ -30,6 +30,9 @@ import { PaymentSuccessDialog } from "./PaymentSuccessDialog";
 import { PaymentFailedDialog } from "./PaymentFailedDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -94,6 +97,28 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // Track if we already prefilled the email for this dialog open
   const hasPrefilledEmailRef = useRef<boolean>(false);
+
+  // Discount-coupon plumbing. For SUBSCRIPTION plans the coupon applies to the
+  // first payment only (matches Stripe/Razorpay default; the BE's max_applicable_times
+  // column is dead code — see backend round-2 audit). Renewals run without the discount.
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPlan?.id ?? null,
+      userEmail: email || null,
+      totalAmount:
+        typeof selectedPlan?.actual_price === "number" ? selectedPlan.actual_price : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
 
   // Helper function to get real user data from preferences
   const getRealUserData = useCallback(async () => {
@@ -231,16 +256,16 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
             style: {
               base: {
                 fontSize: "16px",
-                color: "#374151",
+                color: "#374151", // design-lint-ignore: payment SDK element style
                 fontFamily:
                   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 "::placeholder": {
-                  color: "#9CA3AF",
+                  color: "#9CA3AF", // design-lint-ignore: payment SDK element style
                 },
                 padding: "8px 0",
               },
               invalid: {
-                color: "#DC2626",
+                color: "#DC2626", // design-lint-ignore: payment SDK element style
               },
             },
             hidePostalCode: true,
@@ -403,12 +428,14 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         paymentGatewayData: paymentGatewayData!,
         selectedPaymentPlan: selectedPlan,
         selectedPaymentOption,
-        amount: selectedPlan.actual_price,
+        amount: effectiveAmount,
         currency: getCurrency(),
         description: `Subscription for ${selectedPlan.name}`,
         paymentType: "subscription",
         paymentMethod,
         returnUrl: window.location.origin + "/courses", // Default return URL
+        couponCode: couponCtx.state.appliedCode,
+        token,
       });
 
       console.log(
@@ -584,8 +611,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     return (
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
-          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
             <DialogPrimitive.Title className="sr-only">
               Loading Subscription Options
             </DialogPrimitive.Title>
@@ -594,7 +621,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
               this course.
             </DialogPrimitive.Description>
             <div className="text-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading subscription options...</p>
             </div>
           </DialogPrimitive.Content>
@@ -608,8 +635,8 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     return (
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
-          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[9999] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
             <DialogPrimitive.Title className="sr-only">
               Subscription Error
             </DialogPrimitive.Title>
@@ -637,9 +664,9 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
     <>
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-[9999] bg-black/60 animate-fade-in" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className={`fixed left-1/2 top-1/2 z-[9999] w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-[90vh] overflow-y-auto ${
+            className={`fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-screen-90 overflow-y-auto ${
               step === "plans"
                 ? "max-w-sm sm:max-w-2xl lg:max-w-4xl"
                 : "max-w-md"
@@ -961,6 +988,34 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                   </div>
                 )}
 
+                {/* Discount coupon — institute toggle gates visibility.
+                    For SUBSCRIPTION, applies to first payment only (matches Stripe/Razorpay default). */}
+                {couponsEnabled && (
+                  <div className="mb-4">
+                    <CouponInput
+                      state={couponCtx.state}
+                      onChange={couponCtx.setCode}
+                      onApply={couponCtx.apply}
+                      onClear={couponCtx.clear}
+                      currencySymbol={selectedPlan?.currency === "INR" ? "₹" : "$"}
+                    />
+                    {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                      <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                        <span className="text-gray-600">
+                          First payment subtotal {selectedPlan?.actual_price?.toFixed(2)} ·
+                          Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                        </span>
+                        <span className="font-semibold text-gray-900">
+                          You pay {effectiveAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs text-gray-500">
+                      Discount applies to the first payment only. Renewals are billed at the regular price.
+                    </p>
+                  </div>
+                )}
+
                 <div className="mb-2">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs text-gray-600">
@@ -1007,7 +1062,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </div>
                   ) : (
                     <div
-                      className={`border rounded p-3 text-sm w-full min-h-[48px] ${
+                      className={`border rounded p-3 text-sm w-full min-h-12 ${
                         cardElementError
                           ? "border-red-500 bg-red-50"
                           : "border-gray-300"
@@ -1015,7 +1070,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     >
                       {!cardElementReady && (
                         <div className="flex items-center justify-center h-full text-gray-500">
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
                           Loading payment form...
                         </div>
                       )}
@@ -1040,7 +1095,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     >
                       {processingPayment ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <SpinnerGap className="w-4 h-4 animate-spin" />
                           Processing...
                         </>
                       ) : (

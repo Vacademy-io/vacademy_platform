@@ -16,9 +16,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { NotePreviewDialog } from "@/components/common/my-files/note-preview-dialog";
 import type { SystemFile } from "@/types/system-files";
-import { Eye, Download, Edit, FileText, Link2, File, ArrowLeft } from "lucide-react";
+import { Eye, DownloadSimple, PencilSimple, FileText, LinkSimple, File, ArrowLeft } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
-import { X } from "phosphor-react";
+import { X } from "@phosphor-icons/react";
 
 export const Route = createFileRoute("/my-files/$folderName/")({
   component: RouteComponent,
@@ -142,7 +142,7 @@ function RouteComponent() {
       case "Html":
         return <FileText className="h-4 w-4 text-blue-500" />;
       case "Url":
-        return <Link2 className="h-4 w-4 text-green-500" />;
+        return <LinkSimple className="h-4 w-4 text-green-500" />;
       case "File":
         return <File className="h-4 w-4 text-purple-500" />;
       default:
@@ -160,7 +160,7 @@ function RouteComponent() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-neutral-700 mb-2">
             Error Loading Files
@@ -200,7 +200,7 @@ function RouteComponent() {
             </div>
           </div>
 
-          <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center justify-center min-h-96">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-neutral-700 mb-2">
                 No Files Found
@@ -322,7 +322,7 @@ function RouteComponent() {
                             title="Download File"
                             className="gap-1.5"
                           >
-                            <Download className="h-3.5 w-3.5" />
+                            <DownloadSimple className="h-3.5 w-3.5" />
                             <span className="hidden xl:inline">Download</span>
                           </Button>
                         )}
@@ -334,7 +334,7 @@ function RouteComponent() {
                             title="Edit File"
                             className="gap-1.5"
                           >
-                            <Edit className="h-3.5 w-3.5" />
+                            <PencilSimple className="h-3.5 w-3.5" />
                             <span className="hidden xl:inline">Edit</span>
                           </Button>
                         )}
@@ -401,7 +401,7 @@ function RouteComponent() {
                       size="sm"
                       onClick={() => handleViewClick(file)}
                       title={file.file_type === "Url" ? "Open URL" : "View Note"}
-                      className="flex-1 min-w-[100px] gap-2"
+                      className="flex-1 min-w-24 gap-2"
                     >
                       <Eye className="h-4 w-4" />
                       View
@@ -413,9 +413,9 @@ function RouteComponent() {
                       size="sm"
                       onClick={() => handleDownloadClick(file)}
                       title="Download File"
-                      className="flex-1 min-w-[100px] gap-2"
+                      className="flex-1 min-w-24 gap-2"
                     >
-                      <Download className="h-4 w-4" />
+                      <DownloadSimple className="h-4 w-4" />
                       Download
                     </Button>
                   )}
@@ -425,9 +425,9 @@ function RouteComponent() {
                       size="sm"
                       onClick={() => handleEditClick(file)}
                       title="Edit File"
-                      className="flex-1 min-w-[100px] gap-2"
+                      className="flex-1 min-w-24 gap-2"
                     >
-                      <Edit className="h-4 w-4" />
+                      <PencilSimple className="h-4 w-4" />
                       Edit
                     </Button>
                   )}

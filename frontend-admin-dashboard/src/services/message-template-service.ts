@@ -262,6 +262,69 @@ export const getMessageTemplates = async (
     }
 };
 
+/**
+ * Fetch templates strictly filtered by type using the DB-level type endpoint
+ * (`/institute/{instituteId}/type/{type}`). Unlike getMessageTemplates — whose
+ * paginated endpoint ignores the `type` query param and returns every template —
+ * this guarantees only matching-type rows come back (used by Invoice Settings to
+ * keep the INVOICE and INVOICE_EMAIL lists separate).
+ */
+export const getMessageTemplatesByType = async (
+    type: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL'
+): Promise<MessageTemplate[]> => {
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+        throw new Error('Access token not found. Please login again.');
+    }
+
+    const instituteId = getInstituteId();
+    if (!instituteId) {
+        throw new Error('Institute ID not found. Please login again.');
+    }
+
+    const url = `${MESSAGE_TEMPLATE_BASE}/institute/${instituteId}/type/${encodeURIComponent(type)}`;
+
+    const response = await fetch(url, {
+        headers: {
+            Accept: '*/*',
+            Authorization: `Bearer ${accessToken}`,
+            Origin: window.location.origin,
+            Referer: window.location.origin + '/',
+        },
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch templates: ${response.status} ${errorText}`);
+    }
+
+    const result = await response.json();
+    const list: Record<string, unknown>[] = Array.isArray(result)
+        ? result
+        : (result.content as Record<string, unknown>[]) || (result.data as Record<string, unknown>[]) || [];
+
+    return list.map((template) => {
+        const parsedSettings = parseSettingJson(template.settingJson as string);
+        return {
+            id: (template.id || template.templateId) as string,
+            name: template.name as string,
+            // Preserve the real type (INVOICE / INVOICE_EMAIL), don't coerce to EMAIL.
+            type: (((template.type as string)?.toUpperCase() as MessageTemplate['type']) || type),
+            subject: (template.subject as string) || '',
+            content: (template.content as string) || '',
+            variables: parsedSettings.variables,
+            isDefault: parsedSettings.isDefault,
+            templateType: parsedSettings.templateType,
+            mjml: parsedSettings.mjml,
+            previewText: parsedSettings.previewText,
+            createdAt: (template.createdAt as string) || new Date().toISOString(),
+            updatedAt: (template.updatedAt as string) || new Date().toISOString(),
+            createdBy: template.createdBy as string | undefined,
+            instituteId: template.instituteId as string | undefined,
+        };
+    });
+};
+
 export const getMessageTemplate = async (id: string): Promise<MessageTemplate> => {
     try {
         const accessToken = getAccessToken();

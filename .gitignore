@@ -147,3 +147,6 @@ media_service/target/*
 # Helm secret value overlays — real DB hosts/creds, never commit
 vacademy_devops/**/values.secret.yaml
 vacademy_devops/**/values-*.secret.yaml
+
+# Per-developer Claude Code permissions — local-only, not for sharing
+.claude/settings.local.json

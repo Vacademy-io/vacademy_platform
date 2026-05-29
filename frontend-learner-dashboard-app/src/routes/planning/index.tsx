@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BookOpen, ClipboardList } from "lucide-react";
+import { BookOpen, ClipboardText } from "@phosphor-icons/react";
 
 export const Route = createFileRoute("/planning/")({
   component: PlanningPage,
@@ -69,7 +69,7 @@ function PlanningPage() {
             <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="rounded-lg bg-secondary/10 p-3">
-                  <ClipboardList className="size-6 text-secondary-foreground" />
+                  <ClipboardText className="size-6 text-secondary-foreground" />
                 </div>
                 <div>
                   <CardTitle>Activities</CardTitle>

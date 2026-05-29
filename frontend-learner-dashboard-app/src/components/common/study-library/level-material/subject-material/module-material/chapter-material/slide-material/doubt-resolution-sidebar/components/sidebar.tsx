@@ -211,11 +211,11 @@ export const DoubtResolutionSidebar = () => {
       <div
         ref={sidebarRef}
         className={`
-            fixed top-0 right-0 h-full z-[10000]
+            fixed top-0 right-0 h-full z-50
             transition-transform duration-300 ease-in-out
             ${open ? "translate-x-0" : "translate-x-full"}
-            w-full sm:w-[90vw] md:w-[70vw] lg:w-[60vw] xl:w-[35vw] 
-            min-w-[280px] sm:min-w-[320px] lg:min-w-[400px] max-w-[500px]
+            w-full sm:w-vw-90 md:w-vw-70 lg:w-vw-60 xl:w-vw-35
+            min-w-reg-280 sm:min-w-reg-320 lg:min-w-reg-400 max-w-reg-500
             bg-gradient-to-b from-white to-slate-50/30 shadow-2xl border-l border-gray-200/60 backdrop-blur-xl 
             flex flex-col overflow-hidden
           `}
@@ -338,7 +338,7 @@ export const DoubtResolutionSidebar = () => {
         {/* Enhanced Footer */}
         <div className="border-t border-gray-200/80 bg-white/95 backdrop-blur-md p-6 flex-shrink-0">
           {showInput ? (
-            <div className="flex gap-3 w-full max-h-[40vh]">
+            <div className="flex gap-3 w-full max-h-screen-40">
               <div className="flex flex-col gap-3 flex-1 min-h-0">
                 {activeItem?.source_type === "VIDEO" &&
                   timestamp !== undefined &&
@@ -355,7 +355,7 @@ export const DoubtResolutionSidebar = () => {
                   <MainViewQuillEditor
                     value={doubt}
                     onChange={setDoubt}
-                    className="w-full min-h-[100px] rounded-xl border border-gray-200 focus-within:border-primary-300 transition-colors"
+                    className="w-full min-h-reg-100 rounded-xl border border-gray-200 focus-within:border-primary-300 transition-colors"
                     isDoubtResolution={true}
                   />
                 </div>
@@ -396,7 +396,7 @@ export const DoubtResolutionSidebar = () => {
       {/* Backdrop */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[9999] transition-opacity duration-300"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300"
           onClick={closeSidebar}
         />
       )}

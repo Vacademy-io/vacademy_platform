@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/form";
 import { generateZodSchema } from "../-types/registrationFormSchema";
 import { RegistrationFormValues, CustomField } from "../-types/type";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import { getFieldRenderType } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 import {
@@ -43,6 +44,11 @@ export default function RegistrationForm({
   onEmailChange,
 }: RegistrationFormProps) {
   const schema = generateZodSchema(customFields);
+  // Default selected country + picker order from the institute's preferred countries.
+  const { defaultCountry, preferredCountries } = useMemo(
+    () => getPreferredPhoneCountries(),
+    [],
+  );
   const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -80,7 +86,7 @@ export default function RegistrationForm({
             onSubmit={handleSubmit(onSubmit, onError)}
             className="flex flex-col gap-5"
           >
-            <div className="flex flex-col gap-4 overflow-auto max-h-[50vh] pr-1">
+            <div className="flex flex-col gap-4 overflow-auto max-h-screen-50 pr-1">
               {[...(customFields || [])].sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0)).map((responseField) => {
                 const renderType = getFieldRenderType(
                   responseField.fieldKey,
@@ -109,7 +115,7 @@ export default function RegistrationForm({
                             <FormControl>
                               <PhoneInput
                                 {...field}
-                                country="gb"
+                                country={defaultCountry}
                                 enableSearch={true}
                                 placeholder={`Enter ${responseField.fieldName.toLowerCase()}`}
                                 onChange={(val) => {
@@ -125,7 +131,7 @@ export default function RegistrationForm({
                                 countryCodeEditable={false}
                                 enableAreaCodes={true}
                                 disableCountryGuess={false}
-                                preferredCountries={["us", "gb", "in"]}
+                                preferredCountries={preferredCountries}
                                 inputProps={{
                                   maxLength: 15,
                                   minLength: 11,
@@ -146,7 +152,7 @@ export default function RegistrationForm({
                           _id: idx,
                         }))}
                         control={form.control}
-                        className="mt-[8px] w-full font-thin"
+                        className="mt-2 w-full font-thin"
                         onSelect={(value) => {
                           form.setValue("email", value);
                           onEmailChange(value);

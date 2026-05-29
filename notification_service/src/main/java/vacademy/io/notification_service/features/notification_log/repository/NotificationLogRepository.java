@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,7 +15,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
 
     // Find original email sending log for a recipient before SES event time
     Optional<NotificationLog> findTopByChannelIdAndNotificationTypeAndNotificationDateBeforeOrderByNotificationDateDesc(
-            String channelId, String notificationType, LocalDateTime before);
+            String channelId, String notificationType, Instant before);
 
     // Removed duplicate checking methods - back to original behavior
 
@@ -56,7 +56,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
 
     // Find recent EMAIL logs within time window
     Optional<NotificationLog> findTopByNotificationTypeAndNotificationDateAfterOrderByNotificationDateDesc(
-            String notificationType, LocalDateTime after);
+            String notificationType, Instant after);
 
     // All duplicate checking methods removed
 
@@ -439,8 +439,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     Page<NotificationLog> findByUserIdAndTypesAndDateRange(
             @Param("userId") String userId,
             @Param("types") List<String> types,
-            @Param("fromDate") LocalDateTime fromDate,
-            @Param("toDate") LocalDateTime toDate,
+            @Param("fromDate") Instant fromDate,
+            @Param("toDate") Instant toDate,
             Pageable pageable);
 
     // ==================== CHANNEL-ID BASED COMMUNICATION TIMELINE ====================
@@ -461,8 +461,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     Page<NotificationLog> findByChannelIdAndTypesAndDateRange(
             @Param("channelId") String channelId,
             @Param("types") List<String> types,
-            @Param("fromDate") LocalDateTime fromDate,
-            @Param("toDate") LocalDateTime toDate,
+            @Param("fromDate") Instant fromDate,
+            @Param("toDate") Instant toDate,
             Pageable pageable);
 
     /** Combined email + phone query — email matched to emailTypes, phone matched to phoneTypes. */
@@ -495,8 +495,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("phone") String phone,
             @Param("emailTypes") List<String> emailTypes,
             @Param("phoneTypes") List<String> phoneTypes,
-            @Param("fromDate") LocalDateTime fromDate,
-            @Param("toDate") LocalDateTime toDate,
+            @Param("fromDate") Instant fromDate,
+            @Param("toDate") Instant toDate,
             Pageable pageable);
 
     // ==================== WHATSAPP INBOX METHODS ====================
@@ -504,13 +504,14 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     /**
      * Get distinct conversations (unique phone numbers) with their latest message.
      * Uses DISTINCT ON to guarantee one row per channel_id (no duplicates).
-     * Supports multiple channel IDs for multi-channel institutes.
+     * Scopes by institute_id so template / campaign sends written by any path (chatbot reply,
+     * announcement, WhatsAppService) all surface — provided the writer stamped institute_id.
      */
     @Query(value = """
             SELECT * FROM (
                 SELECT DISTINCT ON (nl.channel_id) nl.*
                 FROM notification_log nl
-                WHERE nl.sender_business_channel_id IN (:channelIds)
+                WHERE nl.institute_id = :instituteId
                   AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                 ORDER BY nl.channel_id, nl.notification_date DESC
             ) conversations
@@ -518,18 +519,18 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<NotificationLog> findConversationsForInbox(
-            @Param("channelIds") List<String> senderBusinessChannelIds,
+            @Param("instituteId") String instituteId,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
     /**
-     * Get messages for a specific phone number, scoped to institute's channels.
+     * Get messages for a specific phone number, scoped to an institute.
      * Cursor-paginated (newest first).
      */
     @Query(value = """
             SELECT * FROM notification_log
             WHERE channel_id = :phone
-              AND sender_business_channel_id IN (:channelIds)
+              AND institute_id = :instituteId
               AND notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
               AND (:cursor IS NULL OR notification_date < CAST(:cursor AS TIMESTAMP))
             ORDER BY notification_date DESC
@@ -537,7 +538,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             """, nativeQuery = true)
     List<NotificationLog> findMessagesForPhone(
             @Param("phone") String phone,
-            @Param("channelIds") List<String> senderBusinessChannelIds,
+            @Param("instituteId") String instituteId,
             @Param("cursor") String cursor,
             @Param("limit") int limit);
 
@@ -561,13 +562,13 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     List<Object[]> batchCountUnreadMessages(@Param("phones") List<String> phones);
 
     /**
-     * Search conversations by phone number or sender name.
+     * Search WhatsApp conversations by phone number or sender name, scoped to an institute.
      */
     @Query(value = """
             SELECT * FROM (
                 SELECT DISTINCT ON (nl.channel_id) nl.*
                 FROM notification_log nl
-                WHERE nl.sender_business_channel_id IN (:channelIds)
+                WHERE nl.institute_id = :instituteId
                   AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                   AND (nl.channel_id LIKE :query OR COALESCE(nl.sender_name, '') ILIKE :query)
                 ORDER BY nl.channel_id, nl.notification_date DESC
@@ -576,7 +577,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             LIMIT 30
             """, nativeQuery = true)
     List<NotificationLog> searchConversations(
-            @Param("channelIds") List<String> senderBusinessChannelIds,
+            @Param("instituteId") String instituteId,
             @Param("query") String query);
 
     // ==================== NOTIFICATION HUB METHODS ====================
@@ -662,29 +663,32 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     //
     // The hub UI lets admins narrow the inbox by:
     //   - direction → controlled by :types ('EMAIL' | 'INBOUND_EMAIL' | both)
-    //   - which institute sender → controlled by :fromAddresses (single address or all configured)
+    //   - which institute sender → controlled by :senderFilter (single address; null = any sender)
     //
-    // Both filters collapse into list-membership predicates so a single query shape serves
-    // every combination. Keep the queries parameterized — don't add new variants per filter.
+    // Institute scoping is via :instituteId (the column stamped at write time by every writer
+    // path and backfilled for historical rows in V25). The sender filter remains as an optional
+    // narrowing for admins who want to see one specific from-address.
 
     /**
      * One row per counterparty email (the institute's audience), latest message first.
-     * :fromAddresses is the institute-side address scope (single or all configured senders).
+     * Scopes by institute_id; :senderFilter is an optional narrowing (null = all senders).
      * :types is {@code ['EMAIL']}, {@code ['INBOUND_EMAIL']}, or both.
      */
     @Query(value = """
             SELECT * FROM (
                 SELECT DISTINCT ON (nl.channel_id) nl.*
                 FROM notification_log nl
-                WHERE nl.sender_business_channel_id IN (:fromAddresses)
+                WHERE nl.institute_id = :instituteId
                   AND nl.notification_type IN (:types)
+                  AND (:senderFilter IS NULL OR nl.sender_business_channel_id = :senderFilter)
                 ORDER BY nl.channel_id, nl.notification_date DESC
             ) conversations
             ORDER BY conversations.notification_date DESC
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<NotificationLog> findEmailConversationsForInbox(
-            @Param("fromAddresses") List<String> fromAddresses,
+            @Param("instituteId") String instituteId,
+            @Param("senderFilter") String senderFilter,
             @Param("types") List<String> types,
             @Param("limit") int limit,
             @Param("offset") int offset);
@@ -696,7 +700,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     @Query(value = """
             SELECT * FROM notification_log
             WHERE channel_id = :email
-              AND sender_business_channel_id IN (:fromAddresses)
+              AND institute_id = :instituteId
+              AND (:senderFilter IS NULL OR sender_business_channel_id = :senderFilter)
               AND notification_type IN (:types)
               AND (:cursor IS NULL OR notification_date < CAST(:cursor AS TIMESTAMP))
             ORDER BY notification_date DESC
@@ -704,7 +709,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             """, nativeQuery = true)
     List<NotificationLog> findEmailMessagesForConversation(
             @Param("email") String email,
-            @Param("fromAddresses") List<String> fromAddresses,
+            @Param("instituteId") String instituteId,
+            @Param("senderFilter") String senderFilter,
             @Param("types") List<String> types,
             @Param("cursor") String cursor,
             @Param("limit") int limit);
@@ -736,8 +742,9 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             SELECT * FROM (
                 SELECT DISTINCT ON (nl.channel_id) nl.*
                 FROM notification_log nl
-                WHERE nl.sender_business_channel_id IN (:fromAddresses)
+                WHERE nl.institute_id = :instituteId
                   AND nl.notification_type IN (:types)
+                  AND (:senderFilter IS NULL OR nl.sender_business_channel_id = :senderFilter)
                   AND (nl.channel_id ILIKE :query OR COALESCE(nl.body, '') ILIKE :query)
                 ORDER BY nl.channel_id, nl.notification_date DESC
             ) conversations
@@ -745,7 +752,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<NotificationLog> searchEmailConversations(
-            @Param("fromAddresses") List<String> fromAddresses,
+            @Param("instituteId") String instituteId,
+            @Param("senderFilter") String senderFilter,
             @Param("types") List<String> types,
             @Param("query") String query,
             @Param("limit") int limit,

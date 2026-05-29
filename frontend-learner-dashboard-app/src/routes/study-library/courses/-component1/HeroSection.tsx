@@ -105,7 +105,7 @@ const HeroSection = ({
                 ></div>
             </div>
 
-            <div className="relative z-10 flex flex-col lg:flex-row mx-auto p-1 sm:p-2 lg:p-3 min-h-[80px] sm:min-h-[30px]">
+            <div className="relative z-10 flex flex-col lg:flex-row mx-auto p-1 sm:p-2 lg:p-3 min-h-20 sm:min-h-8">
                 {/* Content Section */}
                 <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
                     <div className="animate-fade-in-up max-w-2xl text-center lg:text-left">
@@ -118,7 +118,7 @@ const HeroSection = ({
                                 <BookOpen
                                     size={16}
                                     className={cn(
-                                        "text-primary-600 sm:w-[18px] sm:h-[18px]",
+                                        "text-primary-600 sm:size-5",
                                         "[.ui-vibrant_&]:text-primary"
                                     )}
                                     weight="duotone"

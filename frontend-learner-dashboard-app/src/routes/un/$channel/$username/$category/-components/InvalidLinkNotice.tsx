@@ -1,4 +1,4 @@
-import { Ban } from "lucide-react";
+import { Prohibit } from "@phosphor-icons/react";
 
 import { Card, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ export const InvalidLinkNotice = ({
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-16">
       <div className="mx-auto flex max-w-lg flex-col items-center text-center">
-        <Ban className="h-12 w-12 text-rose-500" />
+        <Prohibit className="h-12 w-12 text-rose-500" />
         <h1 className="mt-6 text-3xl font-semibold text-slate-900 sm:text-4xl">
           Link unavailable
         </h1>

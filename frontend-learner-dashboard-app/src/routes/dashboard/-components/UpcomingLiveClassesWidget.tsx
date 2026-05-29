@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, Clock } from "@phosphor-icons/react";
-import { ChevronRight, Video } from "lucide-react";
+import { CaretRight, VideoCamera } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
 import {
@@ -129,8 +129,8 @@ export function UpcomingLiveClassesWidget({
         "[.ui-vibrant_&]:border-violet-200 dark:[.ui-vibrant_&]:border-violet-800/50",
         "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-violet-50/50",
         "dark:[.ui-vibrant_&]:from-card dark:[.ui-vibrant_&]:to-violet-950/20",
-        // Play Styles - Solid Bold Duolingo
-        "[.ui-play_&]:bg-[#E91E63] [.ui-play_&]:border-2 [.ui-play_&]:border-[#c2185b] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#c2185b]",
+        // Play Styles — bg/shadow handled by .upcoming-live-card rule in play-theme.css
+        "upcoming-live-card",
         "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
         "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
       )}
@@ -150,7 +150,7 @@ export function UpcomingLiveClassesWidget({
               "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:rounded-xl"
             )}
           >
-            <Video size={18} />
+            <VideoCamera size={18} />
           </div>
           <div>
             <CardTitle className="text-base font-semibold">
@@ -167,7 +167,7 @@ export function UpcomingLiveClassesWidget({
           className="text-xs"
           onClick={() => navigate({ to: "/study-library/live-class" })}
         >
-          View All <ChevronRight size={14} className="ml-1" />
+          View All <CaretRight size={14} className="ml-1" />
         </Button>
       </CardHeader>
 
@@ -180,7 +180,7 @@ export function UpcomingLiveClassesWidget({
           >
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-400 shrink-0">
-                <Video size={16} />
+                <VideoCamera size={16} />
               </div>
               <div className="min-w-0">
                 <h4 className="font-medium text-sm truncate">

@@ -20,12 +20,13 @@ public class VimotionSignupTokenService {
     private static final long TTL_MILLIS = 15 * 60 * 1000L;
     private static final String PURPOSE = "vimotion-signup";
 
-    public String issue(String phoneNumber, String email) {
+    public String issue(String phoneNumber, String email, String inviteCodeId) {
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .setClaims(Map.of(
                         "phone_number", phoneNumber == null ? "" : phoneNumber,
                         "email", email == null ? "" : email,
+                        "invite_code_id", inviteCodeId == null ? "" : inviteCodeId,
                         "purpose", PURPOSE))
                 .setIssuedAt(new Date(now))
                 .setExpiration(new Date(now + TTL_MILLIS))

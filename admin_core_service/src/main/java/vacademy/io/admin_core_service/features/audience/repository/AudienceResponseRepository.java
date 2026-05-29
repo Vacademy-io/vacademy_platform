@@ -3,9 +3,14 @@ package vacademy.io.admin_core_service.features.audience.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection;
+import vacademy.io.admin_core_service.features.audience.dto.LeadReportProjections;
+import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 
 import java.sql.Timestamp;
@@ -84,6 +89,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -121,6 +127,68 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
+                              -- SLA-state filter. Aligned with the row-level badges + the new
+                              -- column semantics:
+                              --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
+                              --     check on timeline_event (category = ACTIVITY) so leads the
+                              --     counsellor already contacted are excluded, matching the badge.
+                              --   * Follow-up buckets read the lead_followup table (open rows
+                              --     only), matching the Follow up at column which is now purely
+                              --     counsellor-scheduled callbacks.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'TAT_BEFORE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time > NOW()
+                                             AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
+                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time < NOW()))
+                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                       AND (
+                                           (:tatHours IS NOT NULL
+                                            AND ar.submitted_at IS NOT NULL
+                                            AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                            AND NOT EXISTS (
+                                                SELECT 1 FROM timeline_event te
+                                                WHERE te.category = 'ACTIVITY'
+                                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                           OR EXISTS (
+                                               SELECT 1 FROM lead_followup lf
+                                               WHERE lf.audience_response_id = ar.id
+                                                 AND lf.is_closed = false
+                                                 AND lf.schedule_time IS NOT NULL
+                                                 AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldFiltersJson, '') = '' OR :customFieldFiltersJson = '[]' OR
                                    NOT EXISTS (
                                        SELECT 1
@@ -159,6 +227,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
@@ -196,6 +265,68 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
+                              -- SLA-state filter. Aligned with the row-level badges + the new
+                              -- column semantics:
+                              --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
+                              --     check on timeline_event (category = ACTIVITY) so leads the
+                              --     counsellor already contacted are excluded, matching the badge.
+                              --   * Follow-up buckets read the lead_followup table (open rows
+                              --     only), matching the Follow up at column which is now purely
+                              --     counsellor-scheduled callbacks.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'TAT_BEFORE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time > NOW()
+                                             AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
+                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time < NOW()))
+                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                       AND (
+                                           (:tatHours IS NOT NULL
+                                            AND ar.submitted_at IS NOT NULL
+                                            AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                            AND NOT EXISTS (
+                                                SELECT 1 FROM timeline_event te
+                                                WHERE te.category = 'ACTIVITY'
+                                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                           OR EXISTS (
+                                               SELECT 1 FROM lead_followup lf
+                                               WHERE lf.audience_response_id = ar.id
+                                                 AND lf.is_closed = false
+                                                 AND lf.schedule_time IS NOT NULL
+                                                 AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldFiltersJson, '') = '' OR :customFieldFiltersJson = '[]' OR
                                    NOT EXISTS (
                                        SELECT 1
@@ -212,6 +343,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
+                        @Param("leadStatusId") String leadStatusId,
                         @Param("sourceType") String sourceType,
                         @Param("sourceId") String sourceId,
                         @Param("submittedFrom") Timestamp submittedFrom,
@@ -227,6 +359,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("overallStatusStr") String overallStatusStr,
                         @Param("customFieldFiltersJson") String customFieldFiltersJson,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
+                        @Param("slaFilter") String slaFilter,
+                        @Param("tatHours") Integer tatHours,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         Pageable pageable);
@@ -267,6 +401,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -296,6 +431,68 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 )
                               )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              -- SLA-state filter. Aligned with the row-level badges + the new
+                              -- column semantics:
+                              --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
+                              --     check on timeline_event (category = ACTIVITY) so leads the
+                              --     counsellor already contacted are excluded, matching the badge.
+                              --   * Follow-up buckets read the lead_followup table (open rows
+                              --     only), matching the Follow up at column which is now purely
+                              --     counsellor-scheduled callbacks.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'TAT_BEFORE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time > NOW()
+                                             AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
+                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time < NOW()))
+                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                       AND (
+                                           (:tatHours IS NOT NULL
+                                            AND ar.submitted_at IS NOT NULL
+                                            AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                            AND NOT EXISTS (
+                                                SELECT 1 FROM timeline_event te
+                                                WHERE te.category = 'ACTIVITY'
+                                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                           OR EXISTS (
+                                               SELECT 1 FROM lead_followup lf
+                                               WHERE lf.audience_response_id = ar.id
+                                                 AND lf.is_closed = false
+                                                 AND lf.schedule_time IS NOT NULL
+                                                 AND lf.schedule_time < NOW()))))
                             ORDER BY ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -312,6 +509,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             LEFT JOIN user_lead_profile ulp
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = :leadStatusId)
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
                               AND (COALESCE(:searchQuery, '') = '' OR
@@ -341,9 +539,72 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 )
                               )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              -- SLA-state filter. Aligned with the row-level badges + the new
+                              -- column semantics:
+                              --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
+                              --     check on timeline_event (category = ACTIVITY) so leads the
+                              --     counsellor already contacted are excluded, matching the badge.
+                              --   * Follow-up buckets read the lead_followup table (open rows
+                              --     only), matching the Follow up at column which is now purely
+                              --     counsellor-scheduled callbacks.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR (:slaFilter = 'TAT_OVERDUE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'TAT_BEFORE'
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR (:slaFilter = 'FOLLOW_UP_DUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time > NOW()
+                                             AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
+                                   OR (:slaFilter = 'FOLLOW_UP_OVERDUE'
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time < NOW()))
+                                   OR (:slaFilter = 'ANY_OVERDUE'
+                                       AND (
+                                           (:tatHours IS NOT NULL
+                                            AND ar.submitted_at IS NOT NULL
+                                            AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                            AND NOT EXISTS (
+                                                SELECT 1 FROM timeline_event te
+                                                WHERE te.category = 'ACTIVITY'
+                                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                           OR EXISTS (
+                                               SELECT 1 FROM lead_followup lf
+                                               WHERE lf.audience_response_id = ar.id
+                                                 AND lf.is_closed = false
+                                                 AND lf.schedule_time IS NOT NULL
+                                                 AND lf.schedule_time < NOW()))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
+                        @Param("leadStatusId") String leadStatusId,
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,
@@ -352,6 +613,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("assignedCounselorId") String assignedCounselorId,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
+                        @Param("slaFilter") String slaFilter,
+                        @Param("tatHours") Integer tatHours,
                         Pageable pageable);
 
         /**
@@ -546,5 +809,342 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         default Optional<AudienceResponse> findByAudienceIdAndDedupeKey(String audienceId, String dedupeKey) {
                 return findFirstByAudienceIdAndDedupeKeyAndIsDuplicateFalse(audienceId, dedupeKey);
         }
+
+        // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
+
+        /**
+         * Distinct institute IDs that currently have at least one open, non-opted-out lead.
+         * The scheduler iterates these and reads each institute's LEAD_SETTING to decide
+         * whether TAT / follow-up reminders are enabled before scanning its leads.
+         */
+        @Query(value = """
+                            SELECT DISTINCT a.institute_id
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        List<String> findInstituteIdsWithActiveLeads();
+
+        /**
+         * All open, assigned, unconverted leads for an institute, with the resolved counselor and the
+         * timestamp of that counselor's last action on the lead. The scheduler decides which SLA stage
+         * (TAT before/overdue, follow-up due/overdue) to emit per row in Java. Mirrors the counselor
+         * resolution of {@link #findLeadsWithFilters} (linked_users first, then user_lead_profile).
+         */
+        @Query(value = """
+                            SELECT ar.id AS leadId,
+                                   ar.user_id AS userId,
+                                   ar.student_user_id AS studentUserId,
+                                   ar.enquiry_id AS enquiryId,
+                                   ar.audience_id AS audienceId,
+                                   a.campaign_name AS campaignName,
+                                   a.institute_id AS instituteId,
+                                   ar.parent_name AS parentName,
+                                   ar.parent_email AS parentEmail,
+                                   ar.parent_mobile AS parentMobile,
+                                   ar.submitted_at AS submittedAt,
+                                   COALESCE(lu.user_id, ulp.assigned_counselor_id) AS counselorId,
+                                   ar.tat_reminder_stage AS tatReminderStage,
+                                   ar.tat_reminder_count AS tatReminderCount,
+                                   ar.tat_reminder_assignee_id AS tatReminderAssigneeId,
+                                   (SELECT MAX(te.created_at) FROM timeline_event te
+                                      WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                        AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                              OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                              OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                   ) AS lastCounselorActionAt
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                              AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
+                        """, nativeQuery = true)
+        List<LeadSlaCandidate> findSlaCandidatesForInstitute(@Param("instituteId") String instituteId);
+
+        /**
+         * For a set of leads, the timestamps of each lead's assigned counselor's FIRST and LAST
+         * actions on it (from timeline_event). Drives:
+         *   firstActionAt → "Responded in N" (time-to-first-response shown in the leads tables).
+         *   lastActionAt  → follow-up deadline (= lastActionAt + followUpSlaHours).
+         * Counselor resolution mirrors {@link #findSlaCandidatesForInstitute} (linked_users, then profile).
+         * Leads with no counselor or no counselor action return both timestamps as null.
+         */
+        @Query(value = """
+                            SELECT ar.id        AS leadId,
+                                   acts.first_at AS firstActionAt,
+                                   acts.last_at  AS lastActionAt
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            LEFT JOIN LATERAL (
+                                -- Any manual human interaction (note / call log / follow-up /
+                                -- meeting) counts as a "reach out" for SLA purposes, regardless
+                                -- of whether the assigned counsellor or an admin acting on their
+                                -- behalf logged it. Filter by category = 'ACTIVITY' so automated
+                                -- JOURNEY events (status changes, score updates, etc.) do not
+                                -- accidentally mark the lead as contacted.
+                                SELECT MIN(te.created_at) AS first_at,
+                                       MAX(te.created_at) AS last_at
+                                FROM timeline_event te
+                                WHERE te.category = 'ACTIVITY'
+                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                            ) acts ON true
+                            WHERE ar.id IN (:responseIds)
+                        """, nativeQuery = true)
+        List<LeadLastActionProjection> findCounselorActionsByResponseIds(
+                        @Param("responseIds") List<String> responseIds);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Lead Reports — institute-scoped aggregates, date-bounded on submitted_at.
+        // OPTED_OUT leads are excluded everywhere so totals match the counsellor view.
+        // ─────────────────────────────────────────────────────────────────────
+
+        /** Single-row totals: total / converted / lost / active / currently-overdue counts. */
+        @Query(value = """
+                            SELECT COUNT(*)                                                                              AS totalLeads,
+                                   SUM(CASE WHEN ulp.conversion_status = 'CONVERTED' THEN 1 ELSE 0 END)                  AS convertedLeads,
+                                   SUM(CASE WHEN ulp.conversion_status = 'LOST'      THEN 1 ELSE 0 END)                  AS lostLeads,
+                                   SUM(CASE WHEN ulp.conversion_status IS NULL
+                                              OR ulp.conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)    AS activeLeads,
+                                   SUM(CASE WHEN ar.tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        LeadReportProjections.TotalsProjection findReportTotals(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /**
+         * Response stats aggregate. "first response" = MIN(timeline_event by the assigned counsellor)
+         * for the lead — i.e. the moment the counsellor logged their first activity (note / call /
+         * status update). Status changes by admins are intentionally NOT counted; the metric is
+         * strictly counsellor-driven. tatHours = 0 (or null) makes tat_met never match; the service
+         * surfaces tatMetCount as null when TAT is disabled.
+         */
+        @Query(value = """
+                            WITH first_acts AS (
+                                SELECT ar.id            AS lead_id,
+                                       ar.submitted_at  AS submitted_at,
+                                       (SELECT MIN(te.created_at) FROM timeline_event te
+                                          WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                            AND ( (te.type='AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                  OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                  OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                       )                AS first_action_at
+                                FROM audience_response ar
+                                JOIN audience a ON a.id = ar.audience_id
+                                LEFT JOIN LATERAL (
+                                    SELECT lu.user_id FROM linked_users lu
+                                    WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                    ORDER BY lu.created_at DESC LIMIT 1
+                                ) lu ON true
+                                LEFT JOIN user_lead_profile ulp
+                                    ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                                WHERE a.institute_id = :instituteId
+                                  AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                                  AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            )
+                            SELECT COUNT(first_action_at)                                                  AS respondedLeads,
+                                   AVG(EXTRACT(EPOCH FROM (first_action_at - submitted_at)) / 60.0)        AS avgResponseMinutes,
+                                   SUM(CASE WHEN first_action_at IS NOT NULL
+                                                 AND first_action_at - submitted_at <= make_interval(hours => :tatHours)
+                                                THEN 1 ELSE 0 END)                                         AS tatMetCount
+                            FROM first_acts
+                        """, nativeQuery = true)
+        LeadReportProjections.ResponseStatsProjection findReportResponseStats(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs,
+                        @Param("tatHours") Integer tatHours);
+
+        /** Status breakdown: rows of (status_key, count). */
+        @Query(value = """
+                            SELECT COALESCE(ulp.conversion_status, 'LEAD') AS statusKey,
+                                   COUNT(*)                                AS leadCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY COALESCE(ulp.conversion_status, 'LEAD')
+                        """, nativeQuery = true)
+        List<LeadReportProjections.StatusCountProjection> findReportStatusBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /** Source breakdown: rows of (source_type, total, converted). */
+        @Query(value = """
+                            SELECT ar.source_type                                                       AS sourceType,
+                                   COUNT(*)                                                             AS totalCount,
+                                   SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END)   AS convertedCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY ar.source_type
+                            ORDER BY totalCount DESC
+                        """, nativeQuery = true)
+        List<LeadReportProjections.SourceCountProjection> findReportSourceBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /** Tier breakdown: explicit lead_tier wins, else score-derived bucket, else UNCLASSIFIED. */
+        @Query(value = """
+                            SELECT COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE 'UNCLASSIFIED' END)                AS tier,
+                                   COUNT(*)                                              AS leadCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY 1
+                        """, nativeQuery = true)
+        List<LeadReportProjections.TierCountProjection> findReportTierBreakdown(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /** Daily trend: GROUP BY DATE(submitted_at). */
+        @Query(value = """
+                            SELECT DATE(ar.submitted_at)                                              AS day,
+                                   COUNT(*)                                                           AS submittedCount,
+                                   SUM(CASE WHEN ulp.conversion_status='CONVERTED' THEN 1 ELSE 0 END) AS convertedCount
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                              AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            GROUP BY DATE(ar.submitted_at)
+                            ORDER BY DATE(ar.submitted_at)
+                        """, nativeQuery = true)
+        List<LeadReportProjections.DailyTrendProjection> findReportDailyTrend(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs);
+
+        /**
+         * Per-counsellor aggregate row. Counsellor resolution mirrors the leads list filter.
+         * "first_response_at" = MIN(timeline_event by this counsellor on this lead) — strict
+         * counsellor-activity definition; admin status flips are NOT counted.
+         */
+        @Query(value = """
+                            WITH lead_meta AS (
+                                SELECT ar.id            AS lead_id,
+                                       ar.submitted_at  AS submitted_at,
+                                       ar.tat_reminder_stage AS tat_reminder_stage,
+                                       ulp.conversion_status AS conversion_status,
+                                       (SELECT MIN(te.created_at) FROM timeline_event te
+                                          WHERE te.actor_id = COALESCE(lu.user_id, ulp.assigned_counselor_id)
+                                            AND ( (te.type='AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                  OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                  OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )
+                                       )                AS first_response_at,
+                                       COALESCE(lu.user_id, ulp.assigned_counselor_id) AS counselor_id
+                                FROM audience_response ar
+                                JOIN audience a ON a.id = ar.audience_id
+                                LEFT JOIN LATERAL (
+                                    SELECT lu.user_id FROM linked_users lu
+                                    WHERE lu.source='ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                    ORDER BY lu.created_at DESC LIMIT 1
+                                ) lu ON true
+                                LEFT JOIN user_lead_profile ulp
+                                    ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                                WHERE a.institute_id = :instituteId
+                                  AND ar.submitted_at >= CAST(:fromTs AS timestamp)
+                                  AND ar.submitted_at <  CAST(:toTs   AS timestamp)
+                                  AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            )
+                            SELECT counselor_id                                                                          AS counselorId,
+                                   COUNT(*)                                                                              AS leadsAssigned,
+                                   COUNT(first_response_at)                                                              AS leadsResponded,
+                                   SUM(CASE WHEN conversion_status='CONVERTED' THEN 1 ELSE 0 END)                        AS conversions,
+                                   AVG(EXTRACT(EPOCH FROM (first_response_at - submitted_at)) / 60.0)                    AS avgResponseMinutes,
+                                   SUM(CASE WHEN first_response_at IS NOT NULL
+                                                 AND first_response_at - submitted_at <= make_interval(hours => :tatHours)
+                                                THEN 1 ELSE 0 END)                                                       AS tatMetCount,
+                                   SUM(CASE WHEN conversion_status IS NULL
+                                              OR conversion_status NOT IN ('CONVERTED','LOST') THEN 1 ELSE 0 END)        AS openLeads,
+                                   SUM(CASE WHEN tat_reminder_stage IN ('TAT_OVERDUE','FOLLOW_UP_OVERDUE') THEN 1 ELSE 0 END) AS overdueLeads
+                            FROM lead_meta
+                            WHERE counselor_id IS NOT NULL
+                            GROUP BY counselor_id
+                            ORDER BY leadsAssigned DESC
+                        """, nativeQuery = true)
+        List<LeadReportProjections.CounselorRowProjection> findReportCounselorPerformance(
+                        @Param("instituteId") String instituteId,
+                        @Param("fromTs") String fromTs,
+                        @Param("toTs") String toTs,
+                        @Param("tatHours") Integer tatHours);
+
+        /**
+         * Atomically claim a reminder stage for a lead. Returns 1 if this call won the claim (and the row
+         * was updated), 0 if another run/replica already emitted this exact stage+cycle (dedup key matches).
+         * Replica-safe via the row lock on the conditional WHERE — the scheduler emits the trigger only
+         * when this returns 1.
+         */
+        @Modifying
+        @Transactional
+        @Query(value = """
+                            UPDATE audience_response
+                               SET tat_reminder_dedup_key = :dedupKey,
+                                   tat_reminder_stage = :stage,
+                                   tat_reminder_assignee_id = :assigneeId,
+                                   tat_reminder_count = tat_reminder_count + 1,
+                                   tat_due_at = :dueAt
+                             WHERE id = :id
+                               AND (tat_reminder_dedup_key IS NULL OR tat_reminder_dedup_key <> :dedupKey)
+                        """, nativeQuery = true)
+        int claimTatReminderStage(@Param("id") String id,
+                        @Param("dedupKey") String dedupKey,
+                        @Param("stage") String stage,
+                        @Param("assigneeId") String assigneeId,
+                        @Param("dueAt") Timestamp dueAt);
 }
 

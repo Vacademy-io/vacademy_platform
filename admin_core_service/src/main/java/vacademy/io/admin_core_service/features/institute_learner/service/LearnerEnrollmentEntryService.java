@@ -21,6 +21,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.entity.Institute;
 
 /**
@@ -118,6 +119,24 @@ public class LearnerEnrollmentEntryService {
             PackageSession actualPackageSession,
             String instituteId,
             String userPlanId) {
+        return createOnlyDetailsFilledEntry(
+                userId, invitedPackageSession, actualPackageSession, instituteId, userPlanId, null);
+    }
+
+    /**
+     * Preferred overload — accepts the caller's UserDTO so the ABANDONED_CART
+     * workflow context can include the full user object alongside the IDs.
+     * Without this, downstream HTTP_REQUEST / SEND_EMAIL nodes can't access
+     * #ctx['user'].fullName / .email / .mobileNumber and webhook payloads
+     * come back with null Name/Phone/Email fields.
+     */
+    public StudentSessionInstituteGroupMapping createOnlyDetailsFilledEntry(
+            String userId,
+            PackageSession invitedPackageSession,
+            PackageSession actualPackageSession,
+            String instituteId,
+            String userPlanId,
+            UserDTO userDTO) {
 
         // Fetch institute entity
         Institute institute = instituteRepository.findById(instituteId).orElse(null);
@@ -142,15 +161,35 @@ public class LearnerEnrollmentEntryService {
                 "Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
                 saved.getId(), userId, actualPackageSession.getId(), instituteId, userPlanId);
 
-        // Trigger ABANDONED_CART workflow
+        // Trigger ABANDONED_CART workflow.
+        // Context shape intentionally mirrors what
+        // StudentRegistrationManager.triggerEnrollmentWorkflow
+        // builds for LEARNER_BATCH_ENROLLMENT, so the same webhook payload template
+        // (Name/Phone/Email/CourseName referencing #ctx['user'] and
+        // #ctx['packageName'])
+        // works for both events. Payment fields are intentionally absent — at
+        // ABANDONED_CART time the learner hasn't paid yet.
         try {
             java.util.Map<String, Object> contextData = new java.util.HashMap<>();
             contextData.put("userId", userId);
             contextData.put("userPlanId", userPlanId);
+            // Match the singular + plural keys LEARNER_BATCH_ENROLLMENT uses,
+            // so SpEL like #ctx['packageSessionIds'] works in either workflow.
             contextData.put("packageSessionId", actualPackageSession.getId());
             contextData.put("packageId",
                     actualPackageSession.getPackageEntity() != null ? actualPackageSession.getPackageEntity().getId()
                             : null);
+            contextData.put("packageSessionIds", actualPackageSession.getId());
+            if (actualPackageSession.getPackageEntity() != null) {
+                contextData.put("packageId", actualPackageSession.getPackageEntity().getId());
+                contextData.put("packageName", actualPackageSession.getPackageEntity().getPackageName());
+            } else {
+                contextData.put("packageId", null);
+                contextData.put("packageName", null);
+            }
+            if (userDTO != null) {
+                contextData.put("user", userDTO);
+            }
             workflowTriggerService.handleTriggerEvents(
                     vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.ABANDONED_CART.name(),
                     invitedPackageSession.getId(), instituteId, contextData);

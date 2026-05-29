@@ -30,6 +30,21 @@ export default defineConfig({
         headers: {
             'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
         },
+        // --- Local backend microservices -------------------------------------
+        // Active only when VITE_BACKEND_URL points at this dev origin (see
+        // .env.development.local). Each service runs on its own port and serves
+        // its own "/<name>-service/..." path prefix, so NO rewrite is needed.
+        // When VITE_BACKEND_URL is the default staging URL these routes are
+        // never hit. ai-service is a Python/FastAPI app run via uvicorn on :8077.
+        proxy: {
+            '/auth-service': { target: 'http://localhost:8071', changeOrigin: true },
+            '/admin-core-service': { target: 'http://localhost:8072', changeOrigin: true },
+            '/community-service': { target: 'http://localhost:8073', changeOrigin: true },
+            '/assessment-service': { target: 'http://localhost:8074', changeOrigin: true },
+            '/media-service': { target: 'http://localhost:8075', changeOrigin: true },
+            '/notification-service': { target: 'http://localhost:8076', changeOrigin: true },
+            '/ai-service': { target: 'http://localhost:8077', changeOrigin: true },
+        },
     },
     build: {
         // Optimize build for memory usage
@@ -67,8 +82,25 @@ export default defineConfig({
                         return 'pyodide';
                     }
 
-                    // Quill editor - rich text editing
-                    if (id.includes('react-quill') || id.includes('quill')) {
+                    // Quill editor - rich text editing.
+                    // IMPORTANT: only match Quill *node_modules* — never src
+                    // paths. The src/components/quill/* files transitively
+                    // import axios (via use-file-upload → upload_file), and a
+                    // bare `id.includes('quill')` was hoisting axios into the
+                    // quill chunk, making *every* axios call drag in Quill +
+                    // mathquill + jquery and triggering a circular-init
+                    // ("Cannot access 'B' before initialization") on app load.
+                    // jquery must live in this chunk too — mathquill reads
+                    // window.jQuery at module-eval time, and the import order
+                    // in MainViewQuillEditor.jsx only holds within one chunk.
+                    if (
+                        id.includes('node_modules/react-quill-new') ||
+                        id.includes('node_modules/quill/') ||
+                        id.includes('node_modules/quill-delta') ||
+                        id.includes('node_modules/mathquill4quill') ||
+                        id.includes('node_modules/@edtr-io/mathquill') ||
+                        id.includes('node_modules/jquery')
+                    ) {
                         return 'quill-editor';
                     }
 

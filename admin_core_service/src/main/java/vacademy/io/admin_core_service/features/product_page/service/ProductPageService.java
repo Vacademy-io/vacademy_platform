@@ -18,12 +18,15 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.coupon.CouponValidateResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
 import vacademy.io.admin_core_service.features.user_subscription.entity.CouponCode;
 import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.CouponCodeRepository;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponValidationService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import org.springframework.util.StringUtils;
@@ -67,6 +70,7 @@ public class ProductPageService {
 
     @Autowired
     private InstituteSettingService instituteSettingService;
+    private CouponValidationService couponValidationService;
 
     // -------------------------------------------------------------------------
     // Admin CRUD
@@ -100,9 +104,12 @@ public class ProductPageService {
                 .orElseThrow(() -> new VacademyException("Course page not found: " + coursePageId));
 
         page.setName(request.getName());
-        if (request.getPageJson() != null) page.setPageJson(request.getPageJson());
-        if (request.getSettingsJson() != null) page.setSettingsJson(request.getSettingsJson());
-        if (request.getStatus() != null) page.setStatus(request.getStatus());
+        if (request.getPageJson() != null)
+            page.setPageJson(request.getPageJson());
+        if (request.getSettingsJson() != null)
+            page.setSettingsJson(request.getSettingsJson());
+        if (request.getStatus() != null)
+            page.setStatus(request.getStatus());
 
         if (request.getMappings() != null) {
             mappingRepository.updateStatusByProductPageId(coursePageId, STATUS_DELETED);
@@ -208,7 +215,8 @@ public class ProductPageService {
     }
 
     @Transactional
-    public ProductPageResponse removeCustomFieldFromPage(String productPageId, String customFieldId, String instituteId) {
+    public ProductPageResponse removeCustomFieldFromPage(String productPageId, String customFieldId,
+            String instituteId) {
         ProductPage page = loadPageForInstitute(productPageId, instituteId);
 
         List<ProductPageInviteMapping> activeMappings = mappingRepository
@@ -218,7 +226,7 @@ public class ProductPageService {
         for (ProductPageInviteMapping mapping : activeMappings) {
             String enrollInviteId = mapping.getPsInvitePaymentOption().getEnrollInvite().getId();
             customFieldService.getByInstituteIdAndFieldIdAndTypeAndTypeId(
-                            instituteId, customFieldId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId)
+                    instituteId, customFieldId, CustomFieldTypeEnum.ENROLL_INVITE.name(), enrollInviteId)
                     .ifPresent(icf -> mappingIdsToDelete.add(icf.getId()));
         }
 
@@ -229,7 +237,10 @@ public class ProductPageService {
         return buildAdminResponseWithCustomFields(page, activeMappings);
     }
 
-    /** Loads a product page and validates it belongs to the given institute (cross-tenant guard). */
+    /**
+     * Loads a product page and validates it belongs to the given institute
+     * (cross-tenant guard).
+     */
     private ProductPage loadPageForInstitute(String productPageId, String instituteId) {
         ProductPage page = coursePageRepository.findById(productPageId)
                 .orElseThrow(() -> new VacademyException("Product page not found: " + productPageId));
@@ -271,12 +282,18 @@ public class ProductPageService {
         couponCode.setStatus(STATUS_ACTIVE);
         couponCode.setSourceType(SOURCE_TYPE);
         couponCode.setSourceId(coursePageId);
+        // V309: product-page coupons are now institute-scoped too so they appear
+        // in the admin coupon list and the per-institute uniqueness constraint applies.
+        couponCode.setInstituteId(page.getInstituteId());
         couponCode.setTag(page.getName());
         couponCode.setRedeemStartDate(request.getRedeemStartDate() != null
-                ? java.sql.Date.valueOf(request.getRedeemStartDate().toLocalDate()) : null);
+                ? java.sql.Date.valueOf(request.getRedeemStartDate().toLocalDate())
+                : null);
         couponCode.setRedeemEndDate(request.getRedeemEndDate() != null
-                ? java.sql.Date.valueOf(request.getRedeemEndDate().toLocalDate()) : null);
-        if (request.getMaxUses() != null) couponCode.setUsageLimit(request.getMaxUses().longValue());
+                ? java.sql.Date.valueOf(request.getRedeemEndDate().toLocalDate())
+                : null);
+        if (request.getMaxUses() != null)
+            couponCode.setUsageLimit(request.getMaxUses().longValue());
         couponCode = couponCodeRepository.save(couponCode);
 
         AppliedCouponDiscount discount = new AppliedCouponDiscount();
@@ -306,53 +323,30 @@ public class ProductPageService {
         return "Coupon deleted";
     }
 
-    public ProductPageCouponValidateResponse validateCoupon(String coursePageCode, String couponCode, double totalAmount) {
+    public ProductPageCouponValidateResponse validateCoupon(String coursePageCode, String couponCode,
+            double totalAmount) {
         ProductPage page = coursePageRepository.findByCode(coursePageCode)
                 .orElseThrow(() -> new VacademyException("Course page not found"));
 
-        Optional<CouponCode> couponOpt = couponCodeRepository.findByCode(couponCode.toUpperCase().trim());
-        if (couponOpt.isEmpty()) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Invalid coupon code").build();
-        }
-
-        CouponCode cc = couponOpt.get();
-
-        if (!SOURCE_TYPE.equals(cc.getSourceType()) || !page.getId().equals(cc.getSourceId())) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon not applicable to this page").build();
-        }
-
-        if (!STATUS_ACTIVE.equals(cc.getStatus())) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon is not active").build();
-        }
-
-        Date now = new Date();
-        if (cc.getRedeemStartDate() != null && cc.getRedeemStartDate().after(now)) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon is not yet valid").build();
-        }
-        if (cc.getRedeemEndDate() != null && cc.getRedeemEndDate().before(now)) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Coupon has expired").build();
-        }
-
-        // Find the linked AppliedCouponDiscount
-        Optional<AppliedCouponDiscount> discountOpt = appliedCouponDiscountRepository
-                .findAppliedDiscountBySourceAndTag(page.getId(), SOURCE_TYPE, page.getName(),
-                        List.of(STATUS_ACTIVE), List.of(STATUS_ACTIVE));
-
-        if (discountOpt.isEmpty()) {
-            return ProductPageCouponValidateResponse.builder().valid(false).message("Discount not configured for this coupon").build();
-        }
-
-        AppliedCouponDiscount discount = discountOpt.get();
-        double discountValue = computeDiscount(discount, totalAmount);
+        // Delegate to the generic validator. PRODUCT_PAGE-scoped legacy coupons
+        // are matched via product_page_code; the validator does the discount
+        // computation using the shared CouponDiscountUtil for identical math.
+        CouponValidateRequestDTO req = CouponValidateRequestDTO.builder()
+                .couponCode(couponCode)
+                .instituteId(page.getInstituteId())
+                .productPageCode(coursePageCode)
+                .totalAmount(totalAmount)
+                .build();
+        CouponValidateResponseDTO resp = couponValidationService.validate(req);
 
         return ProductPageCouponValidateResponse.builder()
-                .couponCodeId(cc.getId())
-                .appliedCouponDiscountId(discount.getId())
-                .discountType(discount.getDiscountType())
-                .discountValue(discountValue)
-                .maxDiscountValue(discount.getMaxDiscountPoint())
-                .valid(true)
-                .message("Coupon applied successfully")
+                .couponCodeId(resp.getCouponCodeId())
+                .appliedCouponDiscountId(resp.getAppliedCouponDiscountId())
+                .discountType(resp.getDiscountType())
+                .discountValue(resp.getDiscountValue())
+                .maxDiscountValue(resp.getMaxDiscountValue())
+                .valid(resp.isValid())
+                .message(resp.getMessage())
                 .build();
     }
 
@@ -361,13 +355,15 @@ public class ProductPageService {
     // -------------------------------------------------------------------------
 
     private void saveMappings(ProductPage page, List<ProductPageInviteMappingRequest> requests) {
-        if (requests == null || requests.isEmpty()) return;
+        if (requests == null || requests.isEmpty())
+            return;
 
         for (ProductPageInviteMappingRequest req : requests) {
             PackageSessionLearnerInvitationToPaymentOption bridge = psInvitePoRepository
                     .findById(req.getPsInvitePaymentOptionId())
                     .orElseThrow(() -> new VacademyException(
-                            "PackageSession-Invite-PaymentOption mapping not found: " + req.getPsInvitePaymentOptionId()));
+                            "PackageSession-Invite-PaymentOption mapping not found: "
+                                    + req.getPsInvitePaymentOptionId()));
 
             ProductPageInviteMapping mapping = new ProductPageInviteMapping();
             mapping.setProductPage(page);
@@ -419,7 +415,8 @@ public class ProductPageService {
 
         // Populate GTM container ID from institute settings
         try {
-            Object gtmSetting = instituteSettingService.getSettingByInstituteIdAndKey(page.getInstituteId(), "GTM_SETTING");
+            Object gtmSetting = instituteSettingService.getSettingByInstituteIdAndKey(page.getInstituteId(),
+                    "GTM_SETTING");
             if (gtmSetting instanceof Map) {
                 Map<?, ?> gtmMap = (Map<?, ?>) gtmSetting;
                 if (Boolean.TRUE.equals(gtmMap.get("enabled"))
@@ -436,13 +433,16 @@ public class ProductPageService {
     }
 
     /**
-     * Aggregates custom fields from all active invite mappings, deduplicated by fieldId.
-     * Tracks which enrollInviteIds own each field so the frontend can filter dynamically.
+     * Aggregates custom fields from all active invite mappings, deduplicated by
+     * fieldId.
+     * Tracks which enrollInviteIds own each field so the frontend can filter
+     * dynamically.
      */
     List<ProductPageAggregatedFieldDTO> aggregateCustomFields(
             String instituteId, List<ProductPageInviteMapping> activeMappings) {
 
-        // fieldId → aggregated DTO (preserving insertion order = first invite's config wins)
+        // fieldId → aggregated DTO (preserving insertion order = first invite's config
+        // wins)
         Map<String, ProductPageAggregatedFieldDTO> deduped = new LinkedHashMap<>();
 
         for (ProductPageInviteMapping mapping : activeMappings) {
@@ -479,22 +479,24 @@ public class ProductPageService {
         r.setDisplayOrder(m.getDisplayOrder());
         r.setStatus(m.getStatus());
 
-        paymentPlanRepository.findById(m.getPaymentPlanId()).ifPresent(plan ->
-                r.setPaymentPlan(plan.mapToPaymentPlanDTO()));
+        paymentPlanRepository.findById(m.getPaymentPlanId())
+                .ifPresent(plan -> r.setPaymentPlan(plan.mapToPaymentPlanDTO()));
 
         if (m.getPsInvitePaymentOption().getPaymentOption() != null) {
             r.setPaymentOptionType(m.getPsInvitePaymentOption().getPaymentOption().getType());
         }
 
-        vacademy.io.common.institute.entity.session.PackageSession ps =
-                m.getPsInvitePaymentOption().getPackageSession();
+        vacademy.io.common.institute.entity.session.PackageSession ps = m.getPsInvitePaymentOption()
+                .getPackageSession();
         if (ps != null) {
             if (ps.getPackageEntity() != null) {
                 r.setPackageId(ps.getPackageEntity().getId());
                 r.setPackageName(ps.getPackageEntity().getPackageName());
             }
-            if (ps.getLevel() != null) r.setLevelName(ps.getLevel().getLevelName());
-            if (ps.getSession() != null) r.setSessionName(ps.getSession().getSessionName());
+            if (ps.getLevel() != null)
+                r.setLevelName(ps.getLevel().getLevelName());
+            if (ps.getSession() != null)
+                r.setSessionName(ps.getSession().getSessionName());
         }
 
         return r;
@@ -506,14 +508,16 @@ public class ProductPageService {
         String code;
         do {
             StringBuilder sb = new StringBuilder(6);
-            for (int i = 0; i < 6; i++) sb.append(chars.charAt(random.nextInt(chars.length())));
+            for (int i = 0; i < 6; i++)
+                sb.append(chars.charAt(random.nextInt(chars.length())));
             code = sb.toString();
         } while (coursePageRepository.existsByCode(code));
         return code;
     }
 
     private String buildLearnerUrl(String code) {
-        // Resolved at runtime; placeholder value — ShortUrlManagementService fetches institute base URL
+        // Resolved at runtime; placeholder value — ShortUrlManagementService fetches
+        // institute base URL
         return "/product-pages/" + code;
     }
 

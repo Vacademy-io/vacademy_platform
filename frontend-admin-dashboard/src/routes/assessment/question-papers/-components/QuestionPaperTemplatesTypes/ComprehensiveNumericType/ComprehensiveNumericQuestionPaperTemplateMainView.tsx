@@ -95,18 +95,6 @@ export const ComprehensiveNumericQuestionPaperTemplateMainView = ({
                                 </PopoverClose>
                             </div>
                             <SelectField
-                                label="Question Type"
-                                name={`questions.${currentQuestionIndex}.questionType`}
-                                options={QUESTION_TYPES.map((option, index) => ({
-                                    value: option.code,
-                                    label: option.display,
-                                    _id: index,
-                                }))}
-                                control={form.control}
-                                className="!w-full"
-                                required
-                            />
-                            <SelectField
                                 label="Numerical Type"
                                 name={`questions.${currentQuestionIndex}.numericType`}
                                 options={NUMERIC_TYPES.map((option, index) => ({

@@ -194,10 +194,9 @@ public class EmailTrackingService {
         return statusBuilder.build();
     }
 
-    private String toIsoWithZone(java.time.LocalDateTime localDateTime) {
-        if (localDateTime == null) return null;
-        ZonedDateTime zdt = ZonedDateTime.of(localDateTime, ZoneId.systemDefault());
-        return zdt.toOffsetDateTime().toString();
+    private String toIsoWithZone(java.time.Instant instant) {
+        if (instant == null) return null;
+        return instant.atZone(ZoneId.systemDefault()).toOffsetDateTime().toString();
     }
     
     /**

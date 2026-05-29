@@ -11,7 +11,12 @@
  */
 import { useShallow } from 'zustand/react/shallow';
 import { useVideoEditorStore } from './stores/video-editor-store';
-import { activePhraseAt, captionContainerCss, CAPTION_INNER_CSS } from './utils/caption-rendering';
+import {
+    activePhraseAt,
+    captionContainerCss,
+    captionInnerCss,
+    karaokeWordSpans,
+} from './utils/caption-rendering';
 
 interface CaptionOverlayProps {
     canvasW: number;
@@ -53,9 +58,39 @@ export function CaptionOverlay({ canvasW, canvasH }: CaptionOverlayProps) {
             ? { ...settings, position: override.position }
             : settings;
 
+    const innerStyle = captionInnerCss(effective, canvasW);
+
+    // Karaoke mode: emit one styled <span> per word with active / past /
+    // upcoming colors. The per-word comparison mirrors
+    // CaptionDisplay.tsx:73-89 and generate_video.py's per-frame karaoke
+    // loop EXACTLY, so all three surfaces agree on which word is current.
+    if (effective.style === 'karaoke' && phrase.words.length > 0) {
+        const spans = karaokeWordSpans(phrase, currentTime, effective);
+        return (
+            <div style={captionContainerCss(effective, canvasW, canvasH)}>
+                <div style={innerStyle}>
+                    {spans.map((s, i) => (
+                        <span
+                            key={i}
+                            style={{
+                                color: s.color,
+                                fontWeight: s.fontWeight,
+                                opacity: s.opacity,
+                                transition: 'color 0.12s ease-out, opacity 0.12s ease-out',
+                            }}
+                        >
+                            {s.text}
+                            {i < spans.length - 1 ? ' ' : ''}
+                        </span>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div style={captionContainerCss(effective, canvasW, canvasH)}>
-            <div style={CAPTION_INNER_CSS}>{phrase.text}</div>
+            <div style={innerStyle}>{phrase.text}</div>
         </div>
     );
 }

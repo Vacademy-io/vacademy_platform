@@ -12,6 +12,7 @@ import { Dispatch, SetStateAction, useState } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { AxiosError } from 'axios';
+import { Eye } from '@phosphor-icons/react';
 
 const AIPlanLecturePreview = ({
     task,
@@ -134,11 +135,21 @@ const AIPlanLecturePreview = ({
                 <MyButton
                     type="button"
                     scale="small"
-                    buttonType="secondary"
-                    className="border-none text-sm !text-blue-600 shadow-none hover:bg-transparent focus:bg-transparent focus:outline-none focus:ring-0 active:bg-transparent"
+                    buttonType="primary"
+                    className="inline-flex items-center gap-1.5 rounded-lg !bg-primary-500 px-3 py-1.5 text-xs font-medium !text-white shadow-sm hover:!bg-primary-600"
                     onClick={() => handlViewChatList(task.id)}
                 >
-                    {getChatListMutation.status === 'pending' ? <DashboardLoader /> : 'View'}
+                    {getChatListMutation.status === 'pending' ? (
+                        <>
+                            <div className="mr-1 size-3 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                            <span>Loading…</span>
+                        </>
+                    ) : (
+                        <>
+                            <Eye size={14} weight="bold" />
+                            View plan
+                        </>
+                    )}
                 </MyButton>
             )}
 

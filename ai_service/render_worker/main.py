@@ -44,6 +44,15 @@ jobs: Dict[str, dict] = {}
 worker = RenderWorker()
 transcribe_worker = TranscribeWorker()
 
+# Dev-mode static route — serves transcript files from local disk when AWS
+# creds are absent. Mounted lazily because the dir may not exist at boot.
+_LOCAL_TRANSCRIPT_DIR = os.environ.get("LOCAL_TRANSCRIPT_DIR", "/tmp/vacademy-transcripts")
+if not (os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY")):
+    from fastapi.staticfiles import StaticFiles
+    os.makedirs(_LOCAL_TRANSCRIPT_DIR, exist_ok=True)
+    app.mount("/transcripts", StaticFiles(directory=_LOCAL_TRANSCRIPT_DIR), name="transcripts")
+    logger.info(f"Dev mode: serving transcripts from {_LOCAL_TRANSCRIPT_DIR} at /transcripts")
+
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -78,6 +87,26 @@ class RenderJobRequest(BaseModel):
     caption_bg_color: Optional[str] = Field(default=None, description="CSS hex color for caption background")
     caption_bg_opacity: Optional[int] = Field(default=None, description="Caption background opacity 0-100")
     caption_font_size: Optional[int] = Field(default=None, description="Caption font size in px")
+    # Style-polish fields (additive, all optional). Render server falls back
+    # to pre-feature defaults when any field is omitted (phrase / system font /
+    # 400 weight / no stroke / yellow highlight).
+    caption_style: Optional[str] = Field(default=None, description="phrase or karaoke")
+    caption_font_family: Optional[str] = Field(
+        default=None,
+        description="system | inter | montserrat | noto-sans | fira-code",
+    )
+    caption_font_weight: Optional[int] = Field(
+        default=None, description="400, 500, 600, 700, 800, or 900"
+    )
+    caption_text_stroke_width: Optional[int] = Field(
+        default=None, description="Outline width in px at 1920w canvas; 0 = no stroke"
+    )
+    caption_text_stroke_color: Optional[str] = Field(
+        default=None, description="Hex color for the text stroke"
+    )
+    caption_highlight_color: Optional[str] = Field(
+        default=None, description="Hex color for the active word in karaoke style"
+    )
     source_video_url: Optional[str] = Field(default=None, description="(deprecated) Single source video URL — use source_video_urls")
     source_video_urls: Optional[List[str]] = Field(default=None, description="S3 URLs of indexed source videos for SOURCE_CLIP compositing")
 
@@ -141,6 +170,12 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
             caption_bg_color=request.caption_bg_color,
             caption_bg_opacity=request.caption_bg_opacity,
             caption_font_size=request.caption_font_size,
+            caption_style=request.caption_style,
+            caption_font_family=request.caption_font_family,
+            caption_font_weight=request.caption_font_weight,
+            caption_text_stroke_width=request.caption_text_stroke_width,
+            caption_text_stroke_color=request.caption_text_stroke_color,
+            caption_highlight_color=request.caption_highlight_color,
             source_video_urls=request.source_video_urls or ([request.source_video_url] if request.source_video_url else None),
         )
 
@@ -758,6 +793,170 @@ async def get_index_job_status(job_id: str, x_render_key: str = Header("")):
 
 
 # ---------------------------------------------------------------------------
+# PDF OCR Jobs — handwritten answer-sheet layout extraction for ai_service
+# copy-check. Produces a LayoutMap (line_id → box + text + conf + region list)
+# that the LLM grader references when assigning verdicts to lines.
+# ---------------------------------------------------------------------------
+
+pdf_ocr_jobs: Dict[str, dict] = {}
+
+
+class PdfOcrJobRequest(BaseModel):
+    pdf_url: str = Field(..., description="Public URL of the PDF to OCR")
+    job_id: Optional[str] = Field(default=None, description="Optional job ID (generated if not provided)")
+    dpi: int = Field(default=200, ge=72, le=400, description="Rasterization DPI for OCR")
+    callback_url: Optional[str] = Field(None, description="Webhook URL on completion")
+
+
+class PdfOcrJobResponse(BaseModel):
+    job_id: str
+    status: str
+    message: str = ""
+
+
+class PdfOcrJobStatus(BaseModel):
+    job_id: str
+    pdf_url: str
+    status: str  # queued, running, completed, failed
+    progress: Optional[float] = None
+    layout_map: Optional[dict] = None
+    error: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+async def _run_pdf_ocr_job(job_id: str, request: PdfOcrJobRequest):
+    pdf_ocr_jobs[job_id]["status"] = "running"
+    pdf_ocr_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def progress_cb(pct: float):
+        pdf_ocr_jobs[job_id]["progress"] = pct
+        pdf_ocr_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        from pdf_ocr import run_pdf_ocr_pipeline
+
+        loop = asyncio.get_event_loop()
+        layout_map = await loop.run_in_executor(
+            None,
+            run_pdf_ocr_pipeline,
+            request.pdf_url,
+            progress_cb,
+            request.dpi,
+        )
+
+        pdf_ocr_jobs[job_id]["status"] = "completed"
+        pdf_ocr_jobs[job_id]["progress"] = 100
+        pdf_ocr_jobs[job_id]["layout_map"] = layout_map
+        pdf_ocr_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.info(f"PDF-OCR job {job_id} completed in {layout_map.get('duration_ms')}ms")
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "job_id": job_id,
+                "status": "completed",
+                "layout_map": layout_map,
+            })
+
+    except Exception as e:
+        error_msg = str(e)
+        pdf_ocr_jobs[job_id]["status"] = "failed"
+        pdf_ocr_jobs[job_id]["error"] = error_msg
+        pdf_ocr_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        logger.exception(f"PDF-OCR job {job_id} failed")
+
+        if request.callback_url:
+            await _send_callback(request.callback_url, {
+                "job_id": job_id,
+                "status": "failed",
+                "error": error_msg,
+            })
+
+
+@app.post("/pdf-ocr-jobs", response_model=PdfOcrJobResponse)
+async def submit_pdf_ocr_job(
+    request: PdfOcrJobRequest,
+    x_render_key: str = Header(""),
+):
+    _verify_key(x_render_key)
+
+    active_render = sum(1 for j in jobs.values() if j["status"] in ("queued", "running"))
+    active_index = sum(1 for j in index_jobs.values() if j["status"] in ("queued", "running"))
+    active_pdf = sum(1 for j in pdf_ocr_jobs.values() if j["status"] in ("queued", "running"))
+    active_total = active_render + active_index + active_pdf
+    if active_total >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Server busy ({active_total}/{MAX_CONCURRENT_JOBS} jobs running)",
+        )
+
+    job_id = request.job_id or str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    pdf_ocr_jobs[job_id] = {
+        "job_id": job_id,
+        "pdf_url": request.pdf_url,
+        "status": "queued",
+        "progress": 0,
+        "layout_map": None,
+        "error": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    asyncio.create_task(_run_pdf_ocr_job(job_id, request))
+
+    return PdfOcrJobResponse(job_id=job_id, status="queued", message="PDF OCR job submitted")
+
+
+@app.get("/pdf-ocr-jobs/{job_id}", response_model=PdfOcrJobStatus)
+async def get_pdf_ocr_job_status(job_id: str, x_render_key: str = Header("")):
+    _verify_key(x_render_key)
+
+    if job_id not in pdf_ocr_jobs:
+        raise HTTPException(status_code=404, detail="PDF OCR job not found")
+
+    j = pdf_ocr_jobs[job_id]
+    return PdfOcrJobStatus(**j)
+
+
+# Eviction sweeper: layout_map blobs can be MBs each and we never delete
+# them, so the dict grows unbounded across uptime. Drop terminal-state
+# entries older than PDF_OCR_JOB_TTL_SECONDS at a low cadence.
+PDF_OCR_JOB_TTL_SECONDS = int(os.environ.get("PDF_OCR_JOB_TTL_SECONDS", str(24 * 3600)))
+
+
+async def _pdf_ocr_jobs_sweeper():
+    while True:
+        try:
+            await asyncio.sleep(600)  # every 10 minutes
+            now = datetime.now(timezone.utc)
+            stale: list[str] = []
+            for jid, j in pdf_ocr_jobs.items():
+                if j["status"] not in ("completed", "failed"):
+                    continue
+                try:
+                    updated = datetime.fromisoformat(j["updated_at"])
+                except Exception:
+                    continue
+                if (now - updated).total_seconds() > PDF_OCR_JOB_TTL_SECONDS:
+                    stale.append(jid)
+            for jid in stale:
+                pdf_ocr_jobs.pop(jid, None)
+            if stale:
+                logger.info("pdf-ocr-jobs sweeper evicted %d stale entries", len(stale))
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception("pdf-ocr-jobs sweeper failed")
+
+
+@app.on_event("startup")
+async def _start_pdf_ocr_sweeper():
+    asyncio.create_task(_pdf_ocr_jobs_sweeper())
+
+
+# ---------------------------------------------------------------------------
 # Concat Audio — merge Lyria-generated background-music segments
 # ---------------------------------------------------------------------------
 
@@ -868,9 +1067,9 @@ async def concat_audio(request: ConcatAudioRequest, x_render_key: str = Header("
 
         s3 = boto3.client(
             "s3",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+            aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+            aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+            region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1"),
         )
         try:
             s3.put_object(
@@ -1078,6 +1277,10 @@ class TranscribeJobRequest(BaseModel):
     model_size: str = Field(default="base", description="Whisper model: 'base', 'small', or 'medium'")
     word_timestamps: bool = Field(default=True, description="Include word-level timestamps")
     output_formats: Optional[list] = Field(default=None, description="List of: 'json', 'srt', 'vtt', 'txt'. Default: all")
+    task: str = Field(
+        default="transcribe",
+        description="'transcribe' (source language), 'translate' (English), or 'both' (run loaded model twice)",
+    )
     callback_url: Optional[str] = Field(None, description="URL to POST on completion")
 
 
@@ -1091,7 +1294,9 @@ class TranscribeJobStatus(BaseModel):
     job_id: str
     status: str  # queued, running, completed, failed
     progress: Optional[float] = None
-    output_urls: Optional[dict] = None
+    output_urls: Optional[dict] = None              # legacy: matches task
+    output_urls_source: Optional[dict] = None        # populated when task in ('transcribe', 'both')
+    output_urls_english: Optional[dict] = None       # populated when task in ('translate', 'both')
     duration_seconds: Optional[float] = None
     detected_language: Optional[str] = None
     language_probability: Optional[float] = None
@@ -1108,13 +1313,15 @@ async def _run_transcribe_job(job_id: str, request: TranscribeJobRequest):
     transcribe_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     try:
+        effective_model = os.getenv("WHISPER_MODEL_OVERRIDE") or request.model_size
         result = await transcribe_worker.transcribe(
             job_id=job_id,
             source_url=request.source_url,
             language=request.language,
-            model_size=request.model_size,
+            model_size=effective_model,
             word_timestamps=request.word_timestamps,
             output_formats=request.output_formats,
+            task=request.task,
             on_progress=lambda p: _update_transcribe_progress(job_id, p),
         )
 
@@ -1124,6 +1331,8 @@ async def _run_transcribe_job(job_id: str, request: TranscribeJobRequest):
             k: v for k, v in result.items()
             if k.endswith("_url")
         }
+        transcribe_jobs[job_id]["output_urls_source"] = result.get("output_urls_source")
+        transcribe_jobs[job_id]["output_urls_english"] = result.get("output_urls_english")
         transcribe_jobs[job_id]["duration_seconds"] = result.get("duration_seconds")
         transcribe_jobs[job_id]["detected_language"] = result.get("detected_language")
         transcribe_jobs[job_id]["language_probability"] = result.get("language_probability")
@@ -1171,6 +1380,10 @@ async def submit_transcribe_job(
     if request.model_size not in ("base", "small", "medium"):
         raise HTTPException(status_code=400, detail="model_size must be 'base', 'small', or 'medium'")
 
+    # Validate task
+    if request.task not in ("transcribe", "translate", "both"):
+        raise HTTPException(status_code=400, detail="task must be 'transcribe', 'translate', or 'both'")
+
     # Shared capacity check: all job types compete for CPU/RAM
     active_render = sum(1 for j in jobs.values() if j["status"] in ("queued", "running"))
     active_index = sum(1 for j in index_jobs.values() if j["status"] in ("queued", "running"))
@@ -1190,6 +1403,8 @@ async def submit_transcribe_job(
         "status": "queued",
         "progress": 0,
         "output_urls": None,
+        "output_urls_source": None,
+        "output_urls_english": None,
         "duration_seconds": None,
         "detected_language": None,
         "language_probability": None,

@@ -231,76 +231,109 @@ export const PdfUploadSection = ({
     };
 
     if (uploadedTemplate) {
+        const fileExtension = uploadedTemplate.originalFileName.split('.').pop()?.toUpperCase() || uploadedTemplate.format.toUpperCase();
+        const uploadedAt = new Date(uploadedTemplate.createdAt);
+        const uploadedDateLabel = uploadedAt.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+        });
+        const uploadedTimeLabel = uploadedAt.toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+
         return (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-                <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                        <div className="rounded-full bg-green-100 p-2">
-                            <Check className="size-5 text-green-600" />
-                        </div>
-                        <div className="flex-1">
-                            <h3 className="text-sm font-medium text-green-800">
-                                Template Uploaded Successfully
-                            </h3>
-                            <div className="mt-1 space-y-1">
-                                <p className="text-xs text-green-700">
-                                    <strong>File:</strong> {uploadedTemplate.originalFileName}
-                                </p>
-                                <p className="text-xs text-green-700">
-                                    <strong>Type:</strong>{' '}
-                                    {uploadedTemplate.sourceType === 'pdf'
-                                        ? 'PDF (converted to image)'
-                                        : 'Image'}
-                                </p>
-                                <p className="text-xs text-green-700">
-                                    <strong>Dimensions:</strong> {uploadedTemplate.width} ×{' '}
-                                    {uploadedTemplate.height} px
-                                </p>
-                                <p className="text-xs text-green-700">
-                                    <strong>Format:</strong> {uploadedTemplate.format.toUpperCase()}
-                                </p>
-                                <p className="text-xs text-green-700">
-                                    <strong>Uploaded:</strong>{' '}
-                                    {new Date(uploadedTemplate.createdAt).toLocaleString()}
-                                </p>
+            <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+                {/* Header row: status + actions, wraps cleanly when narrow */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50/50 px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 ring-1 ring-emerald-100">
+                            <Check className="size-4 text-emerald-600" weight="bold" />
+                        </span>
+                        <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-neutral-800">
+                                Template ready
+                            </div>
+                            <div className="truncate text-[11px] text-neutral-500">
+                                {uploadedTemplate.originalFileName}
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <MyButton buttonType="secondary" scale="small" className="text-xs">
-                            <Eye className="mr-1 size-3" />
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                            type="button"
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 bg-white px-2.5 text-[11px] font-medium text-neutral-700 transition hover:bg-neutral-50"
+                        >
+                            <Eye className="size-3" />
                             Preview
-                        </MyButton>
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
+                        </button>
+                        <button
+                            type="button"
                             onClick={removeTemplate}
                             disabled={isRemoving}
-                            className="text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 bg-white px-2.5 text-[11px] font-medium text-neutral-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {isRemoving ? (
                                 <>
-                                    <div className="mr-1 size-3 animate-spin rounded-full border border-red-300 border-t-red-600" />
-                                    Removing...
+                                    <div className="size-3 animate-spin rounded-full border border-neutral-300 border-t-neutral-600" />
+                                    Removing
                                 </>
                             ) : (
                                 <>
-                                    <X className="mr-1 size-3" />
+                                    <X className="size-3" />
                                     Remove
                                 </>
                             )}
-                        </MyButton>
+                        </button>
                     </div>
                 </div>
 
-                {/* Image Preview */}
-                <div className="mt-4 rounded-lg border border-green-200 bg-white p-2">
-                    <img
-                        src={uploadedTemplate.imageDataUrl}
-                        alt="Certificate template preview"
-                        className="h-auto max-h-64 w-full rounded object-contain"
-                    />
+                {/* Preview image */}
+                <div className="border-b border-neutral-100 bg-neutral-50 p-3">
+                    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-[linear-gradient(45deg,#f3f4f6_25%,transparent_25%,transparent_75%,#f3f4f6_75%),linear-gradient(45deg,#f3f4f6_25%,transparent_25%,transparent_75%,#f3f4f6_75%)] bg-[length:16px_16px] bg-[position:0_0,8px_8px]">
+                            <img
+                                src={uploadedTemplate.imageDataUrl}
+                                alt="Certificate template preview"
+                                className="h-auto max-h-72 w-full object-contain"
+                            />
+                    </div>
                 </div>
+
+                {/* Compact metadata strip */}
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3 text-[11px] sm:grid-cols-4">
+                    <div className="min-w-0">
+                        <dt className="font-medium uppercase tracking-wide text-neutral-400">
+                            Type
+                        </dt>
+                        <dd className="mt-0.5 truncate text-neutral-700">
+                            {uploadedTemplate.sourceType === 'pdf' ? 'PDF → Image' : 'Image'}
+                        </dd>
+                    </div>
+                    <div className="min-w-0">
+                        <dt className="font-medium uppercase tracking-wide text-neutral-400">
+                            Format
+                        </dt>
+                        <dd className="mt-0.5 truncate text-neutral-700">{fileExtension}</dd>
+                    </div>
+                    <div className="min-w-0">
+                        <dt className="font-medium uppercase tracking-wide text-neutral-400">
+                            Dimensions
+                        </dt>
+                        <dd className="mt-0.5 truncate text-neutral-700">
+                            {uploadedTemplate.width} × {uploadedTemplate.height}
+                        </dd>
+                    </div>
+                    <div className="min-w-0">
+                        <dt className="font-medium uppercase tracking-wide text-neutral-400">
+                            Uploaded
+                        </dt>
+                        <dd className="mt-0.5 truncate text-neutral-700">
+                            {uploadedDateLabel}
+                            <span className="text-neutral-400"> · {uploadedTimeLabel}</span>
+                        </dd>
+                    </div>
+                </dl>
             </div>
         );
     }

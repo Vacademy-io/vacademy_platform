@@ -31,10 +31,11 @@ class ChatLLMClient:
         max_tokens: int = 1500,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Call LLM with tool support, trying providers in priority order.
-        
+
         Args:
             messages: List of message dicts with role and content
             tools: Optional list of tool definitions
@@ -42,16 +43,27 @@ class ChatLLMClient:
             max_tokens: Maximum tokens to generate
             institute_id: Optional institute ID for key resolution
             user_id: Optional user ID for key resolution
-            
+            model: Optional explicit model override — when supplied, takes
+                priority over the resolver's choice (used by copy-check to
+                escalate flagged questions to a stronger model).
+
         Returns:
             Response dict with content, tool_calls, finish_reason, etc.
         """
         # Resolve all keys at once
-        openrouter_key, gemini_key, model = self.api_key_resolver.resolve_keys(
+        openrouter_key, gemini_key, resolved_model = self.api_key_resolver.resolve_keys(
             institute_id=institute_id or "default",
             user_id=user_id
         )
-        
+        # Caller override wins over the resolver's pick.
+        model = model or resolved_model
+
+        # Track per-provider failure reasons so the final exception surfaces
+        # actionable detail (e.g. "Gemini: 403 PERMISSION_DENIED") instead of
+        # the misleading "no API keys available" — which was wrong whenever
+        # keys WERE present but providers rejected them.
+        failures: List[str] = []
+
         # Try OpenRouter first (primary provider)
         if openrouter_key:
             try:
@@ -59,7 +71,10 @@ class ChatLLMClient:
                 return await self._call_openrouter(messages, tools, temperature, max_tokens, openrouter_key, model)
             except Exception as e:
                 logger.warning(f"OpenRouter failed: {e}")
-        
+                failures.append(f"OpenRouter: {e}")
+        else:
+            failures.append("OpenRouter: no key configured")
+
         # Try Gemini as fallback
         if gemini_key:
             try:
@@ -67,8 +82,11 @@ class ChatLLMClient:
                 return await self._call_gemini(messages, tools, temperature, max_tokens, gemini_key)
             except Exception as e:
                 logger.error(f"Gemini failed: {e}")
-        
-        raise Exception("All LLM providers failed - no API keys available")
+                failures.append(f"Gemini: {e}")
+        else:
+            failures.append("Gemini: no key configured")
+
+        raise Exception("All LLM providers failed - " + "; ".join(failures))
     
     def _convert_to_multimodal_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert messages with attachments to OpenAI multimodal format."""
@@ -95,6 +113,11 @@ class ChatLLMClient:
                 converted.append(clean_msg)
         return converted
 
+    # Gemini model used for fallback completions. Kept in sync with the model
+    # transcript_notes uses directly — google retired gemini-1.5-flash on
+    # v1beta and now returns 404 for it.
+    _GEMINI_MODEL = "gemini-2.5-flash"
+
     async def _call_gemini(
         self,
         messages: List[Dict[str, Any]],
@@ -104,8 +127,11 @@ class ChatLLMClient:
         api_key: str,
     ) -> Dict[str, Any]:
         """Call Gemini API (converted format)."""
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-        
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self._GEMINI_MODEL}:generateContent?key={api_key}"
+        )
+
         # Convert messages to Gemini format
         gemini_contents = []
         for msg in messages:
@@ -114,7 +140,7 @@ class ChatLLMClient:
                 "role": role,
                 "parts": [{"text": msg.get("content", "")}]
             })
-        
+
         payload = {
             "contents": gemini_contents,
             "generationConfig": {
@@ -122,24 +148,24 @@ class ChatLLMClient:
                 "maxOutputTokens": max_tokens,
             }
         }
-        
+
         # Note: Gemini tool calling has different format - simplified for now
         # Full tool support would need format conversion
-        
+
         response = await self.http_client.post(url, json=payload)
         response.raise_for_status()
-        
+
         data = response.json()
         candidate = data["candidates"][0]
         content = candidate["content"]["parts"][0]["text"]
-        
+
         return {
             "content": content,
             "tool_calls": None,  # Gemini tool format needs conversion
             "finish_reason": candidate.get("finishReason"),
             "provider": "gemini",
             "usage": data.get("usageMetadata"),
-            "model": "gemini-1.5-flash"
+            "model": self._GEMINI_MODEL,
         }
     
     async def _call_openrouter(

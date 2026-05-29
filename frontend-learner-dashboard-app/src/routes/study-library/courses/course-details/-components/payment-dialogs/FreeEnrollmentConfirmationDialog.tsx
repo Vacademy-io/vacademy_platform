@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Gift } from "lucide-react";
+import { SpinnerGap, Gift } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
   fetchEnrollmentDetails,
@@ -272,7 +272,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading enrollment options...</p>
             </div>
           </div>
@@ -440,7 +440,7 @@ export const FreeEnrollmentConfirmationDialog: React.FC<
                 >
                   {processingEnrollment ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <SpinnerGap className="w-4 h-4 animate-spin" />
                       Enrolling...
                     </>
                   ) : (

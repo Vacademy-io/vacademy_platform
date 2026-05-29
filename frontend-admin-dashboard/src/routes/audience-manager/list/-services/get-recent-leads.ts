@@ -31,6 +31,18 @@ export interface RecentLeadDetail {
         string,
         { fieldName?: string; field_name?: string; fieldType?: string; field_type?: string }
     >;
+    // ── TAT / Follow-up SLA (deadlines + badge; visual only) ──
+    tat_due_at?: string | null;
+    /** First time the assigned counselor acted — drives "Responded in N" in the Reach-out-by cell. */
+    first_response_at?: string | null;
+    /** Follow-up deadline = last counselor action + followUpSlaHours (null until acted). */
+    follow_up_due_at?: string | null;
+    tat_reminder_stage?: string | null;
+    tat_overdue?: boolean | null;
+    tat_due_soon?: boolean | null;
+    follow_up_overdue?: boolean | null;
+    /** Custom pipeline status (enquiry_status), e.g. NEW / INTERESTED. */
+    lead_status?: string | null;
 }
 
 export interface RecentLeadsResponse {
@@ -55,9 +67,22 @@ export interface RecentLeadsRequest {
     search_query?: string;
     // Lead temperature bucket — 'HOT' | 'WARM' | 'COLD'. Omitted = all tiers.
     lead_tier?: string;
+    // Custom pipeline status filter — lead_status.id. Omitted = all statuses.
+    lead_status_id?: string;
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /** Filter by SLA stage (the badge shown in the table). 'ANY_OVERDUE' = TAT_OVERDUE OR FOLLOW_UP_OVERDUE. */
+    sla_filter?:
+        | 'TAT_BEFORE'
+        | 'TAT_OVERDUE'
+        | 'FOLLOW_UP_DUE'
+        | 'FOLLOW_UP_OVERDUE'
+        | 'ANY_OVERDUE';
+    /** Filter leads by the assigned counsellor's userId. Matches against
+     *  linked_users (ENQUIRY source) first, falls back to user_lead_profile.
+     *  Omitted = all counsellors (and unassigned leads). */
+    assigned_counselor_id?: string;
     page: number;
     size: number;
 }

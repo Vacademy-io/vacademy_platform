@@ -5,7 +5,7 @@ import {
   type InstituteBranding,
 } from "@/components/common/institute-branding";
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
-import { Clock, Lock, XCircle } from "lucide-react";
+import { Clock, Lock, XCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 const AssessmentClosedExpiredComponent = ({
@@ -135,7 +135,7 @@ const AssessmentClosedExpiredComponent = ({
 
             {/* Assessment name */}
             <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
-              <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider mb-1">
+              <p className="text-caption font-medium text-slate-500 uppercase tracking-wider mb-1">
                 Assessment
               </p>
               <p className="text-sm font-medium text-slate-900 truncate">

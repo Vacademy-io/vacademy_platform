@@ -18,7 +18,7 @@ import vacademy.io.notification_service.features.combot.repository.EngagementTri
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
 import vacademy.io.notification_service.features.notification_log.repository.NotificationLogRepository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -228,7 +228,7 @@ public class EngagementTriggerService {
             triggerLog.setSourceId(request.getSourceId());
             triggerLog.setSource(config.getId());  // Store config ID in source field
             triggerLog.setBody(createTriggerLogBody(config, totalSeconds));
-            triggerLog.setNotificationDate(LocalDateTime.now());
+            triggerLog.setNotificationDate(Instant.now());
 
             notificationLogRepository.save(triggerLog);
             

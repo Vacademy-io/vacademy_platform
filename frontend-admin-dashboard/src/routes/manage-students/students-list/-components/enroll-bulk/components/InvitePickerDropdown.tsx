@@ -26,7 +26,11 @@ export const InvitePickerDropdown = ({
         enabled: !!instituteId && !!packageSessionId,
     });
 
-    const invites = data?.content ?? [];
+    const invites = (data?.content ?? []).filter((invite) => {
+        if (!invite.id) return false;
+        const tag = (invite.tag ?? '').trim().toUpperCase();
+        return tag !== 'SUB_ORG' && !tag.startsWith('SUBORG');
+    });
 
     if (isLoading) {
         return (
@@ -51,7 +55,7 @@ export const InvitePickerDropdown = ({
             <SelectTrigger>
                 <SelectValue placeholder="Auto (default invite)" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-popover-above-modal">
                 <SelectItem value="__auto__">
                     <span className="text-neutral-500 italic">Auto-resolve default invite</span>
                 </SelectItem>

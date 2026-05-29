@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.institute_learner.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDTO;
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.notification.LearnerEnrollmentNotificationService;
@@ -28,6 +29,10 @@ public class InstituteStudentController {
 
     // Add User to Institute
     @PostMapping("/add-institute_learner")
+    @Auditable(
+            entityType = "LEARNER",
+            action = "ENROLL",
+            descriptionExpr = "'enrolled learner ' + (#instituteStudentDTO?.userDetails?.fullName ?: #instituteStudentDTO?.userDetails?.email ?: '')")
     public ResponseEntity<String> addStudentToInstitute(@RequestAttribute("user") CustomUserDetails user,
             @RequestParam(value = "notify", required = false, defaultValue = "true") boolean notify,
             @RequestBody InstituteStudentDTO instituteStudentDTO) {
@@ -42,6 +47,10 @@ public class InstituteStudentController {
     }
 
     @PostMapping("/learner/enroll")
+    @Auditable(
+            entityType = "LEARNER",
+            action = "ENROLL",
+            descriptionExpr = "'enrolled learner ' + (#request?.user?.fullName ?: #request?.user?.email ?: '')")
     public ResponseEntity<LearnerEnrollResponseDTO> adminEnrollLearner(
             @RequestAttribute("user") CustomUserDetails admin,
             @RequestBody LearnerEnrollRequestDTO request) {

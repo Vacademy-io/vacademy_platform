@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FileUploader } from "./file-uploader";
+import { FileUploader, parseAllowedFileTypes } from "./file-uploader";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SUBMIT_ASSIGNMENT_SLIDE_ANSWERS, GET_ASSIGNMENT_ACTIVITY_LOGS } from "@/constants/urls";
@@ -22,6 +22,31 @@ import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import {
+  FilePdf,
+  FileDoc,
+  FileXls,
+  FileImage,
+  FileVideo,
+  FileAudio,
+  File as FileGeneric,
+  Archive as ArchiveIcon,
+  DownloadSimple,
+  ArrowSquareOut,
+  Eye,
+  Clock,
+  Hourglass,
+  WarningCircle,
+} from "@phosphor-icons/react";
+import SimplePDFViewer from "@/components/common/simple-pdf-viewer";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useServerTime, getServerTime } from "@/hooks/use-server-time";
+import { format, parseISO } from "date-fns";
 
 /** Returns an SVG icon string based on file extension / MIME type */
 const getFileIconSvg = (fileName: string, mimeType: string): string => {
@@ -30,38 +55,38 @@ const getFileIconSvg = (fileName: string, mimeType: string): string => {
 
   // PDF
   if (type.includes("pdf") || name.endsWith(".pdf")) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l-2 4h4l-2 4"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l-2 4h4l-2 4"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Images
   if (type.includes("image") || /\.(jpg|jpeg|png|gif|svg|webp|bmp)$/i.test(name)) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Word docs
   if (/\.(doc|docx)$/i.test(name) || type.includes("word")) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Spreadsheets
   if (/\.(xls|xlsx|csv)$/i.test(name) || type.includes("sheet") || type.includes("excel")) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="12" width="8" height="6" rx="1"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><rect x="8" y="12" width="8" height="6" rx="1"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Video
   if (type.includes("video") || /\.(mp4|mov|avi|webm|mkv)$/i.test(name)) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Audio
   if (type.includes("audio") || /\.(mp3|wav|ogg|aac|flac)$/i.test(name)) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Archive
   if (/\.(zip|rar|7z|tar|gz)$/i.test(name)) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>`; // design-lint-ignore: inline SVG icon string literal
   }
   // Generic file
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`; // design-lint-ignore: inline SVG icon string literal
 };
 
 /** Download arrow icon */
-const downloadIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+const downloadIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`; // design-lint-ignore: inline SVG icon string literal
 
 /** Get human-readable file size label from extension */
 const getFileTypeLabel = (fileName: string, mimeType: string): string => {
@@ -80,9 +105,418 @@ const getFileTypeLabel = (fileName: string, mimeType: string): string => {
   return "File";
 };
 
+/** Extract a usable filename from a presigned S3 URL (strips UUID prefix). */
+const fileNameFromUrl = (url: string, fallback: string): string => {
+  try {
+    const pathname = new URL(url).pathname;
+    const raw = decodeURIComponent(pathname.split("/").pop() || "");
+    if (!raw) return fallback;
+    return raw.replace(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[-_]/i,
+      ""
+    );
+  } catch {
+    return fallback;
+  }
+};
+
+const extFromName = (name: string): string =>
+  (name.split("?")[0]?.split("#")[0]?.split(".").pop() || "").toLowerCase();
+
+const isPdfExt = (ext: string) => ext === "pdf";
+
+const FileTypeIcon = ({
+  ext,
+  className,
+}: {
+  ext: string;
+  className?: string;
+}) => {
+  if (isPdfExt(ext)) return <FilePdf className={className} weight="duotone" />;
+  if (["doc", "docx"].includes(ext))
+    return <FileDoc className={className} weight="duotone" />;
+  if (["xls", "xlsx", "csv"].includes(ext))
+    return <FileXls className={className} weight="duotone" />;
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext))
+    return <FileImage className={className} weight="duotone" />;
+  if (["mp4", "mov", "avi", "webm", "mkv"].includes(ext))
+    return <FileVideo className={className} weight="duotone" />;
+  if (["mp3", "wav", "ogg", "aac", "flac"].includes(ext))
+    return <FileAudio className={className} weight="duotone" />;
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext))
+    return <ArchiveIcon className={className} weight="duotone" />;
+  return <FileGeneric className={className} weight="duotone" />;
+};
+
+const fileTypeColor = (ext: string): string => {
+  if (isPdfExt(ext)) return "text-red-600";
+  if (["doc", "docx"].includes(ext)) return "text-blue-600";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "text-emerald-600";
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext))
+    return "text-purple-600";
+  return "text-gray-500";
+};
+
+interface PreviewRequest {
+  url: string;
+  fileName: string;
+}
+
+/** Parse a backend datetime string (LocalDateTime → "YYYY-MM-DDTHH:mm:ss")
+ *  or legacy date-only ("YYYY-MM-DD"). Returns ms-epoch, or null on failure. */
+const parseAssignmentDate = (raw?: string | null): number | null => {
+  if (!raw) return null;
+  const normalized = raw.length <= 10 ? `${raw}T00:00:00` : raw;
+  const ms = Date.parse(normalized);
+  return Number.isFinite(ms) ? ms : null;
+};
+
+/** "Mar 25, 2026 at 11:59 PM" — used in the description meta block. */
+const formatDateTime = (raw?: string | null): string => {
+  if (!raw) return "N/A";
+  const normalized = raw.length <= 10 ? `${raw}T00:00:00` : raw;
+  try {
+    return format(parseISO(normalized), "MMM d, yyyy 'at' h:mm a");
+  } catch {
+    return raw;
+  }
+};
+
+/** Countdown formatter: "2d 4h 12m" (drops days/hours when zero). */
+const formatCountdown = (ms: number): string => {
+  const total = Math.max(0, ms);
+  const day = 86_400_000;
+  const hour = 3_600_000;
+  const minute = 60_000;
+  if (total >= day) {
+    const d = Math.floor(total / day);
+    const h = Math.floor((total % day) / hour);
+    return `${d}d ${h}h`;
+  }
+  if (total >= hour) {
+    const h = Math.floor(total / hour);
+    const m = Math.floor((total % hour) / minute);
+    return `${h}h ${m}m`;
+  }
+  if (total >= minute) {
+    const m = Math.floor(total / minute);
+    const s = Math.floor((total % minute) / 1000);
+    return `${m}m ${s}s`;
+  }
+  return `${Math.floor(total / 1000)}s`;
+};
+
+/** Live countdown / status badge for an assignment's submission window.
+ *  Renders nothing when both bounds are null (assignment is always open).
+ *  `now` is supplied by the parent so all consumers share one ticker. */
+const AssignmentWindowBadge = ({
+  liveDate,
+  endDate,
+  now,
+}: {
+  liveDate?: string | null;
+  endDate?: string | null;
+  now: number;
+}) => {
+  const liveTs = parseAssignmentDate(liveDate);
+  const endTs = parseAssignmentDate(endDate);
+  if (liveTs == null && endTs == null) return null;
+
+  // State 1: before live_date
+  if (liveTs != null && now < liveTs) {
+    const remaining = liveTs - now;
+    return (
+      <span className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
+        "bg-blue-50 text-blue-700"
+      )}>
+        <Clock className="size-3.5" weight="duotone" />
+        Opens in {formatCountdown(remaining)}
+      </span>
+    );
+  }
+
+  // State 2: within window
+  if (endTs != null && now <= endTs) {
+    const remaining = endTs - now;
+    const isCritical = remaining < 60 * 60 * 1000; // <1h
+    const isWarning = !isCritical && remaining < 24 * 60 * 60 * 1000; // <24h
+    return (
+      <span className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
+        isCritical && "bg-red-50 text-red-700 animate-pulse",
+        isWarning && "bg-amber-50 text-amber-700",
+        !isCritical && !isWarning && "bg-emerald-50 text-emerald-700"
+      )}>
+        <Hourglass className="size-3.5" weight="duotone" />
+        Closes in {formatCountdown(remaining)}
+      </span>
+    );
+  }
+
+  // State 3: past end_date (or only live_date present and past it — fall here)
+  if (endTs != null && now > endTs) {
+    return (
+      <span className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
+        "bg-amber-50 text-amber-700"
+      )}>
+        <WarningCircle className="size-3.5" weight="duotone" />
+        Closed {formatCountdown(now - endTs)} ago — late submissions accepted
+      </span>
+    );
+  }
+
+  // Only live_date is set and we're past it — assignment is "Open"
+  return (
+    <span className={cn(
+      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
+      "bg-emerald-50 text-emerald-700"
+    )}>
+      <Hourglass className="size-3.5" weight="duotone" />
+      Open
+    </span>
+  );
+};
+
+interface RichTextAttachment {
+  url: string;
+  fileName: string;
+  mimeType: string;
+}
+
+const FILE_EXT_PATTERN =
+  /\.(pdf|docx?|xlsx?|csv|pptx?|zip|rar|7z|tar|gz|jpg|jpeg|png|gif|svg|webp|mp4|mov|webm|mp3|wav|ogg)(\?|#|$)/i;
+
+/** Parse rich-text HTML for file-attachment anchors. Returns the cleaned HTML
+ *  (with attachments removed so we don't display them twice) and the extracted
+ *  attachment list. Runs at render time, not via DOM mutation — reliable even
+ *  when the legacy HtmlWithKatex enhancement fails. */
+const extractAndStripAttachments = (
+  html: string
+): { cleanHtml: string; attachments: RichTextAttachment[] } => {
+  if (!html || typeof DOMParser === "undefined") {
+    return { cleanHtml: html, attachments: [] };
+  }
+  try {
+    // DOMParser with "text/html" auto-wraps fragments in <html><body>,
+    // so we read from doc.body without wrapping the input ourselves.
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const anchors = doc.querySelectorAll('a[data-attachment="true"], a[href]');
+    const attachments: RichTextAttachment[] = [];
+    const seen = new Set<string>();
+
+    anchors.forEach((node) => {
+      const anchor = node as HTMLAnchorElement;
+      const href = anchor.getAttribute("href") || "";
+      if (!href || href === "#") return;
+      const name =
+        anchor.getAttribute("name") || anchor.textContent?.trim() || "";
+      const type = anchor.getAttribute("type") || "";
+      const isAttachment = anchor.getAttribute("data-attachment") === "true";
+      const isFileLink =
+        FILE_EXT_PATTERN.test(href) || (!!name && FILE_EXT_PATTERN.test(name));
+      if (!isAttachment && !isFileLink) return;
+
+      if (!seen.has(href)) {
+        seen.add(href);
+        attachments.push({
+          url: href,
+          fileName: name || href.split("/").pop() || "Attachment",
+          mimeType: type,
+        });
+      }
+      anchor.parentNode?.removeChild(anchor);
+    });
+
+    return {
+      cleanHtml: doc.body?.innerHTML || "",
+      attachments,
+    };
+  } catch {
+    return { cleanHtml: html, attachments: [] };
+  }
+};
+
+/** Inline card for a single file attachment. Opens PDFs in a modal preview;
+ *  other types fall back to "Open" / "Download" actions.
+ *  Accepts either a `fileId` (fetches signed URL) or `directUrl` (used as-is). */
+const AttachmentPreview = ({
+  fileId,
+  directUrl,
+  fileName: explicitFileName,
+  mimeType,
+  fallbackLabel,
+  onPreviewPdf,
+  tone = "neutral",
+}: {
+  fileId?: string;
+  directUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  fallbackLabel: string;
+  onPreviewPdf: (req: PreviewRequest) => void;
+  tone?: "neutral" | "graded";
+}) => {
+  const [url, setUrl] = useState<string | null>(directUrl || null);
+  const [loading, setLoading] = useState(!directUrl);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (directUrl) {
+      setUrl(directUrl);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+    if (!fileId) {
+      setError(true);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    getPublicUrl(fileId)
+      .then((resolved) => {
+        if (cancelled) return;
+        if (!resolved) {
+          setError(true);
+        } else {
+          setUrl(resolved);
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId, directUrl]);
+
+  const mimeExt = mimeType?.toLowerCase().includes("pdf") ? "pdf" : "";
+  const ext = mimeExt || (url ? extFromName(url) || extFromName(fallbackLabel) : extFromName(fallbackLabel));
+  const fileName = explicitFileName || (url ? fileNameFromUrl(url, fallbackLabel) : fallbackLabel);
+  const typeLabel = ext ? ext.toUpperCase() : "FILE";
+  const canPreview = !!url && isPdfExt(ext);
+
+  const triggerDownload = () => {
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const isGraded = tone === "graded";
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border bg-white transition-colors",
+        isGraded ? "border-emerald-200" : "border-gray-200"
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-start gap-3 px-3 py-3 sm:px-4",
+          isGraded ? "bg-emerald-50" : "bg-gray-50"
+        )}
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white shadow-sm sm:h-11 sm:w-11">
+          {loading ? (
+            <span className="size-5 animate-pulse rounded-sm bg-gray-200" />
+          ) : (
+            <FileTypeIcon
+              ext={ext}
+              className={cn("size-6", isGraded ? "text-emerald-600" : fileTypeColor(ext))}
+            />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "truncate text-sm font-medium sm:text-base",
+              isGraded ? "text-emerald-900" : "text-gray-900"
+            )}
+            title={fileName}
+          >
+            {loading ? "Loading attachment…" : error ? "Attachment unavailable" : fileName}
+          </p>
+          <p
+            className={cn(
+              "mt-0.5 text-xs",
+              isGraded ? "text-emerald-700" : "text-gray-500"
+            )}
+          >
+            {error ? "Could not load file" : `${typeLabel} document`}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-2 py-2 sm:px-3">
+        {canPreview && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!url}
+            onClick={() => url && onPreviewPdf({ url, fileName })}
+            className="h-9"
+          >
+            <Eye className="mr-1.5 size-4" />
+            Preview
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!url}
+          onClick={() =>
+            url && window.open(url, "_blank", "noopener,noreferrer")
+          }
+          className="h-9"
+        >
+          <ArrowSquareOut className="mr-1.5 size-4" />
+          Open
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!url}
+          onClick={triggerDownload}
+          className="h-9"
+        >
+          <DownloadSimple className="mr-1.5 size-4" />
+          Download
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 /** Renders HTML content with KaTeX math support and enhanced attachment rendering */
-const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: string }) => {
+const HtmlWithKatex = ({
+  html,
+  className = "",
+  onPreviewPdf,
+}: {
+  html: string;
+  className?: string;
+  onPreviewPdf?: (req: PreviewRequest) => void;
+}) => {
   const ref = useRef<HTMLDivElement>(null);
+  const previewRef = useRef(onPreviewPdf);
+  useEffect(() => {
+    previewRef.current = onPreviewPdf;
+  }, [onPreviewPdf]);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -112,37 +546,47 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
       anchor.setAttribute("target", "_blank");
       anchor.setAttribute("rel", "noopener noreferrer");
       anchor.removeAttribute("style");
-      anchor.style.cssText = `
-        display: flex; align-items: center; gap: 12px;
-        background: #f9fafb; padding: 14px 18px; border-radius: 10px;
-        border: 1px solid #e5e7eb; text-decoration: none; color: #111827;
-        transition: all 0.15s ease; cursor: pointer; max-width: 480px;
-        margin: 8px 0;
-      `;
-      anchor.innerHTML = `
-        <span style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; background: #f3f4f6; flex-shrink: 0;">
-          ${iconSvg}
-        </span>
-        <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">
-          <span style="font-size: 14px; font-weight: 500; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            ${fileName}
-          </span>
-          <span style="font-size: 12px; color: #6b7280;">
-            ${typeLabel} Document
-          </span>
-        </span>
-        <span style="flex-shrink: 0; display: flex; align-items: center; gap: 6px; background: #111827; color: #ffffff; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;">
-          ${downloadIconSvg.replace('stroke="#6b7280"', 'stroke="#ffffff"')}
-          Download
-        </span>
-      `;
+      // design-lint-ignore: DOM style injection for dynamic file card component (hex colors in cssText string)
+      const cardBg = "#f9fafb"; // design-lint-ignore: DOM style injection
+      const cardBorder = "#e5e7eb"; // design-lint-ignore: DOM style injection
+      const cardText = "#111827"; // design-lint-ignore: DOM style injection
+      const iconBg = "#f3f4f6"; // design-lint-ignore: DOM style injection
+      const mutedText = "#6b7280"; // design-lint-ignore: DOM style injection
+      const btnBg = "#111827"; // design-lint-ignore: DOM style injection
+      const btnText = "#ffffff"; // design-lint-ignore: DOM style injection
+      const hoverBg = "#f3f4f6"; // design-lint-ignore: DOM style injection
+      const hoverBorder = "#d1d5db"; // design-lint-ignore: DOM style injection
+      anchor.style.cssText = [
+        "display: flex; align-items: center; gap: 12px;",
+        `background: ${cardBg}; padding: 14px 18px; border-radius: 10px;`,
+        `border: 1px solid ${cardBorder}; text-decoration: none; color: ${cardText};`,
+        "transition: all 0.15s ease; cursor: pointer; max-width: 480px;",
+        "margin: 8px 0;",
+      ].join(" ");
+      anchor.innerHTML = [
+        `<span style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 8px; background: ${iconBg}; flex-shrink: 0;">`,
+        iconSvg,
+        "</span>",
+        `<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1;">`,
+        `<span style="font-size: 14px; font-weight: 500; color: ${cardText}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">`,
+        fileName,
+        "</span>",
+        `<span style="font-size: 12px; color: ${mutedText};">`,
+        `${typeLabel} Document`,
+        "</span>",
+        "</span>",
+        `<span style="flex-shrink: 0; display: flex; align-items: center; gap: 6px; background: ${btnBg}; color: ${btnText}; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;">`,
+        downloadIconSvg.replace('stroke="#6b7280"', `stroke="${btnText}"`), // design-lint-ignore: SVG string attribute replacement
+        "Download",
+        "</span>",
+      ].join("");
       anchor.addEventListener("mouseenter", () => {
-        anchor.style.background = "#f3f4f6";
-        anchor.style.borderColor = "#d1d5db";
+        anchor.style.background = hoverBg;
+        anchor.style.borderColor = hoverBorder;
       });
       anchor.addEventListener("mouseleave", () => {
-        anchor.style.background = "#f9fafb";
-        anchor.style.borderColor = "#e5e7eb";
+        anchor.style.background = cardBg;
+        anchor.style.borderColor = cardBorder;
       });
     };
 
@@ -164,6 +608,21 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
       link.setAttribute("data-enhanced", "true");
       const mimeType = anchor.getAttribute("type") || "";
       enhanceAnchorAsFileCard(anchor, fileName, mimeType);
+
+      // For PDFs, intercept the click and open the in-app preview dialog
+      // instead of navigating to a new tab. Falls through to default
+      // navigation when no preview handler is wired.
+      const isPdf =
+        /\.pdf(\?|#|$)/i.test(href) ||
+        /\.pdf$/i.test(fileName) ||
+        mimeType.toLowerCase().includes("pdf");
+      if (isPdf) {
+        anchor.addEventListener("click", (e) => {
+          if (!previewRef.current || !href || href === "#") return;
+          e.preventDefault();
+          previewRef.current({ url: href, fileName });
+        });
+      }
     });
 
     // 2. Detect plain text that looks like file references (UUID-filename.ext pattern)
@@ -203,13 +662,22 @@ const HtmlWithKatex = ({ html, className = "" }: { html: string; className?: str
 
       enhanceAnchorAsFileCard(anchor, displayName, ext);
 
-      // Override click to use getPublicUrl
+      // Override click to use getPublicUrl. For PDFs, open in the in-app
+      // preview dialog; for other types, fall back to a new tab.
       anchor.addEventListener("click", async (e) => {
         e.preventDefault();
         try {
           const url = await getPublicUrl(fileId);
-          if (url) window.open(url, "_blank");
-          else toast.error("Could not load file URL");
+          if (!url) {
+            toast.error("Could not load file URL");
+            return;
+          }
+          const isPdf = /\.pdf$/i.test(displayName);
+          if (isPdf && previewRef.current) {
+            previewRef.current({ url, fileName: displayName });
+          } else {
+            window.open(url, "_blank", "noopener,noreferrer");
+          }
         } catch {
           toast.error("Failed to download file");
         }
@@ -308,6 +776,45 @@ const AssignmentSlide = ({
   const [numericValuesMap, setNumericValuesMap] = useState<
     Record<string, string>
   >({});
+  const [pdfPreview, setPdfPreview] = useState<PreviewRequest | null>(null);
+
+  // Live server-time-aware window status. Ticks every second so the submit
+  // gate / banner flip in real time as the window opens or closes.
+  const { data: serverTimeData } = useServerTime();
+  const [windowNow, setWindowNow] = useState<number>(() =>
+    getServerTime(serverTimeData)
+  );
+  useEffect(() => {
+    setWindowNow(getServerTime(serverTimeData));
+    const id = setInterval(
+      () => setWindowNow(getServerTime(serverTimeData)),
+      1000
+    );
+    return () => clearInterval(id);
+  }, [serverTimeData]);
+
+  // Extract any file attachments embedded in the rich-text description so we
+  // can render them as proper interactive cards (the legacy HtmlWithKatex DOM
+  // enhancement is unreliable in some setups).
+  const richTextProcessed = useMemo(
+    () =>
+      extractAndStripAttachments(
+        assignmentData.parent_rich_text?.content || ""
+      ),
+    [assignmentData.parent_rich_text?.content]
+  );
+
+  const mediaIdsField = assignmentData.comma_separated_media_ids || "";
+  const idAttachments = useMemo(
+    () =>
+      mediaIdsField && !mediaIdsField.startsWith("types:")
+        ? mediaIdsField.split(",").map((s) => s.trim()).filter(Boolean)
+        : [],
+    [mediaIdsField]
+  );
+
+  const hasAnyAttachments =
+    idAttachments.length > 0 || richTextProcessed.attachments.length > 0;
 
   // Fetch grading results and submission history for this assignment
   const slideId = activeItem?.id || '';
@@ -332,6 +839,13 @@ const AssignmentSlide = ({
   const maxAttempts = assignmentData.re_attempt_count || 0;
   const attemptsExhausted = maxAttempts > 0 && submissionCount >= maxAttempts;
 
+  // Temporal gating derived from the live tick. `notYetOpen` is a hard block
+  // (matches backend); `isLate` is allowed but flagged on the server.
+  const liveTs = parseAssignmentDate(assignmentData.live_date);
+  const endTs = parseAssignmentDate(assignmentData.end_date);
+  const notYetOpen = liveTs != null && windowNow < liveTs;
+  const isLate = endTs != null && windowNow > endTs;
+
   // Extract latest submission with tracked data
   const latestWithData = assignmentLogs.find(
     (item: any) => item.assignment_slides?.length > 0
@@ -342,6 +856,7 @@ const AssignmentSlide = ({
   const checkedFileId = latestSubmission?.checked_file_id ?? null;
   const previousFileIds = latestSubmission?.comma_separated_file_ids
     ?.split(',').filter(Boolean) || [];
+  const previousSubmissionLate = !!latestSubmission?.late_submission;
   const totalMarks = assignmentData.total_marks;
   const passingMarks = assignmentData.passing_marks;
   // The submission has marks=0 by default at submission time. So we only treat
@@ -357,17 +872,6 @@ const AssignmentSlide = ({
   // Constants for numeric input
   const isDecimal = false;
   const maxDecimals = 2;
-  // Format date for display (backend returns date-only strings like "2026-03-25")
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "N/A";
-    // Append T00:00:00 to prevent UTC midnight timezone shift
-    const date = new Date(dateString.length <= 10 ? dateString + "T00:00:00" : dateString);
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
 
   // Handle file upload
   const handleFileUpload = async (file: File) => {
@@ -536,8 +1040,14 @@ const AssignmentSlide = ({
       toast.success("Assignment submitted successfully!");
       queryClient.invalidateQueries({ queryKey: ['ASSIGNMENT_GRADING_RESULTS'] });
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to submit assignment");
+    onError: (error: unknown) => {
+      // Backend returns ErrorInfo { message } via GlobalExceptionHandler when
+      // throwing VacademyException (e.g. assignment not yet open).
+      const axiosMsg =
+        (error as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message;
+      const fallbackMsg = (error as Error)?.message;
+      toast.error(axiosMsg || fallbackMsg || "Failed to submit assignment");
     },
     onSettled: () => {
       setIsSubmitting(false);
@@ -617,16 +1127,16 @@ const AssignmentSlide = ({
 
     return (
       <div className="mb-6">
-        <div className="flex justify-between items-start mb-4">
-          <h3 className="text-md font-medium flex gap-1">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <h3 className="flex gap-1 text-md font-medium">
             <span className="min-w-fit">{index + 1}.</span>
             <HtmlWithKatex html={question.text_data.content} />
           </h3>
           {qType && (
-            <div className="text-sm text-gray-500 min-w-fit ml-4">
-              <div>Type: {getQuestionTypeDisplay(qType)}</div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 sm:ml-4 sm:min-w-fit sm:flex-col sm:items-end sm:gap-y-0 sm:text-sm">
+              <span>Type: {getQuestionTypeDisplay(qType)}</span>
               {question.re_attempt_count != null && (
-                <div>Attempts: {question.re_attempt_count || "Unlimited"}</div>
+                <span>Attempts: {question.re_attempt_count || "Unlimited"}</span>
               )}
             </div>
           )}
@@ -670,7 +1180,7 @@ const AssignmentSlide = ({
                       handleResponseChange(question.id, e.target.value, qType)
                     }
                     placeholder="Type your answer..."
-                    className="min-h-[200px] text-base"
+                    className="min-h-reg-200 text-base"
                     onCopy={(e) => e.preventDefault()}
                     onCut={(e) => e.preventDefault()}
                     onPaste={(e) => e.preventDefault()}
@@ -699,7 +1209,7 @@ const AssignmentSlide = ({
                     />
                   </div>
 
-                  <Card className="max-w-md mx-auto">
+                  <Card className="mx-auto hidden max-w-md sm:block">
                     <CardContent className="p-4">
                       <div className="grid grid-cols-3 gap-2">
                         {[7, 8, 9, 4, 5, 6, 1, 2, 3].map((num) => (
@@ -769,33 +1279,44 @@ const AssignmentSlide = ({
             <HtmlWithKatex html={assignmentData.text_data?.content || activeItem?.title || ""} />
           </CardTitle>
           <CardDescription className="text-sm sm:text-base text-gray-600">
-            <div className="flex flex-col space-y-1 mt-2">
-              {assignmentData.live_date && (
-                <span>
-                  <strong className="font-medium">Start Date:</strong>{" "}
-                  {formatDate(assignmentData.live_date)}
-                </span>
+            <div className="mt-2 flex flex-col gap-2">
+              {(assignmentData.live_date || assignmentData.end_date) && (
+                <AssignmentWindowBadge
+                  liveDate={assignmentData.live_date}
+                  endDate={assignmentData.end_date}
+                  now={windowNow}
+                />
               )}
-              {assignmentData.end_date && (
+              <div className="flex flex-col space-y-1">
+                {assignmentData.live_date && (
+                  <span>
+                    <strong className="font-medium">Start:</strong>{" "}
+                    {formatDateTime(assignmentData.live_date)}
+                  </span>
+                )}
+                {assignmentData.end_date && (
+                  <span>
+                    <strong className="font-medium">Due:</strong>{" "}
+                    {formatDateTime(assignmentData.end_date)}
+                  </span>
+                )}
                 <span>
-                  <strong className="font-medium">Due Date:</strong>{" "}
-                  {formatDate(assignmentData.end_date)}
+                  <strong className="font-medium">Attempts Allowed:</strong>{" "}
+                  {assignmentData.re_attempt_count || "Unlimited"}
                 </span>
-              )}
-              <span>
-                <strong className="font-medium">Attempts Allowed:</strong>{" "}
-                {assignmentData.re_attempt_count || "Unlimited"}
-              </span>
+              </div>
             </div>
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {assignmentData.parent_rich_text?.content && (
-            <HtmlWithKatex
-              html={assignmentData.parent_rich_text.content}
-              className="prose max-w-none text-gray-700 text-sm sm:text-base"
-            />
-          )}
+          {richTextProcessed.cleanHtml &&
+            richTextProcessed.cleanHtml.replace(/<[^>]+>/g, "").trim() !== "" && (
+              <HtmlWithKatex
+                html={richTextProcessed.cleanHtml}
+                className="prose max-w-none text-gray-700 text-sm sm:text-base"
+                onPreviewPdf={setPdfPreview}
+              />
+            )}
         </CardContent>
       </Card>
 
@@ -812,7 +1333,7 @@ const AssignmentSlide = ({
                 </svg>
               </div>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-emerald-600">
                   Reviewed by {teacherTerm}
                 </p>
                 <h2 className="text-base sm:text-lg font-semibold text-gray-900">
@@ -823,8 +1344,8 @@ const AssignmentSlide = ({
           </div>
 
           <CardContent className="space-y-4 px-4 sm:px-6 py-5">
-            {/* Score row */}
-            <div className="flex flex-wrap items-end gap-4">
+            {/* Score row — pill drops below the score on very narrow screens */}
+            <div className="flex flex-col items-start gap-2 xs:flex-row xs:flex-wrap xs:items-end xs:gap-4">
               <div className="flex flex-col">
                 <span className="text-xs font-medium text-gray-500">Your Score</span>
                 <div className="flex items-baseline gap-1.5">
@@ -838,7 +1359,7 @@ const AssignmentSlide = ({
               </div>
               {isPassed != null && (
                 <span
-                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${
+                  className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${
                     isPassed
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'bg-red-100 text-red-700'
@@ -863,7 +1384,8 @@ const AssignmentSlide = ({
             {gradedFeedback && (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {/* design-lint-ignore: inline SVG illustration with fixed stroke color */}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                   </svg>
                   <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -882,83 +1404,49 @@ const AssignmentSlide = ({
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Checked Answer Copy
                 </p>
-                <button
-                  onClick={async () => {
-                    try {
-                      const url = await getPublicUrl(checkedFileId);
-                      if (url) window.open(url, '_blank');
-                    } catch (err) {
-                      console.error('Failed to get checked copy URL:', err);
-                    }
-                  }}
-                  className="group flex w-full items-center justify-between rounded-lg border-2 border-emerald-200 bg-emerald-50 px-4 py-3 transition-all hover:border-emerald-300 hover:bg-emerald-100 sm:w-auto sm:min-w-[360px]"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white shadow-sm">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                        <polyline points="14 2 14 8 20 8" />
-                        <path d="M10 12l-2 4h4l-2 4" />
-                      </svg>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-sm font-semibold text-emerald-900">
-                        View Your Checked Copy
-                      </p>
-                      <p className="text-xs text-emerald-700">
-                        Marked PDF from your {teacherTerm.toLowerCase()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors group-hover:bg-emerald-700">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    Download
-                  </div>
-                </button>
+                <AttachmentPreview
+                  fileId={checkedFileId}
+                  fallbackLabel={`Marked copy from your ${teacherTerm.toLowerCase()}`}
+                  onPreviewPdf={setPdfPreview}
+                  tone="graded"
+                />
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* Attached Documents Section */}
-      {assignmentData.comma_separated_media_ids && assignmentData.comma_separated_media_ids.trim() !== '' && (
+      {/* Assignment files — combines comma_separated_media_ids attachments
+          with files embedded in the rich-text description. */}
+      {hasAnyAttachments && (
         <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
           <CardHeader className="space-y-1">
             <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
-              Attached Documents
+              Assignment Files
             </CardTitle>
             <CardDescription className="text-sm sm:text-base text-gray-600">
-              Documents attached to this assignment
+              Tap a PDF to preview it in-app
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col gap-3">
-              {assignmentData.comma_separated_media_ids.split(',').filter(Boolean).map((fileId: string, idx: number) => (
-                <button
-                  key={fileId}
-                  onClick={async () => {
-                    try {
-                      const url = await getPublicUrl(fileId.trim());
-                      if (url) window.open(url, '_blank');
-                    } catch { /* ignore */ }
-                  }}
-                  className="flex items-center gap-3 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  <span
-                    className="flex-shrink-0"
-                    dangerouslySetInnerHTML={{ __html: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 12l-2 4h4l-2 4"/></svg>` }}
-                  />
-                  <span className="flex-1 font-medium">Document {idx + 1}</span>
-                  <span className="flex-shrink-0 flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-md text-xs font-medium">
-                    <span dangerouslySetInnerHTML={{ __html: downloadIconSvg.replace('stroke="#6b7280"', 'stroke="#ffffff"') }} />
-                    Download
-                  </span>
-                </button>
+              {idAttachments.map((fileId, idx) => (
+                <AttachmentPreview
+                  key={`id-${fileId}`}
+                  fileId={fileId}
+                  fallbackLabel={`Document ${idx + 1}`}
+                  onPreviewPdf={setPdfPreview}
+                />
+              ))}
+              {richTextProcessed.attachments.map((att, idx) => (
+                <AttachmentPreview
+                  key={`url-${att.url}`}
+                  directUrl={att.url}
+                  fileName={att.fileName}
+                  mimeType={att.mimeType}
+                  fallbackLabel={att.fileName || `Attachment ${idx + 1}`}
+                  onPreviewPdf={setPdfPreview}
+                />
               ))}
             </div>
           </CardContent>
@@ -995,35 +1483,35 @@ const AssignmentSlide = ({
       {previousFileIds.length > 0 && (
         <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-lg sm:text-xl font-medium text-gray-900">
               Submitted Files
+              {previousSubmissionLate && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                  <WarningCircle className="size-3.5" weight="duotone" />
+                  Late
+                </span>
+              )}
             </CardTitle>
             <CardDescription className="text-sm sm:text-base text-gray-600">
               Files from your previous submission
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               {previousFileIds.map((fileId: string, idx: number) => (
-                <button
+                <AttachmentPreview
                   key={fileId}
-                  onClick={async () => {
-                    try {
-                      const url = await getPublicUrl(fileId);
-                      if (url) window.open(url, '_blank');
-                    } catch { /* ignore */ }
-                  }}
-                  className="flex items-center gap-2 w-fit rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  File {idx + 1} — Click to download
-                </button>
+                  fileId={fileId}
+                  fallbackLabel={`Submission file ${idx + 1}`}
+                  onPreviewPdf={setPdfPreview}
+                />
               ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* File Upload & Submit — hidden when attempts exhausted */}
+      {/* File Upload & Submit — gated on attempts and the submission window. */}
       {attemptsExhausted ? (
         <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
           <CardContent className="py-6">
@@ -1032,10 +1520,25 @@ const AssignmentSlide = ({
             </p>
           </CardContent>
         </Card>
+      ) : notYetOpen ? (
+        <Card className="mb-4 sm:mb-6 border-blue-200 bg-blue-50 shadow-sm">
+          <CardContent className="py-6 text-center">
+            <Clock className="mx-auto mb-2 size-6 text-blue-600" weight="duotone" />
+            <p className="text-sm font-medium text-blue-900">
+              This assignment opens on {formatDateTime(assignmentData.live_date)}
+            </p>
+            <p className="mt-1 text-xs text-blue-700">
+              Opens in {formatCountdown(liveTs! - windowNow)}
+            </p>
+          </CardContent>
+        </Card>
       ) : (
         <>
           {/* File Upload Section */}
-          <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
+          <Card className={cn(
+            "mb-4 sm:mb-6 bg-white shadow-sm",
+            isLate && "border-amber-200"
+          )}>
             <CardHeader className="space-y-1">
               <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
                 Upload Files
@@ -1048,12 +1551,22 @@ const AssignmentSlide = ({
                   </span>
                 )}
               </CardDescription>
+              {isLate && (
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                  <WarningCircle className="size-4" weight="duotone" />
+                  Submission window closed on {formatDateTime(assignmentData.end_date)}. Your submission will be marked late.
+                </p>
+              )}
             </CardHeader>
             <CardContent>
               <FileUploader
                 onUpload={handleFileUpload}
                 isUploading={isUploading}
                 uploadedFiles={uploadedFiles}
+                allowedFileTypes={parseAllowedFileTypes(
+                  assignmentData.comma_separated_media_ids
+                )}
+                onRejected={(_file, reason) => toast.error(reason)}
                 onRemove={(index) => {
                   setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
                   setUploadedFileIds((prev) => prev.filter((_, i) => i !== index));
@@ -1062,23 +1575,71 @@ const AssignmentSlide = ({
             </CardContent>
           </Card>
 
-          {/* Submit Button */}
-          <div className="flex justify-end">
+          {/* Submit Button — sticky full-width on mobile, inline right-aligned on desktop */}
+          <div
+            className={cn(
+              "sticky bottom-0 z-20 -mx-2 mt-2 border-t border-gray-200 bg-white/95 px-2 py-3 backdrop-blur sm:static sm:mx-0 sm:mt-0 sm:flex sm:justify-end sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none",
+              isLate && "border-amber-300"
+            )}
+          >
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting || isUploading}
-              className={`px-6 py-2.5 rounded-md text-sm sm:text-base font-medium transition-colors ${
-                isSubmitting || isUploading
-                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                  : "bg-gray-900 text-white hover:bg-gray-800"
-              }`}
+              disabled={isSubmitting || isUploading || uploadedFileIds.length === 0}
+              title={uploadedFileIds.length === 0 ? "Upload at least one file before submitting" : undefined}
+              className={cn(
+                "w-full rounded-md px-6 py-3 text-sm font-medium transition-colors sm:w-auto sm:py-2.5 sm:text-base",
+                isSubmitting || isUploading || uploadedFileIds.length === 0
+                  ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                  : isLate
+                    ? "bg-amber-600 text-white hover:bg-amber-700"
+                    : "bg-gray-900 text-white hover:bg-gray-800"
+              )}
             >
-              {isSubmitting ? "Submitting..." : "Submit Assignment"}
+              {isSubmitting ? "Submitting..." : isLate ? "Submit Late" : "Submit Assignment"}
             </button>
           </div>
         </>
       )}
 
+      {/* In-app PDF preview dialog. Lazy-mounts SimplePDFViewer only when open. */}
+      <Dialog
+        open={!!pdfPreview}
+        onOpenChange={(open) => {
+          if (!open) setPdfPreview(null);
+        }}
+      >
+        <DialogContent
+          className={cn(
+            "flex w-full max-w-5xl flex-col gap-0 overflow-hidden p-0"
+          )}
+          // Viewport-relative size is genuinely dynamic; not expressible as a Tailwind token. design-lint-ignore
+          style={{ height: "90vh", width: "95vw", maxHeight: "900px" }}
+        >
+          {/* Header — note: Radix DialogContent renders its own close button
+              at top-right, so we leave the right side padded for it. */}
+          <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 pr-12">
+            <DialogTitle className="truncate text-sm font-medium text-gray-900 sm:text-base">
+              {pdfPreview?.fileName || "Document preview"}
+            </DialogTitle>
+            {pdfPreview?.url && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  window.open(pdfPreview.url, "_blank", "noopener,noreferrer")
+                }
+                className="h-9 shrink-0"
+              >
+                <ArrowSquareOut className="mr-1.5 size-4" />
+                <span className="hidden sm:inline">Open in new tab</span>
+              </Button>
+            )}
+          </div>
+          <div className="flex-1 overflow-hidden bg-gray-100">
+            {pdfPreview && <SimplePDFViewer pdfUrl={pdfPreview.url} />}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

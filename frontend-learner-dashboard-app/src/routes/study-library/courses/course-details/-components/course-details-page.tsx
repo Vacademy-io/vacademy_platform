@@ -1073,23 +1073,31 @@ export const CourseDetailsPage = () => {
           const alreadyCelebrated =
             !!LocalStorageUtils.get<boolean>(celebrationKey);
 
-          const res = await generateCertificateWithCache({
-            user_id: userId,
-            package_session_id: packageSessionIdForCurrentLevel,
-          });
+          const res = await generateCertificateWithCache(
+            {
+              user_id: userId,
+              package_session_id: packageSessionIdForCurrentLevel,
+              // Required by the backend eligibility gate: a fresh render returns
+              // no certificate when the percentage is missing/below threshold.
+              // course_name is intentionally omitted here — the backend falls
+              // back to the package name (the authoritative course title).
+              completion_percentage: percentageCompleted,
+            },
+            // Confirm with the backend instead of trusting the 3-hour local
+            // cache: the instant-display above (getCachedCertificateStatus)
+            // already painted any cached URL, but the backend is the source of
+            // truth for the *current* template. Repeat calls are cheap because
+            // the backend returns its own cached file id (202) when present and
+            // only re-renders after an admin saves new certificate settings.
+            { bypassCache: true },
+          );
 
           setCertificateUrl(res.url || null);
 
           if (res.status === 200 && !alreadyCelebrated) {
             // Enhanced multi-burst confetti (professional feel)
             try {
-              const colors = [
-                "#0ea5e9",
-                "#22c55e",
-                "#f59e0b",
-                "#ef4444",
-                "#8b5cf6",
-              ];
+              const colors = ["#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6"]; // design-lint-ignore: confetti effect palette
               const defaults = {
                 colors,
                 origin: { y: 0.6 },

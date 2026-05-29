@@ -11,7 +11,7 @@ export const Route = createFileRoute("/auth-transfer/")({
  */
 function AuthTransferComponent() {
   return (
-    <div className="flex min-h-[40vh] items-center justify-center">
+    <div className="flex min-h-screen-40 items-center justify-center">
       <p className="text-muted-foreground">Signing you in...</p>
     </div>
   );

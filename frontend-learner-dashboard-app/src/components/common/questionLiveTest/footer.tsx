@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { ListBulletIcon } from "@radix-ui/react-icons";
@@ -74,9 +74,9 @@ export function Footer({ onToggleSidebar }: FooterProps) {
           onClick={handlePrevQuestion}
           disabled={currentIndex <= 0 || isTimeUp}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <CaretLeft className="h-4 w-4" />
         </Button>
-        <span className="min-w-[4rem] text-center">
+        <span className="min-w-16 text-center">
           {currentQuestion
             ? `${currentIndex + 1}/${currentSectionQuestions.length}`
             : "-"}
@@ -91,7 +91,7 @@ export function Footer({ onToggleSidebar }: FooterProps) {
             isTimeUp
           }
         >
-          <ChevronRight className="h-4 w-4" />
+          <CaretRight className="h-4 w-4" />
         </Button>
       </div>
     </div>

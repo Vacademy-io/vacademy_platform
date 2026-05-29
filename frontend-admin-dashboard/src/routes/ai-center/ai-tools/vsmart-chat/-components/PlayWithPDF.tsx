@@ -1,23 +1,49 @@
-import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { MyInput } from '@/components/design-system/input';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { getInstituteId } from '@/constants/helper';
 import { useFileUpload } from '@/hooks/use-file-upload';
-import { GenerateCard } from '@/routes/ai-center/-components/GenerateCard';
 import { useAICenter } from '@/routes/ai-center/-contexts/useAICenterContext';
 import {
     handleChatWithPDF,
+    handleQueryGetListIndividualTopics,
     handleStartProcessUploadedFile,
 } from '@/routes/ai-center/-services/ai-center-service';
 import { getRandomTaskName } from '@/routes/ai-center/-utils/helper';
-import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import AITasksList from '@/routes/ai-center/-components/AITasksList';
+import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
+import {
+    ArrowRight,
+    ChatCircleDots,
+    FilePdf,
+    Sparkle,
+    UploadSimple,
+    X,
+} from '@phosphor-icons/react';
+import {
+    relativeTime,
+    statusLabel,
+    statusStyles,
+    taskDisplayName,
+} from '@/routes/ai-center/-utils/format';
+import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
 
 export interface QuestionWithAnswerChatInterface {
     id: string;
     question: string;
     response: string;
 }
+
+const ACCEPTED_FORMATS = '.pdf,.doc,.docx,.ppt,.pptx,.html';
+const ACCEPTED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'html'];
+
+const SUGGESTED_PROMPTS = [
+    'What is the main idea of this document?',
+    'Summarize the key points.',
+    'Generate 5 questions on the main concepts.',
+];
+
+type Phase = 'idle' | 'uploading' | 'processing' | 'ready';
 
 const PlayWithPDF = ({
     isListMode = false,
@@ -31,50 +57,103 @@ const PlayWithPDF = ({
     parent_id?: string;
 }) => {
     const instituteId = getInstituteId();
-    const { setLoader, key, setKey } = useAICenter();
+    const { setLoader, setKey } = useAICenter();
     const { uploadFile } = useFileUpload();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+    const [phase, setPhase] = useState<Phase>(input_id ? 'ready' : 'idle');
+    const [fileName, setFileName] = useState('');
     const [uploadedFilePDFId, setUploadedFilePDFId] = useState(input_id ?? '');
-    const [fileUploading, setFileUploading] = useState(false);
-    const [open, setOpen] = useState(isListMode);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isDragActive, setIsDragActive] = useState(false);
+    const [enableTasksDialog, setEnableTasksDialog] = useState(false);
+
     const [question, setQuestion] = useState('');
     const [questionsWithAnswers, setQuestionsWithAnswers] = useState<
         QuestionWithAnswerChatInterface[]
     >(chatResponse ?? []);
-    const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const [parentId, setParentId] = useState(parent_id ?? '');
     const [pendingResponse, setPendingResponse] = useState(false);
+    const [listDialogOpen, setListDialogOpen] = useState(isListMode);
 
-    const handleUploadClick = () => {
-        setKey('chat');
-        fileInputRef.current?.click();
+    const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+    const { data: recentTasksData } = useQuery({
+        ...handleQueryGetListIndividualTopics('CHAT_WITH_PDF'),
+        staleTime: 30 * 1000,
+        enabled: !isListMode,
+    });
+
+    const recentTasks = useMemo(() => {
+        const list: AITaskIndividualListInterface[] = Array.isArray(recentTasksData)
+            ? recentTasksData
+            : [];
+        return [...list].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)).slice(0, 3);
+    }, [recentTasksData]);
+
+    const resetFile = () => {
+        setPhase('idle');
+        setFileName('');
+        setUploadedFilePDFId('');
+        setQuestionsWithAnswers([]);
+        setQuestion('');
+        setParentId('');
+        setErrorMessage(null);
     };
 
-    const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
+    const processFile = async (file: File) => {
+        const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+        if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+            setErrorMessage(`We can't read .${ext} files. Try PDF, Word, or PowerPoint.`);
+            return;
+        }
+        setErrorMessage(null);
+        setFileName(file.name);
+        setPhase('uploading');
+        setKey('chat');
+        try {
             const fileId = await uploadFile({
                 file,
-                setIsUploading: setFileUploading,
+                setIsUploading: () => {},
                 userId: 'your-user-id',
                 source: instituteId,
                 sourceId: 'STUDENTS',
             });
-            if (fileId) {
-                const response = await handleStartProcessUploadedFile(fileId);
-                if (response) {
-                    setUploadedFilePDFId(response.pdf_id);
-                    setFileUploading(true);
-                    setLoader(false);
-                    setOpen(true);
-                    setParentId('');
-                }
+            if (!fileId) {
+                setErrorMessage("Upload didn't complete. Want to try again?");
+                resetFile();
+                return;
             }
-            event.target.value = '';
+            setPhase('processing');
+            const response = await handleStartProcessUploadedFile(fileId);
+            if (response?.pdf_id) {
+                setUploadedFilePDFId(response.pdf_id);
+                setPhase('ready');
+                setLoader(false);
+            } else {
+                setErrorMessage("We couldn't read this file. Try a different one?");
+                resetFile();
+            }
+        } catch (err) {
+            console.error(err);
+            setErrorMessage('Something went wrong reading your file. Try again?');
+            resetFile();
         }
     };
 
-    /* Adding Polling For Response */
+    const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) await processFile(file);
+        e.target.value = '';
+    };
+
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragActive(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) await processFile(file);
+    };
+
     const MAX_POLL_ATTEMPTS = 10;
     const pollingCountRef = useRef(0);
     const pollingTimeoutIdRef = useRef<NodeJS.Timeout | null>(null);
@@ -89,7 +168,7 @@ const PlayWithPDF = ({
         }
     };
 
-    const getQuestionResponseMutation = useMutation({
+    const askMutation = useMutation({
         mutationFn: async ({
             pdfId,
             userPrompt,
@@ -104,48 +183,36 @@ const PlayWithPDF = ({
             return handleChatWithPDF(pdfId, userPrompt, taskName, parentId);
         },
         onSuccess: (response) => {
-            // Check if response indicates pending state
             if (response?.status === 'pending') {
                 pendingRef.current = true;
-                // Don't schedule next poll - we'll wait for an error to resume
                 return;
             }
-
-            // Reset pending state if response is no longer pending
             pendingRef.current = false;
-
-            // If we have complete data, we're done
             if (response) {
                 setQuestionsWithAnswers(response);
-                if (parentId === '') setParentId(response[0].id);
+                if (parentId === '' && response[0]?.id) setParentId(response[0].id);
                 setQuestion('');
                 setPendingResponse(false);
                 return;
             }
-
-            // Otherwise schedule next poll
             scheduleNextPoll();
         },
         onError: () => {
-            // If we were in a pending state, resume polling on error
             if (pendingRef.current) {
                 pendingRef.current = false;
                 scheduleNextPoll();
                 setPendingResponse(true);
                 return;
             }
-
-            // Normal error handling
             pollingCountRef.current += 1;
             if (pollingCountRef.current >= MAX_POLL_ATTEMPTS) {
                 setLoader(false);
                 setKey(null);
                 clearPolling();
                 setPendingResponse(false);
+                setErrorMessage('No response yet. Try asking again?');
                 return;
             }
-
-            // Schedule next poll on error (if not max attempts)
             scheduleNextPoll();
         },
     });
@@ -153,145 +220,271 @@ const PlayWithPDF = ({
     const scheduleNextPoll = () => {
         setLoader(false);
         setKey(null);
-        clearPolling(); // Clear any existing timeout
-
-        // Only schedule next poll if not in pending state
+        clearPolling();
         if (!pendingRef.current) {
             setLoader(true);
             setKey('chat');
             pollingTimeoutIdRef.current = setTimeout(() => {
-                pollGenerateAssessment();
+                pollAsk();
             }, 10000);
         }
     };
 
-    const pollGenerateAssessment = () => {
-        // Don't call API if in pending state
-        if (pendingRef.current) {
-            return;
-        }
-        getQuestionResponseMutation.mutate({
+    const pollAsk = () => {
+        if (pendingRef.current) return;
+        askMutation.mutate({
             pdfId: uploadedFilePDFId,
             userPrompt: question,
             taskName: getRandomTaskName(),
-            parentId: parentId,
+            parentId,
         });
     };
 
-    const handleAddQuestions = () => {
-        if (!uploadedFilePDFId) return;
+    const submitQuestion = () => {
+        if (!uploadedFilePDFId || !question.trim() || pendingResponse) return;
+        setErrorMessage(null);
         setPendingResponse(true);
-
         clearPolling();
         pollingCountRef.current = 0;
         pendingRef.current = false;
-
-        // Make initial call
-        pollGenerateAssessment();
+        pollAsk();
     };
 
     useEffect(() => {
-        return () => {
-            clearPolling();
-        };
+        return () => clearPolling();
     }, []);
 
-    useEffect(() => {
-        if (key === 'chat') {
-            if (fileUploading == true) setLoader(true);
-        }
-    }, [fileUploading, key]);
-
-    // Scroll to bottom on update
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [questionsWithAnswers]);
 
-    return (
+    const renderChatBody = (fullHeight: boolean) => (
         <>
-            {!isListMode && (
-                <GenerateCard
-                    handleUploadClick={handleUploadClick}
-                    fileInputRef={fileInputRef}
-                    handleFileChange={handleFileChange}
-                    cardTitle="Play With PDF"
-                    cardDescription="Upload PDF/DOCX/PPT"
-                    inputFormat=".pdf,.doc,.docx,.ppt,.pptx,.html"
-                    keyProp="chat"
-                />
-            )}
-            {(uploadedFilePDFId.length > 0 || isListMode) && (
-                <Dialog open={open} onOpenChange={setOpen}>
-                    <DialogContent className="!m-0 flex !h-full !w-full !max-w-full flex-col !rounded-none !p-0">
-                        {/* Scrollable messages container */}
-                        <div className="flex flex-1 flex-col items-center overflow-y-auto px-4 py-6">
-                            <div className="w-full max-w-[800px] space-y-6">
-                                {questionsWithAnswers.map((qa) => (
-                                    <div key={qa.id} className="flex flex-col gap-2">
-                                        <div className="flex justify-end">
-                                            <p className="rounded-xl bg-neutral-100 px-4 py-2 text-black">
-                                                {qa.question}
-                                            </p>
-                                        </div>
-                                        <div className="flex justify-start">
-                                            <p
-                                                className="rounded-xl bg-blue-100 px-4 py-2 text-black"
-                                                dangerouslySetInnerHTML={{
-                                                    __html: qa.response || '',
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
+            <div
+                className={`flex flex-col items-center overflow-y-auto bg-neutral-50 px-4 py-6 ${
+                    fullHeight ? 'flex-1' : 'min-h-[300px] max-h-[55vh]'
+                }`}
+            >
+                <div className="flex w-full max-w-[760px] flex-col gap-5">
+                    {questionsWithAnswers.length === 0 ? (
+                        <div className="flex flex-col items-center gap-4 py-8 text-center">
+                            <div className="flex size-12 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                                <ChatCircleDots size={22} weight="fill" />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <p className="text-sm font-medium text-gray-900">
+                                    Ask anything about this document
+                                </p>
+                                <p className="text-xs text-neutral-500">
+                                    Use the suggestions below, or type your own question.
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                {SUGGESTED_PROMPTS.map((p) => (
+                                    <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => setQuestion(p)}
+                                        disabled={pendingResponse}
+                                        className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700 transition-colors hover:border-primary-200 hover:bg-primary-50 disabled:opacity-50"
+                                    >
+                                        {p}
+                                    </button>
                                 ))}
-                                <div ref={messagesEndRef} />
                             </div>
                         </div>
-
-                        {/* Input at bottom */}
-                        <div className="border-t px-4 py-6">
-                            <div className="mx-auto flex w-full max-w-[800px] flex-col items-center gap-3">
-                                {questionsWithAnswers.length === 0 && (
-                                    <>
-                                        <h1 className="text-center text-2xl font-semibold">
-                                            What can I help with?
-                                        </h1>
-                                        <div className="space-y-1 text-center text-sm text-neutral-400">
-                                            <p>What is the main idea of this pdf?</p>
-                                            <p>
-                                                Can you explain the concept of topics mentioned in
-                                                this pdf?
-                                            </p>
-                                            <p>
-                                                Give a summary of the key points discussed in this
-                                                pdf.
-                                            </p>
-                                        </div>
-                                    </>
-                                )}
-                                <div className="flex h-10 items-center justify-start gap-1">
-                                    <MyInput
-                                        inputType="text"
-                                        inputPlaceholder="Ask anything"
-                                        input={question}
-                                        onChangeFunction={(e) => setQuestion(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                handleAddQuestions();
-                                            }
-                                        }}
-                                        required={true}
-                                        size="large"
-                                        className="w-full max-w-[500px] rounded-xl px-4 py-3 sm:px-6 sm:py-4"
+                    ) : (
+                        questionsWithAnswers.map((qa) => (
+                            <div key={qa.id} className="flex flex-col gap-2">
+                                <div className="flex justify-end">
+                                    <p className="max-w-[80%] rounded-2xl bg-primary-500 px-4 py-2 text-sm text-white">
+                                        {qa.question}
+                                    </p>
+                                </div>
+                                <div className="flex justify-start">
+                                    <div
+                                        className="max-w-[85%] rounded-2xl bg-white px-4 py-2 text-sm text-gray-900 ring-1 ring-neutral-200"
+                                        dangerouslySetInnerHTML={{ __html: qa.response || '' }}
                                     />
-                                    {pendingResponse && <DashboardLoader />}
                                 </div>
                             </div>
+                        ))
+                    )}
+                    {pendingResponse && (
+                        <div className="flex justify-start">
+                            <div className="flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm text-neutral-500 ring-1 ring-neutral-200">
+                                <div className="size-2 animate-pulse rounded-full bg-primary-400" />
+                                <div className="size-2 animate-pulse rounded-full bg-primary-400 [animation-delay:150ms]" />
+                                <div className="size-2 animate-pulse rounded-full bg-primary-400 [animation-delay:300ms]" />
+                                <span className="ml-1 text-xs">Reading the document…</span>
+                            </div>
                         </div>
-                    </DialogContent>
-                </Dialog>
-            )}
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+            </div>
+
+            <div className="border-t border-neutral-200 bg-white px-4 py-4">
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        submitQuestion();
+                    }}
+                    className="mx-auto flex w-full max-w-[760px] items-center gap-2 rounded-2xl border border-neutral-200 bg-white p-1.5 focus-within:border-primary-300 focus-within:ring-2 focus-within:ring-primary-100"
+                >
+                    <input
+                        value={question}
+                        onChange={(e) => setQuestion(e.target.value)}
+                        placeholder="Ask anything about this document…"
+                        disabled={pendingResponse}
+                        className="flex-1 bg-transparent px-3 py-2 text-sm outline-none placeholder:text-neutral-400 disabled:bg-transparent"
+                    />
+                    <button
+                        type="submit"
+                        disabled={pendingResponse || !question.trim()}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary-500 px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400 disabled:hover:bg-neutral-200"
+                    >
+                        Send
+                        <ArrowRight size={14} weight="bold" />
+                    </button>
+                </form>
+            </div>
         </>
+    );
+
+    if (isListMode) {
+        return (
+            <Dialog open={listDialogOpen} onOpenChange={setListDialogOpen}>
+                <DialogContent className="!m-0 flex !h-full !w-full !max-w-full flex-col !rounded-none !p-0">
+                    <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-5 py-3">
+                        <h2 className="text-sm font-semibold text-gray-900">Chat history</h2>
+                    </div>
+                    {renderChatBody(true)}
+                </DialogContent>
+            </Dialog>
+        );
+    }
+
+    const fileChosen = phase !== 'idle' && fileName !== '';
+    const isUploadWorking = phase === 'uploading' || phase === 'processing';
+
+    return (
+        <div className="flex w-full flex-col gap-8 px-4 pb-12 sm:px-8">
+            <header className="flex flex-col gap-1">
+                <h1 className="text-2xl font-semibold text-gray-900 sm:text-3xl">
+                    Chat with a Document
+                </h1>
+                <p className="text-sm text-gray-500">
+                    Drop a PDF, then ask anything about it — summaries, questions, or
+                    explanations.
+                </p>
+            </header>
+
+            {!fileChosen && !uploadedFilePDFId ? (
+                <div
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        if (!isDragActive) setIsDragActive(true);
+                    }}
+                    onDragLeave={() => setIsDragActive(false)}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`flex w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed bg-white p-10 text-center transition-colors sm:p-14 ${
+                        isDragActive
+                            ? 'border-primary-400 bg-primary-50'
+                            : 'border-neutral-200 hover:border-primary-300 hover:bg-neutral-50'
+                    }`}
+                >
+                    <div className="flex size-14 items-center justify-center rounded-full bg-primary-50 text-primary-500">
+                        <UploadSimple size={26} weight="bold" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <p className="text-base font-medium text-gray-900">
+                            Drop your document here, or click to choose
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                            PDF, Word, or PowerPoint — anything you want to chat with.
+                        </p>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex w-full flex-col gap-4">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                <FilePdf size={20} weight="fill" />
+                            </div>
+                            <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-sm font-medium text-gray-900">
+                                    {fileName || 'Chatting with document'}
+                                </span>
+                                <span className="text-xs text-neutral-500">
+                                    {phase === 'uploading' && 'Uploading…'}
+                                    {phase === 'processing' && 'Reading…'}
+                                    {phase === 'ready' && 'Ready to chat'}
+                                </span>
+                            </div>
+                        </div>
+                        {!isUploadWorking && (
+                            <button
+                                type="button"
+                                onClick={resetFile}
+                                className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+                                aria-label="Start over with a new document"
+                            >
+                                <X size={18} />
+                            </button>
+                        )}
+                    </div>
+
+                    {isUploadWorking ? (
+                        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                            <div className="size-4 shrink-0 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                            <p className="text-sm text-blue-900">
+                                {phase === 'uploading'
+                                    ? 'Reading your file…'
+                                    : 'Getting your document ready to chat…'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-neutral-200">
+                            {renderChatBody(false)}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {errorMessage && (
+                <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+                    {errorMessage}
+                </div>
+            )}
+
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileInputChange}
+                className="hidden"
+                accept={ACCEPTED_FORMATS}
+            />
+
+            <RecentFilesPanel
+                tasks={recentTasks}
+                title="Your recent chats"
+                fallbackLabel="Document chat"
+                emptyHint="Your chat sessions will appear here. Drop a document above to start one."
+                onOpenAll={() => setEnableTasksDialog(true)}
+                overrideIcon={
+                    <ChatCircleDots size={18} weight="fill" className="text-primary-500" />
+                }
+            />
+
+            <AITasksList
+                heading="Vsmart Chat"
+                enableDialog={enableTasksDialog}
+                setEnableDialog={setEnableTasksDialog}
+            />
+        </div>
     );
 };
 

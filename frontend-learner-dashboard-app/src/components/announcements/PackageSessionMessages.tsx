@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, MessageSquare, Send, User, Clock, AlertCircle, Info } from 'lucide-react';
+import { SpinnerGap, ChatText, PaperPlaneTilt, User, Clock, WarningCircle, Info } from "@phosphor-icons/react";
 import { usePackageSessionMessages } from '@/hooks/usePackageSessionMessages';
 import { formatDistanceToNow } from 'date-fns';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
@@ -182,7 +182,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
           
           {message.repliesCount > 0 && (
             <span className="flex items-center gap-1">
-              <MessageSquare className="h-3 w-3" />
+              <ChatText className="h-3 w-3" />
               {message.repliesCount} {message.repliesCount === 1 ? 'reply' : 'replies'}
             </span>
           )}
@@ -196,8 +196,8 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
 
     return typeof document !== 'undefined'
       ? createPortal(
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[2147483647] p-4">
-            <Card className="w-full max-w-4xl max-h-[90vh] overflow-hidden">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-4xl max-h-screen-90 overflow-hidden">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Discussion</CardTitle>
@@ -212,7 +212,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
               </CardHeader>
               
               <CardContent className="p-0">
-                <div className="flex flex-col h-[calc(90vh-120px)]">
+                <div className="flex flex-col h-view-dialog">
                   {/* Original Message */}
                   <div className="p-4 border-b border-gray-200 bg-gray-50">
                     {renderMessageCard(selectedMessage, selectedMessage.modeType as 'STREAM' | 'COMMUNITY')}
@@ -227,7 +227,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                           placeholder="Write a reply..."
                           value={replyContent}
                           onChange={(e) => setReplyContent(e.target.value)}
-                          className="min-h-[80px] resize-none"
+                          className="min-h-20 resize-none"
                         />
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -241,12 +241,12 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                           >
                             {isPostingReply ? (
                               <>
-                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
                                 Posting...
                               </>
                             ) : (
                               <>
-                                <Send className="h-4 w-4 mr-2" />
+                                <PaperPlaneTilt className="h-4 w-4 mr-2" />
                                 Post Reply
                               </>
                             )}
@@ -258,7 +258,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                       <div className="space-y-3">
                         {/* TODO: Implement replies list */}
                         <div className="text-center py-8 text-gray-500">
-                          <MessageSquare className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                          <ChatText className="h-8 w-8 mx-auto mb-2 text-gray-400" />
                           <p>Replies will appear here</p>
                         </div>
                       </div>
@@ -284,7 +284,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <MessageSquare className="h-5 w-5 text-blue-600" />
+              <ChatText className="h-5 w-5 text-blue-600" />
               Course Discussion
             </CardTitle>
             <Button
@@ -293,7 +293,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
               onClick={refresh}
               disabled={loading}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+              {loading ? <SpinnerGap className="h-4 w-4 animate-spin" /> : 'Refresh'}
             </Button>
           </div>
         </CardHeader>
@@ -302,19 +302,19 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
           
           {stream.error && (
             <div className="flex items-center gap-2 text-sm text-red-600 mb-4 p-3 bg-red-50 rounded-md">
-              <AlertCircle className="h-4 w-4" />
+              <WarningCircle className="h-4 w-4" />
               {stream.error}
             </div>
           )}
           
           {stream.loading && stream.items.length === 0 ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
               <span className="ml-2 text-sm text-gray-500">Loading stream messages...</span>
             </div>
           ) : stream.items.length === 0 ? (
             <div className="text-center py-8">
-              <MessageSquare className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+              <ChatText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
               <p className="text-sm text-gray-500">No stream messages</p>
             </div>
           ) : (
@@ -331,7 +331,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                   >
                     {stream.loading ? (
                       <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
                         Loading...
                       </>
                     ) : (

@@ -59,6 +59,9 @@ public class AiEvaluationProcess {
         @Column(name = "questions_total")
         private Integer questionsTotal;
 
+        @Column(name = "ai_service_job_id", length = 64)
+        private String aiServiceJobId;
+
         @Column(name = "started_at")
         private Date startedAt;
 

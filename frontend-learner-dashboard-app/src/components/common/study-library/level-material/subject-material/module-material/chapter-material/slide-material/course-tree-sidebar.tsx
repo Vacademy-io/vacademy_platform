@@ -134,7 +134,7 @@ const SlideRow = ({
       onClick={onClick}
       title={title}
       style={{ paddingLeft: `${depth * 14 + 12}px` }}
-      className={`w-full flex items-start gap-2 pr-3 py-2 text-left text-[12px] transition-colors ${
+      className={`w-full flex items-start gap-2 pr-3 py-2 text-left text-caption transition-colors ${
         isActive
           ? "bg-primary-50 text-primary-700 font-semibold"
           : "text-gray-700 hover:bg-gray-50"
@@ -154,7 +154,7 @@ const SlideRow = ({
         />
       )}
       {isActive && (
-        <span className="text-[9px] font-bold text-primary-500 uppercase tracking-wide flex-shrink-0 mt-0.5">
+        <span className="text-3xs font-bold text-primary-500 uppercase tracking-wide flex-shrink-0 mt-0.5">
           Now
         </span>
       )}
@@ -193,10 +193,10 @@ const ExpanderRow = ({
 }) => {
   const weightClass =
     kind === "subject"
-      ? "font-semibold text-[12px]"
+      ? "font-semibold text-caption"
       : kind === "module"
-      ? "font-medium text-[12px]"
-      : "font-medium text-[11.5px]";
+      ? "font-medium text-caption"
+      : "font-medium text-2xs";
   const KindIcon = KIND_ICON[kind];
 
   // Sticky stacking — each level pins below the one above it while its
@@ -254,7 +254,7 @@ const ExpanderRow = ({
           {toTitleCase(label)}
         </div>
         {subLabel && (
-          <div className="text-[10px] text-gray-400 mt-0.5">{subLabel}</div>
+          <div className="text-3xs text-gray-400 mt-0.5">{subLabel}</div>
         )}
       </div>
       {loading && (
@@ -551,7 +551,7 @@ export const CourseTreeSidebar = ({
           )}
           {isOpen && slides && slides.length === 0 && !isLoading && (
             <div
-              className="text-[11px] text-gray-400 italic py-1.5"
+              className="text-2xs text-gray-400 italic py-1.5"
               style={{ paddingLeft: `${(depth + 1) * 14 + 12}px` }}
             >
               No slides
@@ -639,7 +639,7 @@ export const CourseTreeSidebar = ({
           return (
             <div
               key={subject.id}
-              className="text-[11px] text-gray-400 italic py-1.5"
+              className="text-2xs text-gray-400 italic py-1.5"
               style={{ paddingLeft: `${depth * 14 + 12}px` }}
             >
               Loading…
@@ -674,7 +674,7 @@ export const CourseTreeSidebar = ({
           )}
           {isOpen && modules && modules.length === 0 && !loading && (
             <div
-              className="text-[11px] text-gray-400 italic py-1.5"
+              className="text-2xs text-gray-400 italic py-1.5"
               style={{ paddingLeft: `${(depth + 1) * 14 + 12}px` }}
             >
               No modules
@@ -732,7 +732,7 @@ const SkippedChapterSlides = ({
   if (isLoading) {
     return (
       <div
-        className="text-[11px] text-gray-400 italic py-1.5"
+        className="text-2xs text-gray-400 italic py-1.5"
         style={{ paddingLeft: `${depth * 14 + 12}px` }}
       >
         Loading…
@@ -742,7 +742,7 @@ const SkippedChapterSlides = ({
   if (!slides || slides.length === 0) {
     return (
       <div
-        className="text-[11px] text-gray-400 italic py-1.5"
+        className="text-2xs text-gray-400 italic py-1.5"
         style={{ paddingLeft: `${depth * 14 + 12}px` }}
       >
         No slides

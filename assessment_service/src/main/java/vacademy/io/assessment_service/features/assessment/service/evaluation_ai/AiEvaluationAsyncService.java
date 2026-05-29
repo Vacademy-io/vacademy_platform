@@ -65,8 +65,14 @@ public class AiEvaluationAsyncService {
         // Cancellation service
         private final AiEvaluationCancellationService cancellationService;
 
+        // New ai_service-backed path (Phase 1 of the copy-check migration)
+        private final CopyCheckOrchestratorService copyCheckOrchestratorService;
+
         @Value("${media.service.baseurl}")
         private String mediaServiceUrl;
+
+        @Value("${assessment.ai-evaluation.use-ai-service:false}")
+        private boolean useAiServicePipeline;
 
         /**
          * Main async evaluation method - orchestrates the entire evaluation process
@@ -79,6 +85,15 @@ public class AiEvaluationAsyncService {
                 // CHECKPOINT 0: Check cancellation before starting
                 if (cancellationService.isCancelled(processId)) {
                         log.info("🛑 Process {} was cancelled before starting evaluation", processId);
+                        return;
+                }
+
+                // Feature flag: delegate the whole AI pipeline to ai_service (Python).
+                // The remainder of this method (Mathpix + OpenRouter batch extract +
+                // per-question grading) stays as the fallback until cutover.
+                if (useAiServicePipeline) {
+                        log.info("[copy-check] feature flag ON — delegating process {} to ai_service", processId);
+                        copyCheckOrchestratorService.dispatch(processId, attemptId, preferredModel);
                         return;
                 }
 

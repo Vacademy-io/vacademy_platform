@@ -5,12 +5,12 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Loader2,
-  Mail,
+  SpinnerGap,
+  Envelope,
   ArrowLeft,
-  RefreshCw,
-  CheckCircle2,
-} from "lucide-react";
+  ArrowsClockwise,
+  CheckCircle,
+} from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import axios from "axios";
@@ -275,7 +275,7 @@ export function OtpVerificationForm({
           }}
           className="w-12 h-12 bg-gray-100 rounded-md mx-auto flex items-center justify-center"
         >
-          <Mail className="w-6 h-6 text-gray-700" />
+          <Envelope className="w-6 h-6 text-gray-700" />
         </motion.div>
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-gray-900">
@@ -288,7 +288,7 @@ export function OtpVerificationForm({
             transition={{ delay: 0.3 }}
             className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1"
           >
-            <CheckCircle2 className="w-3 h-3 text-gray-600" />
+            <CheckCircle className="w-3 h-3 text-gray-600" />
             <span className="text-sm font-medium text-gray-800">{email}</span>
           </motion.div>
         </div>
@@ -329,7 +329,7 @@ export function OtpVerificationForm({
               <span>Resend in {timer}s</span>
             ) : (
               <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4" />
+                <ArrowsClockwise className="w-4 h-4" />
                 Resend OTP
               </span>
             )}
@@ -343,7 +343,7 @@ export function OtpVerificationForm({
         >
           {isVerifying ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
               Verifying...
             </>
           ) : (

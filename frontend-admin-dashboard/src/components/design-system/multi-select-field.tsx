@@ -74,7 +74,7 @@ export function MultiSelectField({
                 render={() => {
                     return (
                         <div>
-                            <FormItem className={cn('flex w-44 flex-col', className)}>
+                            <FormItem className={cn('flex w-full flex-col sm:w-44', className)}>
                                 <FormLabel className={labelStyle}>
                                     {label}
                                     {required && <span className="text-red-500">*</span>}
@@ -82,7 +82,7 @@ export function MultiSelectField({
                                 <FormControl>
                                     <Popover open={isOpen} onOpenChange={setIsOpen}>
                                         <PopoverTrigger>
-                                            <div className="flex w-96 items-center justify-between rounded-lg border px-3 py-2">
+                                            <div className="flex w-full items-center justify-between rounded-lg border px-3 py-2 sm:w-96">
                                                 <h1 className="text-sm">Select options</h1>
                                                 {isOpen ? <CaretUp /> : <CaretDown />}
                                             </div>
@@ -90,12 +90,12 @@ export function MultiSelectField({
                                         {isOpen && (
                                             <div
                                                 ref={popoverRef}
-                                                className="w-fit rounded-md border p-2"
+                                                className="w-full rounded-md border p-2 sm:w-fit"
                                             >
                                                 {options.map((option) => (
                                                     <div
                                                         key={option.id}
-                                                        className="flex w-80 cursor-pointer justify-between rounded-lg p-2 hover:bg-neutral-100"
+                                                        className="flex w-full cursor-pointer justify-between rounded-lg p-2 hover:bg-neutral-100 sm:w-80"
                                                         onClick={() => toggleSelection(option.id)}
                                                     >
                                                         <label className="text-sm">
@@ -115,7 +115,7 @@ export function MultiSelectField({
                                 {selectedOptions.map((id) => {
                                     const option = options.find((opt) => opt.id === id);
                                     return (
-                                        <Badge key={id} className="bg-[#F4F9FF] px-2 py-1">
+                                        <Badge key={id} className="bg-info-50 px-2 py-1">
                                             {option?.name}
                                         </Badge>
                                     );

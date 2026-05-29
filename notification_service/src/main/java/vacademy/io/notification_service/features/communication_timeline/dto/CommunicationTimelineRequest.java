@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Data
@@ -33,8 +33,8 @@ public class CommunicationTimelineRequest {
     @Builder.Default
     private String direction = "ALL";
 
-    private LocalDateTime fromDate;
-    private LocalDateTime toDate;
+    private Instant fromDate;
+    private Instant toDate;
 
     @Builder.Default
     private Integer page = 0;

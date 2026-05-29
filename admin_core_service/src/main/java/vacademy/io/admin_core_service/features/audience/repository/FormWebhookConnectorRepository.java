@@ -62,4 +62,20 @@ public interface FormWebhookConnectorRepository extends JpaRepository<FormWebhoo
     java.util.List<FormWebhookConnector> findExpiringTokenConnectors(
             @org.springframework.data.repository.query.Param("vendor") String vendor,
             @org.springframework.data.repository.query.Param("expiryThreshold") java.time.LocalDateTime expiryThreshold);
+
+    /**
+     * Connectors that still need a form-name backfill: same vendor, has a
+     * form ID and an active token, but platform_form_name is null/blank.
+     * Used by the one-time backfill endpoint that calls Meta Graph API to
+     * populate platform_form_name on connectors created before that column
+     * existed.
+     */
+    @org.springframework.data.jpa.repository.Query(
+        "SELECT c FROM FormWebhookConnector c WHERE c.vendor = :vendor " +
+        "AND c.isActive = true " +
+        "AND c.platformFormId IS NOT NULL " +
+        "AND c.oauthAccessTokenEnc IS NOT NULL " +
+        "AND (c.platformFormName IS NULL OR c.platformFormName = '')")
+    java.util.List<FormWebhookConnector> findMissingPlatformFormName(
+            @org.springframework.data.repository.query.Param("vendor") String vendor);
 }

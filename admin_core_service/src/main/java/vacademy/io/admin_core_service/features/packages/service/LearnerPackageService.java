@@ -9,8 +9,11 @@ import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailDTO;
 import vacademy.io.admin_core_service.features.packages.dto.PackageDetailProjection;
 import vacademy.io.admin_core_service.features.packages.dto.LearnerPackageFilterDTO;
@@ -36,6 +39,9 @@ public class LearnerPackageService {
 
         @Autowired
         private AuthService authService;
+
+        @Autowired
+        private StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
 
         public Page<PackageDetailDTO> getLearnerPackageDetail(
                         LearnerPackageFilterDTO learnerPackageFilterDTO,
@@ -133,6 +139,47 @@ public class LearnerPackageService {
                         dto.setValidityInDays(projection.getValidityInDays());
                         return dto;
                 }).toList();
+
+                // Tag each card with the viewing learner's enrollment status for that
+                // package_session, so the sidebar can show a "Course Inactive" pill
+                // when the admin has deactivated this learner from a course they still
+                // own a plan/access for.
+                List<String> packageSessionIds = dtos.stream()
+                                .map(PackageDetailDTO::getPackageSessionId)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .collect(Collectors.toList());
+                if (!packageSessionIds.isEmpty()) {
+                        List<StudentSessionInstituteGroupMapping> mappings =
+                                        studentSessionInstituteGroupMappingRepository
+                                                        .findAllByUserIdAndPackageSessionIdsAndStatus(
+                                                                        userId,
+                                                                        packageSessionIds,
+                                                                        List.of(
+                                                                                        LearnerSessionStatusEnum.ACTIVE.name(),
+                                                                                        LearnerSessionStatusEnum.INACTIVE.name(),
+                                                                                        LearnerSessionStatusEnum.TERMINATED.name(),
+                                                                                        LearnerSessionStatusEnum.INVITED.name()));
+                        // Latest-wins if a user has multiple mappings for the same
+                        // package_session (rare): keep whichever the merge picks.
+                        Map<String, StudentSessionInstituteGroupMapping> psIdToMapping = mappings.stream()
+                                        .filter(m -> m.getPackageSession() != null
+                                                        && m.getPackageSession().getId() != null)
+                                        .collect(Collectors.toMap(
+                                                        m -> m.getPackageSession().getId(),
+                                                        Function.identity(),
+                                                        (a, b) -> a));
+                        dtos.forEach(dto -> {
+                                if (dto.getPackageSessionId() == null) return;
+                                StudentSessionInstituteGroupMapping m =
+                                                psIdToMapping.get(dto.getPackageSessionId());
+                                if (m == null) return;
+                                dto.setEnrollmentStatus(m.getStatus());
+                                dto.setEnrolledDate(m.getEnrolledDate());
+                                dto.setExpiryDate(m.getExpiryDate());
+                                dto.setEnrollmentStatusUpdatedAt(m.getUpdatedAt());
+                        });
+                }
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());
                 } catch (RuntimeException e) {

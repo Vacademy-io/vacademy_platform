@@ -19,4 +19,5 @@ public class VimotionVerifyOtpRequest {
     private String email;
     private String phoneNumber;
     private String otp;
+    private String inviteCode;
 }

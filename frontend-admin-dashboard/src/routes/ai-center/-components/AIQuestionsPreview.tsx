@@ -26,7 +26,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { DotsThreeVertical, Copy, Trash } from '@phosphor-icons/react';
+import { DotsThreeVertical, Copy, Trash, Eye } from '@phosphor-icons/react';
 import { PPTComponentFactory } from '@/routes/assessment/question-papers/-components/QuestionPaperTemplatesTypes/PPTComponentFactory';
 
 import { MainViewComponentFactory } from '@/routes/assessment/question-papers/-components/QuestionPaperTemplatesTypes/MainViewComponentFactory';
@@ -53,6 +53,8 @@ interface AIQuestionsPreviewProps {
     setOpenQuestionsPreview: Dispatch<SetStateAction<boolean>>;
     sectionsForm?: UseFormReturn<SectionFormType>;
     currentSectionIndex?: number;
+    /** Hide the internal "View questions" trigger button (when the dialog is opened externally). */
+    hideTrigger?: boolean;
 }
 
 const AIQuestionsPreview = ({
@@ -61,6 +63,7 @@ const AIQuestionsPreview = ({
     setOpenQuestionsPreview,
     sectionsForm,
     currentSectionIndex,
+    hideTrigger = false,
 }: AIQuestionsPreviewProps) => {
     const {
         setIsAIQuestionDialog1,
@@ -186,6 +189,19 @@ const AIQuestionsPreview = ({
             taskId,
         });
     };
+
+    // Auto-fetch when dialog is opened externally (e.g. from a recent-work card click)
+    // and no data has been loaded yet. Without this, the dialog opens empty.
+    useEffect(() => {
+        if (
+            openQuestionsPreview &&
+            assessmentData.questions.length === 0 &&
+            getQuestionsListMutation.status === 'idle'
+        ) {
+            handlViewQuestionsList(task.id);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openQuestionsPreview, task.id]);
 
     const getRetryMutation = useMutation({
         mutationFn: async ({ taskId }: { taskId: string }) => {
@@ -328,6 +344,7 @@ const AIQuestionsPreview = ({
                 </DialogContent>
             </Dialog>
             <Dialog open={openQuestionsPreview} onOpenChange={setOpenQuestionsPreview}>
+                {!hideTrigger && (
                 <DialogTrigger asChild>
                     {task.status === 'FAILED' ? (
                         <MyButton
@@ -353,23 +370,27 @@ const AIQuestionsPreview = ({
                         <MyButton
                             type="button"
                             scale="small"
-                            buttonType="secondary"
-                            className="!text-primary hover:bg-primary/10 border-none text-sm shadow-none"
+                            buttonType="primary"
+                            className="inline-flex items-center gap-1.5 rounded-lg !bg-primary-500 px-3 py-1.5 text-xs font-medium !text-white shadow-sm hover:!bg-primary-600"
                             onClick={() => handlViewQuestionsList(task.id)}
                         >
                             {getQuestionsListMutation.status === 'pending' ? (
                                 <>
-                                    <div className="border-primary mr-2 size-3 animate-spin rounded-full border-2 border-t-transparent"></div>
-                                    <span>Loading...</span>
+                                    <div className="mr-1 size-3 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                                    <span>Loading…</span>
                                 </>
                             ) : (
-                                'View'
+                                <>
+                                    <Eye size={14} weight="bold" />
+                                    View questions
+                                </>
                             )}
                         </MyButton>
                     )}
                 </DialogTrigger>
+                )}
                 {form.getValues('questions') && form.getValues('questions').length > 0 && (
-                    <DialogContent className="no-scrollbar !m-0 flex h-full !w-screen !max-w-none flex-col !gap-0 overflow-hidden !rounded-none bg-background !p-0 text-foreground [&>button]:hidden">
+                    <DialogContent className="no-scrollbar !m-0 flex h-[92vh] !w-[92vw] !max-w-none flex-col !gap-0 overflow-hidden !rounded-2xl bg-background !p-0 text-foreground [&>button]:hidden">
                         <FormProvider {...form}>
                             <form className="flex h-full flex-col">
                                 {/* Header */}

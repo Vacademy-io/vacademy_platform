@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.course.dto.bulk.BulkAddCourseResp
 import vacademy.io.admin_core_service.features.course.service.BulkCourseService;
 import vacademy.io.admin_core_service.features.course.service.CourseContentCopyService;
 import vacademy.io.admin_core_service.features.course.service.CourseService;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.PackageDTO;
 
@@ -27,6 +28,11 @@ public class CourseController {
     private final CourseContentCopyService courseContentCopyService;
 
     @PostMapping("/add-course/{instituteId}")
+    @Auditable(
+            entityType = "COURSE",
+            action = "CREATE",
+            entityIdExpr = "#result",
+            descriptionExpr = "'created course ' + #addCourseDTO?.courseName")
     public String addCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.addCourse(addCourseDTO, userDetails, instituteId);
@@ -55,18 +61,39 @@ public class CourseController {
     }
 
     @PutMapping("/update-course/{courseId}")
+    @Auditable(
+            entityType = "COURSE",
+            action = "UPDATE",
+            entityIdExpr = "#packageId",
+            descriptionExpr = "'updated course ' + (#packageDTO?.name ?: #packageId)")
     public String updateCourse(@RequestBody PackageDTO packageDTO, @PathVariable("courseId") String packageId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.updateCourse(packageDTO, userDetails, packageId);
     }
 
     @DeleteMapping("/delete-courses")
+    @Auditable(
+            entityType = "COURSE",
+            action = "DELETE",
+            entityIdExpr = "T(java.lang.String).join(',', #courseIds)",
+            // Load the course names *before* the service deletes them. SpEL's
+            // `.![packageName]` projects each PackageEntity to its name field,
+            // so #before is a List<String> we can join in the description.
+            captureBefore = "@packageRepository.findAllById(#courseIds).![packageName]",
+            descriptionExpr = "#before != null and !#before.isEmpty() ? "
+                    + "'deleted course ' + T(java.lang.String).join(', ', #before) : "
+                    + "'deleted ' + #courseIds.size() + ' course(s)'")
     public String deleteCourse(@RequestBody List<String> courseIds,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.deleteCourses(courseIds, userDetails);
     }
 
     @PostMapping("/update-course-details/{instituteId}")
+    @Auditable(
+            entityType = "COURSE",
+            action = "UPDATE",
+            entityIdExpr = "#result",
+            descriptionExpr = "'updated course ' + #addCourseDTO?.courseName")
     public String updateCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId,
             @RequestAttribute("user") CustomUserDetails userDetails) {
         return courseService.addOrUpdateCourse(addCourseDTO, instituteId, userDetails);

@@ -28,6 +28,14 @@ public class UserPlanDTO {
     private String appliedCouponDiscountId;
     private String appliedCouponDiscountJson;
 
+    /**
+     * Parsed projection of {@link #appliedCouponDiscountJson}. Surfaced as
+     * {@code applied_coupon} on the wire so FE clients can read coupon info
+     * structurally instead of JSON.parse-ing the blob field above. Null when
+     * no coupon was applied at enrollment.
+     */
+    private CouponSnapshotDTO appliedCoupon;
+
     private String enrollInviteId;
 
     private String paymentOptionId;

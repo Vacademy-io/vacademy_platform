@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { Preferences } from "@capacitor/preferences";
-import { Download } from "lucide-react";
+import { DownloadSimple } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -240,7 +240,7 @@ export default function AttendanceReportPage() {
           disabled={downloading}
           className="gap-2"
         >
-          <Download size={16} />
+          <DownloadSimple size={16} />
           {downloading ? "Generating..." : "Download PDF"}
         </Button>
       </div>
@@ -253,7 +253,7 @@ export default function AttendanceReportPage() {
           maxWidth: 600,
           margin: "0 auto",
           padding: 24,
-          background: "#ffffff",
+          background: "#ffffff", // design-lint-ignore: PDF template inline style
         }}
       >
         {/* Branded letterhead — institute logo + name + address.
@@ -263,7 +263,7 @@ export default function AttendanceReportPage() {
           style={{
             width: "100%",
             borderCollapse: "collapse",
-            borderBottom: "2px solid #e2e8f0",
+            borderBottom: "2px solid #e2e8f0", // design-lint-ignore: PDF template inline style
             paddingBottom: 16,
             marginBottom: 20,
           }}
@@ -290,7 +290,7 @@ export default function AttendanceReportPage() {
                   style={{
                     fontSize: 22,
                     fontWeight: "bold",
-                    color: "#1a1a1a",
+                    color: "#1a1a1a", // design-lint-ignore: PDF template inline style
                     lineHeight: 1.2,
                   }}
                 >
@@ -300,7 +300,7 @@ export default function AttendanceReportPage() {
                   <div
                     style={{
                       fontSize: 12,
-                      color: "#64748b",
+                      color: "#64748b", // design-lint-ignore: PDF template inline style
                       marginTop: 4,
                       lineHeight: 1.4,
                     }}
@@ -309,7 +309,7 @@ export default function AttendanceReportPage() {
                   </div>
                 )}
               </td>
-              <td style={{ textAlign: "right", verticalAlign: "top", fontSize: 11, color: "#94a3b8" }}>
+              <td style={{ textAlign: "right", verticalAlign: "top", fontSize: 11, color: "#94a3b8" }}> {/* design-lint-ignore: PDF template inline style */}
                 <div>Generated</div>
                 <div style={{ marginTop: 2 }}>{new Date().toLocaleDateString()}</div>
               </td>
@@ -317,16 +317,16 @@ export default function AttendanceReportPage() {
           </tbody>
         </table>
 
-        <h2 style={{ color: "#1a1a1a", marginTop: 0 }}>Attendance Report</h2>
-        <p style={{ color: "#444", lineHeight: 1.6 }}>
+        <h2 style={{ color: "#1a1a1a", marginTop: 0 }}>Attendance Report</h2> {/* design-lint-ignore: PDF template inline style */}
+        <p style={{ color: "#444", lineHeight: 1.6 }}> {/* design-lint-ignore: PDF template inline style */}
           Hi <strong>{student.fullName}</strong>, here's your attendance summary for{" "}
           <strong>{student.startDate}</strong> to <strong>{student.endDate}</strong>:
         </p>
 
         <div
           style={{
-            background: "#f0fdf4",
-            border: "1px solid #bbf7d0",
+            background: "#f0fdf4", // design-lint-ignore: PDF template inline style
+            border: "1px solid #bbf7d0", // design-lint-ignore: PDF template inline style
             borderRadius: 12,
             padding: 24,
             textAlign: "center",
@@ -337,22 +337,22 @@ export default function AttendanceReportPage() {
             style={{
               fontSize: 44,
               fontWeight: "bold",
-              color: "#16a34a",
+              color: "#16a34a", // design-lint-ignore: PDF template inline style
               lineHeight: 1.2,
             }}
           >
             {student.attendancePercentage}%
           </div>
-          <div style={{ color: "#444", marginTop: 12, fontSize: 14 }}>
+          <div style={{ color: "#444", marginTop: 12, fontSize: 14 }}> {/* design-lint-ignore: PDF template inline style */}
             Attendance Rate
           </div>
-          <div style={{ color: "#666", marginTop: 6, fontSize: 13 }}>
+          <div style={{ color: "#666", marginTop: 6, fontSize: 13 }}> {/* design-lint-ignore: PDF template inline style */}
             {student.sessionsAttended} sessions attended &middot;{" "}
             {student.totalDurationMinutes} min total
           </div>
         </div>
 
-        <h3 style={{ color: "#1e293b", marginTop: 24 }}>Session Details</h3>
+        <h3 style={{ color: "#1e293b", marginTop: 24 }}>Session Details</h3> {/* design-lint-ignore: PDF template inline style */}
         {/* Reuse the exact same pre-rendered HTML the backend builds for emails */}
         <div dangerouslySetInnerHTML={{ __html: student.sessionsTableHtml }} />
 
@@ -360,10 +360,10 @@ export default function AttendanceReportPage() {
             session has score components. Hidden in email; visible only here. */}
         {student.engagementLogs.some((l) => l.engagementScore !== undefined) && (
           <div style={{ marginTop: 24 }}>
-            <h3 style={{ color: "#1e293b", marginTop: 0 }}>
+            <h3 style={{ color: "#1e293b", marginTop: 0 }}> {/* design-lint-ignore: PDF template inline style */}
               Engagement Score Breakdown
             </h3>
-            <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>
+            <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}> {/* design-lint-ignore: PDF template inline style */}
               How each session's score is computed: <strong>80 pts</strong> based on
               attendance time vs. total session length, plus <strong>20 pts</strong>{" "}
               from in-session interactions. Total capped at 100.
@@ -381,7 +381,7 @@ export default function AttendanceReportPage() {
                 const joined = log.providerTotalDurationMinutes ?? 0;
                 const ib = log.interactionBreakdown;
                 const scoreColor =
-                  score >= 70 ? "#16a34a" : score >= 40 ? "#ca8a04" : "#dc2626";
+                  score >= 70 ? "#16a34a" : score >= 40 ? "#ca8a04" : "#dc2626"; // design-lint-ignore: PDF template inline style
 
                 return (
                   <table
@@ -389,8 +389,8 @@ export default function AttendanceReportPage() {
                     style={{
                       width: "100%",
                       borderCollapse: "collapse",
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
+                      background: "#f8fafc", // design-lint-ignore: PDF template inline style
+                      border: "1px solid #e2e8f0", // design-lint-ignore: PDF template inline style
                       borderRadius: 8,
                       marginBottom: 8,
                     }}
@@ -401,29 +401,29 @@ export default function AttendanceReportPage() {
                           <div
                             style={{
                               fontWeight: 600,
-                              color: "#1e293b",
+                              color: "#1e293b", // design-lint-ignore: PDF template inline style
                               fontSize: 13,
                               marginBottom: 6,
                             }}
                           >
                             {sessionTitle}
                           </div>
-                          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.7 }}>
+                          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.7 }}> {/* design-lint-ignore: PDF template inline style */}
                             <div>
-                              <strong style={{ color: "#1e293b" }}>Attendance:</strong>{" "}
+                              <strong style={{ color: "#1e293b" }}>Attendance:</strong>{" "} {/* design-lint-ignore: PDF template inline style */}
                               {attPts}/80
                               {mtgMins !== undefined && joined > 0 && (
-                                <span style={{ color: "#94a3b8" }}>
+                                <span style={{ color: "#94a3b8" }}> {/* design-lint-ignore: PDF template inline style */}
                                   {" "}
                                   ({joined} of {mtgMins} min joined)
                                 </span>
                               )}
                             </div>
                             <div>
-                              <strong style={{ color: "#1e293b" }}>Interactions:</strong>{" "}
+                              <strong style={{ color: "#1e293b" }}>Interactions:</strong>{" "} {/* design-lint-ignore: PDF template inline style */}
                               {intPts}/20
                               {ib && (
-                                <span style={{ color: "#94a3b8" }}>
+                                <span style={{ color: "#94a3b8" }}> {/* design-lint-ignore: PDF template inline style */}
                                   {" "}
                                   ({ib.chats} chat
                                   {ib.chats === 1 ? "" : "s"}, {ib.raisehand} raise
@@ -437,7 +437,7 @@ export default function AttendanceReportPage() {
                               style={{
                                 marginTop: 6,
                                 paddingTop: 6,
-                                borderTop: "1px dashed #e2e8f0",
+                                borderTop: "1px dashed #e2e8f0", // design-lint-ignore: PDF template inline style
                               }}
                             >
                               <strong style={{ color: scoreColor }}>
@@ -454,10 +454,10 @@ export default function AttendanceReportPage() {
           </div>
         )}
 
-        <p style={{ color: "#444", lineHeight: 1.6, marginTop: 16 }}>
+        <p style={{ color: "#444", lineHeight: 1.6, marginTop: 16 }}> {/* design-lint-ignore: PDF template inline style */}
           Regular attendance is the key to success.
         </p>
-        <p style={{ color: "#888", fontSize: 13, marginTop: 32 }}>
+        <p style={{ color: "#888", fontSize: 13, marginTop: 32 }}> {/* design-lint-ignore: PDF template inline style */}
           Best regards,
           <br />
           {student.instituteName}

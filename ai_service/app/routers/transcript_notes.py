@@ -1,0 +1,389 @@
+"""
+Router for turning a lecture transcript into clean, structured study notes.
+
+Used by the "View Transcript → Study Notes" tab in the live-session UI.
+Returns Markdown so the caller can render with react-markdown in the
+browser. We deliberately do NOT return a JSON outline — students/teachers
+read these as notes, not parse them.
+"""
+from __future__ import annotations
+
+import logging
+import re
+from typing import Optional
+
+import httpx
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from ..config import get_settings
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/transcript", tags=["transcript-notes"])
+
+
+class GenerateNotesRequest(BaseModel):
+    transcript_text: str = Field(..., min_length=10)
+    # Optional hints — UI may forward the recording title and the detected
+    # language so the model produces notes in the right tongue with a
+    # sensible top-level heading.
+    title_hint: Optional[str] = None
+    target_language: str = Field(
+        default="en",
+        description="ISO code. Output notes will be in this language.",
+    )
+
+
+class GenerateNotesResponse(BaseModel):
+    markdown: str
+    model: str
+
+
+_GEMINI_TEXT_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-2.5-flash:generateContent"
+)
+
+# OpenRouter is the preferred path because it isn't subject to per-project
+# Google Cloud restrictions — the same key works regardless of which Google
+# project the org's direct API key is in. We still keep a direct-Gemini
+# fallback so a single provider outage doesn't take the endpoint down.
+_OPENROUTER_MODEL = "google/gemini-2.5-flash"
+
+# Placeholder the LLM emits on a line after each visual-concept H2 section
+# (see the prompt rule #10). Format: `<!--IMG: search query-->`. Captured
+# group is trimmed before being handed to Serper. Cap below limits Serper
+# calls per notes document — anything beyond 5 just clutters the page.
+_IMG_PLACEHOLDER_RE = re.compile(r"<!--\s*IMG\s*:\s*(.+?)\s*-->", re.IGNORECASE)
+_MAX_IMAGES_PER_NOTES = 5
+
+
+_LANG_NAMES = {
+    "en": "English",
+    "hi": "Hindi",
+    "bn": "Bengali",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "mr": "Marathi",
+    "gu": "Gujarati",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "pa": "Punjabi",
+    "ur": "Urdu",
+}
+
+
+def _build_prompt(transcript: str, title_hint: Optional[str], target_language: str) -> str:
+    lang_name = _LANG_NAMES.get(target_language.lower(), "English")
+    title_line = (
+        f"Suggested top-level title: {title_hint}\n"
+        if title_hint
+        else "Pick a concise top-level title that summarises the lecture.\n"
+    )
+    return (
+        f"You are an expert study-notes editor. Convert the following "
+        f"lecture transcript into rich, well-structured study notes in "
+        f"{lang_name} that a student can revise from. Write clean Markdown "
+        "following these rules strictly:\n\n"
+        "STRUCTURE\n"
+        "1. Start with a single H1 (`# Title`) line — a concise topic "
+        "title (NOT 'Study Notes' or the recording id).\n"
+        "2. Use H2 (`##`) for each major topic / concept covered in the "
+        "lecture. Aim for 3–7 H2 sections depending on lecture length.\n"
+        "3. Use H3 (`###`) for sub-topics within a section.\n"
+        "4. End each H2 section with a `> Key takeaway:` blockquote — a "
+        "one-line summary a student can re-read just before an exam.\n\n"
+        "VOICE & CONTENT\n"
+        "5. Prefer tight bullet points (`-`) over long paragraphs. Each "
+        "bullet should hold ONE idea, ~12–25 words.\n"
+        "6. Bold every key term on first appearance with `**term**` "
+        "(e.g. `**hypotonic solution**`).\n"
+        "7. When the transcript explicitly *defines* something, format "
+        "it as `**Term**: definition` on its own bullet.\n"
+        "8. When the transcript gives an *example*, format it as "
+        "`*Example*: …` on its own bullet.\n"
+        "9. Skip filler ('um', 'so', 'right'), repetition, false starts, "
+        "and audio glitches. Compress redundant explanations.\n"
+        "10. Do not invent facts. If the transcript is too short or noisy "
+        "to produce real notes, output a short Markdown paragraph saying "
+        "so politely.\n\n"
+        "COMPARISONS — USE TABLES\n"
+        "11. When the lecture compares 2+ items along the same axes "
+        "(e.g. hypertonic vs hypotonic vs isotonic; mitosis vs meiosis; "
+        "DNA vs RNA), output a Markdown table:\n"
+        "    | Feature | Item A | Item B | Item C |\n"
+        "    | --- | --- | --- | --- |\n"
+        "    | Property 1 | … | … | … |\n"
+        "    Tables make comparisons scannable — use them whenever 2+ "
+        "items share a structure. Don't force tables when only one "
+        "concept is being explained.\n\n"
+        "FORMULAS & CODE\n"
+        "12. Use fenced code blocks (```) only for actual code, "
+        "equations, or step-by-step procedures. Don't wrap regular "
+        "definitions in code blocks.\n\n"
+        "IMAGES\n"
+        "13. For each H2 section that has a CONCRETE visual concept "
+        "(diagram, anatomy, process, equipment, historical figure, "
+        "location, chart), add ONE image placeholder on a line of its "
+        "own immediately after the H2 heading, in the exact format:\n"
+        "    <!--IMG: short English search query-->\n"
+        "    Pick queries that would return clear educational "
+        "illustrations (e.g. `photosynthesis diagram`, `chloroplast "
+        "structure`, `Newton's third law`, `mitosis stages`). ALWAYS "
+        "write the query in English even when the notes are in another "
+        "language. Skip the placeholder for purely conceptual sections "
+        "(Q&A recap, homework, history of who-coined-the-term, etc.) — "
+        "max one image per section, no images in introductions or "
+        "closing summaries.\n\n"
+        "CLEANLINESS\n"
+        "14. No stray HTML, no horizontal rules, no triple-backtick "
+        "wrapper around the whole document.\n"
+        "15. Maintain consistent terminology — pick one variant of each "
+        "term and stick with it (e.g. always 'hypertonic' not "
+        "alternating 'hyper-tonic' / 'hypertonic').\n\n"
+        f"{title_line}\n"
+        "--- TRANSCRIPT ---\n"
+        f"{transcript}\n"
+        "--- END TRANSCRIPT ---\n\n"
+        "Respond with the Markdown only — no preamble, no commentary, "
+        "no triple-backtick wrapper around the whole document."
+    )
+
+
+async def _call_openrouter(prompt: str, api_key: str, base_url: str) -> str:
+    """Call OpenRouter's OpenAI-compatible chat completions endpoint and return the
+    raw markdown content. Raises httpx.HTTPStatusError on non-2xx, RuntimeError on
+    empty payload, httpx.RequestError on transport failure."""
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            base_url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": _OPENROUTER_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 8192,
+            },
+        )
+    if resp.status_code != 200:
+        # Bubble up the OpenRouter error body so the orchestrator above can
+        # decide whether to fall back to direct Gemini or surface to the user.
+        raise httpx.HTTPStatusError(
+            f"OpenRouter {resp.status_code}: {resp.text[:500]}",
+            request=resp.request,
+            response=resp,
+        )
+    data = resp.json()
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"OpenRouter returned no choices: {str(data)[:300]}")
+    content = (choices[0].get("message") or {}).get("content") or ""
+    if not content.strip():
+        raise RuntimeError(f"OpenRouter returned empty content: {str(data)[:300]}")
+    return content
+
+
+async def _call_gemini_direct(prompt: str, api_key: str) -> str:
+    """Call Google's direct Generative Language API. Raises httpx.HTTPStatusError on
+    non-2xx, RuntimeError on empty payload, httpx.RequestError on transport failure."""
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{_GEMINI_TEXT_ENDPOINT}?key={api_key}",
+            headers={"Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 8192,
+                },
+            },
+        )
+    if resp.status_code != 200:
+        raise httpx.HTTPStatusError(
+            f"Gemini {resp.status_code}: {resp.text[:500]}",
+            request=resp.request,
+            response=resp,
+        )
+    data = resp.json()
+    markdown = ""
+    for cand in data.get("candidates", []):
+        for part in cand.get("content", {}).get("parts", []):
+            if "text" in part:
+                markdown = part["text"]
+                break
+        if markdown:
+            break
+    if not markdown.strip():
+        raise RuntimeError(f"Gemini returned empty payload: {str(data)[:300]}")
+    return markdown
+
+
+def _enrich_with_images(markdown: str) -> str:
+    """Replace every `<!--IMG:query-->` placeholder the LLM emitted with a
+    real markdown image referencing a Serper search hit.
+
+    Best-effort: when Serper isn't configured (settings.serper_api_keys empty)
+    OR the search returns no results, the placeholder is silently dropped so
+    the notes still render cleanly. Falling back to "image missing" UX is
+    always better than surfacing the broken placeholder to the user.
+
+    Capped at {_MAX_IMAGES_PER_NOTES} images per document — that's enough for
+    a typical 60-90min lecture without making the PDF download huge.
+
+    Lazy-imports the Serper client because it lives under the ai-video-gen
+    namespace (the codebase keeps it there to avoid polluting top-level
+    services). Skipping all the way through when no key is configured means
+    we never pay even the import cost in unrelated environments.
+    """
+    settings = get_settings()
+    serper_keys: str = (getattr(settings, "serper_api_keys", "") or "").strip()
+    if not serper_keys:
+        # Strip placeholders so they don't leak into the rendered markdown.
+        return _IMG_PLACEHOLDER_RE.sub("", markdown)
+
+    matches = list(_IMG_PLACEHOLDER_RE.finditer(markdown))
+    if not matches:
+        return markdown
+
+    # Lazy import — see docstring.
+    try:
+        # `ai-video-gen-main` is a directory with a hyphen, so it's not a
+        # regular python package. The pipeline brings it in via sys.path
+        # manipulation. Repeat the same pattern here, scoped to this call.
+        import sys
+        from pathlib import Path
+        avg_path = str(Path(__file__).resolve().parents[1] / "ai-video-gen-main")
+        if avg_path not in sys.path:
+            sys.path.insert(0, avg_path)
+        from serper_service import SerperService  # type: ignore
+    except Exception as e:
+        logger.warning("[transcript-notes] could not load SerperService: %s", e)
+        return _IMG_PLACEHOLDER_RE.sub("", markdown)
+
+    svc = SerperService(serper_keys)
+
+    # Build replacements in one pass keyed by original-match-text so we don't
+    # call Serper twice for the same query if the LLM happened to repeat it.
+    replacements: dict[str, str] = {}
+    used = 0
+    for m in matches:
+        if used >= _MAX_IMAGES_PER_NOTES:
+            break
+        original = m.group(0)
+        if original in replacements:
+            continue
+        query = m.group(1).strip()
+        if not query:
+            replacements[original] = ""
+            continue
+        try:
+            img = svc.best_image(query, orientation="landscape")
+        except Exception as e:
+            logger.warning("[transcript-notes] Serper search failed for %r: %s", query, e)
+            img = None
+        if img and img.get("url"):
+            # Markdown image. Alt text doubles as a caption-ish line for PDFs
+            # rendered without image-loading (e.g. text-only fallback).
+            alt = query.replace("]", "").replace("[", "")
+            replacements[original] = f"![{alt}]({img['url']})"
+            used += 1
+        else:
+            replacements[original] = ""
+
+    # Replace each unique placeholder once. We do the substitution by re-running
+    # the regex with a function so we leave any *extra* placeholders (past the
+    # cap, or duplicates) cleanly stripped.
+    def _sub(m: re.Match) -> str:
+        original = m.group(0)
+        return replacements.get(original, "")
+
+    return _IMG_PLACEHOLDER_RE.sub(_sub, markdown)
+
+
+def _strip_outer_markdown_fence(text: str) -> str:
+    """If the model wrapped the whole document in ```markdown fences, strip them
+    so react-markdown doesn't render a single huge code block."""
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return text
+    first_newline = stripped.find("\n")
+    if first_newline == -1 or not stripped.rstrip().endswith("```"):
+        return text
+    inner = stripped[first_newline + 1:].rstrip()
+    if inner.endswith("```"):
+        inner = inner[:-3].rstrip()
+    return inner
+
+
+@router.post("/generate-notes", response_model=GenerateNotesResponse)
+async def generate_notes(body: GenerateNotesRequest) -> GenerateNotesResponse:
+    settings = get_settings()
+    openrouter_key: Optional[str] = getattr(settings, "openrouter_api_key", None)
+    gemini_key: Optional[str] = getattr(settings, "gemini_api_key", None)
+    openrouter_url: str = getattr(settings, "llm_base_url",
+                                  "https://openrouter.ai/api/v1/chat/completions")
+
+    if not openrouter_key and not gemini_key:
+        raise HTTPException(
+            status_code=503,
+            detail="No LLM provider configured. Set OPENROUTER_API_KEY (preferred) or GEMINI_API_KEY on ai-service.",
+        )
+
+    prompt = _build_prompt(
+        transcript=body.transcript_text,
+        title_hint=body.title_hint,
+        target_language=body.target_language,
+    )
+
+    # Track per-provider failures so the final HTTPException tells the caller
+    # exactly which providers were tried and why each rejected the request —
+    # otherwise users get a generic 502 and operators have to grep logs.
+    failures: list[str] = []
+    markdown: Optional[str] = None
+    used_model: Optional[str] = None
+
+    # Primary: OpenRouter. Works around per-project Google API restrictions
+    # because OpenRouter holds the upstream Google relationship, not us.
+    if openrouter_key:
+        try:
+            markdown = await _call_openrouter(prompt, openrouter_key, openrouter_url)
+            used_model = _OPENROUTER_MODEL
+        except Exception as e:
+            logger.warning("[transcript-notes] openrouter failed: %s", e)
+            failures.append(f"OpenRouter: {e}")
+    else:
+        failures.append("OpenRouter: no key configured")
+
+    # Fallback: direct Gemini. Useful when OpenRouter is rate-limited or
+    # temporarily down AND the deploying env happens to have a working
+    # direct Gemini key.
+    if markdown is None and gemini_key:
+        try:
+            markdown = await _call_gemini_direct(prompt, gemini_key)
+            used_model = "gemini-2.5-flash"
+        except Exception as e:
+            logger.error("[transcript-notes] gemini direct failed: %s", e)
+            failures.append(f"Gemini direct: {e}")
+    elif markdown is None:
+        failures.append("Gemini direct: no key configured")
+
+    if markdown is None:
+        raise HTTPException(
+            status_code=502,
+            detail="All LLM providers failed - " + "; ".join(failures),
+        )
+
+    cleaned_markdown = _strip_outer_markdown_fence(markdown)
+    # Best-effort image enrichment: replaces <!--IMG:query--> placeholders the
+    # LLM emitted with real Serper hits. Silently strips placeholders when
+    # Serper isn't configured so the notes still render cleanly.
+    enriched_markdown = _enrich_with_images(cleaned_markdown)
+
+    return GenerateNotesResponse(
+        markdown=enriched_markdown,
+        model=used_model or _OPENROUTER_MODEL,
+    )

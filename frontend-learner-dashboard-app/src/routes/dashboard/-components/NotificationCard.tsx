@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Bell, ChevronRight, Clock } from "lucide-react";
+import { Bell, CaretRight, Clock } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 interface NotifcationCardProps {
@@ -24,10 +24,9 @@ export function NotifcationCard({
         // Vibrant Styles
         "[.ui-vibrant_&]:hover:shadow-lg [.ui-vibrant_&]:hover:border-primary/30",
         isNew && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary/5 [.ui-vibrant_&]:to-primary/10",
-        // Play Styles - Solid Bold Duolingo
-        "[.ui-play_&]:border-2 [.ui-play_&]:border-[#E5E5E5] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#E5E5E5] [.ui-play_&]:hover:shadow-[0_2px_0_0_#E5E5E5] [.ui-play_&]:hover:translate-y-[2px]",
+        // Play Styles — bg/shadow/border handled by .ui-play .card rule (and notification-card-new for new state)
         "[.ui-play_&]:font-bold",
-        isNew && "[.ui-play_&]:bg-[#1CB0F6] [.ui-play_&]:text-white [.ui-play_&]:border-[#1899d6] [.ui-play_&]:shadow-[0_4px_0_0_#1899d6]"
+        isNew && "notification-card-new [.ui-play_&]:text-white"
       )}
     >
       <CardContent className="p-4 sm:p-5">
@@ -43,7 +42,7 @@ export function NotifcationCard({
                 {title}
               </h3>
               {isNew && (
-                <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 h-5 flex-shrink-0">
+                <Badge variant="secondary" className="bg-primary/10 text-primary text-caption px-1.5 h-5 flex-shrink-0">
                   New
                 </Badge>
               )}
@@ -61,7 +60,7 @@ export function NotifcationCard({
 
               <div className="flex items-center gap-1 group-hover:text-primary transition-colors">
                 <span className="opacity-0 group-hover:opacity-100 transition-opacity">View Details</span>
-                <ChevronRight size={14} className="transform group-hover:translate-x-1 transition-transform" />
+                <CaretRight size={14} weight="bold" className="transform group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>

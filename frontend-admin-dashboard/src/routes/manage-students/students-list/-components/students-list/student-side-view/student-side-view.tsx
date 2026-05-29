@@ -98,6 +98,7 @@ export const StudentSidebar = ({
     applicantId,
     className,
     packageSessionId,
+    defaultLeadProfile,
 }: {
     selectedTab?: string;
     examType?: string;
@@ -108,10 +109,18 @@ export const StudentSidebar = ({
     applicantId?: string;
     className?: string;
     packageSessionId?: string;
+    /** Open the Lead Profile tab by default each time a lead is opened (lead lists). */
+    defaultLeadProfile?: boolean;
 }) => {
-    const { state } = useSidebar();
+    const { state, setOpen, setOpenMobile } = useSidebar();
     const [category, setCategory] = useState('overview');
-    const { toggleSidebar } = useSidebar();
+    // Explicitly close both desktop + mobile sidebar state. Using `toggleSidebar`
+    // hit a stale-closure case where `isMobile` could be wrong post-hydration,
+    // so the X click flipped the wrong state on touch viewports.
+    const closeSidebar = () => {
+        setOpen(false);
+        setOpenMobile(false);
+    };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
     const { selectedStudent } = useStudentSidebar();
@@ -162,6 +171,26 @@ export const StudentSidebar = ({
         }
     }, [applicantId, enquiryId, tabSettings]);
 
+    // Lead lists (Lead List / Recent Leads): open the Lead Profile tab by default
+    // each time a lead is opened — but only when the lead tab is actually available.
+    useEffect(() => {
+        if (
+            defaultLeadProfile &&
+            selectedStudent?.user_id &&
+            tabSettings?.leadTab &&
+            !leadSettings.isLoading &&
+            leadSettings.enabled
+        ) {
+            setCategory('lead');
+        }
+    }, [
+        defaultLeadProfile,
+        selectedStudent?.user_id,
+        tabSettings,
+        leadSettings.isLoading,
+        leadSettings.enabled,
+    ]);
+
     useEffect(() => {
         const fetchImageUrl = async () => {
             if (selectedStudent?.face_file_id) {
@@ -194,37 +223,73 @@ export const StudentSidebar = ({
     }, [category]);
 
     return (
-        <Sidebar side="right" className={cn('!top-14 md:!top-[72px]', className)}>
+        <Sidebar
+            side="right"
+            preventOutsideClose
+            className={cn('!top-14 md:!top-20', className)}
+        >
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 shadow-sm backdrop-blur-sm">
-                    <div className="flex flex-col p-4">
-                        {/* Header with close button - enhanced with gradient */}
-                        <div
-                            className={`flex items-center justify-between
-                             ${isEnrollRequestStudentList ? '' : 'mb-4'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="h-6 w-1 animate-pulse rounded-full bg-gradient-to-b from-primary-500 to-primary-400"></div>
-                                <h2 className="bg-gradient-to-r from-neutral-800 to-neutral-600 bg-clip-text text-lg font-semibold text-transparent">
-                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
-                                </h2>
+                    <div className="flex flex-col gap-2 px-3 pb-2 pt-0">
+                        {/* Compact title row: label + avatar + name + status + close */}
+                        <div className="flex items-center gap-2">
+                            <div className="h-5 w-0.5 shrink-0 rounded-full bg-gradient-to-b from-primary-500 to-primary-400"></div>
+
+                            <div className="group relative shrink-0">
+                                <div className="relative flex size-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-primary-500/20 transition-all duration-300 group-hover:ring-primary-500/40">
+                                    {faceLoader ? (
+                                        <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                    ) : imageUrl ? (
+                                        <img
+                                            src={imageUrl}
+                                            alt="Profile"
+                                            className="size-full object-cover"
+                                        />
+                                    ) : (
+                                        <DummyProfile className="size-5 text-neutral-400" />
+                                    )}
+                                </div>
+                                <div className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-white bg-green-500"></div>
                             </div>
+
+                            <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                                <span className="truncate text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
+                                </span>
+                                {selectedStudent?.full_name && (
+                                    <h2 className="truncate bg-gradient-to-r from-neutral-800 to-neutral-600 bg-clip-text text-sm font-semibold text-transparent">
+                                        {selectedStudent.full_name}
+                                    </h2>
+                                )}
+                            </div>
+
+                            {selectedStudent?.status && (
+                                <div className="shrink-0">
+                                    <StatusChips status={selectedStudent.status} />
+                                </div>
+                            )}
+
                             <button
-                                onClick={toggleSidebar}
-                                className="group rounded-xl p-2 transition-all duration-300 hover:scale-105 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    closeSidebar();
+                                }}
+                                className="group shrink-0 rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
+                                aria-label="Close"
                             >
-                                <X className="size-5 text-neutral-500 transition-colors duration-200 group-hover:text-red-500" />
+                                <X className="size-4 text-neutral-500 transition-colors duration-200 group-hover:text-red-500" />
                             </button>
                         </div>
 
                         {/* Sub Organization and Roles Badges */}
                         {(selectedStudent?.sub_org_name ||
                             selectedStudent?.comma_separated_org_roles) && (
-                            <div className="mb-4 flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
                                 {selectedStudent?.sub_org_name && (
-                                    <div className="flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 shadow-sm">
+                                    <div className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
                                         <span>{selectedStudent.sub_org_name}</span>
                                     </div>
                                 )}
@@ -235,7 +300,7 @@ export const StudentSidebar = ({
                                             .map((role, index) => (
                                                 <div
                                                     key={index}
-                                                    className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-medium capitalize text-amber-700 shadow-sm"
+                                                    className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium capitalize text-amber-700"
                                                 >
                                                     {role.trim().toLowerCase().replace(/_/g, ' ')}
                                                 </div>
@@ -247,11 +312,11 @@ export const StudentSidebar = ({
 
                         {/* Enhanced tab navigation with modern design */}
                         {!isEnrollRequestStudentList && tabSettings && (
-                            <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-neutral-50 to-neutral-100 p-1.5 shadow-inner">
+                            <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-neutral-50 to-neutral-100 p-0.5 shadow-inner">
                                 {/* Scrollable tabs container */}
                                 <div
                                     ref={tabContainerRef}
-                                    className="scrollbar-hide flex gap-1 overflow-x-auto scroll-smooth"
+                                    className="scrollbar-hide flex gap-0.5 overflow-x-auto scroll-smooth"
                                 >
                                     {orderedVisibleTabIds(tabSettings).map((tabId) => {
                                         // lead/fullHistory require the lead system to be enabled
@@ -271,20 +336,19 @@ export const StudentSidebar = ({
                                         return (
                                             <button
                                                 key={tabId}
+                                                type="button"
                                                 ref={category === tabId ? activeTabRef : null}
-                                                className={`group relative z-10 shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 ${
+                                                className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
                                                     category === tabId
-                                                        ? 'bg-white text-primary-500 shadow-lg'
+                                                        ? 'bg-white text-primary-500 shadow-sm'
                                                         : 'text-neutral-600 hover:text-neutral-800'
                                                 }`}
-                                                onClick={() => setCategory(tabId)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCategory(tabId);
+                                                }}
                                             >
-                                                <span className="relative">
-                                                    {label}
-                                                    {category === tabId && (
-                                                        <div className="absolute -bottom-1 left-1/2 size-1 -translate-x-1/2 animate-bounce rounded-full bg-primary-500"></div>
-                                                    )}
-                                                </span>
+                                                {label}
                                             </button>
                                         );
                                     })}
@@ -293,20 +357,19 @@ export const StudentSidebar = ({
                                         student belongs to one — it has no settings flag of its own. */}
                                     {selectedStudent?.sub_org_name && (
                                         <button
+                                            type="button"
                                             ref={category === 'subOrg' ? activeTabRef : null}
-                                            className={`group relative z-10 shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 ${
+                                            className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
                                                 category === 'subOrg'
-                                                    ? 'bg-white text-primary-500 shadow-lg'
+                                                    ? 'bg-white text-primary-500 shadow-sm'
                                                     : 'text-neutral-600 hover:text-neutral-800'
                                             }`}
-                                            onClick={() => setCategory('subOrg')}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCategory('subOrg');
+                                            }}
                                         >
-                                            <span className="relative">
-                                                SubOrg
-                                                {category === 'subOrg' && (
-                                                    <div className="absolute -bottom-1 left-1/2 size-1 -translate-x-1/2 animate-bounce rounded-full bg-primary-500"></div>
-                                                )}
-                                            </span>
+                                            SubOrg
                                         </button>
                                     )}
                                 </div>
@@ -315,63 +378,7 @@ export const StudentSidebar = ({
                     </div>
                 </SidebarHeader>
 
-                <div className="flex-1 overflow-y-auto p-4">
-                    {/* Enhanced student profile header with animations */}
-                    <div className="relative mb-4 overflow-hidden rounded-xl border border-neutral-100 bg-gradient-to-r from-neutral-50/50 to-primary-50/30 p-4">
-                        {/* Animated background pattern */}
-                        <div className="absolute inset-0 opacity-5">
-                            <div className="absolute right-0 top-0 size-32 -translate-y-16 translate-x-16 animate-pulse rounded-full bg-primary-500"></div>
-                            <div className="absolute bottom-0 left-0 size-24 -translate-x-12 translate-y-12 animate-pulse rounded-full bg-primary-300 delay-1000"></div>
-                        </div>
-
-                        <div className="group relative flex items-center gap-4">
-                            <div className="relative">
-                                {/* Enhanced profile image with ring animation */}
-                                <div className="relative flex size-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 transition-transform duration-300 group-hover:scale-105">
-                                    {/* Animated ring */}
-                                    <div className="absolute inset-0 rounded-full ring-2 ring-primary-500/20 ring-offset-2 ring-offset-white transition-all duration-300 group-hover:ring-primary-500/40"></div>
-
-                                    {faceLoader ? (
-                                        <div className="relative">
-                                            <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                                            <div className="absolute inset-0 size-4 animate-ping rounded-full border-2 border-primary-200"></div>
-                                        </div>
-                                    ) : imageUrl ? (
-                                        <img
-                                            src={imageUrl}
-                                            alt="Profile"
-                                            className="size-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                        />
-                                    ) : (
-                                        <DummyProfile className="size-12 text-neutral-400 transition-colors duration-300 group-hover:text-neutral-600" />
-                                    )}
-                                </div>
-
-                                {/* Online status indicator */}
-                                <div className="absolute -bottom-1 -right-1 size-4 animate-pulse rounded-full border-2 border-white bg-green-500 shadow-lg">
-                                    <div className="absolute inset-0 animate-ping rounded-full bg-green-400"></div>
-                                </div>
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                                <h3 className="truncate font-semibold text-neutral-800 transition-colors duration-300 group-hover:text-primary-500">
-                                    {selectedStudent?.full_name}
-                                </h3>
-                                <div className="mt-1 flex items-center gap-2">
-                                    <div className="transition-all duration-300 group-hover:scale-105">
-                                        <StatusChips
-                                            status={selectedStudent?.status || 'INACTIVE'}
-                                        />
-                                    </div>
-                                    <div className="flex gap-1">
-                                        <div className="size-1.5 animate-bounce rounded-full bg-primary-400"></div>
-                                        <div className="size-1.5 animate-bounce rounded-full bg-primary-400 delay-75"></div>
-                                        <div className="size-1.5 animate-bounce rounded-full bg-primary-400 delay-150"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <div className="flex-1 overflow-y-auto p-3">
                     {/* Audience-form responses card — only on the Lead tab.
                         Renders only when the side view was opened from a lead
                         row (campaign-users / recent-leads); manage-students

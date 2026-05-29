@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { WarningCircle } from "@phosphor-icons/react";
 import { useAssessmentStore } from "@/stores/assessment-store";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState } from "react";
@@ -112,7 +112,7 @@ export function QuestionDisplay() {
   if (isTimeUp && !isPracticeMode) {
     return (
       <Alert variant="destructive" className="mb-6">
-        <AlertCircle className="h-4 w-4" />
+        <WarningCircle className="h-4 w-4" />
         <AlertDescription>
           Time is up for this section. Please move to the next available
           section.

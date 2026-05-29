@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { useNavigate } from "@tanstack/react-router";
 import { useLocation } from "@tanstack/react-router";
@@ -152,7 +152,7 @@ const AssessmentStartModal = () => {
             </div>
 
             <div className="p-6">
-              <p className="text-gray-600 sm:text-sm lg:text-[16px]">
+              <p className="text-gray-600 sm:text-sm lg:text-subtitle">
                 {
                   "Once you start the assessment, you must complete it without interruption. Begin only when you're ready."
                 }

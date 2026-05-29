@@ -9,6 +9,7 @@ import { CatalogStep } from "./CatalogStep";
 import { CartStep } from "./CartStep";
 import { MultiEnrollForm } from "./MultiEnrollForm";
 import { CombinedPaymentStep } from "./CombinedPaymentStep";
+import { CpoInstallmentsCheckoutStep } from "./CpoInstallmentsCheckoutStep";
 import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
 import type {
@@ -56,7 +57,7 @@ export const ProductPageShell = ({
   defaultTab,
   utmParams,
 }: ProductPageShellProps) => {
-  const { step, setPageData, setStep, setSelection, setUtmParams } =
+  const { step, setPageData, setStep, setSelection, setUtmParams, selectedPsOptionIds } =
     useProductPageStore();
   const gtmFired = useRef(false);
   const initialized = useRef(false);
@@ -122,6 +123,18 @@ export const ProductPageShell = ({
   const primaryColor = pageJson.globalSettings?.primaryColor || "#4F46E5"; // design-lint-ignore: page-builder default color
   const vendor = (pageData.vendor || "FREE").toUpperCase();
 
+  // Determine if the current selection is all-CPO (routes to CPO installments step)
+  const selectedMappings = pageData.mappings.filter((m) =>
+    selectedPsOptionIds.includes(m.ps_invite_payment_option_id)
+  );
+  const isCpoSelection =
+    selectedMappings.length > 0 &&
+    selectedMappings.every((m) => m.payment_option_type?.toUpperCase() === "CPO");
+
+  const handleFormNext = () => {
+    setStep(isCpoSelection ? "CPO_INSTALLMENTS" : "PAYMENT");
+  };
+
   return (
     <div className="min-h-screen w-full bg-white">
       {step === "CATALOG" && (
@@ -132,7 +145,7 @@ export const ProductPageShell = ({
         />
       )}
 
-      {(step === "CART" || step === "FORM" || step === "PAYMENT") && (
+      {(step === "CART" || step === "FORM" || step === "PAYMENT" || step === "CPO_INSTALLMENTS") && (
         <CheckoutLayout
           pageData={pageData}
           pageJson={pageJson}
@@ -154,7 +167,7 @@ export const ProductPageShell = ({
               primaryColor={primaryColor}
               courseIds={courseIds}
               onBack={() => setStep("CART")}
-              onNext={() => setStep("PAYMENT")}
+              onNext={handleFormNext}
             />
           )}
           {step === "PAYMENT" && (
@@ -162,6 +175,16 @@ export const ProductPageShell = ({
               pageData={pageData}
               settings={settings}
               instituteId={instituteId}
+              vendor={vendor}
+              primaryColor={primaryColor}
+              onBack={() => setStep("FORM")}
+              onSuccess={() => setStep("SUCCESS")}
+            />
+          )}
+          {step === "CPO_INSTALLMENTS" && (
+            <CpoInstallmentsCheckoutStep
+              pageData={pageData}
+              settings={settings}
               vendor={vendor}
               primaryColor={primaryColor}
               onBack={() => setStep("FORM")}

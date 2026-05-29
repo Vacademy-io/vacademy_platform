@@ -28,7 +28,7 @@ export const CreateProductPageDialog = ({
         mutationFn: () =>
             createProductPage(instituteId!, {
                 name,
-                status: 'DRAFT',
+                status: 'ACTIVE',
                 settings_json: JSON.stringify(DEFAULT_PRODUCT_PAGE_SETTINGS),
                 mappings: [],
             }),

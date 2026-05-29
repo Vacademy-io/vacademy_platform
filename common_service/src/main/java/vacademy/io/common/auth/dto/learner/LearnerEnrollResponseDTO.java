@@ -11,4 +11,5 @@ import vacademy.io.common.auth.dto.UserDTO;
 public class LearnerEnrollResponseDTO {
     private UserDTO user;
     private PaymentResponseDTO paymentResponse;
+    private String userPlanId;
 }

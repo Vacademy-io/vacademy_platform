@@ -69,7 +69,6 @@ import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { LiveSessionPreviewDialog } from './LiveSessionPreviewDialog';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
-import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
@@ -202,8 +201,20 @@ export function BulkScheduleGrid() {
 
     // Same subject source the single-class form uses, so the bulk grid offers
     // the institute's curated subject list instead of free text.
-    const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
-    const { SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
+    // Use plain useQuery (not useSuspenseQuery) so the component doesn't throw
+    // a Promise when the institute fetch is still in flight. The route gate
+    // only waits for live-session settings, so on a cold load (deep link /
+    // refresh) the institute query may still be pending here. With no
+    // <Suspense> boundary above this component, a throw would bubble to the
+    // route errorComponent and render the "System Crashed" page. Guarding
+    // with isLoading + an early return preserves the same behaviour minus
+    // the crash.
+    const { data: instituteDetails, isLoading: instituteLoading } = useQuery(
+        useInstituteQuery()
+    );
+    const { SubjectFilterData } = useFilterDataForAssesment(
+        instituteDetails as never
+    );
     const subjectOptions = useMemo(
         () =>
             (SubjectFilterData ?? []).map((s: { name: string }) => ({
@@ -721,6 +732,20 @@ export function BulkScheduleGrid() {
     const validRowCount = watchedRows?.filter(
         (r) => r.title && r.startDate && r.startTime && (r.platform === 'zoho' || r.platform === 'bbb' || r.link)
     ).length ?? 0;
+
+    // Wait for the institute to load before mounting the grid. `instituteDetails`
+    // is consumed by onSubmit (batches_for_sessions, learner_portal_base_url),
+    // and downstream submit code assumes it is defined. Showing a loader here
+    // also avoids the previous crash where useSuspenseQuery would throw a
+    // pending Promise without a Suspense boundary above and trip the
+    // route-level errorComponent ("System Crashed").
+    if (instituteLoading || !instituteDetails) {
+        return (
+            <div className="flex h-64 items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-neutral-400" />
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-5 pb-20">

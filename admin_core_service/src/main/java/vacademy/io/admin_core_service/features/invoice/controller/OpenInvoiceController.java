@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
+import vacademy.io.admin_core_service.features.invoice.dto.PublicInvoiceListResponse;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 
@@ -38,6 +39,22 @@ public class OpenInvoiceController {
             @PathVariable String invoiceId,
             @RequestParam String instituteId) {
         PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, null);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Fetch all invoices for a user identified by email address.
+     * No authentication required — designed for WordPress shortcode / PHP snippet integration.
+     * Returns an empty list (not 404) when the email has no matching user or invoices.
+     *
+     * @param email       User's email address (case-insensitive)
+     * @param instituteId Optional — narrows results to a specific institute
+     */
+    @GetMapping("/by-email")
+    public ResponseEntity<PublicInvoiceListResponse> getInvoicesByEmail(
+            @RequestParam String email,
+            @RequestParam(required = false) String instituteId) {
+        PublicInvoiceListResponse response = invoiceService.getInvoicesByEmailPublic(email, instituteId);
         return ResponseEntity.ok(response);
     }
 }

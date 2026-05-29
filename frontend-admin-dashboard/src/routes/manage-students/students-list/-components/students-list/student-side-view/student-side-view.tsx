@@ -312,14 +312,23 @@ export const StudentSidebar = ({
                                 {selectedStudent?.comma_separated_org_roles &&
                                     selectedStudent.comma_separated_org_roles
                                         .split(',')
-                                        .map((role, index) => (
-                                            <span
-                                                key={index}
-                                                className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
-                                            >
-                                                {role.trim().toLowerCase().replace(/_/g, ' ')}
-                                            </span>
-                                        ))}
+                                        .map((role, index) => {
+                                            const r = role.trim().toUpperCase();
+                                            const label =
+                                                r === 'ADMIN'
+                                                    ? 'Practice Admin'
+                                                    : r === 'LEARNER'
+                                                      ? 'Practice Staff'
+                                                      : role.trim().toLowerCase().replace(/_/g, ' ');
+                                            return (
+                                                <span
+                                                    key={index}
+                                                    className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
+                                                >
+                                                    {label}
+                                                </span>
+                                            );
+                                        })}
                             </div>
                         )}
 

@@ -416,6 +416,34 @@ public class AuthService {
         }
     }
 
+    public UserDTO getUserByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        try {
+            String encodedEmail = java.net.URLEncoder.encode(email.toLowerCase().trim(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            String endpoint = AuthServiceRoutes.GET_USER_BY_EMAIL + "?emailId=" + encodedEmail;
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return objectMapper.readValue(response.getBody(), UserDTO.class);
+            }
+            return null;
+        } catch (Exception e) {
+            if (e.getMessage() != null && e.getMessage().contains("404")) {
+                return null;
+            }
+            logger.warn("getUserByEmail failed for email='{}': {}", email, e.getMessage());
+            return null;
+        }
+    }
+
     public UserDTO getUserByMobileNumber(String mobileNumber) {
         if (mobileNumber == null || mobileNumber.isBlank()) {
             return null;

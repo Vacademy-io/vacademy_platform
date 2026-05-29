@@ -3163,4 +3163,44 @@ public class InvoiceService {
                 .lineItems(lineItemDTOs)
                 .build();
     }
+
+    public PublicInvoiceListResponse getInvoicesByEmailPublic(String email, String instituteId) {
+        String normalizedEmail = email.toLowerCase().trim();
+        UserDTO user = authService.getUserByEmail(normalizedEmail);
+        if (user == null || user.getId() == null) {
+            return new PublicInvoiceListResponse(normalizedEmail, 0, List.of());
+        }
+        List<InvoiceDTO> invoices = getInvoicesByUserId(user.getId(), instituteId);
+        List<PublicInvoiceDTO> publicInvoices = invoices.stream()
+                .map(this::toPublicInvoiceDTO)
+                .collect(Collectors.toList());
+        return new PublicInvoiceListResponse(normalizedEmail, publicInvoices.size(), publicInvoices);
+    }
+
+    private PublicInvoiceDTO toPublicInvoiceDTO(InvoiceDTO dto) {
+        List<PublicInvoiceLineItemDTO> items = dto.getLineItems() == null ? List.of() :
+                dto.getLineItems().stream()
+                        .map(li -> PublicInvoiceLineItemDTO.builder()
+                                .itemType(li.getItemType())
+                                .description(li.getDescription())
+                                .quantity(li.getQuantity())
+                                .unitPrice(li.getUnitPrice())
+                                .amount(li.getAmount())
+                                .build())
+                        .collect(Collectors.toList());
+        return PublicInvoiceDTO.builder()
+                .invoiceNumber(dto.getInvoiceNumber())
+                .invoiceDate(dto.getInvoiceDate())
+                .status(dto.getStatus())
+                .currency(dto.getCurrency())
+                .subtotal(dto.getSubtotal())
+                .discountAmount(dto.getDiscountAmount())
+                .taxAmount(dto.getTaxAmount())
+                .totalAmount(dto.getTotalAmount())
+                .taxIncluded(dto.getTaxIncluded())
+                .pdfUrl(dto.getPdfUrl())
+                .createdAt(dto.getCreatedAt())
+                .lineItems(items)
+                .build();
+    }
 }

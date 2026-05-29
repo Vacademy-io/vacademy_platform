@@ -65,6 +65,10 @@ export const UPDATE_ROLE = `${BASE_URL}/auth-service/v1/user-roles/update-role-s
 export const GET_ENROLL_DETAILS = `${BASE_URL}/admin-core-service/learner-invitation-response/form`;
 export const ENROLL_OPEN_STUDENT_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;
 export const ENROLLMENT_FORM_SUBMIT = `${BASE_URL}/admin-core-service/open/v1/enrollment/form-submit`;
+export const CPO_OPEN_DUES_URL = `${BASE_URL}/admin-core-service/open/v1/fee/cpo-dues`;
+export const CPO_OPEN_PAY_INSTALLMENTS_URL = `${BASE_URL}/admin-core-service/open/v1/fee/cpo-pay-installments`;
+export const CPO_OPEN_SCHEDULE_URL = `${BASE_URL}/admin-core-service/open/v1/fee/cpo-schedule`;
+export const CPO_ENROLL_WITHOUT_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const PEYMENT_LOG_STATUS_URL = `${BASE_URL}/admin-core-service/open/v1/payment-log`;
 export const GET_PAYMENT_GATEWAY_DETAILS_URL = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/payment-gateway-details`;
 export const ENROLLMENT_INVITE_URL = `${BASE_URL}/admin-core-service/open/learner/enroll-invite`;
@@ -72,7 +76,7 @@ export const ENROLLMENT_INVITE_URL = `${BASE_URL}/admin-core-service/open/learne
 const ENROLL_API_BASE =
   import.meta.env.VITE_ENROLL_API_BASE_URL ||
   (import.meta.env.PROD ? BASE_URL : "http://localhost:8072");
-export const ENROLL_USER_INVITE_PAYMENT_URL = `${ENROLL_API_BASE}/admin-core-service/v1/learner/enroll`;
+export const ENROLL_USER_INVITE_PAYMENT_URL = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLL_DETAILS_RESPONSE = `${BASE_URL}/admin-core-service/learner-invitation-response/record`;
 export const STUDENT_DETAIL_EDIT = `${BASE_URL}/admin-core-service/learner/info/v1/edit`;
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
@@ -280,3 +284,4 @@ export const GET_PRODUCT_PAGE_BY_CODE = (code: string, instituteId: string) =>
 export const VALIDATE_PRODUCT_PAGE_COUPON = `${PRODUCT_PAGE_OPEN_URL}/validate-coupon`;
 export const PRODUCT_PAGE_FORM_SUBMIT = `${PRODUCT_PAGE_OPEN_URL}/form-submit`;
 export const PRODUCT_PAGE_ENROLL = `${PRODUCT_PAGE_OPEN_URL}/enroll`;
+export const PRODUCT_PAGE_CPO_ENROLL = `${PRODUCT_PAGE_OPEN_URL}/cpo-enroll`;

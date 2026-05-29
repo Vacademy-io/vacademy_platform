@@ -58,7 +58,18 @@ import {
   EnrollmentPolicyDialog,
   EnrollmentPolicyResponse,
   EnrollmentPolicyDialogType,
+  CpoInstallmentSelectionStep,
 } from "./-components";
+import {
+  enrollCpoWithoutPayment,
+  enrollCpoLearnerForPaymentViaInvite,
+  fetchCpoDues,
+  fetchCpoSchedule,
+  mapCpoScheduleToDues,
+  payCpoInstallments,
+  getFullNameField,
+  CpoInstallmentDue,
+} from "./-services/enroll-invite-services";
 import {
   getPaymentVendor,
   PaymentVendor,
@@ -159,6 +170,20 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     string | null
   >(null);
   const [submittedUserId, setSubmittedUserId] = useState<string | null>(null);
+
+  // CPO-specific state
+  const [cpoUserId, setCpoUserId] = useState<string | null>(null);
+  const [cpoUserPlanId, setCpoUserPlanId] = useState<string | null>(null);
+  const [cpoDues, setCpoDues] = useState<CpoInstallmentDue[]>([]);
+  const [cpoSelectedSfpIds, setCpoSelectedSfpIds] = useState<string[]>([]);
+  const [cpoSelectedTotal, setCpoSelectedTotal] = useState<number>(0);
+  const [cpoCustomAmount, setCpoCustomAmount] = useState<number | undefined>(undefined);
+  const [cpoUserEmail, setCpoUserEmail] = useState<string>("");
+  const [cpoEnrolling, setCpoEnrolling] = useState(false);
+  // Real SFP IDs (set after enrollment, used for payment calls)
+  const [cpoRealSfpIds, setCpoRealSfpIds] = useState<string[]>([]);
+  // Stable ref so Razorpay handler (registered before re-render) always reads fresh enrolled data
+  const cpoEnrolledRef = useRef<{ userId: string; userPlanId: string; email: string; name: string; sfpIds: string[]; customAmount: number } | null>(null);
 
   // Enrollment Policy Dialog state
   const [enrollmentPolicyDialogOpen, setEnrollmentPolicyDialogOpen] = useState(false);
@@ -581,6 +606,33 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
     let targetStep = 1;
 
+    // ─── CPO flow: fetch installment schedule first, then show selection ───────
+    if (paymentType === "CPO") {
+      setLoading(true);
+      setCpoEnrolling(true);
+      try {
+        const paymentOptionId =
+          inviteData?.package_session_to_payment_options[0]?.payment_option?.id || "";
+        if (!paymentOptionId) throw new Error("No CPO payment option found.");
+
+        const cpoDto = await fetchCpoSchedule(paymentOptionId);
+        setCpoDues(mapCpoScheduleToDues(cpoDto));
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        const errorData = err?.response?.data;
+        setError(errorData?.ex || "Failed to load installment schedule. Please try again.");
+        setLoading(false);
+        setCpoEnrolling(false);
+        return;
+      } finally {
+        setLoading(false);
+        setCpoEnrolling(false);
+      }
+      setCurrentStep(1); // CPO installment selection step
+      return;
+    }
+
     // If there's exactly one plan, preselect and skip selection step
     if (hasSinglePlan && paymentType !== "DONATION") {
       if (!enrollmentData.selectedPayment) {
@@ -689,6 +741,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   const handleNext = () => {
     if (currentStep < 5) {
+      // CPO: step 1 (installment selection) → step 3 (payment info); skip review
+      if (currentStep === 1 && paymentType === "CPO") {
+        setCurrentStep(3);
+        return;
+      }
       // If payment type is FREE and we're on registration step, skip payment selection
       if (currentStep === 0 && paymentType === "FREE") {
         setCurrentStep(2); // Skip to review step
@@ -709,6 +766,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   const handlePrevious = () => {
     if (currentStep > 0) {
+      // CPO: payment info (3) → installment selection (1)
+      if (currentStep === 3 && paymentType === "CPO") {
+        setCurrentStep(1);
+        return;
+      }
       // Reset auto-enroll flag when going back from review step or success step
       if (currentStep === 2 || currentStep === 5) {
         hasAutoEnrolledRef.current = false;
@@ -908,6 +970,202 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   };
 
   const handleSubmitEnrollment = async () => {
+    // ─── CPO payment flow ─────────────────────────────────────────────────────
+    // Two-phase: enroll without payment (creates UserPlan + SFP rows) → pay the
+    // selected amount via payCpoInstallments which has its own customAmount path.
+    // This avoids ComplexPaymentOptionOperation overriding the amount with duesNow.
+    if (paymentType === "CPO") {
+      if (!cpoCustomAmount && cpoSelectedSfpIds.length === 0) {
+        setError("Please select at least one installment to pay.");
+        return;
+      }
+      const payAmount = cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
+      if (payAmount <= 0) {
+        setError("Payment amount must be greater than zero.");
+        return;
+      }
+
+      const vendor = getPaymentVendor(inviteData);
+      const currency = inviteData?.currency || "INR";
+
+      if (inviteData?.gtm_container_id) {
+        pushPaymentInitiated({ courseName: courseData.course || "", paymentType, vendor: vendor || "STRIPE", currency, amount: payAmount, utmParams });
+      }
+
+      const learnerFullName = getFullNameField(form.getValues());
+
+      // Enroll without payment (once) → get real SFP IDs, then payCpoInstallments
+      const getOrEnrollCpoSfpIds = async (): Promise<{ userId: string; userPlanId: string; email: string; name: string; sfpIds: string[] }> => {
+        // Use ref first — avoids stale closure when called from within Razorpay handlers
+        if (cpoEnrolledRef.current) {
+          return cpoEnrolledRef.current;
+        }
+        if (cpoRealSfpIds.length > 0 && cpoUserId && cpoUserPlanId) {
+          const cached = { userId: cpoUserId, userPlanId: cpoUserPlanId, email: cpoUserEmail, name: learnerFullName, sfpIds: cpoRealSfpIds, customAmount: payAmount };
+          cpoEnrolledRef.current = cached;
+          return cached;
+        }
+        const packageSessionIds = inviteData?.package_session_to_payment_options.map(
+          (ps: { package_session_id: string }) => ps?.package_session_id
+        ) || [""];
+        const paymentOptionId = inviteData?.package_session_to_payment_options[0]?.payment_option?.id || "";
+        if (!paymentOptionId) throw new Error("No CPO payment option found.");
+
+        const result = await enrollCpoWithoutPayment({
+          registrationData: form.getValues(),
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          paymentOptionId,
+          packageSessionIds,
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
+          isUsingInstituteCustomFields,
+        });
+        if (!result.userId || !result.userPlanId) {
+          throw new Error("Enrollment succeeded but userPlanId was not returned. Please try again.");
+        }
+        // Write to state (triggers re-render later) AND ref (immediately readable in callbacks)
+        setCpoUserId(result.userId);
+        setCpoUserPlanId(result.userPlanId);
+        setCpoUserEmail(result.userEmail);
+
+        const sfpDues = await fetchCpoDues({ userId: result.userId, userPlanId: result.userPlanId });
+        const pendingIds = sfpDues.filter(d => d.status !== "PAID" && d.status !== "WAIVED").map(d => d.id);
+        if (pendingIds.length === 0) throw new Error("No pending installments were generated. Please contact support.");
+        setCpoRealSfpIds(pendingIds);
+
+        const enrolled = { userId: result.userId, userPlanId: result.userPlanId, email: result.userEmail, name: learnerFullName, sfpIds: pendingIds, customAmount: payAmount };
+        cpoEnrolledRef.current = enrolled;
+        return enrolled;
+      };
+
+      if (vendor === "RAZORPAY") {
+        setLoading(true);
+        setError(null);
+        try {
+          const enrolled = await getOrEnrollCpoSfpIds();
+          const paymentResponse = await payCpoInstallments({
+            userId: enrolled.userId,
+            userPlanId: enrolled.userPlanId,
+            instituteId,
+            studentFeePaymentIds: enrolled.sfpIds,
+            customAmount: payAmount,
+            paymentVendor: "RAZORPAY",
+            currency,
+            email: enrolled.email,
+            name: enrolled.name,
+            razorpayPaymentData: razorpayPaymentData || undefined,
+          });
+          const orderDetails = paymentResponse?.payment_response?.response_data || paymentResponse?.response_data;
+          if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId) throw new Error("Failed to create Razorpay order");
+          setOrderId(paymentResponse?.payment_response?.order_id || paymentResponse?.order_id);
+          setPaymentCompletionResponse(paymentResponse);
+          if (razorpayRef.current) {
+            razorpayRef.current.openPayment({
+              razorpayKeyId: orderDetails.razorpayKeyId,
+              razorpayOrderId: orderDetails.razorpayOrderId,
+              amount: orderDetails.amount,
+              currency: orderDetails.currency || currency,
+              contact: "",
+              email: enrolled.email,
+            });
+          }
+          setLoading(false);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const errorData = err?.response?.data;
+          const msg = errorData?.ex || (err instanceof Error ? err.message : null) || "Failed to initiate payment";
+          setError(msg);
+          if (inviteData?.gtm_container_id) pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: msg, utmParams });
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (vendor === "STRIPE") {
+        if (!stripePaymentProcessor || typeof stripePaymentProcessor !== "function") {
+          setError("Stripe payment is not ready yet. Please wait and try again.");
+          return;
+        }
+        setLoading(true);
+        setError(null);
+        const stripeResult = await stripePaymentProcessor();
+        if (!stripeResult.success || !stripeResult.paymentMethodId) {
+          setError(stripeResult.error || "Payment processing failed");
+          setLoading(false);
+          return;
+        }
+        try {
+          const enrolled = await getOrEnrollCpoSfpIds();
+          const paymentResponse = await payCpoInstallments({
+            userId: enrolled.userId,
+            userPlanId: enrolled.userPlanId,
+            instituteId,
+            studentFeePaymentIds: enrolled.sfpIds,
+            customAmount: payAmount,
+            paymentVendor: "STRIPE",
+            currency,
+            email: enrolled.email,
+            name: enrolled.name,
+            paymentMethodId: stripeResult.paymentMethodId,
+          });
+          setOrderId(paymentResponse?.payment_response?.order_id);
+          setPaymentCompletionResponse(paymentResponse);
+          setTimeout(async () => {
+            if (paymentResponse?.payment_response?.response_data?.paymentStatus === "PAID") {
+              setCurrentStep(5);
+              await fetchAndHandleEnrollmentPolicy();
+            } else setCurrentStep(4);
+          }, 100);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const errorData = err?.response?.data;
+          const msg = errorData?.ex || (err instanceof Error ? err.message : null) || "Payment failed";
+          setError(msg);
+          if (inviteData?.gtm_container_id) pushPaymentFailed({ courseName: courseData.course || "", vendor: "STRIPE", errorMessage: msg, utmParams });
+        } finally { setLoading(false); }
+        return;
+      }
+
+      if (vendor === "EWAY") {
+        if (!ewayEncryptedData) { setError("Please complete the payment form"); return; }
+        setLoading(true);
+        setError(null);
+        try {
+          const enrolled = await getOrEnrollCpoSfpIds();
+          const paymentResponse = await payCpoInstallments({
+            userId: enrolled.userId,
+            userPlanId: enrolled.userPlanId,
+            instituteId,
+            studentFeePaymentIds: enrolled.sfpIds,
+            customAmount: payAmount,
+            paymentVendor: "EWAY",
+            currency: "aud",
+            email: enrolled.email,
+            name: enrolled.name,
+            ewayPaymentData: ewayEncryptedData,
+          });
+          setOrderId(paymentResponse?.payment_response?.order_id);
+          setPaymentCompletionResponse(paymentResponse);
+          setTimeout(async () => {
+            if (paymentResponse?.payment_response?.response_data?.paymentStatus === "PAID") { setCurrentStep(5); await fetchAndHandleEnrollmentPolicy(); }
+            else setCurrentStep(4);
+          }, 100);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const errorData = err?.response?.data;
+          setError(errorData?.ex || (err instanceof Error ? err.message : null) || "Payment failed");
+        } finally { setLoading(false); }
+        return;
+      }
+
+      // Default / unsupported vendor for CPO
+      setError("Payment gateway not supported for CPO enrollment. Please contact support.");
+      return;
+    }
+
     // Fire payment_initiated GTM event (skip for FREE — no payment involved)
     if (inviteData?.gtm_container_id && paymentType !== "FREE") {
       pushPaymentInitiated({
@@ -1328,12 +1586,37 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       !loading &&
       currentStep === 3
     ) {
-      // Call API again with payment details to complete the enrollment
       const completeRazorpayEnrollment = async () => {
         setLoading(true);
         setError(null);
 
         try {
+          // CPO: second Razorpay call goes to cpo-pay-installments
+          if (paymentType === "CPO" && cpoEnrolledRef.current) {
+            const enrolled = cpoEnrolledRef.current;
+            const paymentResponse = await payCpoInstallments({
+              userId: enrolled.userId,
+              userPlanId: enrolled.userPlanId,
+              instituteId,
+              studentFeePaymentIds: enrolled.sfpIds,
+              customAmount: enrolled.customAmount,
+              paymentVendor: "RAZORPAY",
+              currency: inviteData?.currency || "INR",
+              email: enrolled.email,
+              name: enrolled.name,
+              razorpayPaymentData,
+            });
+            setPaymentCompletionResponse(paymentResponse);
+            setTimeout(async () => {
+              if (paymentResponse?.payment_response?.response_data?.paymentStatus === "PAID") {
+                setCurrentStep(5);
+                await fetchAndHandleEnrollmentPolicy();
+              } else setCurrentStep(4);
+            }, 100);
+            return;
+          }
+
+          // Regular non-CPO Razorpay completion
           const paymentResponse = await handleEnrollLearnerForPayment({
             registrationData: form.getValues(),
             enrollmentData: enrollmentData,
@@ -1348,15 +1631,13 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               ) || [""],
             allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
             referRequest: referRequest,
-            razorpayPaymentData: razorpayPaymentData, // Now includes payment details
+            razorpayPaymentData: razorpayPaymentData,
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
-            // userId: submittedUserId || undefined,
           });
 
           setPaymentCompletionResponse(paymentResponse);
 
-          // Check payment status and navigate accordingly
           setTimeout(async () => {
             if (
               paymentResponse?.payment_response?.response_data
@@ -1367,7 +1648,6 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                 return;
               }
               setCurrentStep(5);
-              // Fetch and handle enrollment policy (shows dialog if needed)
               await fetchAndHandleEnrollmentPolicy();
             } else {
               setCurrentStep(4);
@@ -1559,6 +1839,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         setPaymentType(paymentTypeValue);
 
         // If payment type is FREE, ONE_TIME, or DONATION, automatically set the default payment plan
+        // CPO does not pre-select a payment plan — installments are loaded after enrollment
         if (
           paymentTypeValue === "FREE" ||
           paymentTypeValue === "ONE_TIME" ||
@@ -1739,6 +2020,24 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           />
         );
       case 1: {
+        // CPO installment selection step
+        if (paymentType === "CPO") {
+          return (
+            <CpoInstallmentSelectionStep
+              dues={cpoDues}
+              currency={inviteData?.currency || "INR"}
+              selectedSfpIds={cpoSelectedSfpIds}
+              onSelectionChange={(ids, total) => {
+                setCpoSelectedSfpIds(ids);
+                setCpoSelectedTotal(total);
+              }}
+              customAmount={cpoCustomAmount}
+              onCustomAmountChange={setCpoCustomAmount}
+              loading={cpoEnrolling}
+            />
+          );
+        }
+
         // Skip payment selection step for FREE payments
         if (paymentType === "FREE") {
           return (
@@ -1814,16 +2113,20 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         );
       case 3: {
         const vendor = propVendor || getPaymentVendor(inviteData);
-        const userDetails = getUserDetails();
+        const userDetails = paymentType === "CPO"
+          ? { name: "", email: cpoUserEmail, contact: "" }
+          : getUserDetails();
+        const cpoPayAmount = cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
         return (
           <PaymentInfoStep
             error={error}
             vendor={vendor}
             amount={
-              enrollmentData.selectedPayment?.actual_price ||
-              enrollmentData.selectedPayment?.amount
+              paymentType === "CPO"
+                ? cpoPayAmount
+                : (enrollmentData.selectedPayment?.actual_price || enrollmentData.selectedPayment?.amount)
             }
-            currency={enrollmentData.selectedPayment?.currency}
+            currency={paymentType === "CPO" ? (inviteData?.currency || "INR") : enrollmentData.selectedPayment?.currency}
             onEwayPaymentReady={setEwayEncryptedData}
             onEwayError={setError}
             onStripePaymentReady={(processor) => {
@@ -1984,7 +2287,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     void loadPolicyLinks();
   }, [instituteId]);
 
-  if (isLoading || isInstituteLoading || (loading && paymentType === "FREE"))
+  if (isLoading || isInstituteLoading || (loading && paymentType === "FREE") || cpoEnrolling)
     return <DashboardLoader />;
 
   // Helper to extract YouTube video ID from URL
@@ -2082,7 +2385,14 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               </div>
 
               {/* Price Badge - Show only if not FREE */}
-              {paymentType !== "FREE" && enrollmentData.selectedPayment && (
+              {paymentType === "CPO" && (
+                <div className="flex-shrink-0">
+                  <span className="px-3 py-1 bg-blue-50 text-blue-700 text-sm font-medium rounded-full">
+                    Installment Plan
+                  </span>
+                </div>
+              )}
+              {paymentType !== "FREE" && paymentType !== "CPO" && enrollmentData.selectedPayment && (
                 <div className="flex-shrink-0 text-right">
                   <div className="text-lg font-semibold text-gray-900">
                     {enrollmentData.selectedPayment.currency?.toUpperCase()}{" "}
@@ -2297,11 +2607,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             {currentStep > 0 && currentStep < 4 && !(currentStep === 1 && paymentType === "FREE") && (
               <NavigationButtons
                 currentStep={currentStep}
-                selectedPayment={enrollmentData.selectedPayment}
+                selectedPayment={paymentType === "CPO"
+                  ? (cpoSelectedSfpIds.length > 0 || (cpoCustomAmount !== undefined && cpoCustomAmount > 0))
+                    ? ({ amount: cpoCustomAmount ?? cpoSelectedTotal, currency: inviteData?.currency || "INR" } as SelectedPayment)
+                    : null
+                  : enrollmentData.selectedPayment}
                 onPrevious={handlePrevious}
                 onNext={handleNext}
                 onSubmitEnrollment={handleSubmitEnrollment}
-                loading={loading}
+                loading={loading || cpoEnrolling}
                 paymentType={paymentType}
                 donationAmountValid={donationAmountValid}
                 paymentVendor={currentStep === 3 ? getPaymentVendor(inviteData) : undefined}

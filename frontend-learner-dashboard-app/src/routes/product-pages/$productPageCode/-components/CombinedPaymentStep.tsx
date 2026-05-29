@@ -78,6 +78,7 @@ export const CombinedPaymentStep = ({
                 couponCode: couponCode || undefined,
                 registrationData,
                 paymentInitiationRequest,
+                utmParams,
             });
 
             if (result.payment_url) {
@@ -131,6 +132,7 @@ export const CombinedPaymentStep = ({
                     currency,
                     razorpay_request: {},
                 },
+                utmParams,
             });
 
             if (result.order_id && result.razorpay_key_id && razorpayRef.current) {

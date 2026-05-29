@@ -10,6 +10,7 @@ import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Step 2 of Course Page enrollment: combined payment for all selected invites.
@@ -40,4 +41,7 @@ public class ProductPageEnrollRequest {
      * The server re-validates this before charging.
      */
     private PaymentInitiationRequestDTO paymentInitiationRequest;
+
+    /** UTM attribution params captured from the landing page URL. */
+    private Map<String, String> utmParams;
 }

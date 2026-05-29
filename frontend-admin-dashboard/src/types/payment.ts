@@ -1,5 +1,5 @@
 // Payment plan types
-export type PaymentPlanType = 'SUBSCRIPTION' | 'ONE_TIME' | 'DONATION' | 'FREE';
+export type PaymentPlanType = 'SUBSCRIPTION' | 'ONE_TIME' | 'DONATION' | 'FREE' | 'CPO';
 export type PaymentPlanTag = 'DEFAULT' | 'free' | null;
 
 export interface PaymentPlanApi {
@@ -28,6 +28,8 @@ export interface PaymentOptionApi {
     require_approval: boolean;
     payment_plans: PaymentPlanApi[];
     payment_option_metadata_json: string;
+    /** Populated when type='CPO'. Points at the underlying ComplexPaymentOption row. */
+    complex_payment_option_id?: string;
 }
 
 export interface PaymentPlan {
@@ -49,4 +51,5 @@ export enum PaymentPlans {
     DONATION = 'DONATION',
     SUBSCRIPTION = 'SUBSCRIPTION',
     UPFRONT = 'ONE_TIME',
+    CPO = 'CPO',
 }

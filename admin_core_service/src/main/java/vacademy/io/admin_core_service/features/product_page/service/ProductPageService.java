@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.product_page.dto.*;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPage;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPageInviteMapping;
@@ -24,6 +25,8 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Coup
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
 import vacademy.io.common.exceptions.VacademyException;
+
+import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
 import java.util.*;
@@ -61,6 +64,9 @@ public class ProductPageService {
 
     @Autowired
     private AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    @Autowired
+    private InstituteSettingService instituteSettingService;
 
     // -------------------------------------------------------------------------
     // Admin CRUD
@@ -411,6 +417,21 @@ public class ProductPageService {
             resp.setCurrency(firstInvite.getCurrency());
         }
 
+        // Populate GTM container ID from institute settings
+        try {
+            Object gtmSetting = instituteSettingService.getSettingByInstituteIdAndKey(page.getInstituteId(), "GTM_SETTING");
+            if (gtmSetting instanceof Map) {
+                Map<?, ?> gtmMap = (Map<?, ?>) gtmSetting;
+                if (Boolean.TRUE.equals(gtmMap.get("enabled"))
+                        && gtmMap.get("containerId") != null
+                        && StringUtils.hasText(gtmMap.get("containerId").toString())) {
+                    resp.setGtmContainerId(gtmMap.get("containerId").toString());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("GTM setting not found for institute {}: {}", page.getInstituteId(), e.getMessage());
+        }
+
         return resp;
     }
 
@@ -460,6 +481,10 @@ public class ProductPageService {
 
         paymentPlanRepository.findById(m.getPaymentPlanId()).ifPresent(plan ->
                 r.setPaymentPlan(plan.mapToPaymentPlanDTO()));
+
+        if (m.getPsInvitePaymentOption().getPaymentOption() != null) {
+            r.setPaymentOptionType(m.getPsInvitePaymentOption().getPaymentOption().getType());
+        }
 
         vacademy.io.common.institute.entity.session.PackageSession ps =
                 m.getPsInvitePaymentOption().getPackageSession();

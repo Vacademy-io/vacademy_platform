@@ -26,9 +26,20 @@ export const CollapsibleItem = ({
     const colors = getCategoryColors(category as 'CRM' | 'LMS' | 'AI');
 
     const currentRoute = router.state.location.pathname;
-    const routeMatches =
-        subItems?.some((item) => item.subItemLink && currentRoute.includes(item.subItemLink)) ||
-        currentRoute === to;
+
+    const isSubLinkActive = (link: string) =>
+        currentRoute === link || currentRoute.startsWith(link + '/');
+
+    // Most-specific match wins: pick the subItem whose link is the longest prefix of currentRoute
+    const activeSubLink = (() => {
+        const matches = subItems?.filter((item) => item.subItemLink && isSubLinkActive(item.subItemLink)) ?? [];
+        if (!matches.length) return null;
+        return matches.reduce((a, b) =>
+            (a.subItemLink?.length ?? 0) >= (b.subItemLink?.length ?? 0) ? a : b
+        ).subItemLink;
+    })();
+
+    const routeMatches = !!activeSubLink || currentRoute === to;
 
     const handleLockedClick = (e: React.MouseEvent, featureName: string) => {
         if (locked) {
@@ -143,7 +154,7 @@ export const CollapsibleItem = ({
                 <div className="ml-5 flex flex-col gap-0.5 border-l border-neutral-200 py-1 pl-4">
                     {subItems?.map((obj, key) => {
                         const isSubActive =
-                            obj.subItemLink && currentRoute.includes(obj.subItemLink);
+                            obj.subItemLink && obj.subItemLink === activeSubLink;
                         return (
                             <Link
                                 to={obj.subItemLink}

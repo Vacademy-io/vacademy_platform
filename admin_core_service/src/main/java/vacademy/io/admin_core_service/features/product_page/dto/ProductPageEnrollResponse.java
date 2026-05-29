@@ -30,4 +30,7 @@ public class ProductPageEnrollResponse {
     /** For auto-login after free or synchronous payment. */
     private String accessToken;
     private String refreshToken;
+
+    /** For CPO enrollment without payment: the created UserPlan ID used to fetch/pay installments. */
+    private String userPlanId;
 }

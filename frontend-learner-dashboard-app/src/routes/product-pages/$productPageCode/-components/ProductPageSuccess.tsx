@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useProductPageStore } from '../-stores/product-page-store';
 import { CheckCircle2, BookOpen, ArrowRight } from 'lucide-react';
-import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
-import type { ProductPageData } from '../-types/product-page-types';
+import type { ProductPageData, ProductPageSettings } from '../-types/product-page-types';
 
 interface ProductPageSuccessProps {
     pageData: ProductPageData;
@@ -10,6 +9,14 @@ interface ProductPageSuccessProps {
 
 export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
     const { selectedPsOptionIds } = useProductPageStore();
+
+    const settings: ProductPageSettings = pageData.settings_json
+        ? (() => { try { return JSON.parse(pageData.settings_json); } catch { return {}; } })()
+        : {};
+
+    const redirectUrl = settings.afterPaymentRedirectUrl?.trim() ?? '';
+    const showLoginButton = settings.showLoginButton ?? true;
+    const successPageContent = settings.successPageContent?.trim() ?? '';
 
     const enrolledCount = selectedPsOptionIds.length;
     const currency = pageData.currency || pageData.mappings[0]?.payment_plan?.currency || '';
@@ -20,7 +27,23 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, []);
+        if (redirectUrl) {
+            window.location.href = redirectUrl;
+        }
+    }, [redirectUrl]);
+
+    // If auto-redirecting, show a brief transitional screen
+    if (redirectUrl) {
+        return (
+            <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+                <div className="mb-6 flex size-20 items-center justify-center rounded-3xl bg-green-100">
+                    <CheckCircle2 className="size-10 text-green-600" />
+                </div>
+                <h1 className="text-2xl font-bold text-gray-900">You're enrolled!</h1>
+                <p className="mt-2 text-sm text-gray-400">Redirecting you…</p>
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-12">
@@ -30,10 +53,19 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
             </div>
 
             <h1 className="text-2xl font-bold text-gray-900">You're enrolled!</h1>
-            <p className="mt-2 max-w-sm text-center text-sm text-gray-500">
-                Successfully enrolled in {enrolledCount} course{enrolledCount !== 1 ? 's' : ''}.
-                Start learning right away.
-            </p>
+
+            {/* Custom or default content */}
+            {successPageContent ? (
+                <div
+                    className="mt-3 max-w-sm text-center text-sm text-gray-500"
+                    dangerouslySetInnerHTML={{ __html: successPageContent }}
+                />
+            ) : (
+                <p className="mt-2 max-w-sm text-center text-sm text-gray-500">
+                    Successfully enrolled in {enrolledCount} course{enrolledCount !== 1 ? 's' : ''}.
+                    Start learning right away.
+                </p>
+            )}
 
             {/* Enrolled course list */}
             <div className="mt-8 w-full max-w-sm space-y-2">
@@ -65,14 +97,16 @@ export const ProductPageSuccess = ({ pageData }: ProductPageSuccessProps) => {
                 ))}
             </div>
 
-            <a
-                href={`${BASE_URL_LEARNER_DASHBOARD}/dashboard`}
-                className="mt-8 flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-            >
-                <BookOpen className="size-4" />
-                Go to My Courses
-                <ArrowRight className="size-4" />
-            </a>
+            {showLoginButton && (
+                <a
+                    href="/dashboard"
+                    className="mt-8 flex items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+                >
+                    <BookOpen className="size-4" />
+                    Go to My Courses
+                    <ArrowRight className="size-4" />
+                </a>
+            )}
         </div>
     );
 };

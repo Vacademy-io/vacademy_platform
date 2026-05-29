@@ -8,13 +8,21 @@ const CHECKOUT_STEPS = [
     { id: 'PAYMENT' as const, label: 'Payment' },
 ];
 
+const CPO_CHECKOUT_STEPS = [
+    { id: 'CART' as const, label: 'Cart' },
+    { id: 'FORM' as const, label: 'Details' },
+    { id: 'CPO_INSTALLMENTS' as const, label: 'Installments' },
+];
+
 export const StepProgress = ({ primaryColor = '#2563eb' }: { primaryColor?: string }) => {
     const { step } = useProductPageStore();
-    const currentIndex = CHECKOUT_STEPS.findIndex((s) => s.id === step);
+    const isCpoFlow = step === 'CPO_INSTALLMENTS';
+    const steps = isCpoFlow ? CPO_CHECKOUT_STEPS : CHECKOUT_STEPS;
+    const currentIndex = steps.findIndex((s) => s.id === step);
 
     return (
         <nav aria-label="Enrollment progress" className="flex items-center justify-center">
-            {CHECKOUT_STEPS.map((s, i) => {
+            {steps.map((s, i) => {
                 const done = i < currentIndex;
                 const active = i === currentIndex;
                 return (
@@ -49,7 +57,7 @@ export const StepProgress = ({ primaryColor = '#2563eb' }: { primaryColor?: stri
                                 {s.label}
                             </span>
                         </div>
-                        {i < CHECKOUT_STEPS.length - 1 && (
+                        {i < steps.length - 1 && (
                             <div
                                 className="mb-5 h-px w-14 sm:w-20"
                                 style={{ backgroundColor: i < currentIndex ? '#86efac' : '#e5e7eb' }}

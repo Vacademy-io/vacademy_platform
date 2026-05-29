@@ -31,4 +31,13 @@ public class ProductPageInviteMappingResponse {
     private String packageName;
     private String levelName;
     private String sessionName;
+
+    /** Payment option type (ONE_TIME, SUBSCRIPTION, FREE, DONATION, CPO). */
+    private String paymentOptionType;
+
+    /** For CPO: the preview media of the course (file ID). */
+    private String coursePreviewImageMediaId;
+
+    /** For CPO: short description of the course. */
+    private String aboutTheCourseHtml;
 }

@@ -178,6 +178,7 @@ public class ComplexPaymentOptionOperation implements PaymentOptionOperationStra
 
         LearnerEnrollResponseDTO response = new LearnerEnrollResponseDTO();
         response.setUser(user);
+        response.setUserPlanId(userPlan.getId());
 
         // Step 4: Handle payment.
         PaymentInitiationRequestDTO paymentRequest = enrollDTO.getPaymentInitiationRequest();
@@ -204,6 +205,9 @@ public class ComplexPaymentOptionOperation implements PaymentOptionOperationStra
                 log.info("Overriding CPO payment amount to {} from extraData (multi-package summing)", amount);
                 paymentRequest.setAmount(amount);
             }
+        } else if (paymentRequest.getAmount() != null && paymentRequest.getAmount() > 0) {
+            // Learner supplied a specific amount (e.g. selected N installments) — respect it.
+            log.info("Using caller-supplied CPO payment amount={} for userPlan={}", paymentRequest.getAmount(), userPlan.getId());
         } else {
             log.info("Setting CPO payment amount to currently-due figure: {}", duesNow);
             paymentRequest.setAmount(duesNow.doubleValue());

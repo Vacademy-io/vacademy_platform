@@ -28,6 +28,8 @@ import { SubscriptionPlanConfiguration } from './SubscriptionPlanConfiguration';
 import { UpfrontPlanConfiguration } from './UpfrontPlanConfiguration';
 import { PlanDiscountsConfiguration } from './PlanDiscountsConfiguration';
 import { PlanNavigation } from './PlanNavigation';
+import { CPOPlanConfiguration } from './CPOPlanConfiguration';
+import type { CPOForm } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { DAYS_IN_MONTH } from '@/routes/settings/-constants/terms';
 
 interface CustomInterval {
@@ -103,6 +105,13 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                         validityDays: DAYS_IN_MONTH,
                     },
                     planDiscounts: {},
+                    cpoForm: {
+                        name: '',
+                        status: 'ACTIVE',
+                        packageSessionId: '',
+                        packageSessionIds: [],
+                        feeTypes: [],
+                    } as CPOForm,
                 },
             });
             setCurrentStep(1);
@@ -134,6 +143,26 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
 
     const handleSave = () => {
         if (!planData.name || !planData.type) {
+            return;
+        }
+
+        // CPO plans carry raw form data — no API transformation needed here
+        if (planData.type === PaymentPlans.CPO) {
+            const cpoForm = planData.config?.cpoForm as CPOForm | undefined;
+            if (!cpoForm || cpoForm.packageSessionIds.length === 0 || cpoForm.feeTypes.length === 0) {
+                return;
+            }
+            const cpoPlan: PaymentPlan = {
+                id: `cpo_${Date.now()}`,
+                name: planData.name,
+                type: PaymentPlans.CPO as PaymentPlanType,
+                tag: null,
+                currency: 'INR',
+                isDefault: false,
+                config: { cpoForm },
+            };
+            onSave(cpoPlan);
+            onClose();
             return;
         }
 
@@ -204,7 +233,11 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
         if (currentStep === 1 && planData.type && planData.name) {
             setCurrentStep(2);
         } else if (currentStep === 2) {
-            if (planData.type === PaymentPlans.FREE || planData.type === PaymentPlans.DONATION) {
+            if (
+                planData.type === PaymentPlans.FREE ||
+                planData.type === PaymentPlans.DONATION ||
+                planData.type === PaymentPlans.CPO
+            ) {
                 handleSave();
             } else {
                 setCurrentStep(3);
@@ -413,7 +446,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                     {/* Step 2: Plan Configuration */}
                     {currentStep === 2 && (
                         <div className="space-y-6">
-                            {!editingPlan && (
+                            {!editingPlan && planData.type !== PaymentPlans.CPO && (
                                 <ApprovalToggle
                                     planType={planData.type as PaymentPlanType}
                                     requireApproval={requireApproval}
@@ -422,7 +455,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                 />
                             )}
 
-                            {planData.type !== PaymentPlans.FREE && (
+                            {planData.type !== PaymentPlans.FREE && planData.type !== PaymentPlans.CPO && (
                                 <div className="mb-4">
                                     <Label htmlFor="planCurrency" className="text-sm font-medium">
                                         Plan Currency
@@ -569,6 +602,14 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                                             },
                                         })
                                     }
+                                />
+                            )}
+
+                            {planData.type === PaymentPlans.CPO && (
+                                <CPOPlanConfiguration
+                                    planName={planData.name || ''}
+                                    cpoForm={planData.config?.cpoForm || { name: '', status: 'ACTIVE', packageSessionId: '', packageSessionIds: [], feeTypes: [] }}
+                                    onChange={(cpoForm) => updateConfig({ cpoForm })}
                                 />
                             )}
                         </div>

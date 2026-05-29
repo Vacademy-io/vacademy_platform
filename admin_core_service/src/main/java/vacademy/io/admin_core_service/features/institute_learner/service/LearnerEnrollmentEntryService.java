@@ -86,7 +86,8 @@ public class LearnerEnrollmentEntryService {
     public int markPreviousEntriesAsDeleted(String userId, String invitedPackageSessionId,
             String actualPackageSessionId, String instituteId) {
         List<String> typesToDelete = List.of(
-                LearnerSessionTypeEnum.ABANDONED_CART.name());
+                LearnerSessionTypeEnum.ABANDONED_CART.name(),
+                LearnerSessionTypeEnum.PAYMENT_FAILED.name());
 
         int deletedCount = studentSessionRepository.markEntriesAsDeleted(
                 userId,
@@ -107,7 +108,8 @@ public class LearnerEnrollmentEntryService {
      * @param invitedPackageSession The INVITED package session
      * @param actualPackageSession  The actual (destination) package session
      * @param instituteId           The institute ID
-     * @param userPlanId            The user plan ID (can be null for form-fill step, updated later during payment)
+     * @param userPlanId            The user plan ID (can be null for form-fill
+     *                              step, updated later during payment)
      * @return The created mapping
      */
     public StudentSessionInstituteGroupMapping createOnlyDetailsFilledEntry(
@@ -136,7 +138,8 @@ public class LearnerEnrollmentEntryService {
         mapping.setInstitute(institute);
 
         StudentSessionInstituteGroupMapping saved = studentSessionRepository.save(mapping);
-        log.info("Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
+        log.info(
+                "Created ABANDONED_CART entry with ID: {} for user: {}, destination: {}, institute: {}, userPlanId: {}",
                 saved.getId(), userId, actualPackageSession.getId(), instituteId, userPlanId);
 
         // Trigger ABANDONED_CART workflow
@@ -145,7 +148,9 @@ public class LearnerEnrollmentEntryService {
             contextData.put("userId", userId);
             contextData.put("userPlanId", userPlanId);
             contextData.put("packageSessionId", actualPackageSession.getId());
-            contextData.put("packageId", actualPackageSession.getPackageEntity() != null ? actualPackageSession.getPackageEntity().getId() : null);
+            contextData.put("packageId",
+                    actualPackageSession.getPackageEntity() != null ? actualPackageSession.getPackageEntity().getId()
+                            : null);
             workflowTriggerService.handleTriggerEvents(
                     vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.ABANDONED_CART.name(),
                     invitedPackageSession.getId(), instituteId, contextData);
@@ -308,10 +313,10 @@ public class LearnerEnrollmentEntryService {
      * Updates ABANDONED_CART entries with the userPlanId when payment is initiated.
      * Called during the enroll/payment step after form-fill.
      *
-     * @param userId                 The user ID
+     * @param userId                       The user ID
      * @param destinationPackageSessionIds The destination package session IDs
-     * @param instituteId            The institute ID
-     * @param userPlanId             The user plan ID to set
+     * @param instituteId                  The institute ID
+     * @param userPlanId                   The user plan ID to set
      * @return Number of entries updated
      */
     public int updateAbandonedCartEntriesWithUserPlanId(
@@ -348,7 +353,8 @@ public class LearnerEnrollmentEntryService {
     }
 
     /**
-     * Finds existing ABANDONED_CART entries for a user and destination package sessions.
+     * Finds existing ABANDONED_CART entries for a user and destination package
+     * sessions.
      * Used to check if form-fill step was already completed.
      *
      * @param userId                       The user ID

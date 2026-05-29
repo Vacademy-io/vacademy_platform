@@ -28,7 +28,7 @@ interface MultiEnrollFormProps {
 
 export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', courseIds, onBack, onNext }: MultiEnrollFormProps) => {
     const {
-        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection,
+        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection, utmParams,
     } = useProductPageStore();
 
     const currency = pageData.currency || 'INR';
@@ -113,6 +113,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                 instituteId: pageData.institute_id,
                 selectedPsInvitePaymentOptionIds: selectedPsOptionIds,
                 registrationData,
+                utmParams,
             });
         },
         onSuccess: (data) => {

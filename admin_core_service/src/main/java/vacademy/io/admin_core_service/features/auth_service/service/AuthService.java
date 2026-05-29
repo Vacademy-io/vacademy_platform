@@ -420,28 +420,43 @@ public class AuthService {
         if (email == null || email.isBlank()) {
             return null;
         }
+        String normalized = email.toLowerCase().trim();
+        // Primary: dedicated internal endpoint — pass raw value, RestTemplate encodes once
         try {
-            String encodedEmail = java.net.URLEncoder.encode(email.toLowerCase().trim(),
-                    java.nio.charset.StandardCharsets.UTF_8);
-            String endpoint = AuthServiceRoutes.GET_USER_BY_EMAIL + "?emailId=" + encodedEmail;
+            String endpoint = AuthServiceRoutes.GET_USER_BY_EMAIL + "?emailId=" + normalized;
             ObjectMapper objectMapper = new ObjectMapper();
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
-                    clientName,
-                    HttpMethod.GET.name(),
-                    authServerBaseUrl,
-                    endpoint,
-                    null);
+                    clientName, HttpMethod.GET.name(), authServerBaseUrl, endpoint, null);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 return objectMapper.readValue(response.getBody(), UserDTO.class);
             }
-            return null;
         } catch (Exception e) {
             if (e.getMessage() != null && e.getMessage().contains("404")) {
                 return null;
             }
-            logger.warn("getUserByEmail failed for email='{}': {}", email, e.getMessage());
-            return null;
+            logger.warn("getUserByEmail primary failed for '{}': {}", normalized, e.getMessage());
         }
+        // Fallback: search-ids with raw value (same no-pre-encode pattern as getUserByMobileNumber)
+        try {
+            String searchEndpoint = AuthServiceRoutes.SEARCH_USER_IDS + "?query=" + normalized;
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName, HttpMethod.GET.name(), authServerBaseUrl, searchEndpoint, null);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                List<String> ids = objectMapper.readValue(response.getBody(),
+                        new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                if (!ids.isEmpty()) {
+                    List<UserDTO> candidates = getUsersFromAuthServiceByUserIds(ids);
+                    return candidates.stream()
+                            .filter(u -> normalized.equalsIgnoreCase(u.getEmail()))
+                            .findFirst()
+                            .orElse(null);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("getUserByEmail fallback failed for '{}': {}", normalized, e.getMessage());
+        }
+        return null;
     }
 
     public UserDTO getUserByMobileNumber(String mobileNumber) {

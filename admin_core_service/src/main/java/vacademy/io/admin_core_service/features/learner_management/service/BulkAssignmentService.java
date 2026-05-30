@@ -628,15 +628,25 @@ public class BulkAssignmentService {
                     userId, instituteId, e.getMessage());
         }
 
-        // Sub-org creation for org-associated package sessions (mirrors learner/v1/enroll).
-        // When the PS has is_org_associated=true, mint a sub-org Institute from the learner's
-        // custom-field answers + invite settingJson, stamp source=SUB_ORG + subOrgId on the
-        // UserPlan, and thread the Institute through to the workflow context below. Returns
-        // null (and UserPlan keeps default source) when not applicable.
-        Institute createdSubOrg = maybeCreateSubOrgForOrgAssociatedPackage(
+        // Sub-org resolution for org-associated package sessions — identical to the
+        // learner/v1/enroll path in LearnerBatchEnrollService.checkAndCreateStudentAndAddToBatch.
+        // When the PS has is_org_associated=true:
+        //   1. Mint (or fetch) the sub-org Institute from custom-field answers + invite settingJson.
+        //   2. Resolve commaSeparatedOrgRoles from the same answers.
+        //   3. Stamp source=SUB_ORG + subOrgId on the UserPlan (this row).
+        //   4. Stamp subOrgId + commaSeparatedOrgRoles on InstituteStudentDetails so
+        //      linkStudentToInstitute writes them to the SSIGM — workflows that read
+        //      sub-org context from the SSIGM row will then see non-null values.
+        //   5. Pass the Institute into triggerEnrollmentWorkflow so the in-memory
+        //      workflow context map carries "subOrg" too.
+        // Throws when the PS is org-associated but the resolution fails, surfacing as
+        // a row-level FAILED in processAssignment's catch.
+        SubOrgResolution subOrgResolution = maybeResolveSubOrgForOrgAssociatedPackage(
                 config, newUserData, assignment, userId, instituteId);
-        String createdSubOrgId = createdSubOrg != null ? createdSubOrg.getId() : null;
-        String userPlanSource = createdSubOrg != null
+        Institute createdSubOrg = subOrgResolution != null ? subOrgResolution.subOrg() : null;
+        String createdSubOrgId = subOrgResolution != null ? subOrgResolution.id() : null;
+        String subOrgRoles = subOrgResolution != null ? subOrgResolution.roles() : null;
+        String userPlanSource = subOrgResolution != null
                 ? UserPlanSourceEnum.SUB_ORG.name() : null;
 
         // Create UserPlan
@@ -659,7 +669,8 @@ public class BulkAssignmentService {
             Student student = studentRegistrationManager.createStudentFromRequest(userDTO, extraDetails);
 
             // Use linkStudentToInstitute for proper enrollment policy handling (same as
-            // manual flow)
+            // manual flow). subOrgId + commaSeparatedOrgRoles are stamped onto the SSIGM
+            // by linkStudentToInstitute when present — matching learner/v1/enroll.
             InstituteStudentDetails details = InstituteStudentDetails.builder()
                     .instituteId(instituteId)
                     .packageSessionId(config.getPackageSession().getId())
@@ -669,6 +680,8 @@ public class BulkAssignmentService {
                             ? config.getAccessDays().toString()
                             : null)
                     .userPlanId(userPlan.getId())
+                    .subOrgId(createdSubOrgId)
+                    .commaSeparatedOrgRoles(subOrgRoles)
                     .build();
 
             mappingId = studentRegistrationManager.linkStudentToInstitute(student, details);
@@ -693,9 +706,16 @@ public class BulkAssignmentService {
                         userId, e.getMessage());
             }
         } else {
-            // Fallback: create mapping directly if userDTO is not available
+            // Fallback: create mapping directly if userDTO is not available. Stamp sub-org
+            // fields here too — linkStudentToInstitute (used above) reads them off
+            // InstituteStudentDetails, but this branch bypasses it, so we set them directly
+            // on the entity to keep parity with the userDTO path.
             StudentSessionInstituteGroupMapping mapping = createActiveMapping(
                     userId, config, instituteId, userPlan.getId());
+            if (createdSubOrg != null) {
+                mapping.setSubOrg(createdSubOrg);
+                mapping.setCommaSeparatedOrgRoles(subOrgRoles);
+            }
             mapping = studentSessionRepository.save(mapping);
             mappingId = mapping.getId();
         }
@@ -858,15 +878,15 @@ public class BulkAssignmentService {
                     userId, instituteId, e.getMessage());
         }
 
-        // Sub-org creation for org-associated package sessions (mirrors learner/v1/enroll).
-        // createOrGetSubOrg is idempotent — re-enrollments will reuse the existing sub-org
-        // for this (user, PS) pair when one is found. Custom-field values come from the
-        // assignment row only (re-enrollment doesn't carry a NewUserDTO). The Institute is
-        // also threaded through to the workflow context below.
-        Institute createdSubOrg = maybeCreateSubOrgForOrgAssociatedPackage(
+        // Sub-org resolution for org-associated PS — same contract as handleNewEnrollment.
+        // Custom-field values come from the assignment row only (re-enrollment doesn't
+        // carry a NewUserDTO).
+        SubOrgResolution subOrgResolution = maybeResolveSubOrgForOrgAssociatedPackage(
                 config, null, assignment, userId, instituteId);
-        String createdSubOrgId = createdSubOrg != null ? createdSubOrg.getId() : null;
-        String userPlanSource = createdSubOrg != null
+        Institute createdSubOrg = subOrgResolution != null ? subOrgResolution.subOrg() : null;
+        String createdSubOrgId = subOrgResolution != null ? subOrgResolution.id() : null;
+        String subOrgRoles = subOrgResolution != null ? subOrgResolution.roles() : null;
+        String userPlanSource = subOrgResolution != null
                 ? UserPlanSourceEnum.SUB_ORG.name() : null;
 
         // Create new UserPlan (stacking is handled automatically by UserPlanService)
@@ -891,6 +911,17 @@ public class BulkAssignmentService {
         existingMapping.setStatus(LearnerSessionStatusEnum.ACTIVE.name());
         existingMapping.setEnrolledDate(new Date());
         existingMapping.setUserPlanId(userPlan.getId());
+
+        // Re-enrollment into an org-associated PS: overwrite the SSIGM's sub_org + roles
+        // with the freshly-resolved values from this enrollment's custom-field answers.
+        // This matches the learner-side semantics (LearnerBatchEnrollService re-runs
+        // createOrGetSubOrg on every enrollment and stamps it onto the SSIGM); admins
+        // may have changed the answers between the previous and current enrollment, so
+        // honouring the current values is the expected behaviour.
+        if (createdSubOrg != null) {
+            existingMapping.setSubOrg(createdSubOrg);
+            existingMapping.setCommaSeparatedOrgRoles(subOrgRoles);
+        }
 
         if (config.getAccessDays() != null) {
             long expiryMillis = System.currentTimeMillis()
@@ -949,17 +980,21 @@ public class BulkAssignmentService {
     }
 
     /**
-     * Mirror of LearnerEnrollRequestService's create-sub-org branch for bulk enrollment.
-     * When the resolved package session is org-associated, mint a sub-org Institute row
-     * from the learner's custom-field answers + invite settingJson and return its id so
-     * the caller can stamp source=SUB_ORG + subOrgId onto the new UserPlan. Returns null
-     * when not applicable (or on failure) so the UserPlan falls back to its default source.
+     * Identical to LearnerBatchEnrollService.checkAndCreateStudentAndAddToBatch's
+     * sub-org branch: when the PS is org-associated, mint a sub-org Institute via
+     * {@code subOrgService.createOrGetSubOrg(...)} and derive its admin roles via
+     * {@code subOrgService.getRoles(...)} from the invite's settingJson. Throws
+     * {@link VacademyException} when the PS is org-associated but the resolution
+     * fails — exactly mirroring the learner-side contract so the per-(user, PS)
+     * failure surfaces as a row-level "FAILED" in the bulk response instead of
+     * silently producing a half-stamped SSIGM.
      * <p>
-     * Custom-field values are merged the same way as the post-process step: user-level
-     * (NewUserDTO) overridden by assignment-level (AssignmentItemDTO). Re-enrollments pass
-     * a null NewUserDTO and rely on assignment-level fields only.
+     * Custom-field values are merged the same way as the post-process step:
+     * user-level (NewUserDTO) overridden by assignment-level (AssignmentItemDTO).
+     * Re-enrollments pass a null NewUserDTO and rely on assignment-level fields only.
+     * Returns null when the PS isn't org-associated (the common case).
      */
-    private Institute maybeCreateSubOrgForOrgAssociatedPackage(
+    private SubOrgResolution maybeResolveSubOrgForOrgAssociatedPackage(
             DefaultInviteResolver.ResolvedConfig config,
             NewUserDTO newUserData,
             AssignmentItemDTO assignment,
@@ -972,29 +1007,28 @@ public class BulkAssignmentService {
         List<CustomFieldValueDTO> customFieldValues = mergeCustomFields(
                 newUserData != null ? newUserData.getCustomFieldValues() : null,
                 assignment != null ? assignment.getCustomFieldValues() : null);
-        if (customFieldValues.isEmpty()) {
-            log.warn("Sub-org creation skipped: package session {} is org-associated but no " +
-                            "custom field values supplied for userId={}",
-                    packageSession.getId(), userId);
-            return null;
-        }
         String settingJson = config.getEnrollInvite() != null
                 ? config.getEnrollInvite().getSettingJson() : null;
-        try {
-            Institute subOrg = subOrgService.createOrGetSubOrg(
-                    customFieldValues, settingJson, userId, packageSession.getId(), instituteId);
-            if (subOrg != null) {
-                log.info("Created/retrieved sub-org id={} for userId={} packageSession={}",
-                        subOrg.getId(), userId, packageSession.getId());
-                return subOrg;
-            }
-            log.warn("subOrgService.createOrGetSubOrg returned null for userId={} packageSession={}",
-                    userId, packageSession.getId());
-        } catch (Exception e) {
-            log.error("Failed to create sub-org for userId={} packageSession={}: {}",
-                    userId, packageSession.getId(), e.getMessage(), e);
+        Institute subOrg = subOrgService.createOrGetSubOrg(
+                customFieldValues, settingJson, userId, packageSession.getId(), instituteId);
+        String roles = subOrgService.getRoles(customFieldValues, settingJson);
+        if (subOrg == null || !StringUtils.hasText(roles)) {
+            throw new VacademyException("Sub Org can not be created. Data not passed!!!");
         }
-        return null;
+        log.info("Resolved sub-org id={} roles={} for userId={} packageSession={}",
+                subOrg.getId(), roles, userId, packageSession.getId());
+        return new SubOrgResolution(subOrg, roles);
+    }
+
+    /**
+     * (Institute, commaSeparatedOrgRoles) pair from a successful sub-org resolution.
+     * Identical shape to what LearnerBatchEnrollService stamps onto the SSIGM via
+     * InstituteStudentDetails (.subOrgId + .commaSeparatedOrgRoles).
+     */
+    private record SubOrgResolution(Institute subOrg, String roles) {
+        String id() {
+            return subOrg.getId();
+        }
     }
 
     /**

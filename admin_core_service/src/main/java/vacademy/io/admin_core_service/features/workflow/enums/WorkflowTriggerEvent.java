@@ -31,6 +31,10 @@ public enum WorkflowTriggerEvent {
     SUBSCRIPTION_TERMINATED,
     LEARNER_RE_ENROLLMENT,
 
+    // Fired when an admin makes a learner INACTIVE in a package session
+    // (institute_learner MAKE_INACTIVE operation). Keyed by eventId = packageSessionId.
+    LEARNER_TERMINATION,
+
     // LMS / content / engagement
     COURSE_CREATED,
     DOUBT_RAISED,

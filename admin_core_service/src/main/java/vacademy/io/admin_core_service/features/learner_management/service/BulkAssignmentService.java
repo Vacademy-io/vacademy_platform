@@ -30,9 +30,11 @@ import vacademy.io.admin_core_service.features.fee_management.repository.FeeType
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
+import vacademy.io.admin_core_service.features.enroll_invite.service.SubOrgService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanSourceEnum;
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
@@ -91,6 +93,7 @@ public class BulkAssignmentService {
     private final FeeTypeRepository feeTypeRepository;
     private final AssignedFeeValueRepository assignedFeeValueRepository;
     private final AftInstallmentRepository aftInstallmentRepository;
+    private final SubOrgService subOrgService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -625,6 +628,17 @@ public class BulkAssignmentService {
                     userId, instituteId, e.getMessage());
         }
 
+        // Sub-org creation for org-associated package sessions (mirrors learner/v1/enroll).
+        // When the PS has is_org_associated=true, mint a sub-org Institute from the learner's
+        // custom-field answers + invite settingJson, stamp source=SUB_ORG + subOrgId on the
+        // UserPlan, and thread the Institute through to the workflow context below. Returns
+        // null (and UserPlan keeps default source) when not applicable.
+        Institute createdSubOrg = maybeCreateSubOrgForOrgAssociatedPackage(
+                config, newUserData, assignment, userId, instituteId);
+        String createdSubOrgId = createdSubOrg != null ? createdSubOrg.getId() : null;
+        String userPlanSource = createdSubOrg != null
+                ? UserPlanSourceEnum.SUB_ORG.name() : null;
+
         // Create UserPlan
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
@@ -633,7 +647,10 @@ public class BulkAssignmentService {
                 config.getEnrollInvite(),
                 config.getPaymentOption(),
                 null, // no payment initiation request
-                UserPlanStatusEnum.ACTIVE.name());
+                UserPlanStatusEnum.ACTIVE.name(),
+                userPlanSource,
+                createdSubOrgId,
+                null);
 
         String mappingId;
 
@@ -665,10 +682,12 @@ public class BulkAssignmentService {
                 log.warn("Failed to generate coupon code for userId={}: {}", userId, e.getMessage());
             }
 
-            // Trigger enrollment workflow (same as manual flow)
+            // Trigger enrollment workflow (same as manual flow). Pass the created sub-org
+            // through so workflow nodes can branch on it (e.g. SUB_ORG_MEMBER_ENROLLMENT
+            // template variants). null when the PS isn't org-associated.
             try {
                 studentRegistrationManager.triggerEnrollmentWorkflow(
-                        instituteId, userDTO, config.getPackageSession().getId(), null);
+                        instituteId, userDTO, config.getPackageSession().getId(), createdSubOrg);
             } catch (Exception e) {
                 log.warn("Failed to trigger enrollment workflow for userId={}: {}",
                         userId, e.getMessage());
@@ -839,6 +858,17 @@ public class BulkAssignmentService {
                     userId, instituteId, e.getMessage());
         }
 
+        // Sub-org creation for org-associated package sessions (mirrors learner/v1/enroll).
+        // createOrGetSubOrg is idempotent — re-enrollments will reuse the existing sub-org
+        // for this (user, PS) pair when one is found. Custom-field values come from the
+        // assignment row only (re-enrollment doesn't carry a NewUserDTO). The Institute is
+        // also threaded through to the workflow context below.
+        Institute createdSubOrg = maybeCreateSubOrgForOrgAssociatedPackage(
+                config, null, assignment, userId, instituteId);
+        String createdSubOrgId = createdSubOrg != null ? createdSubOrg.getId() : null;
+        String userPlanSource = createdSubOrg != null
+                ? UserPlanSourceEnum.SUB_ORG.name() : null;
+
         // Create new UserPlan (stacking is handled automatically by UserPlanService)
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
@@ -847,7 +877,10 @@ public class BulkAssignmentService {
                 config.getEnrollInvite(),
                 config.getPaymentOption(),
                 null,
-                UserPlanStatusEnum.ACTIVE.name());
+                UserPlanStatusEnum.ACTIVE.name(),
+                userPlanSource,
+                createdSubOrgId,
+                null);
 
         // Ensure Student record exists with extra details (same as manual flow)
         if (userDTO != null) {
@@ -867,11 +900,12 @@ public class BulkAssignmentService {
 
         studentSessionRepository.save(existingMapping);
 
-        // Trigger enrollment workflow (same as manual flow)
+        // Trigger enrollment workflow (same as manual flow). Pass the resolved sub-org
+        // through for workflow node access; null when the PS isn't org-associated.
         if (userDTO != null) {
             try {
                 studentRegistrationManager.triggerEnrollmentWorkflow(
-                        instituteId, userDTO, config.getPackageSession().getId(), null);
+                        instituteId, userDTO, config.getPackageSession().getId(), createdSubOrg);
             } catch (Exception e) {
                 log.warn("Failed to trigger enrollment workflow for re-enrollment userId={}: {}",
                         userId, e.getMessage());
@@ -912,6 +946,55 @@ public class BulkAssignmentService {
                     .cpoInitialPaymentAmount(cpoAmount);
         }
         return resultBuilder.build();
+    }
+
+    /**
+     * Mirror of LearnerEnrollRequestService's create-sub-org branch for bulk enrollment.
+     * When the resolved package session is org-associated, mint a sub-org Institute row
+     * from the learner's custom-field answers + invite settingJson and return its id so
+     * the caller can stamp source=SUB_ORG + subOrgId onto the new UserPlan. Returns null
+     * when not applicable (or on failure) so the UserPlan falls back to its default source.
+     * <p>
+     * Custom-field values are merged the same way as the post-process step: user-level
+     * (NewUserDTO) overridden by assignment-level (AssignmentItemDTO). Re-enrollments pass
+     * a null NewUserDTO and rely on assignment-level fields only.
+     */
+    private Institute maybeCreateSubOrgForOrgAssociatedPackage(
+            DefaultInviteResolver.ResolvedConfig config,
+            NewUserDTO newUserData,
+            AssignmentItemDTO assignment,
+            String userId,
+            String instituteId) {
+        PackageSession packageSession = config.getPackageSession();
+        if (packageSession == null || !Boolean.TRUE.equals(packageSession.getIsOrgAssociated())) {
+            return null;
+        }
+        List<CustomFieldValueDTO> customFieldValues = mergeCustomFields(
+                newUserData != null ? newUserData.getCustomFieldValues() : null,
+                assignment != null ? assignment.getCustomFieldValues() : null);
+        if (customFieldValues.isEmpty()) {
+            log.warn("Sub-org creation skipped: package session {} is org-associated but no " +
+                            "custom field values supplied for userId={}",
+                    packageSession.getId(), userId);
+            return null;
+        }
+        String settingJson = config.getEnrollInvite() != null
+                ? config.getEnrollInvite().getSettingJson() : null;
+        try {
+            Institute subOrg = subOrgService.createOrGetSubOrg(
+                    customFieldValues, settingJson, userId, packageSession.getId(), instituteId);
+            if (subOrg != null) {
+                log.info("Created/retrieved sub-org id={} for userId={} packageSession={}",
+                        subOrg.getId(), userId, packageSession.getId());
+                return subOrg;
+            }
+            log.warn("subOrgService.createOrGetSubOrg returned null for userId={} packageSession={}",
+                    userId, packageSession.getId());
+        } catch (Exception e) {
+            log.error("Failed to create sub-org for userId={} packageSession={}: {}",
+                    userId, packageSession.getId(), e.getMessage(), e);
+        }
+        return null;
     }
 
     /**

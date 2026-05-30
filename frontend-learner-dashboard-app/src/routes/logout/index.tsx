@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { removeTokensAndLogout } from "@/lib/auth/sessionUtility";
+import { removeTokensAndLogout, clearAllClientStorage } from "@/lib/auth/sessionUtility";
 import { pushNotificationService } from "@/services/push-notifications/push-notification-service";
 import { useNavigate } from "@tanstack/react-router";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
@@ -29,6 +29,7 @@ function RouteComponent() {
     clearAll(); // Clear drip conditions on logout
     pushNotificationService.deactivateToken().catch(() => {});
     removeTokensAndLogout();
+    clearAllClientStorage(); // Wipe localStorage + sessionStorage on explicit user logout
   }, [clearAll]);
 
   // After logout, navigate once domain routing has resolved (or honor explicit redirect)

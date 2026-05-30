@@ -268,6 +268,41 @@ const removeTokensAndLogout = async (): Promise<void> => {
   console.log("User logged out.");
 };
 
+// Full client-side storage wipe — only call from user-initiated logout flows,
+// NOT from axios interceptors or token-refresh failure handlers, since those
+// fire on transient 401s during page load and would blank the app on refresh.
+// Preserves:
+//   - InstituteId: needed for comparison in courses (same pattern as Capacitor
+//     Storage cleanup in removeTokensAndLogout above)
+//   - theme-code / theme-custom-color: user's visual preference, restored on
+//     app boot in providers/theme/theme-provider.tsx
+const LOGOUT_PRESERVED_LOCAL_STORAGE_KEYS = [
+  "InstituteId",
+  "theme-code",
+  "theme-custom-color",
+] as const;
+
+const clearAllClientStorage = (): void => {
+  try {
+    const preserved: Record<string, string> = {};
+    for (const key of LOGOUT_PRESERVED_LOCAL_STORAGE_KEYS) {
+      const value = localStorage.getItem(key);
+      if (value !== null) preserved[key] = value;
+    }
+    localStorage.clear();
+    for (const [key, value] of Object.entries(preserved)) {
+      localStorage.setItem(key, value);
+    }
+  } catch (error) {
+    console.warn("Failed to clear localStorage during logout:", error);
+  }
+  try {
+    sessionStorage.clear();
+  } catch (error) {
+    console.warn("Failed to clear sessionStorage during logout:", error);
+  }
+};
+
 // Get access token from storage
 export const getAccessToken = async () => {
   const { value } = await Storage.get({ key: "accessToken" });
@@ -339,6 +374,7 @@ const handleSSOLogin = (): boolean => {
 export {
   refreshTokens,
   removeTokensAndLogout,
+  clearAllClientStorage,
   setTokenInStorage,
   getTokenFromStorage,
   isTokenExpired,

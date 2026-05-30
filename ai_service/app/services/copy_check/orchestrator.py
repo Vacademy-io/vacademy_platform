@@ -32,8 +32,11 @@ def _new_job_id() -> str:
 
 
 def _render_client() -> CopyCheckRenderClient:
-    base = os.getenv("RENDER_WORKER_URL", "")
-    key = os.getenv("RENDER_KEY", "")
+    # ai-service uses RENDER_SERVER_URL/RENDER_SERVER_KEY as the cluster-wide
+    # convention (already set on the deployment). Fall through to the names
+    # I used in the original plan for backward compat.
+    base = os.getenv("RENDER_SERVER_URL") or os.getenv("RENDER_WORKER_URL", "")
+    key = os.getenv("RENDER_SERVER_KEY") or os.getenv("RENDER_KEY", "")
     return CopyCheckRenderClient(base, key)
 
 

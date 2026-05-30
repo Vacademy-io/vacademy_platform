@@ -162,6 +162,9 @@ public class EnrollmentFormService {
         studentExtraDetails.setParentsToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
         studentExtraDetails.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
         studentExtraDetails.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+        studentExtraDetails.setBillingContactName(learnerExtraDetails.getBillingContactName());
+        studentExtraDetails.setBillingContactEmail(learnerExtraDetails.getBillingContactEmail());
+        studentExtraDetails.setBillingContactRole(learnerExtraDetails.getBillingContactRole());
         return studentExtraDetails;
     }
 }

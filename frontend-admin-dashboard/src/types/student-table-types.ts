@@ -74,6 +74,9 @@ export interface StudentTable {
     parents_mobile_number: string;
     parents_to_mother_email: string;
     parents_to_mother_mobile_number: string;
+    billing_contact_name?: string | null;
+    billing_contact_email?: string | null;
+    billing_contact_role?: string | null;
     destination_package_session_id: string;
     enroll_invite_id: string;
     enroll_invite_name?: string | null;

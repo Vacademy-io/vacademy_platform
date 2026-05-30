@@ -589,6 +589,9 @@ public class StudentListManager {
             dto.setExpiryDate(parseTimestamp(p.getExpiryDate()));
             dto.setParentsToMotherMobileNumber(p.getParentsToMotherMobileNumber());
             dto.setParentsToMotherEmail(p.getParentsToMotherEmail());
+            dto.setBillingContactName(p.getBillingContactName());
+            dto.setBillingContactEmail(p.getBillingContactEmail());
+            dto.setBillingContactRole(p.getBillingContactRole());
 
             dto.setPaymentStatus(p.getPaymentStatus());
             dto.setPackageSessionId(p.getPackageSessionId());

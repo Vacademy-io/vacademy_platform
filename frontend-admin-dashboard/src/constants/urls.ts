@@ -425,39 +425,60 @@ export const GET_PRESENTATION_LIST = `${BASE_URL}/community-service/presentation
 export const ADD_PRESENTATION = `${BASE_URL}/community-service/presentation/add-presentation`;
 export const GET_PRESENTATION = `${BASE_URL}/community-service/presentation/get-presentation`;
 export const EDIT_PRESENTATION = `${BASE_URL}/community-service/presentation/edit-presentation`;
-export const RETRY_AI_URL = `${BASE_URL}/media-service/ai/retry/task`;
-export const START_PROCESSING_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/start-process-pdf-file-id`;
-export const LIST_INDIVIDUAL_AI_TASKS_URL = `${BASE_URL}/media-service/task-status/get-all`;
-export const GET_INDIVIDUAL_AI_TASK_QUESTIONS = `${BASE_URL}/media-service/task-status/get-result`;
-export const GET_INDIVIDUAL_CHAT_WITH_PDF_AI_TASK_QUESTIONS = `${BASE_URL}/media-service/ai/chat-with-pdf/get-chat`;
-export const SORT_SPLIT_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/pdf-to-extract-topic-questions`;
-export const SORT_QUESTIONS_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/topic-wise/pdf-to-questions`;
-export const GENERATE_QUESTIONS_FROM_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/pdf-to-questions`;
-export const GENERATE_QUESTIONS_FROM_IMAGE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/image-to-questions`;
-export const GENERATE_FEEDBACK_FROM_FILE_AI_URL = `${BASE_URL}/media-service/ai/lecture/generate-feedback`;
-export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/html-to-questions`;
-export const CONVERT_PDF_TO_HTML_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/pdf-to-html`;
-export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/html-to-questions`;
+// Migrated to ai_service: rebuilds the task from its stored params + re-resolves
+// the model, then schedules a fresh task.
+export const RETRY_AI_URL = `${AI_SERVICE_BASE_URL}/ai/retry/task`;
+// Migrated to ai_service (MathPix PDF→HTML + question engine).
+export const START_PROCESSING_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/start-process-pdf-file-id`;
+// All AI task types are migrated — task list + question result are served by
+// ai_service (no media fallback / merge anymore).
+export const GET_INDIVIDUAL_AI_TASK_QUESTIONS_AI_SERVICE = `${AI_SERVICE_BASE_URL}/task-status/get-result`;
+// Migrated to ai_service (chat turns stored in ai_task; model from registry).
+export const GET_INDIVIDUAL_CHAT_WITH_PDF_AI_TASK_QUESTIONS = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-chat`;
+export const SORT_SPLIT_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-extract-topic-questions`;
+export const SORT_QUESTIONS_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/topic-wise/pdf-to-questions`;
+export const GENERATE_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-questions`;
+export const GENERATE_QUESTIONS_FROM_IMAGE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/image-to-questions`;
+// Migrated to ai_service: single-step feedback — pass the uploaded audio fileId;
+// ai_service resolves it, transcribes in-house, and generates the feedback.
+export const GENERATE_FEEDBACK_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/lecture/generate-feedback`;
+// Migrated to ai_service (sync HTML→questions; PDF→HTML stays on media for now).
+export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
+export const CONVERT_PDF_TO_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-html`;
+export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
 export const SHARE_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/send-passwords`;
-export const CHAT_WITH_PDF_AI_URL = `${BASE_URL}/media-service/ai/chat-with-pdf/get-response`;
-export const PROCESS_AUDIO_FILE = `${BASE_URL}/media-service/ai/get-question-audio/audio-parser/start-process-audio-file-id`;
-export const GET_QUESTIONS_FROM_AUDIO = `${BASE_URL}/media-service/ai/get-question-audio/audio-parser/audio-to-questions`;
+// Migrated to ai_service: PDF→HTML (MathPix, cached) + chat prompt; still-
+// processing returns 425 so the FE retry loop (onError) re-polls.
+export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-response`;
+// Migrated to ai_service: single-step audio → in-house transcribe → questions.
+export const GET_QUESTIONS_FROM_AUDIO = `${AI_SERVICE_BASE_URL}/ai/get-question-audio/audio-parser/audio-to-questions`;
 
 // Evaluation AI Free tool
 export const CREATE_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/create`;
 export const ADD_QUESTIONS_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/sections`;
 export const GET_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
 
-export const EVALUATION_TOOL_EVALUATE_ASSESSMENT = `${BASE_URL}/media-service/ai/evaluation-tool/evaluate-assessment`;
-export const EVALUATION_TOOL_STATUS = `${BASE_URL}/media-service/ai/evaluation-tool/status`;
+// Migrated to ai_service (metadata from assessment-service + 2-step LLM via
+// ai_task; model from registry). status/{taskId} maps PROGRESS→PROCESSING.
+export const EVALUATION_TOOL_EVALUATE_ASSESSMENT = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/evaluate-assessment`;
+export const EVALUATION_TOOL_STATUS = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/status`;
 export const EVALUATION_TOOL_GET_QUESTION = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
-export const GET_QUESTIONS_FROM_TEXT = `${BASE_URL}/media-service/ai/get-question-pdf/from-text`;
-export const GET_LECTURE_PLAN_URL = `${BASE_URL}/media-service/ai/lecture/generate-plan`;
-export const GET_LECTURE_PLAN_PREVIEW_URL = `${BASE_URL}/media-service/task-status/get/lecture-plan`;
-export const GET_LECTURE_FEEDBACK_PREVIEW_URL = `${BASE_URL}/media-service/task-status/get/lecture-feedback`;
+export const GET_QUESTIONS_FROM_TEXT = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/from-text`;
+// Lecture planner + feedback: migrated to ai_service (hard cut). Both kick-offs
+// and result polling are served by ai_service, which resolves the model from the
+// DB-backed registry (fixing the hardcoded dead model id) and, for feedback,
+// transcribes the audio in-house.
+export const GET_LECTURE_PLAN_URL = `${AI_SERVICE_BASE_URL}/ai/lecture/generate-plan`;
+export const GET_LECTURE_PLAN_PREVIEW_URL = `${AI_SERVICE_BASE_URL}/task-status/get/lecture-plan`;
+export const GET_LECTURE_FEEDBACK_PREVIEW_URL = `${AI_SERVICE_BASE_URL}/task-status/get/lecture-feedback`;
 
-// AI Model Selection
-export const GET_AVAILABLE_AI_MODELS = `${BASE_URL}/media-service/ai/retry/available-models`;
+// ai_service get-all — TaskStatusDto-shaped list of this institute's AI tasks.
+// Every AI task type now lives in ai_service, so this is the single source for
+// the AI-center task history (the old media merge + per-type routing is gone).
+export const LIST_INDIVIDUAL_AI_TASKS_URL_AI_SERVICE = `${AI_SERVICE_BASE_URL}/task-status/get-all`;
+
+// AI Model Selection — migrated to ai_service (registry-backed model list).
+export const GET_AVAILABLE_AI_MODELS = `${AI_SERVICE_BASE_URL}/ai/retry/available-models`;
 export const GET_AI_MODELS_V2 = `${AI_SERVICE_BASE_URL}/models/v2/list`;
 export const GET_AI_MODELS_USE_CASE = `${AI_SERVICE_BASE_URL}/models/v2/use-case`;
 export const INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/lms-report-setting/institute-setting`;

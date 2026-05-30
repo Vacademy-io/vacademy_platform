@@ -25,7 +25,10 @@ rembg
 # matting behavior across services.
 mediapipe==0.10.14
 opencv-python-headless>=4.8.0
-numpy>=1.24.0
+# Cap below 2.0 — mediapipe==0.10.14 is built against the numpy 1.x ABI, so an
+# unbounded pin lets pip pull numpy 2.x and the C-extension import fails with
+# "numpy.core.multiarray failed to import". Matches render_worker/requirements.txt.
+numpy>=1.24.0,<2
 pgvector>=0.3.0
 websockets>=12.0
 pdfplumber>=0.10.0

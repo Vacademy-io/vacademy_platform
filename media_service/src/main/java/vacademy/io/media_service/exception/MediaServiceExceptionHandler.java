@@ -31,31 +31,6 @@ public class MediaServiceExceptionHandler {
     private String activeProfile;
 
     /**
-     * Handles AI processing exceptions with detailed error info
-     */
-    @ExceptionHandler(AiProcessingException.class)
-    public ResponseEntity<ApiErrorResponse> handleAiProcessingException(
-            AiProcessingException ex, HttpServletRequest request) {
-
-        String traceId = generateTraceId();
-        log.error("[{}] AI Processing Error: {} - {}", traceId, ex.getErrorCode(), ex.getTechnicalDetails(), ex);
-
-        ApiErrorResponse response = ApiErrorResponse.builder()
-                .errorCode(ex.getErrorCode())
-                .message(ex.getUserMessage())
-                .details(isDevProfile() ? ex.getTechnicalDetails() : null)
-                .status(ex.getHttpStatus().value())
-                .timestamp(LocalDateTime.now())
-                .path(request.getRequestURI())
-                .traceId(traceId)
-                .retryable(isRetryable(ex.getErrorCode()))
-                .suggestion(getSuggestion(ex.getErrorCode()))
-                .build();
-
-        return new ResponseEntity<>(response, ex.getHttpStatus());
-    }
-
-    /**
      * Handles VacademyException (legacy exceptions)
      */
     @ExceptionHandler(VacademyException.class)
@@ -193,29 +168,5 @@ public class MediaServiceExceptionHandler {
         return "dev".equalsIgnoreCase(activeProfile) ||
                 "local".equalsIgnoreCase(activeProfile) ||
                 "default".equalsIgnoreCase(activeProfile);
-    }
-
-    private boolean isRetryable(String errorCode) {
-        return switch (errorCode) {
-            case "MODEL_TIMEOUT", "MODEL_NO_RESPONSE", "ALL_MODELS_FAILED",
-                    "TASK_TIMEOUT", "FILE_STILL_PROCESSING" ->
-                true;
-            case "VALIDATION_ERROR", "MISSING_PARAMETER", "INVALID_FILE_FORMAT",
-                    "MODEL_NOT_ALLOWED" ->
-                false;
-            default -> true;
-        };
-    }
-
-    private String getSuggestion(String errorCode) {
-        return switch (errorCode) {
-            case "MODEL_TIMEOUT" -> "Try with a smaller input or wait a few minutes.";
-            case "MODEL_NO_RESPONSE" -> "The AI service is temporarily unavailable. Please try again.";
-            case "ALL_MODELS_FAILED" -> "All AI models are busy. Please try again in a few minutes.";
-            case "FILE_STILL_PROCESSING" -> "Your file is being processed. Please wait and retry.";
-            case "TASK_NOT_FOUND" -> "The task may have expired. Please create a new request.";
-            case "INVALID_FILE_FORMAT" -> "Please upload a file in the correct format.";
-            default -> "Please try again. If the issue persists, contact support.";
-        };
     }
 }

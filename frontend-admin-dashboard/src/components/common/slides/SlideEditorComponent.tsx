@@ -23,7 +23,7 @@ import { ActualPresentationDisplay } from './ActualPresentationDisplay'; // Impo
 import { SessionOptionsModal, type SessionOptions } from './components/SessionOptionModel'; // Assumed path
 import { SessionLeaderboardModal } from './components/SessionLeaderboardModal';
 import { WaitingRoom } from './components/SessionWaitingRoom'; // Assumed path
-import { ADD_PRESENTATION, BASE_URL, EDIT_PRESENTATION, CREATE_SESSION_API_URL, FINISH_SESSION_API_URL } from '@/constants/urls';
+import { ADD_PRESENTATION, AI_SERVICE_BASE_URL, BASE_URL, EDIT_PRESENTATION, CREATE_SESSION_API_URL, FINISH_SESSION_API_URL } from '@/constants/urls';
 import { SlideRenderer } from './SlideRenderer'; // Import the extracted SlideRenderer
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
@@ -72,8 +72,9 @@ const BACKEND_URL = BASE_URL;
 const START_SESSION_API_URL = `${BACKEND_URL}/community-service/engage/admin/start`;
 const ADD_SLIDE_IN_SESSION_API_URL = `${BACKEND_URL}/community-service/engage/admin/add-slide-in-session`;
 const IMPORT_PPT_API_URL = `${BACKEND_URL}/media-service/convert-presentations/import-ppt`;
-const REGENERATE_SLIDE_API_URL = `${BACKEND_URL}/media-service/ai/presentation/regenerateASlide`;
-const GENERATE_SLIDES_FROM_TEXT_API_URL = `${BACKEND_URL}/media-service/ai/presentation/generateFromData`;
+// Migrated to ai_service (was media-service/ai/presentation).
+const REGENERATE_SLIDE_API_URL = `${AI_SERVICE_BASE_URL}/ai/presentation/regenerateASlide`;
+const GENERATE_SLIDES_FROM_TEXT_API_URL = `${AI_SERVICE_BASE_URL}/ai/presentation/generateFromData`;
 
 interface SlideRendererProps {
     currentSlideId: string;

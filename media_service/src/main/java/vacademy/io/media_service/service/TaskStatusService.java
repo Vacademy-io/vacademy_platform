@@ -1,21 +1,16 @@
 package vacademy.io.media_service.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.media.dto.FileDetailsDTO;
-import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 import vacademy.io.media_service.entity.FileConversionStatus;
 import vacademy.io.media_service.entity.TaskStatus;
 import vacademy.io.media_service.enums.TaskStatusEnum;
-import vacademy.io.media_service.exceptions.FileDownloadException;
 import vacademy.io.media_service.repository.TaskStatusRepository;
-import vacademy.io.media_service.service.pdf_covert.ConversationDto;
 
 import java.util.*;
 
@@ -28,9 +23,6 @@ public class TaskStatusService {
     private final FileConversionStatusService fileConversionStatusService;
 
     private final FileService fileService;
-    @Autowired
-    private ObjectMapper objectMapper;
-
     @Autowired
     public TaskStatusService(TaskStatusRepository taskStatusRepository, FileConversionStatusService fileConversionStatusService, FileService fileService) {
         this.taskStatusRepository = taskStatusRepository;
@@ -149,35 +141,6 @@ public class TaskStatusService {
     }
 
 
-    public String getLast5ConversationFromInputIdAndInputType(String instituteId, String type, String inputId, String inputType) {
-        List<TaskStatus> taskStatuses = taskStatusRepository
-                .findLastFiveByTypeAndInstituteAndInput(type, instituteId, inputId, inputType);
-
-        // Sort from oldest to newest
-        taskStatuses.sort(Comparator.comparing(TaskStatus::getCreatedAt));
-
-        List<ConversationDto> conversations = new ArrayList<>();
-
-        for (TaskStatus task : taskStatuses) {
-            try {
-                JsonNode jsonNode = objectMapper.readTree(task.getResultJson());
-                String user = jsonNode.path("user").asText();
-                String aiResponse = jsonNode.path("response").asText();
-
-                conversations.add(new ConversationDto(user, aiResponse, task.getCreatedAt()));
-            } catch (Exception e) {
-                // Optionally log invalid/malformed JSON
-                log.error("ERROR AT CONVERSATION: " + e.getMessage());
-            }
-        }
-
-        try {
-            return objectMapper.writeValueAsString(conversations);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Error serializing conversation list to JSON", e);
-        }
-    }
-
     public TaskStatus createNewTaskForResult(String instituteId, String type, String inputId, String inputType, String rawOutput, String taskName, String parentId) {
         TaskStatus taskStatus = new TaskStatus();
         taskStatus.setStatus(TaskStatusEnum.COMPLETED.name());
@@ -189,19 +152,6 @@ public class TaskStatusService {
         taskStatus.setResultJson(rawOutput);
         taskStatus.setParentId(parentId);
         return taskStatusRepository.save(taskStatus);
-    }
-
-    public List<ChatWithPdfResponse> getChatResponseForTypeAndInputId(String type, String inputType, String inputId, String instituteId) {
-        List<ChatWithPdfResponse> response = new ArrayList<>();
-        List<TaskStatus> allTask = taskStatusRepository.findByTypeAndInstituteIdAndInputIdAndInputTypeOrderByASC(type, instituteId, inputId, inputType);
-        allTask.forEach(task -> {
-            try {
-                response.add(task.getPdfChatResponse());
-            } catch (Exception e) {
-                log.error("Failed To convert: " + e.getMessage());
-            }
-        });
-        return response;
     }
 
     public List<TaskStatus> getAllTaskFromParentIdAndWithParentId(String parentId) {

@@ -434,6 +434,24 @@ public class SubOrgLearnerService {
         ManualPaymentResult paymentResult = recordOfflinePaymentIfRequested(
                 request, user.getId(), learnerUserPlanId, admin.getUserId(), resolvedLearnerOption);
 
+        // Hydrate password back from auth-service so the LMS create-user webhook
+        // (workflow node referencing #ctx['member']['password']) receives the real
+        // stored credential instead of null. createUserFromAuthService strips
+        // passwords from its response, so the UserDTO held above has no password
+        // even though one was generated and persisted. Mirrors the bulk-assign
+        // workaround in BulkAssignmentService. Best-effort: a fetch blip leaves
+        // password=null and downstream workflow nodes must branch on it; we don't
+        // want a credential read-back to abort an otherwise-successful enrollment.
+        try {
+            UserDTO userWithPwd = authService.getUsersFromAuthServiceWithPasswordByUserId(user.getId());
+            if (userWithPwd != null && StringUtils.hasText(userWithPwd.getPassword())) {
+                user.setPassword(userWithPwd.getPassword());
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch stored password for sub-org learner userId={}: {}",
+                    user.getId(), e.getMessage());
+        }
+
         // Trigger workflow for each PS (existing per-PS contract).
         for (String psId : psIds) {
             triggerEnrollmentWorkflow(request.getInstituteId(), user, psId, adminDTO);

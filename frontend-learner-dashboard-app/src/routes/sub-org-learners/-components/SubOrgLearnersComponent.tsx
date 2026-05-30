@@ -450,7 +450,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               inputClass="!w-full h-10 !rounded-md !border-input"
               buttonClass="!rounded-l-md !border-input"
               countryCodeEditable={false}
-              enableAreaCodes={true}
+              enableAreaCodes={false}
               disableCountryGuess={false}
               preferredCountries={preferredCountries}
             />

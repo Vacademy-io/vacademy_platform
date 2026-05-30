@@ -112,7 +112,8 @@ jobs:
             SCHEDULING_TIME_FRAME=${{ secrets.SCHEDULING_TIME_FRAME }} \
             SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }} \
-            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
+            INTERNAL_SERVICE_TOKEN=${{ secrets.INTERNAL_SERVICE_TOKEN }}
 
       - name: Restart deployment
         if: github.event_name == 'push'

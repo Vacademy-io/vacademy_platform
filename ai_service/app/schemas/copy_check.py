@@ -64,7 +64,7 @@ class CopyCheckGradeRequest(BaseModel):
     pdf_url: str
     questions: list[GradeQuestionInput]
     preferred_model: Optional[str] = None
-    callback_base_url: str = Field(..., description="Base URL Java exposes for /internal/copy-check/* callbacks")
+    callback_base_url: str = Field(..., description="Base URL Java exposes for /copy-check/callback/* callbacks")
 
 
 class CopyCheckGradeResponse(BaseModel):

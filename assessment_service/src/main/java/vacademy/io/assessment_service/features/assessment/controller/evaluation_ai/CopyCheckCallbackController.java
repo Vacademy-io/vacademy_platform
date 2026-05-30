@@ -14,14 +14,16 @@ import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.Copy
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckCallbackService;
 
 /**
- * Callbacks from ai_service. Gated by X-Internal-Service-Token (shared
- * secret matched against assessment.copy-check.internal-token). Mounted at
- * /internal/copy-check/** — this matches the URL ai_service POSTs to in
- * callbacks.py and is whitelisted in ApplicationSecurityConfig so the JWT
- * filter doesn't reject these calls.
+ * Callbacks from ai_service. Gated by X-Internal-Service-Token (shared cluster
+ * secret INTERNAL_SERVICE_TOKEN). Mounted at /copy-check/callback/** — NOT
+ * under /internal/** because the cluster-wide InternalAuthFilter (in
+ * common_service) intercepts any URI containing "internal" and demands HMAC
+ * (clientName + Signature) headers that ai_service doesn't send. Keeping the
+ * path out of that filter's reach lets our controller-level token check run.
+ * Whitelisted in ApplicationSecurityConfig so the JWT filter doesn't reject.
  */
 @RestController
-@RequestMapping("/assessment-service/internal/copy-check")
+@RequestMapping("/assessment-service/copy-check/callback")
 @RequiredArgsConstructor
 @Slf4j
 public class CopyCheckCallbackController {

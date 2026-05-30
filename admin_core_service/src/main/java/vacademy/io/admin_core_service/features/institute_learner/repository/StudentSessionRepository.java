@@ -76,6 +76,24 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
                    @Param("instituteId") String instituteId,
                    @Param("status") String status);
 
+  /**
+   * Update the status for a learner across MULTIPLE package sessions in one query.
+   * Used by MAKE_INACTIVE when an admin terminates a learner from several package
+   * sessions at once — collapses what would otherwise be N single-PS updates into
+   * a single atomic UPDATE.
+   */
+  @Modifying
+  @Transactional
+  @Query(value = "UPDATE student_session_institute_group_mapping " +
+          "SET status = :status " +
+          "WHERE user_id = :userId " +
+          "AND package_session_id IN (:packageSessionIds) " +
+          "AND institute_id = :instituteId", nativeQuery = true)
+  int updateStatusForPackageSessions(@Param("userId") String userId,
+                                     @Param("packageSessionIds") List<String> packageSessionIds,
+                                     @Param("instituteId") String instituteId,
+                                     @Param("status") String status);
+
   List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserId(String instituteId, String userId);
 
   List<StudentSessionInstituteGroupMapping> findAllByInstituteIdAndUserIdAndStatusIn(String instituteId,

@@ -572,6 +572,14 @@ const EnrollByInvite = ({
 
   const isBundledInvite = Boolean(inviteData?.is_bundled);
 
+  // True when the invite exposes exactly one payment plan to choose from.
+  // Mirrors the skip condition in handleNext() (L818-824) and handlePrevious()
+  // (L850-855) — the Plan-selection step never appears, so the wizard should
+  // collapse to 2 pills (Details + Pay) instead of pretending the user picked.
+  const hasSinglePlan =
+    (inviteData?.package_session_to_payment_options?.[0]?.payment_option
+      ?.payment_plans?.length || 0) === 1;
+
   const bundledPackageSessions = useMemo<BundledSessionMeta[]>(() => {
     const sessions =
       (inviteData?.package_session_to_payment_options as
@@ -2750,136 +2758,92 @@ const EnrollByInvite = ({
         {/* Progress Steps - Centered above content */}
         {currentStep < 5 && (
           <div className="mb-6">
-            {paymentType !== "FREE" ? (
-              <div className="flex items-center justify-center gap-0">
-                {/* Step 1: Details */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                      currentStep >= 0
-                        ? "bg-primary text-white"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > 0 ? "✓" : "1"}
-                  </div>
-                  <span
-                    className={`text-xs sm:text-sm font-medium ${
-                      currentStep === 0
-                        ? "text-primary"
-                        : currentStep > 0
-                          ? "text-gray-700"
-                          : "text-gray-400"
-                    }`}
-                  >
-                    Details
-                  </span>
+            {(() => {
+              // Build the wizard pills. The Plan-selection step is only a real
+              // user-facing step when there are >=2 payment plans to choose
+              // between (and the flow isn't FREE). When the invite exposes a
+              // single plan or is FREE, handleNext skips currentStep === 1
+              // entirely — so we drop the pill instead of flashing it.
+              const showPlanPill =
+                paymentType !== "FREE" &&
+                !(paymentType !== "DONATION" && hasSinglePlan);
+              const finalLabel = paymentType === "FREE" ? "Confirm" : "Pay";
+
+              type Pill = {
+                label: string;
+                // currentStep value at which this pill is "active" (highlighted)
+                activeFrom: number;
+                activeUntil: number;
+                // currentStep value at which this pill flips to ✓ (done)
+                doneFrom: number;
+              };
+              const pills: Pill[] = [
+                { label: "Details", activeFrom: 0, activeUntil: 0, doneFrom: 1 },
+              ];
+              if (showPlanPill) {
+                pills.push({
+                  label: "Plan",
+                  activeFrom: 1,
+                  activeUntil: 1,
+                  doneFrom: 2,
+                });
+              }
+              pills.push({
+                label: finalLabel,
+                activeFrom: 2,
+                activeUntil: 4,
+                // FREE flow exits to step 5 (success) immediately after confirm;
+                // paid flow doesn't tick the final pill until success either.
+                doneFrom: paymentType === "FREE" ? 3 : 5,
+              });
+
+              return (
+                <div className="flex items-center justify-center gap-0">
+                  {pills.map((pill, idx) => {
+                    const isActive =
+                      currentStep >= pill.activeFrom &&
+                      currentStep <= pill.activeUntil;
+                    const isDone = currentStep >= pill.doneFrom;
+                    const showCheck = isDone;
+                    const number = String(idx + 1);
+                    const isLast = idx === pills.length - 1;
+                    return (
+                      <div key={pill.label} className="flex items-center">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                              isActive || isDone
+                                ? "bg-primary text-white"
+                                : "bg-gray-200 text-gray-500"
+                            }`}
+                          >
+                            {showCheck ? "✓" : number}
+                          </div>
+                          <span
+                            className={`text-xs sm:text-sm font-medium ${
+                              isActive
+                                ? "text-primary"
+                                : isDone
+                                  ? "text-gray-700"
+                                  : "text-gray-400"
+                            }`}
+                          >
+                            {pill.label}
+                          </span>
+                        </div>
+                        {!isLast && (
+                          <div
+                            className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${
+                              isDone ? "bg-primary" : "bg-gray-200"
+                            }`}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {/* Connector */}
-                <div
-                  className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 0 ? "bg-primary" : "bg-gray-200"}`}
-                />
-                {/* Step 2: Plan */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                      currentStep >= 1
-                        ? "bg-primary text-white"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > 1 ? "✓" : "2"}
-                  </div>
-                  <span
-                    className={`text-xs sm:text-sm font-medium ${
-                      currentStep === 1
-                        ? "text-primary"
-                        : currentStep > 1
-                          ? "text-gray-700"
-                          : "text-gray-400"
-                    }`}
-                  >
-                    Plan
-                  </span>
-                </div>
-                {/* Connector */}
-                <div
-                  className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 1 ? "bg-primary" : "bg-gray-200"}`}
-                />
-                {/* Step 3: Pay */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                      currentStep >= 2
-                        ? "bg-primary text-white"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > 4 ? "✓" : "3"}
-                  </div>
-                  <span
-                    className={`text-xs sm:text-sm font-medium ${
-                      currentStep >= 2 && currentStep < 5
-                        ? "text-primary"
-                        : currentStep >= 5
-                          ? "text-gray-700"
-                          : "text-gray-400"
-                    }`}
-                  >
-                    Pay
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-0">
-                {/* Step 1: Details */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                      currentStep >= 0
-                        ? "bg-primary text-white"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > 0 ? "✓" : "1"}
-                  </div>
-                  <span
-                    className={`text-xs sm:text-sm font-medium ${
-                      currentStep === 0
-                        ? "text-primary"
-                        : currentStep > 0
-                          ? "text-gray-700"
-                          : "text-gray-400"
-                    }`}
-                  >
-                    Details
-                  </span>
-                </div>
-                {/* Connector */}
-                <div
-                  className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep >= 2 ? "bg-primary" : "bg-gray-200"}`}
-                />
-                {/* Step 2: Confirm */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
-                      currentStep >= 2
-                        ? "bg-primary text-white"
-                        : "bg-gray-200 text-gray-500"
-                    }`}
-                  >
-                    {currentStep > 2 ? "✓" : "2"}
-                  </div>
-                  <span
-                    className={`text-xs sm:text-sm font-medium ${
-                      currentStep >= 2 ? "text-primary" : "text-gray-400"
-                    }`}
-                  >
-                    Confirm
-                  </span>
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

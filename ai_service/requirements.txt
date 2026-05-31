@@ -32,3 +32,8 @@ numpy>=1.24.0,<2
 pgvector>=0.3.0
 websockets>=12.0
 pdfplumber>=0.10.0
+# PyMuPDF — used by copy_check/mathpix_fallback.py to rasterize PDF pages
+# at 200 DPI (matching render_worker) and crop low-confidence math lines
+# for selective Mathpix re-OCR. Without this, mathpix.enrich_layout_for_math
+# crashes with "No module named 'fitz'" right after LAYOUT_OCR_DONE.
+pymupdf>=1.24.0

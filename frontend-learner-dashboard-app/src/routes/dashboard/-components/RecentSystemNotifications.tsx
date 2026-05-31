@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Bell, ChevronRight, Clock, Trash2 } from 'lucide-react';
+import { Bell, CaretRight, Clock, Trash } from '@phosphor-icons/react';
 import { useSystemAlerts } from '@/hooks/useSystemAlerts';
 import { isAfter, subDays } from 'date-fns';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
@@ -101,7 +101,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
       "[.ui-vibrant_&]:bg-fuchsia-50/50 dark:[.ui-vibrant_&]:bg-fuchsia-950/20",
       "[.ui-vibrant_&]:border-fuchsia-200/50 dark:[.ui-vibrant_&]:border-fuchsia-800/30",
       // Play Styles - Solid Bold Duolingo
-      "[.ui-play_&]:bg-[#FF9600] [.ui-play_&]:border-2 [.ui-play_&]:border-[#e08600] [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-[0_4px_0_0_#e08600]",
+      "[.ui-play_&]:bg-play-warn [.ui-play_&]:border-2 [.ui-play_&]:border-play-warn-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-warn",
       "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
       "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:md:flex-col"
     )}>
@@ -129,11 +129,11 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     disabled={loading}
                   >
-                    <Trash2 className="h-4 w-4 mr-1" />
+                    <Trash className="h-4 w-4 mr-1" />
                     Clear All
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent className="z-[10001]">
+                <AlertDialogContent className="z-50">
                   <AlertDialogHeader>
                     <AlertDialogTitle>Clear All Notifications</AlertDialogTitle>
                     <AlertDialogDescription>
@@ -243,7 +243,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                     </div>
 
                     {/* Arrow indicator */}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                    <CaretRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </div>
                 </div>
               ))}
@@ -257,7 +257,7 @@ export const RecentSystemNotifications: React.FC<RecentSystemNotificationsProps>
                 className="w-full justify-center text-sm text-primary hover:text-primary hover:bg-primary/10"
               >
                 View All Notifications
-                <ChevronRight className="h-4 w-4 ml-1" />
+                <CaretRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
           </>

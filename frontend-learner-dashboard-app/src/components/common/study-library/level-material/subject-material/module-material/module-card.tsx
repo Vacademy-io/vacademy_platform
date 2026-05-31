@@ -53,9 +53,9 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
 
 
     return (
-        <div onClick={handleCardClick} className="cursor-pointer w-full items-center flex justify-center h-[380px]">
+        <div onClick={handleCardClick} className="cursor-pointer w-full items-center flex justify-center h-reg-380">
             <div
-                className={`flex w-[310px] xs:w-[340px] sm:w-full ${open ? "md-tablet:w-[270px]" : "md-tablet:w-[340px]"} h-full flex-col gap-4 rounded-lg border border-neutral-300 p-6`}
+                className={`flex w-reg-300 xs:w-reg-350 sm:w-full ${open ? "md-tablet:w-reg-280" : "md-tablet:w-reg-350"} h-full flex-col gap-4 rounded-lg border border-neutral-300 p-6`}
             >
                 <div className="flex items-center justify-between text-title font-semibold">
                     <div>{toTitleCase(module.module.module_name)}</div>
@@ -65,10 +65,10 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
                     <img
                         src={imageUrl}
                         alt={toTitleCase(module.module.module_name)}
-                        className="w-full rounded-lg object-contain h-[70%]"
+                        className="w-full rounded-lg object-contain h-[70%]" // design-lint-ignore: decorative positioning
                     />
                 ) : (
-                    <div className="flex w-full items-center justify-center rounded-lg bg-neutral-100 h-[80%]">
+                    <div className="flex w-full items-center justify-center rounded-lg bg-neutral-100 h-[80%]"> {/* design-lint-ignore: decorative positioning */}
                          <ModuleDefaultImage />
                      </div>
                 )}

@@ -21,12 +21,12 @@ import { toast } from "sonner";
 import {
   CreditCard,
   CheckCircle,
-  Loader2,
-  IndianRupee,
-  AlertCircle,
+  SpinnerGap,
+  CurrencyInr,
+  WarningCircle,
   GraduationCap,
-  Mail,
-} from "lucide-react";
+  Envelope,
+} from "@phosphor-icons/react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -202,7 +202,7 @@ function AdmissionPaymentPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-sm border p-8 w-full max-w-md text-center space-y-3">
-          <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
+          <WarningCircle className="w-10 h-10 text-amber-500 mx-auto" />
           <h1 className="text-lg font-semibold text-gray-900">
             Payment Option Not Found
           </h1>
@@ -258,7 +258,7 @@ function AdmissionPaymentPage() {
             <p className="text-xs text-gray-500 mb-1">Amount Due</p>
             <p className="text-3xl font-bold text-gray-900 flex items-center gap-1">
               {plan.currency === "INR" ? (
-                <IndianRupee className="w-6 h-6" />
+                <CurrencyInr className="w-6 h-6" />
               ) : (
                 <span className="text-2xl">{plan.currency}</span>
               )}
@@ -275,7 +275,7 @@ function AdmissionPaymentPage() {
           {/* Email input */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-700 flex items-center gap-1">
-              <Mail className="w-3.5 h-3.5" />
+              <Envelope className="w-3.5 h-3.5" />
               Email Address
             </label>
             <Input
@@ -301,12 +301,12 @@ function AdmissionPaymentPage() {
           >
             {isPaying ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <SpinnerGap className="w-4 h-4 animate-spin" />
                 Processing…
               </>
             ) : (
               <>
-                <IndianRupee className="w-4 h-4" />
+                <CurrencyInr className="w-4 h-4" />
                 Pay Now
               </>
             )}

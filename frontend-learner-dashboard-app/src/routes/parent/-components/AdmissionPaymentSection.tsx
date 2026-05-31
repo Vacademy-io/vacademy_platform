@@ -26,11 +26,11 @@ import {
   CreditCard,
   CheckCircle,
   Clock,
-  AlertCircle,
-  Loader2,
-  IndianRupee,
+  WarningCircle,
+  SpinnerGap,
+  CurrencyInr,
   GraduationCap,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import type { ChildProfile } from "@/types/parent-portal";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ function StatusBadge({ status }: { status: string }) {
       "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300",
   };
   return (
-    <Badge className={`text-[10px] px-1.5 py-0.5 ${s.className}`}>
+    <Badge className={`text-caption px-1.5 py-0.5 ${s.className}`}>
       {s.label}
     </Badge>
   );
@@ -374,7 +374,7 @@ export function AdmissionPaymentSection({
           {needsPayment && !paymentDone && !isRejected && (
             <div className="pt-1 border-t flex items-center justify-between gap-3">
               <p className="text-xs text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <WarningCircle className="w-3.5 h-3.5 shrink-0" />
                 Payment required to continue
               </p>
               <Button
@@ -385,12 +385,12 @@ export function AdmissionPaymentSection({
               >
                 {isPaying ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <SpinnerGap className="w-3.5 h-3.5 animate-spin" />
                     Processing…
                   </>
                 ) : (
                   <>
-                    <IndianRupee className="w-3.5 h-3.5" />
+                    <CurrencyInr className="w-3.5 h-3.5" />
                     Pay Now
                   </>
                 )}

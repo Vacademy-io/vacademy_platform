@@ -50,11 +50,11 @@ export const Reply = ({ reply, raiserUserId }: ReplyProps) => {
     const isStaffAnswer = !isSelf && !isRaiser;
 
     const roleBadge = isSelf ? (
-        <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-700">
+        <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-3xs font-semibold uppercase tracking-wide text-primary-700">
             You
         </span>
     ) : isStaffAnswer ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-3xs font-semibold uppercase tracking-wide text-green-700">
             <GraduationCap size={11} weight="duotone" />
             Teacher
         </span>

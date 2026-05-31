@@ -330,12 +330,12 @@ export const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {
   fontSize: 'medium',
   style: 'phrase',
   backgroundOpacity: 0.6,
-  textColor: '#ffffff',
-  highlightColor: '#fbbf24', // Amber/yellow for current word
+  textColor: '#ffffff', // design-lint-ignore: video caption/diagram color data
+  highlightColor: '#fbbf24', // Amber/yellow for current word // design-lint-ignore: video caption/diagram color data
   fontFamily: 'system',
   fontWeight: 400,
   textStrokeWidth: 0,
-  textStrokeColor: '#000000',
+  textStrokeColor: '#000000', // design-lint-ignore: video caption/diagram color data
   preset: 'youtube',
 };
 

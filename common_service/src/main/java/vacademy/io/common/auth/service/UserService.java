@@ -326,10 +326,16 @@ public class UserService {
             }
         }
 
-        List<User> users = userRepository.findUsersByStatusAndInstitutePaged(statuses, roles, instituteId, name, email,
-                mobile, pageable);
-        long totalElements = userRepository.countUsersByStatusAndInstitute(statuses, roles, instituteId, name, email,
-                mobile);
+        boolean applyStatusFilter = statuses != null && !statuses.isEmpty();
+        boolean applyRoleFilter = roles != null && !roles.isEmpty();
+        List<String> statusesParam = applyStatusFilter ? statuses : java.util.List.of("__none__");
+        List<String> rolesParam = !applyRoleFilter ? java.util.List.of("__none__")
+                : roles.stream().map(String::toLowerCase).collect(Collectors.toList());
+
+        List<User> users = userRepository.findUsersByStatusAndInstitutePaged(applyStatusFilter, statusesParam,
+                applyRoleFilter, rolesParam, instituteId, name, email, mobile, pageable);
+        long totalElements = userRepository.countUsersByStatusAndInstitute(applyStatusFilter, statusesParam,
+                applyRoleFilter, rolesParam, instituteId, name, email, mobile);
 
         List<UserWithRolesDTO> content = users.stream()
                 .map(UserWithRolesDTO::new)
@@ -387,10 +393,16 @@ public class UserService {
             }
         }
 
-        List<User> users = userRepository.findUsersByStatusAndInstituteAndUserIdsPaged(statuses, roles, instituteId,
-                userIds, name, email, mobile, pageable);
-        long totalElements = userRepository.countUsersByStatusAndInstituteAndUserIds(statuses, roles, instituteId,
-                userIds, name, email, mobile);
+        boolean applyStatusFilter = statuses != null && !statuses.isEmpty();
+        boolean applyRoleFilter = roles != null && !roles.isEmpty();
+        List<String> statusesParam = applyStatusFilter ? statuses : java.util.List.of("__none__");
+        List<String> rolesParam = !applyRoleFilter ? java.util.List.of("__none__")
+                : roles.stream().map(String::toLowerCase).collect(Collectors.toList());
+
+        List<User> users = userRepository.findUsersByStatusAndInstituteAndUserIdsPaged(applyStatusFilter, statusesParam,
+                applyRoleFilter, rolesParam, instituteId, userIds, name, email, mobile, pageable);
+        long totalElements = userRepository.countUsersByStatusAndInstituteAndUserIds(applyStatusFilter, statusesParam,
+                applyRoleFilter, rolesParam, instituteId, userIds, name, email, mobile);
 
         List<UserWithRolesDTO> content = users.stream()
                 .map(UserWithRolesDTO::new)

@@ -1,13 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { assessmentTypes } from "@/types/assessment";
-import { PlayCircle, CalendarClock, History } from "lucide-react";
+import { PlayCircle, CalendarDots, ClockCounterClockwise } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 
 const tabIcons = {
   [assessmentTypes.LIVE]: PlayCircle,
-  [assessmentTypes.UPCOMING]: CalendarClock,
-  [assessmentTypes.PAST]: History,
+  [assessmentTypes.UPCOMING]: CalendarDots,
+  [assessmentTypes.PAST]: ClockCounterClockwise,
 };
 
 const ScheduleTestTabList = ({
@@ -39,7 +39,7 @@ const ScheduleTestTabList = ({
               {count > 0 && (
                 <Badge
                   variant="secondary"
-                  className="ml-1 rounded-full px-2 py-0.5 text-[10px] h-5 min-w-5 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20"
+                  className="ml-1 rounded-full px-2 py-0.5 text-caption h-5 min-w-5 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20"
                 >
                   {count}
                 </Badge>

@@ -184,7 +184,7 @@ function WaitingRoomComponent() {
           <img
             src={thumbnail}
             alt="Session Thumbnail"
-            className="w-full max-h-[300px] rounded-lg object-contain bg-gray-50"
+            className="w-full max-h-72 rounded-lg object-contain bg-gray-50"
           />
         )}
         {sessionDetails && (

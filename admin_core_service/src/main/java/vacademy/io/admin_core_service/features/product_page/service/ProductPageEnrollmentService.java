@@ -4,8 +4,11 @@ import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.product_page.dto.*;
 import vacademy.io.admin_core_service.features.product_page.entity.ProductPageInviteMapping;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
@@ -17,6 +20,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
+import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.ComplexPaymentOptionOperation;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.OneTimePaymentOptionOperation;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
@@ -29,13 +34,16 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.Paym
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
+import org.springframework.util.StringUtils;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
@@ -85,6 +93,9 @@ public class ProductPageEnrollmentService {
     private OneTimePaymentOptionOperation oneTimePaymentOptionOperation;
 
     @Autowired
+    private ComplexPaymentOptionOperation complexPaymentOptionOperation;
+
+    @Autowired
     private PaymentLogRepository paymentLogRepository;
 
     @Autowired
@@ -101,6 +112,18 @@ public class ProductPageEnrollmentService {
 
     @Autowired
     private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+
+    @Autowired
+    private AuthService authService;
+
+    @Autowired
+    private LearnerCouponService learnerCouponService;
+
+    @Autowired
+    private WorkflowEngineService workflowEngineService;
+
+    @Autowired
+    private InstituteRepository instituteRepository;
 
     // -------------------------------------------------------------------------
     // Step 1: form-submit — create user + ABANDONED_CART entries per invite
@@ -136,9 +159,11 @@ public class ProductPageEnrollmentService {
             learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                     user.getId(), invitedSession.getId(), packageSessionId, request.getInstituteId());
 
+            // Pass the full UserDTO so the ABANDONED_CART workflow's webhook gets
+            // #ctx['user'] populated — same shape as LEARNER_BATCH_ENROLLMENT.
             StudentSessionInstituteGroupMapping entry = learnerEnrollmentEntryService
                     .createOnlyDetailsFilledEntry(user.getId(), invitedSession, actualSession,
-                            request.getInstituteId(), null);
+                            request.getInstituteId(), null, user);
 
             abandonedCartEntryIds.add(entry.getId());
         }
@@ -151,7 +176,8 @@ public class ProductPageEnrollmentService {
                     user.getId());
         }
 
-        log.info("Form submitted for user={}, {} ABANDONED_CART entries created", user.getId(), abandonedCartEntryIds.size());
+        log.info("Form submitted for user={}, {} ABANDONED_CART entries created", user.getId(),
+                abandonedCartEntryIds.size());
         return ProductPageFormSubmitResponse.builder()
                 .userId(user.getId())
                 .abandonedCartEntryIds(abandonedCartEntryIds)
@@ -162,8 +188,10 @@ public class ProductPageEnrollmentService {
     // -------------------------------------------------------------------------
     // Step 2: enroll — combined payment + split fulfillment
     // Razorpay two-phase flow:
-    //   Phase 1 (razorpayPaymentId is absent): create order, return key+orderId, DO NOT enroll yet
-    //   Phase 2 (razorpayPaymentId present):  verify signature, create PAID log, enroll
+    // Phase 1 (razorpayPaymentId is absent): create order, return key+orderId, DO
+    // NOT enroll yet
+    // Phase 2 (razorpayPaymentId present): verify signature, create PAID log,
+    // enroll
     // All other vendors: single call (FREE, Cashfree redirect, etc.)
     // -------------------------------------------------------------------------
 
@@ -207,19 +235,23 @@ public class ProductPageEnrollmentService {
         PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
         payReq.setAmount(finalTotal);
 
-        // Override vendor/vendorId/currency from the first EnrollInvite so we always use
+        // Override vendor/vendorId/currency from the first EnrollInvite so we always
+        // use
         // the invite's configured payment gateway, ignoring whatever the client sends.
         EnrollInvite firstInvite = null;
         if (!selectedMappings.isEmpty()) {
             firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
-            if (firstInvite.getVendor() != null) payReq.setVendor(firstInvite.getVendor());
-            if (firstInvite.getVendorId() != null) payReq.setVendorId(firstInvite.getVendorId());
-            if (firstInvite.getCurrency() != null) payReq.setCurrency(firstInvite.getCurrency());
+            if (firstInvite.getVendor() != null)
+                payReq.setVendor(firstInvite.getVendor());
+            if (firstInvite.getVendorId() != null)
+                payReq.setVendorId(firstInvite.getVendorId());
+            if (firstInvite.getCurrency() != null)
+                payReq.setCurrency(firstInvite.getCurrency());
         }
 
         // Defensive: ensure currency always has a value (Razorpay gateway requires it).
         // Fall back to any plan's currency, then to "INR".
-        if (!org.springframework.util.StringUtils.hasText(payReq.getCurrency())) {
+        if (!StringUtils.hasText(payReq.getCurrency())) {
             String planCurrency = planByMappingId.values().stream()
                     .map(vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan::getCurrency)
                     .filter(c -> c != null && !c.isBlank())
@@ -240,8 +272,10 @@ public class ProductPageEnrollmentService {
                 && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
                 && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
 
-        if (isRazorpay && !isRazorpayPhase2) {
-            // Phase 1: create Razorpay order + payment log (PAYMENT_PENDING) — do NOT enroll yet
+        // Free payment options (amount = 0) must never reach a payment gateway
+        if (isRazorpay && !isRazorpayPhase2 && finalTotal > 0.0) {
+            // Phase 1: create Razorpay order + payment log (PAYMENT_PENDING) — do NOT
+            // enroll yet
             PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
                     payReq, request.getInstituteId(), user, null);
 
@@ -252,9 +286,11 @@ public class ProductPageEnrollmentService {
             String razorpayOrderId = null;
             if (gatewayResponse != null && gatewayResponse.getResponseData() != null) {
                 Object k = gatewayResponse.getResponseData().get("razorpayKeyId");
-                if (k instanceof String) razorpayKeyId = (String) k;
+                if (k instanceof String)
+                    razorpayKeyId = (String) k;
                 Object o = gatewayResponse.getResponseData().get("razorpayOrderId");
-                if (o instanceof String) razorpayOrderId = (String) o;
+                if (o instanceof String)
+                    razorpayOrderId = (String) o;
             }
 
             return ProductPageEnrollResponse.builder()
@@ -267,7 +303,10 @@ public class ProductPageEnrollmentService {
                     .build();
         }
 
-        // ── Razorpay Phase 2: verify signature + enroll ───────────────────────
+        // ── Razorpay Phase 2 / gateway-specific payment handling ─────────────
+        boolean isManualVendor = "MANUAL".equalsIgnoreCase(payReq.getVendor());
+        // True when payment is already confirmed synchronously (no webhook needed)
+        boolean isGatewayPaidSync = false;
         String parentPaymentLogId;
         if (isRazorpayPhase2) {
             verifyRazorpaySignature(payReq, request.getInstituteId(), firstInvite);
@@ -283,11 +322,33 @@ public class ProductPageEnrollmentService {
                     "ACTIVE",
                     PaymentStatusEnum.PAID.name(),
                     "{\"razorpayPaymentId\":\"" + payReq.getRazorpayRequest().getRazorpayPaymentId() + "\","
-                    + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
+                            + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
+            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
             log.info("Razorpay Phase 2: payment verified, paymentLogId={}", parentPaymentLogId);
 
+        } else if (finalTotal <= 0.0) {
+            // Free enrollment: bypass gateway entirely, create a PAID log directly
+            parentPaymentLogId = paymentLogService.createPaymentLog(
+                    user.getId(), 0.0, "MANUAL", null,
+                    StringUtils.hasText(payReq.getCurrency()) ? payReq.getCurrency() : "INR",
+                    null, null);
+            paymentLogService.updatePaymentLog(parentPaymentLogId, "ACTIVE", PaymentStatusEnum.PAID.name(), "{}");
+            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
+            payReq.setOrderId(parentPaymentLogId);
+            isGatewayPaidSync = true;
+            log.info("Free enrollment: gateway bypassed, created PAID log={}", parentPaymentLogId);
+        } else if (isManualVendor) {
+            // MANUAL payment: no online gateway; admin will confirm payment offline
+            parentPaymentLogId = paymentLogService.createPaymentLog(
+                    user.getId(), finalTotal, "MANUAL", null,
+                    StringUtils.hasText(payReq.getCurrency()) ? payReq.getCurrency() : "INR",
+                    null, null);
+            paymentLogService.updatePaymentLog(parentPaymentLogId, "ACTIVE", PaymentStatusEnum.PAYMENT_PENDING.name(), "{}");
+            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
+            payReq.setOrderId(parentPaymentLogId);
+            log.info("MANUAL payment: gateway bypassed, PENDING log={}", parentPaymentLogId);
         } else {
-            // Non-Razorpay (FREE, Cashfree redirect, etc.): single-call flow
+            // Online paid gateway (Cashfree/PhonePe redirect, Stripe, Eway, etc.)
             PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
                     payReq, request.getInstituteId(), user, null);
             parentPaymentLogId = payReq.getOrderId();
@@ -297,14 +358,112 @@ public class ProductPageEnrollmentService {
             String paymentUrl = null;
             if (gatewayResponse != null && gatewayResponse.getResponseData() != null) {
                 Object urlObj = gatewayResponse.getResponseData().get("paymentUrl");
-                if (urlObj instanceof String) paymentUrl = (String) urlObj;
+                if (urlObj instanceof String)
+                    paymentUrl = (String) urlObj;
+                // Detect synchronous PAID (Stripe charge_automatically, Eway, etc.)
+                Object statusObj = gatewayResponse.getResponseData().get("paymentStatus");
+                if (PaymentStatusEnum.PAID.name().equals(statusObj)) {
+                    isGatewayPaidSync = true;
+                }
             }
             if (paymentUrl != null) {
+                // Redirect-based gateway (Cashfree/PhonePe): create UserPlan + SSIGM entries
+                // in INVITED status now so the webhook can activate them when the gateway
+                // confirms payment via applyOperationsOnFirstPayment().
+                List<String> redirectEnrolledSessionIds = new ArrayList<>();
+                List<String> childPaymentLogIds = new ArrayList<>();
+                vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan firstUserPlan = null;
+
+                for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
+                    ProductPageInviteMapping rdMapping = selectedMappings.stream()
+                            .filter(m -> m.getPsInvitePaymentOption().getId().equals(sel.getPsInvitePaymentOptionId()))
+                            .findFirst().orElseThrow();
+
+                    PackageSessionLearnerInvitationToPaymentOption rdBridge = rdMapping.getPsInvitePaymentOption();
+                    EnrollInvite rdInvite = rdBridge.getEnrollInvite();
+                    PaymentPlan rdPlan = planByMappingId.get(sel.getPsInvitePaymentOptionId());
+
+                    PaymentInitiationRequestDTO rdPayReq = clonePaymentRequest(payReq);
+                    rdPayReq.setAmount(rdPlan.getActualPrice());
+
+                    LearnerPackageSessionsEnrollDTO rdEnrollDTO = new LearnerPackageSessionsEnrollDTO();
+                    rdEnrollDTO.setPackageSessionIds(List.of(rdBridge.getPackageSession().getId()));
+                    rdEnrollDTO.setPlanId(rdPlan.getId());
+                    rdEnrollDTO.setPaymentOptionId(rdBridge.getPaymentOption().getId());
+                    rdEnrollDTO.setEnrollInviteId(rdInvite.getId());
+                    rdEnrollDTO.setReferRequest(request.getReferRequest());
+                    rdEnrollDTO.setCustomFieldValues(
+                            filterFieldsForInvite(request.getCustomFieldValues(), rdInvite.getId()));
+                    rdEnrollDTO.setPaymentInitiationRequest(rdPayReq);
+
+                    vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan rdUserPlan =
+                            userPlanService.createUserPlan(
+                                    user.getId(), rdPlan, couponDiscount, rdInvite,
+                                    rdBridge.getPaymentOption(), rdPayReq, "INVITED");
+
+                    Map<String, Object> rdExtraData = new HashMap<>();
+                    rdExtraData.put("SKIP_PAYMENT_INITIATION", true);
+                    rdExtraData.put("PARENT_PAYMENT_LOG_ID", parentPaymentLogId);
+
+                    LearnerEnrollResponseDTO rdEnrollResp = oneTimePaymentOptionOperation.enrollLearnerToBatch(
+                            user, rdEnrollDTO, request.getInstituteId(),
+                            rdInvite, rdBridge.getPaymentOption(), rdUserPlan, rdExtraData,
+                            request.getLearnerExtraDetails());
+
+                    redirectEnrolledSessionIds.add(rdBridge.getPackageSession().getId());
+
+                    if (firstUserPlan == null) {
+                        firstUserPlan = rdUserPlan;
+                    } else {
+                        // Subsequent mappings: collect child PaymentLog IDs so the webhook
+                        // can process them via the childPaymentLogIds multi-package mechanism.
+                        if (rdEnrollResp.getPaymentResponse() != null
+                                && StringUtils.hasText(rdEnrollResp.getPaymentResponse().getOrderId())) {
+                            childPaymentLogIds.add(rdEnrollResp.getPaymentResponse().getOrderId());
+                        }
+                    }
+
+                    if (parentPaymentLogId != null) {
+                        createLineItem(parentPaymentLogId, rdInvite.getId(), (int) Math.round(rdPlan.getActualPrice()));
+                    }
+                }
+
+                if (parentPaymentLogId != null && discountAmount > 0 && request.getCouponCode() != null) {
+                    createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(),
+                            -(int) Math.round(discountAmount));
+                }
+
+                appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
+
+                // Link the first UserPlan to the parent PaymentLog. Without this link,
+                // handlePostPaymentLogic() treats the payment as a donation (userPlan == null)
+                // and skips applyOperationsOnFirstPayment().
+                if (firstUserPlan != null) {
+                    final vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan planToLink =
+                            firstUserPlan;
+                    paymentLogRepository.findById(parentPaymentLogId).ifPresent(parentLog -> {
+                        parentLog.setUserPlan(planToLink);
+                        if (!childPaymentLogIds.isEmpty()) {
+                            String existingData = parentLog.getPaymentSpecificData();
+                            Map<String, Object> data = existingData != null
+                                    ? JsonUtil.fromJson(existingData, Map.class) : new HashMap<>();
+                            if (data == null) data = new HashMap<>();
+                            data.put("childPaymentLogIds", childPaymentLogIds);
+                            parentLog.setPaymentSpecificData(JsonUtil.toJson(data));
+                        }
+                        paymentLogRepository.save(parentLog);
+                    });
+                }
+
+                log.info("Redirect gateway: created {} enrollment entries, linked userPlan to paymentLog={}",
+                        redirectEnrolledSessionIds.size(), parentPaymentLogId);
+
                 return ProductPageEnrollResponse.builder()
                         .paymentLogId(parentPaymentLogId)
                         .userId(user.getId())
                         .status("PAYMENT_PENDING")
                         .paymentUrl(paymentUrl)
+                        .enrolledPackageSessionIds(redirectEnrolledSessionIds)
                         .message("Redirect to payment gateway")
                         .build();
             }
@@ -334,8 +493,8 @@ public class ProductPageEnrollmentService {
             enrollDTO.setCustomFieldValues(filterFieldsForInvite(request.getCustomFieldValues(), invite.getId()));
             enrollDTO.setPaymentInitiationRequest(invitePayReq);
 
-            vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan =
-                    userPlanService.createUserPlan(
+            vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan = userPlanService
+                    .createUserPlan(
                             user.getId(), plan,
                             couponDiscount, invite,
                             bridge.getPaymentOption(), invitePayReq,
@@ -346,8 +505,8 @@ public class ProductPageEnrollmentService {
             if (parentPaymentLogId != null) {
                 extraData.put("PARENT_PAYMENT_LOG_ID", parentPaymentLogId);
             }
-            if (isRazorpayPhase2) {
-                // Signal that payment is already collected — downstream can mark PAID
+            if (isRazorpayPhase2 || isGatewayPaidSync) {
+                // Payment already confirmed — activate enrollment immediately
                 extraData.put("FORCE_PAID_STATUS", true);
             }
 
@@ -369,12 +528,104 @@ public class ProductPageEnrollmentService {
             createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(), -(int) Math.round(discountAmount));
         }
 
+        boolean sendCredentialsNow = isRazorpayPhase2 || isGatewayPaidSync;
+        triggerPostEnrollmentActions(user, request.getInstituteId(), selectedMappings, enrolledSessionIds,
+                sendCredentialsNow);
+
         return ProductPageEnrollResponse.builder()
                 .paymentLogId(parentPaymentLogId)
                 .userId(user.getId())
-                .status(isRazorpayPhase2 ? PaymentStatusEnum.PAID.name() : "INITIATED")
+                .status(isRazorpayPhase2 || isGatewayPaidSync ? PaymentStatusEnum.PAID.name() : "INITIATED")
                 .enrolledPackageSessionIds(enrolledSessionIds)
                 .message("Enrollment successful")
+                .build();
+    }
+
+    // -------------------------------------------------------------------------
+    // CPO enrollment without payment: creates UserPlan + SFP rows so the learner
+    // can then select and pay individual installments via the open CPO fee endpoints.
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public ProductPageEnrollResponse enrollCpoForProductPage(ProductPageCpoEnrollRequest request) {
+        log.info("CPO enroll for product page code={}, institute={}",
+                request.getProductPageCode(), request.getInstituteId());
+
+        var page = coursePageRepository.findByCode(request.getProductPageCode())
+                .orElseThrow(() -> new VacademyException("Product page not found: " + request.getProductPageCode()));
+        if (!page.getInstituteId().equals(request.getInstituteId())) {
+            throw new VacademyException("Product page does not belong to this institute");
+        }
+
+        ProductPageInviteMapping mapping = mappingRepository
+                .findByProductPageIdAndStatusIn(page.getId(), List.of("ACTIVE"))
+                .stream()
+                .filter(m -> m.getPsInvitePaymentOption().getId().equals(request.getPsInvitePaymentOptionId()))
+                .findFirst()
+                .orElseThrow(() -> new VacademyException("Mapping not found: " + request.getPsInvitePaymentOptionId()));
+
+        PackageSessionLearnerInvitationToPaymentOption bridge = mapping.getPsInvitePaymentOption();
+        EnrollInvite invite = bridge.getEnrollInvite();
+
+        // Validate that the payment option is actually CPO type
+        if (!"CPO".equalsIgnoreCase(bridge.getPaymentOption().getType())) {
+            throw new VacademyException("Payment option " + bridge.getPaymentOption().getId() + " is not CPO type");
+        }
+
+        PaymentPlan plan = paymentPlanRepository.findById(request.getPaymentPlanId())
+                .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + request.getPaymentPlanId()));
+
+        // Create / find user
+        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+                request.getUserDetails(), request.getInstituteId(), false);
+
+        studentRegistrationManager.createStudentFromRequest(
+                user, mapToStudentExtraDetails(request.getLearnerExtraDetails()));
+
+        // Save custom field values
+        if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
+            List<CustomFieldValueDTO> filteredFields = filterFieldsForInvite(
+                    request.getCustomFieldValues(), invite.getId());
+            customFieldValueService.addCustomFieldValue(
+                    filteredFields, CustomFieldValueSourceTypeEnum.USER.name(), user.getId());
+        }
+
+        // Build the enroll DTO with no payment initiation request → CPO creates UserPlan + SFP rows
+        LearnerPackageSessionsEnrollDTO enrollDTO = new LearnerPackageSessionsEnrollDTO();
+        enrollDTO.setPackageSessionIds(List.of(bridge.getPackageSession().getId()));
+        enrollDTO.setPlanId(plan.getId());
+        enrollDTO.setPaymentOptionId(bridge.getPaymentOption().getId());
+        enrollDTO.setEnrollInviteId(invite.getId());
+        enrollDTO.setCustomFieldValues(
+                filterFieldsForInvite(request.getCustomFieldValues(), invite.getId()));
+        enrollDTO.setPaymentInitiationRequest(null); // no payment now
+
+        vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan =
+                userPlanService.createUserPlan(user.getId(), plan, null, invite,
+                        bridge.getPaymentOption(), null, "ACTIVE");
+
+        Map<String, Object> extraData = new HashMap<>();
+        complexPaymentOptionOperation.enrollLearnerToBatch(
+                user, enrollDTO, request.getInstituteId(),
+                invite, bridge.getPaymentOption(), userPlan, extraData,
+                request.getLearnerExtraDetails());
+
+        // Send credentials (user was just created)
+        try {
+            String learnerPortalUrl = instituteRepository.findById(request.getInstituteId())
+                    .map(Institute::getLearnerPortalBaseUrl)
+                    .orElse(null);
+            authService.createUserFromAuthServiceForLearnerEnrollment(user, request.getInstituteId(), true, learnerPortalUrl);
+        } catch (Exception e) {
+            log.error("Failed to send credentials for CPO product page user={}: {}", user.getId(), e.getMessage(), e);
+        }
+
+        log.info("CPO enrollment done (no payment) for user={}, userPlan={}", user.getId(), userPlan.getId());
+        return ProductPageEnrollResponse.builder()
+                .userId(user.getId())
+                .userPlanId(userPlan.getId())
+                .status("CPO_ENROLLED")
+                .message("CPO enrollment created. Please select installments to pay.")
                 .build();
     }
 
@@ -400,7 +651,8 @@ public class ProductPageEnrollmentService {
             mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
-            for (byte b : hash) hex.append(String.format("%02x", b));
+            for (byte b : hash)
+                hex.append(String.format("%02x", b));
             if (!hex.toString().equals(signature)) {
                 throw new VacademyException("Razorpay payment signature verification failed");
             }
@@ -409,6 +661,88 @@ public class ProductPageEnrollmentService {
             throw ve;
         } catch (Exception e) {
             throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
+        }
+    }
+
+    private void triggerPostEnrollmentActions(
+            UserDTO user,
+            String instituteId,
+            List<ProductPageInviteMapping> enrolledMappings,
+            List<String> enrolledPackageSessionIds,
+            boolean sendCredentials) {
+
+        // Resolve learner portal URL the same way learner/v1/enroll does it
+        String learnerPortalUrl = instituteRepository.findById(instituteId)
+                .map(Institute::getLearnerPortalBaseUrl)
+                .orElse(null);
+
+        // 1. Credential email — honours the sendCredentials flag.
+        // For PAID enrollments the webhook will call this again with
+        // sendCredentials=true
+        // once payment is confirmed; for FREE / Razorpay-Phase2 we send it now.
+        try {
+            authService.createUserFromAuthServiceForLearnerEnrollment(
+                    user, instituteId, sendCredentials, learnerPortalUrl);
+            log.info("Post-enrollment credential email triggered for user={}, sendCredentials={}",
+                    user.getId(), sendCredentials);
+        } catch (Exception e) {
+            log.error("Failed to send credential email for user={}: {}", user.getId(), e.getMessage(), e);
+        }
+
+        // 2. Coupon code — idempotent; safe to call even if user was created earlier
+        if (sendCredentials) {
+            try {
+                String inviteCode = enrolledMappings.isEmpty() ? null
+                        : enrolledMappings.get(0).getPsInvitePaymentOption().getEnrollInvite().getInviteCode();
+                learnerCouponService.generateCouponCodeForLearner(user.getId(), instituteId, inviteCode);
+                log.info("Coupon code generated for user={}", user.getId());
+            } catch (Exception e) {
+                log.error("Failed to generate coupon code for user={}: {}", user.getId(), e.getMessage(), e);
+            }
+        }
+
+        // 3. Workflow trigger — one run per package session (same as learner/v1/enroll)
+        if (!sendCredentials) {
+            // Paid enrollment: workflow will fire after payment webhook confirms
+            return;
+        }
+        for (String packageSessionId : enrolledPackageSessionIds) {
+            try {
+                PackageSession ps = packageSessionRepository.findById(packageSessionId).orElse(null);
+                if (ps == null || !learnerEnrollmentEntryService.hasWorkflowConfiguration(ps)) {
+                    continue;
+                }
+                List<String> workflowIds = learnerEnrollmentEntryService.getWorkflowIds(ps);
+                for (String workflowId : workflowIds) {
+                    try {
+                        Map<String, Object> ctx = new HashMap<>();
+                        ctx.put("instituteIdForWhatsapp", instituteId);
+                        ctx.put("package_session_id", packageSessionId);
+                        ctx.put("destination_package_session_id", packageSessionId);
+                        ctx.put("name", user.getFullName());
+
+                        Map<String, Object> userMap = new HashMap<>();
+                        userMap.put("phone_number", user.getMobileNumber());
+                        userMap.put("name", user.getFullName());
+                        userMap.put("username", user.getEmail() != null
+                                ? user.getEmail().split("@")[0]
+                                : user.getId());
+                        userMap.put("user_id", user.getId());
+                        userMap.put("email", user.getEmail());
+                        ctx.put("users", List.of(userMap));
+
+                        workflowEngineService.run(workflowId, ctx);
+                        log.info("Workflow {} triggered for user={}, session={}",
+                                workflowId, user.getId(), packageSessionId);
+                    } catch (Exception e) {
+                        log.error("Workflow {} failed for user={}: {}",
+                                workflowId, user.getId(), e.getMessage(), e);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Post-enrollment workflow step failed for session={}: {}", packageSessionId, e.getMessage(),
+                        e);
+            }
         }
     }
 
@@ -463,7 +797,8 @@ public class ProductPageEnrollmentService {
 
     private List<CustomFieldValueDTO> filterFieldsForInvite(
             List<CustomFieldValueDTO> allValues, String inviteId) {
-        if (allValues == null) return Collections.emptyList();
+        if (allValues == null)
+            return Collections.emptyList();
         return allValues.stream()
                 .filter(v -> v.getEnrollInviteIds() == null
                         || v.getEnrollInviteIds().isEmpty()
@@ -483,9 +818,27 @@ public class ProductPageEnrollmentService {
         });
     }
 
-    private vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails
-            mapToStudentExtraDetails(LearnerExtraDetails extra) {
-        if (extra == null) return null;
+    private void appendUtmToPaymentLog(String paymentLogId, Map<String, String> utmParams) {
+        if (paymentLogId == null || utmParams == null || utmParams.isEmpty()) return;
+        try {
+            paymentLogRepository.findById(paymentLogId).ifPresent(paymentLog -> {
+                String existing = paymentLog.getPaymentSpecificData();
+                Map<String, Object> data = (existing != null && !existing.isBlank())
+                        ? JsonUtil.fromJson(existing, Map.class) : new HashMap<>();
+                if (data == null) data = new HashMap<>();
+                data.putAll(utmParams);
+                paymentLog.setPaymentSpecificData(JsonUtil.toJson(data));
+                paymentLogRepository.save(paymentLog);
+            });
+        } catch (Exception e) {
+            log.warn("Failed to append UTM params to paymentLog={}: {}", paymentLogId, e.getMessage());
+        }
+    }
+
+    private vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails mapToStudentExtraDetails(
+            LearnerExtraDetails extra) {
+        if (extra == null)
+            return null;
         var d = new vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails();
         d.setFathersName(extra.getFathersName());
         d.setMothersName(extra.getMothersName());

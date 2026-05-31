@@ -14,10 +14,10 @@ export const StreakCounterWidget: React.FC = () => {
 
   return (
     <div
-      className="overflow-hidden rounded-[20px]"
+      className="overflow-hidden rounded-play-card"
       style={{
-        backgroundColor: hasStreak ? "#FF6B35" : "#FF8C42",
-        boxShadow: `0 5px 0 ${hasStreak ? "#CC4A1A" : "#CC6A2A"}`,
+        backgroundColor: hasStreak ? "var(--play-streak-bg)" : "var(--play-streak-bg-idle)",
+        boxShadow: `0 5px 0 ${hasStreak ? "var(--play-streak-shadow)" : "var(--play-streak-shadow-idle)"}`,
       }}
     >
       {/* Responsive: side-by-side on mobile, stacked on md+ */}
@@ -43,7 +43,7 @@ export const StreakCounterWidget: React.FC = () => {
             {DAY_LABELS.map((label, i) => (
               <div
                 key={i}
-                className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-black ${
+                className={`h-7 w-7 rounded-full flex items-center justify-center text-caption font-black ${
                   dots[i] ? "bg-white text-orange-600" : "bg-white/15 text-white/60"
                 }`}
               >
@@ -52,7 +52,7 @@ export const StreakCounterWidget: React.FC = () => {
             ))}
           </div>
 
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-wide">
+          <p className="text-caption font-bold text-white/60 uppercase tracking-wide">
             Best: {best} days
           </p>
         </div>

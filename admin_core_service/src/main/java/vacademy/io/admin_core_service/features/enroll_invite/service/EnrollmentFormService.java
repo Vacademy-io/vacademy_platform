@@ -81,13 +81,17 @@ public class EnrollmentFormService {
                     actualPackageSessionId,
                     request.getInstituteId());
 
-            // Create new ABANDONED_CART entry (without userPlanId - will be set later during payment)
+            // Create new ABANDONED_CART entry (without userPlanId - will be set later during payment).
+            // Pass the full UserDTO so the ABANDONED_CART workflow's webhook can use
+            // #ctx['user'].fullName / .email / .mobileNumber — same shape as
+            // LEARNER_BATCH_ENROLLMENT so a single webhook template fits both.
             StudentSessionInstituteGroupMapping entry = learnerEnrollmentEntryService.createOnlyDetailsFilledEntry(
                     createdUser.getId(),
                     invitedPackageSession,
                     actualPackageSession,
                     request.getInstituteId(),
-                    null); // userPlanId is null at this stage
+                    null, // userPlanId is null at this stage
+                    createdUser);
 
             abandonedCartEntryIds.add(entry.getId());
             
@@ -158,6 +162,9 @@ public class EnrollmentFormService {
         studentExtraDetails.setParentsToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
         studentExtraDetails.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
         studentExtraDetails.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+        studentExtraDetails.setBillingContactName(learnerExtraDetails.getBillingContactName());
+        studentExtraDetails.setBillingContactEmail(learnerExtraDetails.getBillingContactEmail());
+        studentExtraDetails.setBillingContactRole(learnerExtraDetails.getBillingContactRole());
         return studentExtraDetails;
     }
 }

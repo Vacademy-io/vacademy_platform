@@ -271,7 +271,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.quizSlideQuestionTracked qt
-            WHERE al.userId = :userId AND al.slideId = :slideId
+            WHERE al.userId = :userId AND al.slideId = :slideId AND al.sourceType = 'QUIZ'
             """)
     Page<ActivityLog> findActivityLogsWithQuizSlide(@Param("userId") String userId,
             @Param("slideId") String slideId,
@@ -319,7 +319,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                             OR ast.checked_file_id IS NOT NULL
                           ) THEN 'REVIEWED'
                      ELSE 'PENDING'
-                   END AS reviewStatus
+                   END AS reviewStatus,
+                   BOOL_OR(COALESCE(ast.late_submission, FALSE)) AS lateSubmission
             FROM activity_log a
             JOIN student s ON a.user_id = s.user_id
             LEFT JOIN assignment_slide_tracked ast ON ast.activity_id = a.id

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { getProductPage, updateProductPage } from '../-services/product-pages-service';
 import {
@@ -9,6 +9,7 @@ import {
     MappingRow,
     ProductPageResponse,
 } from '../-types/product-page-types';
+import { useTheme } from '@/providers/theme/theme-provider';
 
 function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
     if (!jsonStr) return fallback;
@@ -36,8 +37,9 @@ function mappingResponseToRow(m: ProductPageResponse['mappings'][number], idx: n
 }
 
 export const useProductPageEditor = (productPageId: string) => {
+    const { getPrimaryColorCode } = useTheme();
     const [isDirty, setIsDirty] = useState(false);
-    const [activeTab, setActiveTab] = useState<'design' | 'courses' | 'settings' | 'coupons' | 'preview'>(
+    const [activeTab, setActiveTab] = useState<'design' | 'courses' | 'settings' | 'coupons' | 'custom-fields' | 'preview'>(
         'design'
     );
 
@@ -53,11 +55,23 @@ export const useProductPageEditor = (productPageId: string) => {
         staleTime: 60 * 1000,
     });
 
+    // Default page JSON seeded with the institute's primary color
+    const defaultPageJson = useMemo<PageJson>(() => {
+        const color = getPrimaryColorCode();
+        return {
+            ...DEFAULT_PAGE_JSON,
+            globalSettings: { ...DEFAULT_PAGE_JSON.globalSettings, primaryColor: color },
+            components: DEFAULT_PAGE_JSON.components.map((c) =>
+                c.type === 'header' ? { ...c, props: { ...c.props, backgroundColor: color } } : c
+            ),
+        };
+    }, [getPrimaryColorCode]);
+
     // Local editor state — initialised from server when page loads
     const [name, setName] = useState('');
-    const [status, setStatus] = useState<'DRAFT' | 'ACTIVE'>('DRAFT');
+    const [status, setStatus] = useState<'DRAFT' | 'ACTIVE'>('ACTIVE');
     const [settings, setSettings] = useState<ProductPageSettings>(DEFAULT_PRODUCT_PAGE_SETTINGS);
-    const [pageJson, setPageJson] = useState<PageJson>(DEFAULT_PAGE_JSON);
+    const [pageJson, setPageJson] = useState<PageJson>(() => defaultPageJson);
     const [mappingRows, setMappingRows] = useState<MappingRow[]>([]);
     const [initialized, setInitialized] = useState(false);
 
@@ -69,7 +83,7 @@ export const useProductPageEditor = (productPageId: string) => {
             ...DEFAULT_PRODUCT_PAGE_SETTINGS,
             ...parseSafeJson(page.settings_json, DEFAULT_PRODUCT_PAGE_SETTINGS),
         });
-        setPageJson(parseSafeJson(page.page_json, DEFAULT_PAGE_JSON));
+        setPageJson(parseSafeJson(page.page_json, defaultPageJson));
         setMappingRows((page.mappings || []).map(mappingResponseToRow));
         setInitialized(true);
     }

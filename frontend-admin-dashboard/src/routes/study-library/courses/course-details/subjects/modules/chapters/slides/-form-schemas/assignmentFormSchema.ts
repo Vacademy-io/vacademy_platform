@@ -34,6 +34,19 @@ export const assignmentFormSchema = z.object({
     allowedFileTypes: z.array(z.string()).optional(),
     totalParticipants: z.number().optional(),
     submittedParticipants: z.number().optional(),
+}).superRefine((v, ctx) => {
+    if (
+        v.hasDateRange &&
+        v.startDate &&
+        v.endDate &&
+        new Date(v.startDate) >= new Date(v.endDate)
+    ) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['endDate'],
+            message: 'End must be after start',
+        });
+    }
 });
 
 export type AssignmentFormType = z.infer<typeof assignmentFormSchema>;

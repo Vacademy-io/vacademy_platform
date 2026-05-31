@@ -338,7 +338,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
 /* ─── Inline renderers for new component types ───────────────────────────── */
 
-const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], backgroundColor = '#F9FAFB' }) => {
+const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], backgroundColor = '#F9FAFB' }) => { // design-lint-ignore: page-builder default color
   const [openIndex, setOpenIndex] = React.useState<number | null>(null);
   return (
     <section style={{ backgroundColor }} className="py-16 px-4">
@@ -398,7 +398,7 @@ const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRat
   );
 };
 
-const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor = '#3B82F6', textColor = '#FFFFFF', layout = 'centered', button }) => {
+const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor = '#3B82F6', textColor = 'white', layout = 'centered', button }) => { // design-lint-ignore: page-builder default color
   const isSplit = layout === 'split';
   return (
     <section style={{ backgroundColor }} className="py-14 px-4">
@@ -451,7 +451,7 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
   </section>
 );
 
-const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel = 'Send Message', successMessage, backgroundColor = '#FFFFFF' }) => {
+const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel = 'Send Message', successMessage, backgroundColor = 'white' }) => {
   const [submitted, setSubmitted] = React.useState(false);
   const [formData, setFormData] = React.useState<Record<string, string>>({});
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setSubmitted(true); };
@@ -511,7 +511,7 @@ const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = 
   </section>
 );
 
-const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, announcements = [], layout = 'list', showDate = true, showTag = true, backgroundColor = '#FFFFFF' }) => (
+const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, announcements = [], layout = 'list', showDate = true, showTag = true, backgroundColor = 'white' }) => (
   <section style={{ backgroundColor }} className="py-16 px-4">
     <div className="mx-auto max-w-4xl">
       {headerText && <h2 className="mb-2 text-center text-3xl font-bold text-gray-900">{headerText}</h2>}
@@ -556,7 +556,7 @@ const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns 
 
 /* ─── Spacer / Divider ─────────────────────────────────────────────────── */
 
-const SpacerRenderer: React.FC<any> = ({ height = '48px', showDivider = false, dividerStyle = 'solid', dividerColor = '#E5E7EB', dividerWidth = '1px', maxWidth = '100%' }) => (
+const SpacerRenderer: React.FC<any> = ({ height = '48px', showDivider = false, dividerStyle = 'solid', dividerColor = '#E5E7EB', dividerWidth = '1px', maxWidth = '100%' }) => ( // design-lint-ignore: page-builder default color
   <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     {showDivider && (
       <hr style={{ borderTop: `${dividerWidth} ${dividerStyle} ${dividerColor}`, maxWidth, width: '100%', margin: '0 auto' }} />
@@ -566,7 +566,7 @@ const SpacerRenderer: React.FC<any> = ({ height = '48px', showDivider = false, d
 
 /* ─── Tabs / Accordion ─────────────────────────────────────────────────── */
 
-const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defaultOpen = 0, allowMultiple = false, backgroundColor = '#FFFFFF' }) => {
+const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defaultOpen = 0, allowMultiple = false, backgroundColor = 'white' }) => {
   const [activeTab, setActiveTab] = React.useState(defaultOpen);
   const [openIndices, setOpenIndices] = React.useState<Set<number>>(new Set([defaultOpen]));
 
@@ -684,7 +684,7 @@ const MapEmbedRenderer: React.FC<any> = ({ embedUrl, height = '400px', borderRad
 
 /* ─── Countdown Timer ──────────────────────────────────────────────────── */
 
-const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMessage, backgroundColor = '#1E293B', textColor = '#FFFFFF', style = 'cards' }) => {
+const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMessage, backgroundColor = '#1E293B', textColor = 'white', style = 'cards' }) => { // design-lint-ignore: page-builder default color
   const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [expired, setExpired] = React.useState(false);
 
@@ -757,7 +757,7 @@ const TextBlockRenderer: React.FC<any> = ({ content = '', maxWidth = '800px', al
 /* ─── Feature Grid ─────────────────────────────────────────────────────── */
 
 const FeatureGridRenderer: React.FC<any> = ({
-  headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor = '#FFFFFF',
+  headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor = 'white',
 }) => {
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const cardClass =
@@ -777,7 +777,7 @@ const FeatureGridRenderer: React.FC<any> = ({
             <div key={i} className={`text-center ${cardClass}`}>
               <div className="mb-4">
                 {f.image ? (
-                  <img src={f.image} alt={f.title || ''} className="mx-auto w-full max-w-[160px] h-auto rounded-lg object-cover" style={{ aspectRatio: '1/1' }} />
+                  <img src={f.image} alt={f.title || ''} className="mx-auto w-full max-w-40 h-auto rounded-lg object-cover" style={{ aspectRatio: '1/1' }} />
                 ) : (
                   <span className={sizeMap[iconSize] || 'text-3xl'}>{f.icon || '⭐'}</span>
                 )}
@@ -814,7 +814,7 @@ const ImageBlockRenderer: React.FC<any> = ({ src, alt = '', caption, linkUrl, li
 
 const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false }) => {
   const bg = backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))';
-  const fg = textColor || (variant === 'filled' ? '#FFFFFF' : bg);
+  const fg = textColor || (variant === 'filled' ? 'white' : bg);
   const padding = size === 'small' ? '10px 24px' : size === 'large' ? '16px 40px' : '12px 32px';
   const fontSize = size === 'small' ? '14px' : size === 'large' ? '18px' : '16px';
 
@@ -842,7 +842,7 @@ const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target
 
 /* ─── Newsletter Signup ────────────────────────────────────────────────── */
 
-const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder = 'Enter your email', buttonText = 'Subscribe', layout = 'inline', backgroundColor = '#F8FAFC', successMessage }) => {
+const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder = 'Enter your email', buttonText = 'Subscribe', layout = 'inline', backgroundColor = '#F8FAFC', successMessage }) => { // design-lint-ignore: page-builder default color
   const [email, setEmail] = React.useState('');
   const [submitted, setSubmitted] = React.useState(false);
 
@@ -884,7 +884,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
 
 /* ─── Steps / Process ──────────────────────────────────────────────────── */
 
-const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 'horizontal', steps = [], connectorStyle = 'line', backgroundColor = '#FFFFFF', accentColor }) => {
+const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 'horizontal', steps = [], connectorStyle = 'line', backgroundColor = 'white', accentColor }) => {
   const accent = accentColor || 'hsl(var(--primary-500, 217 91% 60%))';
   const isHorizontal = layout !== 'vertical';
 

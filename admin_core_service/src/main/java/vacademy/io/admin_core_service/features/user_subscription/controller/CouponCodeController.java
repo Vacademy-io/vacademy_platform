@@ -57,8 +57,11 @@ public class CouponCodeController {
     @GetMapping("/by-code")
     public ResponseEntity<CouponCodeResponseDTO> getCouponCodeByCode(
             @RequestParam String code,
-            @RequestHeader(value = "x-institute-id", required = false) String instituteId) {
-        Optional<CouponCode> couponCode = couponCodeService.getCouponCodeByCode(code);
+            @RequestHeader("x-institute-id") String instituteId) {
+        // V309 dropped the global uniqueness on `code`, so the institute header
+        // is mandatory — without it, a lookup could return a coupon owned by a
+        // different institute (cross-tenant read).
+        Optional<CouponCode> couponCode = couponCodeService.getCouponCodeByCode(code, instituteId);
         
         if (couponCode.isPresent()) {
             CouponCode c = couponCode.get();
@@ -106,10 +109,10 @@ public class CouponCodeController {
     public ResponseEntity<CouponCodeResponseDTO> updateCouponCodeStatus(
             @RequestParam String code,
             @RequestParam String status,
-            @RequestHeader(value = "x-institute-id", required = false) String instituteId) {
+            @RequestHeader("x-institute-id") String instituteId) {
 
-        Optional<CouponCode> couponCodeOpt = couponCodeService.getCouponCodeByCode(code);
-        
+        Optional<CouponCode> couponCodeOpt = couponCodeService.getCouponCodeByCode(code, instituteId);
+
         if (couponCodeOpt.isPresent()) {
             CouponCode updatedCouponCode = couponCodeService.updateCouponCodeStatus(couponCodeOpt.get(), status);
             String shortCode = couponCodeService.getOrGenerateShortUrl(updatedCouponCode, instituteId);

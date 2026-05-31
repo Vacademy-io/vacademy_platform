@@ -22,7 +22,11 @@ import {
     Notebook,
 } from '@phosphor-icons/react';
 import { StorageKey } from '@/constants/storage/storage';
-import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    ContentTerms,
+    OtherTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 
@@ -153,6 +157,14 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Sub-Org Teams',
                 subItemLink: '/manage-suborg-teams',
                 subItemId: 'suborg-teams',
+            },
+            {
+                // Institute-admin surface — sub-orgs list + drilldown to a sub-org's
+                // analytics deep page. Sibling to "Sub-Org Teams" (which is the
+                // sub-org-admin's narrow view). Both default off; institutes opt in.
+                subItem: 'Manage Institute Sub-Orgs',
+                subItemLink: '/manage-custom-teams',
+                subItemId: 'manage-institute-suborgs',
             },
             {
                 subItem: `${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)} Management`,
@@ -376,6 +388,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Recent Leads',
                 subItemLink: '/audience-manager/recent-leads',
                 subItemId: 'recent-leads',
+            },
+            {
+                subItem: 'Follow-ups',
+                subItemLink: '/audience-manager/follow-ups',
+                subItemId: 'follow-ups',
             },
         ],
     },

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -29,10 +30,28 @@ from .routers.knowledge_base import router as knowledge_base_router
 from .routers.voice_agent import router as voice_agent_router
 from .routers.input_asset import router as input_asset_router
 from .routers.reels import router as reels_router
+from .routers.studio_projects import router as studio_router
 from .routers.transcription import router as transcription_router
 from .routers.assessment_generation import router as assessment_generation_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 from .routers.transcript_notes import router as transcript_notes_router
+from .routers.copy_check import router as copy_check_router
+from .routers.lecture import router as lecture_router
+from .routers.ai_task_status import router as ai_task_status_router
+from .routers.presentation import router as presentation_router
+from .routers.incident import router as incident_router
+from .routers.question_metadata import router as question_metadata_router
+from .routers.question_gen import router as question_gen_router
+from .routers.pdf_questions import router as pdf_questions_router
+from .routers.audio_questions import router as audio_questions_router
+from .routers.chat_with_pdf import router as chat_with_pdf_router
+from .routers.evaluation import router as evaluation_router
+from .routers.retry import router as retry_router
+
+from .db import db_session
+from .repositories.ai_task_repository import ensure_ai_task_schema
+from .models.file_conversion import ensure_file_conversion_schema
+from .services.ai_task_service import sweep_stale_tasks
 
 
 
@@ -44,6 +63,21 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Startup: ensure the ai_task schema exists (idempotent) and sweep any
+    PROGRESS rows orphaned by a prior restart to FAILED."""
+    _logger = logging.getLogger(__name__)
+    try:
+        with db_session() as db:
+            ensure_ai_task_schema(db)
+            ensure_file_conversion_schema(db)
+        sweep_stale_tasks()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("ai_task startup init skipped: %s", exc)
+    yield
 
 
 def create_app() -> FastAPI:
@@ -102,6 +136,7 @@ def create_app() -> FastAPI:
         docs_url=f"{settings.api_base_path}/docs",
         redoc_url=None,
         openapi_url=f"{settings.api_base_path}/openapi.json",
+        lifespan=_lifespan,
     )
 
     # CORS
@@ -160,12 +195,34 @@ def create_app() -> FastAPI:
     app.include_router(assessment_generation_router, prefix=settings.api_base_path)
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
     app.include_router(transcript_notes_router, prefix=settings.api_base_path)
+    app.include_router(copy_check_router, prefix=settings.api_base_path)
+    # Migrated from media_service: AI lecture planner (kick-off) + the
+    # task-status polling mirror. Final paths:
+    #   {api_base_path}/ai/lecture/generate-plan
+    #   {api_base_path}/task-status/{get-status,get-raw-result,get/lecture-plan}
+    app.include_router(lecture_router, prefix=settings.api_base_path)
+    app.include_router(ai_task_status_router, prefix=settings.api_base_path)
+    app.include_router(presentation_router, prefix=settings.api_base_path)
+    app.include_router(incident_router, prefix=settings.api_base_path)
+    app.include_router(question_metadata_router, prefix=settings.api_base_path)
+    app.include_router(question_gen_router, prefix=settings.api_base_path)
+    app.include_router(pdf_questions_router, prefix=settings.api_base_path)
+    app.include_router(audio_questions_router, prefix=settings.api_base_path)
+    app.include_router(chat_with_pdf_router, prefix=settings.api_base_path)
+    app.include_router(evaluation_router, prefix=settings.api_base_path)
+    app.include_router(retry_router, prefix=settings.api_base_path)
     # Reels-from-long-video — three-gate funnel (scan/preview/render) +
     # /frame/{add,update,delete} for the editor's `kind=reel` save loop.
     # The router declares its own `/external/reels/v1` prefix; we only add
     # the service-wide `/ai-service` base here. Final paths:
     #   {api_base_path}/external/reels/v1/{scan,preview,render,list,...}
     app.include_router(reels_router, prefix=settings.api_base_path)
+    # Vimotion Studio — multi-asset video editing pipeline. P0 contract
+    # surface: all endpoints return 501 until P1+ wires the service modules.
+    # Router declares its own `/external/studio/v1` prefix. Final paths:
+    #   {api_base_path}/external/studio/v1/{projects,builds,...}
+    # See docs/ai_content/AI_VIDEO_STUDIO.md for phase status.
+    app.include_router(studio_router, prefix=settings.api_base_path)
 
     return app
 

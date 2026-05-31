@@ -196,7 +196,7 @@ export const ScheduleTestMainComponent = ({
               );
             })
           ) : (
-            <div className="flex min-h-[40vh] sm:h-[60vh] flex-col items-center justify-center px-4 text-center space-y-4">
+            <div className="flex min-h-screen-40 sm:h-screen-60 flex-col items-center justify-center px-4 text-center space-y-4">
               <EmptyAssessment />
               <span className="text-muted-foreground text-lg">No tests found.</span>
             </div>

@@ -2,7 +2,7 @@ import { LayoutContainer } from "@/components/common/layout-container/layout-con
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getMyFiles } from "@/services/system-files-api";
-import { Folder, X, FileText, ChevronRight } from "lucide-react";
+import { Folder, X, FileText, CaretRight } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,7 +90,7 @@ function RouteComponent() {
   if (error) {
     return (
       <LayoutContainer className="!m-0 !p-0 max-w-none">
-        <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center justify-center min-h-96">
           <div className="text-center">
             <h2 className="text-xl font-semibold text-neutral-700 mb-2">
               Error Loading Folders
@@ -154,7 +154,7 @@ function RouteComponent() {
             </div>
           </div>
 
-          <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center justify-center min-h-96">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-neutral-700 mb-2">
                 No Folders Found
@@ -218,7 +218,7 @@ function RouteComponent() {
                           <div className="p-3 bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/30 dark:to-primary-800/20 rounded-xl group-hover:from-primary-100 group-hover:to-primary-200 dark:group-hover:from-primary-800/40 dark:group-hover:to-primary-700/30 transition-all duration-300 shadow-sm">
                             <Folder className="h-6 w-6 text-primary-600 dark:text-primary-400 group-hover:scale-110 transition-transform duration-300" />
                           </div>
-                          <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-300 opacity-0 group-hover:opacity-100" />
+                          <CaretRight className="h-5 w-5 text-gray-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:translate-x-1 transition-all duration-300 opacity-0 group-hover:opacity-100" />
                         </div>
                         <CardTitle className="text-base font-semibold text-gray-900 dark:text-white mb-2 line-clamp-2 text-left group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                           {folder.name}

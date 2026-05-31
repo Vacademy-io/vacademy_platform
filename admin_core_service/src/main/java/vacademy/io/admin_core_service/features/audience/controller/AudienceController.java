@@ -257,6 +257,9 @@ public class AudienceController {
             @RequestParam String instituteId,
             @RequestParam String status,
             @RequestAttribute("user") CustomUserDetails user) {
+        String oldStatus = userLeadProfileService.getProfileDTO(userId, instituteId)
+                .map(p -> p.getConversionStatus())
+                .orElse(null);
         userLeadProfileService.updateConversionStatus(userId, instituteId, status);
         try {
             LeadJourneyActionType actionType = "CONVERTED".equals(status) ? LeadJourneyActionType.LEAD_CONVERTED
@@ -265,12 +268,16 @@ public class AudienceController {
             String title = "CONVERTED".equals(status) ? "Lead converted"
                     : "LOST".equals(status) ? "Lead marked as lost"
                     : "Status changed to " + status;
+            Map<String, Object> meta = new java.util.LinkedHashMap<>();
+            if (oldStatus != null) meta.put("old_status", oldStatus);
+            meta.put("new_status", status);
+            meta.put("changed_by", user.getUsername() != null ? user.getUsername() : "");
             timelineEventService.logJourneyEvent(
                     "USER_LEAD_PROFILE", userId,
                     actionType,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     title, null,
-                    Map.of("new_status", status, "changed_by", user.getUsername() != null ? user.getUsername() : ""),
+                    meta,
                     userId);
         } catch (Exception e) {
             // best-effort

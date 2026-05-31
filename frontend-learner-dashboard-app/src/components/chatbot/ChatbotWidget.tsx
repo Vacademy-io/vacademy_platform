@@ -1,14 +1,14 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  MessageCircle,
+  ChatCircle,
   X,
-  Send,
-  Maximize2,
-  Minimize2,
+  PaperPlaneTilt,
+  ArrowsOut,
+  ArrowsIn,
   Info,
   Plus,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -112,7 +112,7 @@ export const ChatbotWidget = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[10002] flex flex-col items-end space-y-4">
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end space-y-4">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -123,14 +123,14 @@ export const ChatbotWidget = () => {
             className={cn(
               "origin-bottom-right transition-all duration-300 ease-in-out",
               isExpanded
-                ? "fixed bottom-24 right-6 w-[90vw] h-[80vh] z-[10003]"
-                : "w-[350px] sm:w-[400px]"
+                ? "fixed bottom-24 right-6 w-vw-90 h-screen-80 z-50"
+                : "w-panel-sm sm:w-96"
             )}
           >
             <Card
               className={cn(
                 "border-2 shadow-xl overflow-hidden flex flex-col transition-all duration-300 ease-in-out bg-background",
-                isExpanded ? "h-full w-full" : "h-[500px]"
+                isExpanded ? "h-full w-full" : "h-blob-lg"
               )}
             >
               <CardHeader className="bg-primary text-primary-foreground p-4 flex flex-row items-center justify-between space-y-0">
@@ -175,9 +175,9 @@ export const ChatbotWidget = () => {
                     onClick={() => setIsExpanded(!isExpanded)}
                   >
                     {isExpanded ? (
-                      <Minimize2 className="h-5 w-5" />
+                      <ArrowsIn className="h-5 w-5" />
                     ) : (
-                      <Maximize2 className="h-5 w-5" />
+                      <ArrowsOut className="h-5 w-5" />
                     )}
                   </Button>
                   <Button
@@ -204,7 +204,7 @@ export const ChatbotWidget = () => {
                       <div
                         key={msg.id}
                         className={cn(
-                          "flex w-full max-w-[90%]",
+                          "flex w-full max-w-pct-90",
                           msg.role === "user"
                             ? "ml-auto justify-end"
                             : "mr-auto justify-start"
@@ -265,7 +265,7 @@ export const ChatbotWidget = () => {
                               </PopoverTrigger>
                               <PopoverContent
                                 side="right"
-                                className="max-w-[250px] text-xs p-2 z-[10005]"
+                                className="max-w-64 text-xs p-2 z-50"
                               >
                                 <p className="font-bold mb-1">Context Used:</p>
                                 <div className="space-y-1">
@@ -316,7 +316,7 @@ export const ChatbotWidget = () => {
                     ))}
 
                     {(isLoading || aiStatus === "thinking") && (
-                      <div className="mr-auto flex max-w-[80%] items-end space-x-2">
+                      <div className="mr-auto flex max-w-pct-80 items-end space-x-2">
                         <Avatar className="h-8 w-8 mr-2 shrink-0">
                           {avatarUrl ? (
                             <AvatarImage
@@ -407,7 +407,7 @@ export const ChatbotWidget = () => {
                     disabled={isLoading || !inputValue.trim()}
                     className="shrink-0"
                   >
-                    <Send className="h-4 w-4" />
+                    <PaperPlaneTilt className="h-4 w-4" />
                   </Button>
                 </div>
               </CardFooter>
@@ -436,7 +436,7 @@ export const ChatbotWidget = () => {
             className="w-full h-full object-cover rounded-full shadow-2xl"
           />
         ) : (
-          <MessageCircle className="h-7 w-7" />
+          <ChatCircle className="h-7 w-7" />
         )}
       </button>
     </div>

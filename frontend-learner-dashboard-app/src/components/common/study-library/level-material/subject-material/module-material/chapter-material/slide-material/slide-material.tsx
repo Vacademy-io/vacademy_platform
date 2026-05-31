@@ -156,7 +156,7 @@ export const SlideMaterial = () => {
       // Add slight delay for smooth transition
       await new Promise((resolve) => setTimeout(resolve, 200));
       setContent(
-        <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex h-reg-500 flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="relative group">
             <div className="bg-neutral-50 rounded-full p-6 transition-transform duration-300 group-hover:scale-105">
               <EmptySlideMaterial />
@@ -730,7 +730,7 @@ export const SlideMaterial = () => {
             );
           } else {
             setContent(
-              <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex h-reg-500 flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-red-50 rounded-full p-6 transition-transform duration-300">
                   <svg
                     className="w-8 h-8 text-red-500"
@@ -896,7 +896,7 @@ export const SlideMaterial = () => {
             );
           } else {
             setContent(
-              <div className="flex h-[300px] flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex h-reg-300 flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <p className="text-red-500 font-medium">Audio slide data missing</p>
               </div>
             );
@@ -908,7 +908,7 @@ export const SlideMaterial = () => {
           setContent(
             <div
               key={`scorm-${activeItem.id}`}
-              className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+              className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
             >
               <ScormSlideComponent
                 slide={activeItem}
@@ -938,7 +938,7 @@ export const SlideMaterial = () => {
       if (generationId === loadGenerationRef.current) {
         setError(err instanceof Error ? err.message : "Failed to load content");
         setContent(
-          <div className="flex h-[300px] flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex h-reg-300 flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-red-50 rounded-full p-4 transition-transform duration-300">
               <svg
                 className="w-8 h-8 text-red-500"
@@ -982,7 +982,7 @@ export const SlideMaterial = () => {
         prevSlideIdRef.current = null;
         if (currentGeneration === loadGenerationRef.current) {
           setContent(
-            <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex h-reg-500 flex-col items-center justify-center rounded-lg py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="bg-neutral-50 rounded-full p-6 transition-transform duration-300 group-hover:scale-105">
                 <EmptySlideMaterial />
               </div>
@@ -1053,7 +1053,7 @@ export const SlideMaterial = () => {
 
         <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
           {realSlides.length > 0 && realIndex > -1 && (
-            <span className="text-[11px] font-semibold text-neutral-400 shrink-0 tabular-nums">
+            <span className="text-2xs font-semibold text-neutral-400 shrink-0 tabular-nums">
               {realIndex + 1} / {realSlides.length}
             </span>
           )}
@@ -1087,9 +1087,9 @@ export const SlideMaterial = () => {
               <div className="aspect-video w-full rounded-lg bg-neutral-100 animate-pulse mt-4" />
               <div className="space-y-2 mt-6">
                 <div className="h-3 w-full rounded bg-neutral-100 animate-pulse" />
-                <div className="h-3 w-[94%] rounded bg-neutral-100 animate-pulse" />
-                <div className="h-3 w-[88%] rounded bg-neutral-100 animate-pulse" />
-                <div className="h-3 w-[72%] rounded bg-neutral-100 animate-pulse" />
+                <div className="h-3 w-[94%] rounded bg-neutral-100 animate-pulse"></div>{/* design-lint-ignore: decorative skeleton width */}
+                <div className="h-3 w-[88%] rounded bg-neutral-100 animate-pulse"></div>{/* design-lint-ignore: decorative skeleton width */}
+                <div className="h-3 w-[72%] rounded bg-neutral-100 animate-pulse"></div>{/* design-lint-ignore: decorative skeleton width */}
               </div>
             </div>
           </div>
@@ -1125,14 +1125,14 @@ export const SlideMaterial = () => {
           bottom tab bar hides this, so we render the inline top version above. */}
       <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 [.ui-play_&]:hidden">
         <div className="pointer-events-none absolute -top-3 left-0 right-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
-        <div className="bg-white border-t border-neutral-100 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]">
+        <div className="bg-white border-t border-neutral-100 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]"> {/* design-lint-ignore: custom shadow, safe-area viewport math */}
           {/* Context strip: slide title + position */}
           <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-1.5 mb-2">
-            <span className="text-[11px] font-medium text-neutral-600 truncate flex-1 min-w-0">
+            <span className="text-2xs font-medium text-neutral-600 truncate flex-1 min-w-0">
               {heading || "No content"}
             </span>
             {slidesList.length > 0 && currentIndex > -1 && (
-              <span className="text-[11px] font-semibold text-neutral-400 shrink-0 tabular-nums">
+              <span className="text-2xs font-semibold text-neutral-400 shrink-0 tabular-nums">
                 {currentIndex + 1} / {slidesList.length}
               </span>
             )}

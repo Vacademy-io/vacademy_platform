@@ -47,7 +47,7 @@ export function wrapContentInHTML(content: string): string {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             width: 100%;
             background: white;
-            color: #1f2937;
+            color: #1f2937; /* design-lint-ignore: print/export template CSS */
         }
         /* Additional planning template styles */
     </style>

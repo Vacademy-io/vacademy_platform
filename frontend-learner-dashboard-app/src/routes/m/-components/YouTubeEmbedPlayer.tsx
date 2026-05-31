@@ -48,7 +48,7 @@ export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({
 }) => {
     if (!url || !isYouTubeUrl(url)) {
         return (
-            <div className="flex items-center justify-center h-[40vh] sm:h-[50vh] bg-white/5 rounded-lg sm:rounded-xl p-4 sm:p-8">
+            <div className="flex items-center justify-center h-screen-40 sm:h-screen-50 bg-white/5 rounded-lg sm:rounded-xl p-4 sm:p-8">
                 <p className="text-white/50 text-sm sm:text-base">Invalid YouTube URL</p>
             </div>
         );
@@ -71,7 +71,7 @@ export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({
 
                 {/* Overlay to block timeline and YouTube branding at the bottom */}
                 <div
-                    className="absolute bottom-0 left-0 right-0 h-[50px] sm:h-[60px] z-10 cursor-default"
+                    className="absolute bottom-0 left-0 right-0 h-12 sm:h-14 z-10 cursor-default"
                     style={{ background: 'transparent' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -79,7 +79,7 @@ export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({
 
                 {/* Overlay to block "Watch on YouTube" button in top-right corner */}
                 <div
-                    className="absolute top-0 right-0 w-[120px] h-[40px] sm:w-[150px] sm:h-[50px] z-10 cursor-default"
+                    className="absolute top-0 right-0 w-28 h-10 sm:w-36 sm:h-12 z-10 cursor-default"
                     style={{ background: 'transparent' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}

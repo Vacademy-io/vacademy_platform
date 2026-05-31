@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Lock } from "lucide-react";
+import { Lock } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { SEARCH_ENQUIRY, SUBMIT_ADMISSION } from "@/constants/urls";
 

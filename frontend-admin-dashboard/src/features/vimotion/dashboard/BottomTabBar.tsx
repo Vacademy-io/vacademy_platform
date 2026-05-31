@@ -23,7 +23,7 @@ const BOTTOM_TABS: Array<{ id: DashboardTab; label: string; Icon: typeof Wand2 }
 // Tabs that map to "More" — when any of these is the current tab, the More
 // button shows as active so the user has visual feedback that the selection
 // lives behind the sheet.
-const MORE_TABS: DashboardTab[] = ['reels', 'brand-kits', 'team'];
+const MORE_TABS: DashboardTab[] = ['reels', 'studio', 'brand-kits', 'team'];
 
 export function BottomTabBar({ activeTab, onTabChange, onMoreClick }: BottomTabBarProps) {
     const moreActive = MORE_TABS.includes(activeTab);

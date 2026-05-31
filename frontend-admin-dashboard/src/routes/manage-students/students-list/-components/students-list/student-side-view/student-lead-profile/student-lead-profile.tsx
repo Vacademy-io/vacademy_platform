@@ -228,6 +228,19 @@ function campaignStatusChip(status: string | null) {
     return map[s] ?? 'bg-neutral-100 text-neutral-500';
 }
 
+// Picks the most recently submitted audience response — used as a fallback when
+// the lead has no scored "best" response yet but does have linked campaigns.
+function pickMostRecentAudience(
+    audiences: AudienceMembership[] | undefined
+): AudienceMembership | undefined {
+    if (!audiences || audiences.length === 0) return undefined;
+    return [...audiences].sort((a, b) => {
+        const ta = a.submitted_at ? Date.parse(a.submitted_at) : 0;
+        const tb = b.submitted_at ? Date.parse(b.submitted_at) : 0;
+        return tb - ta;
+    })[0];
+}
+
 // ── Score Breakdown ───────────────────────────────────────────────────────────
 
 interface ScoreFactor {
@@ -1066,6 +1079,19 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         retry: 1,
     });
 
+    // Shared with AudienceListSection via the same query key — TanStack dedupes.
+    // We read it here so the follow-up form can fall back to the most-recent
+    // linked campaign response when the profile has no `best_score_response_id`
+    // yet (common for fresh leads that haven't been scored).
+    const { data: audiences } = useQuery({
+        queryKey: ['user-audiences', userId],
+        queryFn: () => fetchUserAudiences(userId),
+        enabled: !!userId,
+        staleTime: 2 * 60 * 1000,
+    });
+    const effectiveResponseId =
+        profile?.best_score_response_id ?? pickMostRecentAudience(audiences)?.response_id ?? null;
+
     // Institute's configurable lead statuses (table-backed; seeded New/Converted/Lost).
     const { statuses: leadStatuses } = useLeadStatuses();
 
@@ -1107,9 +1133,9 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                         A profile will appear once this user submits an enquiry or is scored.
                     </p>
                 </div>
-                {/* Still show audience list and timeline even without a lead profile */}
+                {/* Still show audience list and note form even without a lead profile */}
                 <AudienceListSection userId={userId} />
-                <CrossStageTimeline userId={userId} audienceResponseId={null} />
+                <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
             </div>
         );
     }
@@ -1188,7 +1214,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             </div>
 
             {/* ── Stat grid ── */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <StatCard
                     icon={<Megaphone size={18} />}
                     label="Campaigns"
@@ -1318,18 +1344,15 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             <AudienceListSection userId={userId} />
 
             {/* ── Follow-ups ── */}
-            {profile.best_score_response_id && (
-                <FollowUpsWidget
-                    audienceResponseId={profile.best_score_response_id}
-                    userId={userId}
-                />
+            {effectiveResponseId && (
+                <FollowUpsWidget audienceResponseId={effectiveResponseId} userId={userId} />
             )}
 
-            {/* ── Cross-Stage Timeline ── */}
-            <CrossStageTimeline userId={userId} />
+            {/* ── Add Note / Log Activity ── */}
+            <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
 
             {/* ── Lead Journey Timeline ── */}
-            <LeadJourneyTimeline userId={userId} />
+            <LeadJourneyTimeline userId={userId} responseId={effectiveResponseId} />
         </div>
     );
 }

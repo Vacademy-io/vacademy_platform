@@ -1908,7 +1908,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[100vw] overflow-x-hidden flex flex-col items-center gap-4">
+    <div className="w-full max-w-vw-100 overflow-x-hidden flex flex-col items-center gap-4">
       {/* Non-fullscreen verification overlay - shown outside the player */}
       {showFullscreenControls && isFullscreen && (
         <>
@@ -1920,14 +1920,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       )}
 
       {showVerification && !isFullscreen && (
-        <div className="absolute inset-0 z-[50] flex items-end justify-center pb-8 pointer-events-none">
+        <div className="absolute inset-0 z-50 flex items-end justify-center pb-8 pointer-events-none">
           {/* Focus Mode Backdrop - localized to player area if possible, but here it's page-level or container-level. 
                Since this is outside the player container, "absolute inset-0" refers to the parent div which is the page wrapper.
                We want a fixed overlay for focus.
            */}
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9990] animate-in fade-in duration-500 pointer-events-auto" />
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in duration-500 pointer-events-auto" />
 
-          <div className="relative z-[9999] animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
+          <div className="relative z-50 animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
             <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
               {/* Progress Bar Background */}
               <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
@@ -1976,8 +1976,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       {/* Video player container with verification overlay */}
       <div
         ref={playerContainerRef}
-        className={`aspect-video w-full max-w-[100vw] relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px] lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${isPseudoFullscreen
-            ? "!fixed !inset-0 !top-0 !left-0 !right-0 !bottom-0 !z-[99999] !rounded-none !overflow-hidden !w-[100vw] !h-[100dvh] !max-w-none !max-h-none !bg-black"
+        className={`aspect-video w-full max-w-vw-100 relative min-h-reg-200 sm:min-h-reg-250 md:min-h-reg-300 lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${isPseudoFullscreen
+            ? "!fixed !inset-0 !top-0 !left-0 !right-0 !bottom-0 !z-50 !rounded-none !overflow-hidden !w-vw-100 !h-screen !max-w-none !max-h-none !bg-black"
             : ""
           }`}
         onMouseMove={handleMouseMoveOnVideo}
@@ -1988,7 +1988,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         {/* Verification overlay - only shown in fullscreen */}
         {/* Verification overlay - Fullscreen */}
         {showVerification && (isFullscreen || isPseudoFullscreen) && enableConcentrationScore && (
-          <div className="absolute inset-0 z-[10000] flex items-end justify-center pb-24 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="absolute inset-0 z-50 flex items-end justify-center pb-24 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
             <div className="relative animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6">
               <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
                 {/* Progress Bar Background */}
@@ -2041,7 +2041,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         {/* Invisible fullscreen mouse capture overlay */}
         {(isFullscreen || isPseudoFullscreen) && (
           <div
-            className="absolute inset-0 z-[9998] pointer-events-auto"
+            className="absolute inset-0 z-40 pointer-events-auto"
             onMouseMove={handleMouseMoveOnVideo}
             onMouseEnter={handleMouseMoveOnVideo}
           />
@@ -2049,9 +2049,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Fullscreen controls overlay */}
         {(isFullscreen || isPseudoFullscreen) && showFullscreenControls && (
-          <div className="absolute inset-0 z-[9999] flex flex-col justify-between animate-in fade-in duration-200 pointer-events-none">
+          <div className="absolute inset-0 z-50 flex flex-col justify-between animate-in fade-in duration-200 pointer-events-none">
             {/* Top controls - Exit fullscreen */}
-            <div className="flex justify-end p-4 pointer-events-auto z-[100000]">
+            <div className="flex justify-end p-4 pointer-events-auto z-60">
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -2161,7 +2161,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     >
                       <Gauge size={18} weight="fill" />
                       {playbackSpeed !== 1 && (
-                        <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
+                        <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full min-w-5 h-5 flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
                           {playbackSpeed}x
                         </span>
                       )}
@@ -2169,7 +2169,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
                     {/* Speed Options Dropdown - Inline in fullscreen controls */}
                     {showSpeedOptions && allowRewind && (
-                      <div className="speed-dropdown absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[20] min-w-[80px] max-h-[240px] overflow-y-auto">
+                      <div className="speed-dropdown absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-20 min-w-20 max-h-reg-250 overflow-y-auto">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
                           Speed
                         </div>
@@ -2194,7 +2194,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                   {/* Exit Fullscreen (alternative position) */}
                   <button
                     onClick={toggleFullscreen}
-                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm relative z-[100002]"
+                    className="p-2 rounded-full bg-white/20 hover:bg-white/30 text-white transition-all hover:scale-105 backdrop-blur-sm relative z-60"
                   >
                     <X size={18} weight="fill" />
                   </button>
@@ -2283,7 +2283,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         {/* Seek animation overlays */}
         {showSeekAnimation.show && (
           <div
-            className={`absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]`}
+            className={`absolute inset-0 flex items-center justify-center pointer-events-none z-50`}
           >
             <div
               className={`flex items-center gap-2 bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2 text-white animate-in fade-in zoom-in duration-300 ${showSeekAnimation.side === "right"
@@ -2312,7 +2312,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         {/* Manual Play Button for iOS/browsers that block autoplay */}
         {showManualPlayButton && !allowPlayPause && (
-          <div className="absolute inset-0 flex items-center justify-center z-[1001] bg-black/30 backdrop-blur-sm animate-in fade-in duration-500">
+          <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm animate-in fade-in duration-500">
             <button
               onClick={handleManualPlay}
               className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-white shadow-2xl hover:scale-105 transition-all duration-300 hover:shadow-primary-500/50 active:scale-95"
@@ -2332,7 +2332,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         {/* Bottom Controls Overlay (always visible when not fullscreen) */}
         {!(isFullscreen || isPseudoFullscreen) && (
           <div
-            className={`absolute bottom-0 left-0 right-0 z-[9999] transition-all duration-300 ${showControls
+            className={`absolute bottom-0 left-0 right-0 z-50 transition-all duration-300 ${showControls
                 ? "opacity-100 translate-y-0"
                 : "opacity-0 translate-y-2"
               }`}
@@ -2428,7 +2428,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     >
                       <Gauge size={18} weight="fill" />
                       {playbackSpeed !== 1 && (
-                        <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
+                        <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full min-w-5 h-5 flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
                           {playbackSpeed}x
                         </span>
                       )}
@@ -2526,7 +2526,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
 
         {/* YouTube player */}
-        <div className="w-full h-full max-w-[100vw] overflow-hidden pointer-events-none">
+        <div className="w-full h-full max-w-vw-100 overflow-hidden pointer-events-none">
           <YouTube
             videoId={videoId}
             opts={opts}
@@ -2552,14 +2552,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
         {/* Bottom gradient overlay in fullscreen */}
         {(isFullscreen || isPseudoFullscreen) && (
-          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none rounded-b-lg z-[9998]" />
+          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none rounded-b-lg z-40" />
         )}
       </div>
 
       {/* Speed Options Dropdown - Non-fullscreen - Rendered outside video container with fixed positioning */}
       {showSpeedOptions && allowRewind && !isFullscreen && !isPseudoFullscreen && speedButtonRef.current && (
         <div
-          className="speed-dropdown fixed bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-[10001] min-w-[80px] max-h-[240px] overflow-y-auto"
+          className="speed-dropdown fixed bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-50 min-w-20 max-h-reg-250 overflow-y-auto"
           style={{
             bottom: `${window.innerHeight - speedButtonRef.current.getBoundingClientRect().top + 8}px`,
             right: `${window.innerWidth - speedButtonRef.current.getBoundingClientRect().right}px`,

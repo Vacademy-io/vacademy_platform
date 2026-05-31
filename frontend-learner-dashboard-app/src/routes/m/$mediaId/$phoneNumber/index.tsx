@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { WarningCircle, SpinnerGap } from "@phosphor-icons/react";
 import { getPublicMediaDetails } from "../../-services/media-service";
 import { YouTubeEmbedPlayer } from "../../-components/YouTubeEmbedPlayer";
 import { GenericMediaViewer } from "../../-components/GenericMediaViewer";
@@ -42,13 +42,13 @@ function PublicMediaPage() {
     // Loading state - minimal centered loader (fixed fullscreen)
     if (isLoading) {
         return (
-            <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center">
+            <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className="text-center"
                 >
-                    <Loader2 className="w-8 h-8 text-white/60 animate-spin mx-auto" />
+                    <SpinnerGap className="w-8 h-8 text-white/60 animate-spin mx-auto" />
                 </motion.div>
             </div>
         );
@@ -57,13 +57,13 @@ function PublicMediaPage() {
     // Error state - minimal error display (fixed fullscreen)
     if (error || !mediaDetails) {
         return (
-            <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
                 <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="text-center max-w-md"
                 >
-                    <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                    <WarningCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
                     <h1 className="text-xl font-semibold text-white mb-2">
                         Media Not Found
                     </h1>
@@ -86,7 +86,7 @@ function PublicMediaPage() {
     const isYouTube = mediaDetails.source === MediaSource.YOUTUBE;
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-black flex items-center justify-center overflow-auto">
+        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center overflow-auto">
             {/* Content-only view - media takes full viewport */}
             <motion.div
                 initial={{ opacity: 0 }}
@@ -94,7 +94,7 @@ function PublicMediaPage() {
                 transition={{ duration: 0.3 }}
                 className="w-full h-full flex items-center justify-center p-2 sm:p-4 md:p-6"
             >
-                <div className="w-full max-w-[100vw] md:max-w-[95vw] lg:max-w-[90vw]">
+                <div className="w-full max-w-vw-100 md:max-w-vw-95 lg:max-w-vw-90">
                     {isYouTube ? (
                         <YouTubeEmbedPlayer
                             url={mediaDetails.source_id}

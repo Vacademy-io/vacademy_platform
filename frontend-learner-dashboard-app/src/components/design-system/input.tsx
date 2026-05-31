@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { IoEyeOutline, IoEyeOffOutline } from "react-icons/io5";
+import { Eye, EyeSlash, XCircle } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { VscError } from "react-icons/vsc";
 import { FormInputProps } from "./utils/types/input-types";
 import { InputErrorProps } from "./utils/types/input-types";
 import { FormLabel } from "../ui/form";
@@ -17,9 +16,9 @@ const InputError = ({ errorMessage }: InputErrorProps) => {
   return (
     <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
       <span>
-        <VscError />
+        <XCircle />
       </span>
-      <span className="mt-[3px]">{errorMessage}</span>
+      <span className="mt-0.5">{errorMessage}</span>
     </div>
   );
 };
@@ -85,9 +84,9 @@ export const MyInput = ({
               className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 focus:outline-none"
             >
               {showPassword ? (
-                <IoEyeOffOutline className="size-4 text-neutral-600" />
+                <EyeSlash className="size-4 text-neutral-600" />
               ) : (
-                <IoEyeOutline className="size-4 text-neutral-600" />
+                <Eye className="size-4 text-neutral-600" />
               )}
             </button>
           )}

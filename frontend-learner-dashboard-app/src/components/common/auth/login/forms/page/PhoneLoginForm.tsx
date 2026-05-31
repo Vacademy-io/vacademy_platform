@@ -17,7 +17,7 @@ interface ErrorResponse {
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, ArrowLeft, RefreshCw, Shield, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Phone, ArrowLeft, ArrowsClockwise, Shield, CheckCircle, Warning } from "@phosphor-icons/react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 
@@ -394,20 +394,20 @@ export function PhoneLoginForm({
                                             <FormItem>
                                                 <FormControl>
                                                     <div className="relative">
-                                                        <label className="text-[13px] font-bold text-gray-700 block mb-1">WhatsApp Number</label>
+                                                        <label className="text-body font-bold text-gray-700 block mb-1">WhatsApp Number</label>
                                                         <div className="relative flex-1">
                                                             <PhoneInput
                                                                 country={defaultCountry}
                                                                 preferredCountries={preferredCountries}
                                                                 value={field.value}
                                                                 onChange={(value) => field.onChange(value)}
-                                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-[45px] !bg-gray-50/50 hover:!bg-white !border ${phoneForm.formState.errors.phone ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-0`}
+                                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-11 !bg-gray-50/50 hover:!bg-white !border ${phoneForm.formState.errors.phone ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-0`}
                                                                 containerClass="!w-full"
                                                                 buttonClass={`!rounded-l-lg !border-gray-200 !bg-gray-50/50 !w-10`}
                                                                 dropdownClass="!rounded-lg !shadow-xl"
                                                             />
                                                         </div>
-                                                        {phoneForm.formState.errors.phone && <p className="text-red-500 text-[10px] font-semibold mt-1">{phoneForm.formState.errors.phone.message}</p>}
+                                                        {phoneForm.formState.errors.phone && <p className="text-red-500 text-3xs font-semibold mt-1">{phoneForm.formState.errors.phone.message}</p>}
                                                     </div>
                                                 </FormControl>
                                             </FormItem>
@@ -438,7 +438,7 @@ export function PhoneLoginForm({
                                                         ease: "linear",
                                                     }}
                                                 >
-                                                    <RefreshCw className="w-4 h-4" />
+                                                    <ArrowsClockwise className="w-4 h-4" />
                                                 </motion.div>
                                                 <span className="text-sm">Sending OTP...</span>
                                             </div>
@@ -492,7 +492,7 @@ export function PhoneLoginForm({
                                     transition={{ delay: 0.3 }}
                                     className="inline-flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1"
                                 >
-                                    <CheckCircle2 className="w-3 h-3 text-gray-600" />
+                                    <CheckCircle className="w-3 h-3 text-gray-600" />
                                     <span className="text-sm font-medium text-gray-800">
                                         +{phoneDial}
                                     </span>
@@ -583,7 +583,7 @@ export function PhoneLoginForm({
                                                         ease: "linear",
                                                     }}
                                                 >
-                                                    <RefreshCw className="w-4 h-4" />
+                                                    <ArrowsClockwise className="w-4 h-4" />
                                                 </motion.div>
                                                 <span className="text-sm">Verifying...</span>
                                             </div>
@@ -628,12 +628,12 @@ export function PhoneLoginForm({
                                         >
                                             {timer > 0 ? (
                                                 <div className="flex items-center space-x-1">
-                                                    <RefreshCw className="w-3 h-3" />
+                                                    <ArrowsClockwise className="w-3 h-3" />
                                                     <span className="text-xs">Resend in {timer}s</span>
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center space-x-1">
-                                                    <RefreshCw className="w-3 h-3" />
+                                                    <ArrowsClockwise className="w-3 h-3" />
                                                     <span className="text-xs">Resend code</span>
                                                 </div>
                                             )}

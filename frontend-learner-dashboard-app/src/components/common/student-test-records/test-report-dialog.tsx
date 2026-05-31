@@ -49,7 +49,7 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { GET_QUESTIONS_OF_SECTIONS } from "@/constants/urls";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { MarksStatusIndicator } from "./marks-chip";
-import { FileText } from "lucide-react";
+import { FileText } from "@phosphor-icons/react";
 import type {
   DocumentLoadEvent,
   PageChangeEvent,
@@ -896,7 +896,7 @@ export const TestReportDialog = ({
 
         {showPdfPreview && pdfFile && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl">
+            <div className="bg-white rounded-lg w-full max-w-5xl h-screen-90 flex flex-col shadow-2xl">
               <div className="flex-1 overflow-auto">
                 <PdfViewerComponent
                   pdfUrl={pdfFile.fileUrl}

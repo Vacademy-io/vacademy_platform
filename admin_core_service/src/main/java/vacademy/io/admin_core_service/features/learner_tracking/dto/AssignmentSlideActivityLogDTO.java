@@ -20,4 +20,6 @@ public class AssignmentSlideActivityLogDTO {
     private String feedback;
 
     private String checkedFileId;
+
+    private Boolean lateSubmission;
 }

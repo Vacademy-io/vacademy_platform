@@ -1,9 +1,11 @@
 import { useParams, useNavigate } from '@tanstack/react-router';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save, AlertCircle, Copy, Check, Link } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, Copy, Check, Link, Activity, Link2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useProductPageEditor } from '../-hooks/use-product-page-editor';
@@ -13,12 +15,14 @@ import { CouponManager } from './CouponManager';
 import { ProductPagePreview } from './ProductPagePreview';
 import { MyButton } from '@/components/design-system/button';
 import { PageDesignEditor } from './PageDesignEditor';
+import { ProductPageCustomFieldsManager } from './ProductPageCustomFieldsManager';
 
 const TABS = [
     { id: 'design', label: 'Page Design' },
     { id: 'courses', label: 'Courses' },
     { id: 'settings', label: 'Settings' },
     { id: 'coupons', label: 'Coupons' },
+    { id: 'custom-fields', label: 'Custom Fields' },
     { id: 'preview', label: 'Preview' },
 ] as const;
 
@@ -31,6 +35,10 @@ export const ProductPageEditor = () => {
     const instituteId = getCurrentInstituteId() || '';
     const { instituteDetails } = useInstituteDetailsStore();
     const [codeCopied, setCodeCopied] = useState(false);
+    const [gtmOpen, setGtmOpen] = useState(false);
+    const [utmOpen, setUtmOpen] = useState(false);
+    const [utmFields, setUtmFields] = useState({ source: '', medium: '', campaign: '', term: '', content: '' });
+    const [utmLinkCopied, setUtmLinkCopied] = useState(false);
 
     const {
         page,
@@ -68,16 +76,28 @@ export const ProductPageEditor = () => {
 
     const getLearnerUrl = () => {
         if (!page?.code) return '';
-        const tab = settings?.defaultStep ?? 'CATALOG';
         const rawCustomDomain = instituteDetails?.learner_portal_base_url;
         if (rawCustomDomain) {
             const base = rawCustomDomain.startsWith('http')
                 ? rawCustomDomain
                 : `https://${rawCustomDomain}`;
-            return `${base}/product-pages/${page.code}?defaultTab=${tab}`;
+            return `${base}/product-pages/${page.code}`;
         }
-        return `${BASE_URL_LEARNER_DASHBOARD}/product-pages/${page.code}?instituteId=${instituteId}&defaultTab=${tab}`;
+        return `${BASE_URL_LEARNER_DASHBOARD}/product-pages/${page.code}?instituteId=${instituteId}`;
     };
+
+    const utmLink = useMemo(() => {
+        const base = getLearnerUrl();
+        if (!base) return '';
+        const params = new URLSearchParams();
+        if (utmFields.source)   params.set('utm_source', utmFields.source);
+        if (utmFields.medium)   params.set('utm_medium', utmFields.medium);
+        if (utmFields.campaign) params.set('utm_campaign', utmFields.campaign);
+        if (utmFields.term)     params.set('utm_term', utmFields.term);
+        if (utmFields.content)  params.set('utm_content', utmFields.content);
+        const qs = params.toString();
+        return qs ? `${base}&${qs}` : base;
+    }, [utmFields, page?.code, settings?.defaultStep, instituteDetails?.learner_portal_base_url]);
 
     const copyCode = () => {
         const url = getLearnerUrl();
@@ -112,6 +132,7 @@ export const ProductPageEditor = () => {
     }
 
     return (
+        <>
         <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden md:h-[calc(100vh-4.5rem)]">
             {/* Top bar */}
             <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-6 py-3">
@@ -153,6 +174,28 @@ export const ProductPageEditor = () => {
                         )}
                     </button>
                 )}
+
+                {/* UTM Link generator button */}
+                {page?.code && (
+                    <button
+                        onClick={() => setUtmOpen(true)}
+                        className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] text-neutral-500 transition-colors hover:bg-violet-50 hover:border-violet-300 hover:text-violet-600"
+                        title="Generate UTM tracking link"
+                    >
+                        <Link2 className="size-3" />
+                        <span className="font-medium">UTM Link</span>
+                    </button>
+                )}
+
+                {/* GTM Events button */}
+                <button
+                    onClick={() => setGtmOpen(true)}
+                    className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[11px] text-neutral-500 transition-colors hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-600"
+                    title="View GTM tracking events"
+                >
+                    <Activity className="size-3 " />
+                    <span className="font-medium">GTM Events</span>
+                </button>
 
                 {/* Status toggle */}
                 <select
@@ -244,6 +287,15 @@ export const ProductPageEditor = () => {
                         </div>
                     )}
 
+                    {activeTab === 'custom-fields' && (
+                        <div className="mx-auto max-w-2xl">
+                            <ProductPageCustomFieldsManager
+                                productPageId={productPageId}
+                                instituteId={instituteId}
+                            />
+                        </div>
+                    )}
+
                     {activeTab === 'preview' && (
                         <div className="mx-auto max-w-5xl">
                             <ProductPagePreview
@@ -260,5 +312,104 @@ export const ProductPageEditor = () => {
                 </div>
             )}
         </div>
+
+        {/* UTM Link Generator Dialog */}
+        <Dialog open={utmOpen} onOpenChange={(o) => { setUtmOpen(o); if (!o) setUtmLinkCopied(false); }}>
+            <DialogContent className="w-[90vw] max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Link2 className="size-4 text-violet-500" />
+                        UTM Link Generator
+                    </DialogTitle>
+                    <p className="text-xs text-neutral-400 mt-0.5">Build a trackable link for this product page.</p>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    {([
+                        { key: 'source',   label: 'Source',   placeholder: 'facebook, google, newsletter…', required: true },
+                        { key: 'medium',   label: 'Medium',   placeholder: 'cpc, email, social…',           required: true },
+                        { key: 'campaign', label: 'Campaign', placeholder: 'summer_sale, launch…',          required: true },
+                        { key: 'term',     label: 'Term',     placeholder: 'keyword (optional)',             required: false },
+                        { key: 'content',  label: 'Content',  placeholder: 'banner_v1 (optional)',          required: false },
+                    ] as const).map(({ key, label, placeholder, required }) => (
+                        <div key={key} className="grid grid-cols-[80px_1fr] items-center gap-3">
+                            <Label className="text-xs font-medium text-neutral-600 text-right">
+                                {label}{required && <span className="ml-0.5 text-danger-500">*</span>}
+                            </Label>
+                            <Input
+                                placeholder={placeholder}
+                                value={utmFields[key]}
+                                onChange={(e) => setUtmFields((p) => ({ ...p, [key]: e.target.value.trim() }))}
+                                className="h-8 text-xs"
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                {/* Generated URL preview */}
+                <div className="mt-1 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Generated URL</p>
+                    <p className="break-all font-mono text-[11px] text-neutral-600 leading-relaxed">
+                        {utmLink || <span className="text-neutral-300">Fill in the fields above…</span>}
+                    </p>
+                </div>
+
+                <button
+                    disabled={!utmLink}
+                    onClick={() => {
+                        navigator.clipboard.writeText(utmLink);
+                        setUtmLinkCopied(true);
+                        setTimeout(() => setUtmLinkCopied(false), 2000);
+                    }}
+                    className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        utmLinkCopied
+                            ? 'bg-success-500 text-white'
+                            : 'bg-violet-600 text-white hover:bg-violet-700'
+                    }`}
+                >
+                    {utmLinkCopied ? <><Check className="size-4" /> Copied!</> : <><Copy className="size-4" /> Copy UTM Link</>}
+                </button>
+            </DialogContent>
+        </Dialog>
+
+        {/* GTM Events Dialog */}
+        <Dialog open={gtmOpen} onOpenChange={setGtmOpen}>
+            <DialogContent className="w-[90vw] max-w-5xl">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Activity className="size-4 text-emerald-500" />
+                        GTM Tracking Events
+                    </DialogTitle>
+                    <p className="text-xs text-neutral-400 mt-1">
+                        These events are pushed to <code className="rounded bg-neutral-100 px-1">window.dataLayer</code> automatically.
+                        GTM container ID is configured in <strong>Settings → GTM Settings</strong>.
+                    </p>
+                </DialogHeader>
+
+                <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+                    {([
+                        { event: 'product_page_view', trigger: 'Page loads', params: 'page_code, default_step, utm_*' },
+                        { event: 'product_page_course_selection_changed', trigger: 'Course selected / deselected', params: 'selected_count, total_amount' },
+                        { event: 'product_page_cart_viewed', trigger: 'Cart step shown', params: 'selected_courses[], total_amount, utm_*' },
+                        { event: 'product_page_coupon_applied', trigger: 'Coupon code applied', params: 'coupon_code, discount_amount' },
+                        { event: 'product_page_tnc_accepted', trigger: 'T&C accepted', params: '—' },
+                        { event: 'product_page_payment_initiated', trigger: 'Pay Now clicked', params: 'total_amount, course_count, vendor, utm_*' },
+                        { event: 'product_page_enrollment_success', trigger: 'Payment confirmed & enrolled', params: 'total_amount, course_count, utm_*' },
+                        { event: 'product_page_payment_failed', trigger: 'Payment / enrollment error', params: 'error_message, vendor, utm_*' },
+                    ] as const).map(({ event, trigger, params }) => (
+                        <div key={event} className="flex items-start justify-between gap-4 rounded-lg border border-neutral-100 bg-neutral-50 px-4 py-3">
+                            <div className="min-w-0 flex-1">
+                                <code className="block rounded bg-emerald-50 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-700 w-fit">
+                                    {event}
+                                </code>
+                                <p className="mt-1.5 font-mono text-[10px] text-neutral-400">{params}</p>
+                            </div>
+                            <span className="shrink-0 text-xs text-neutral-500">{trigger}</span>
+                        </div>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 };

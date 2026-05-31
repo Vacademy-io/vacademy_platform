@@ -1,5 +1,5 @@
 import { MyButton } from "@/components/design-system/button";
-import { Calendar, CalendarDays, ListTodo } from "lucide-react";
+import { Calendar, CalendarDots, ListChecks } from "@phosphor-icons/react";
 
 export type ActivityPeriod = "today" | "tomorrow" | "all";
 
@@ -14,8 +14,8 @@ export default function ActivityPeriodSelector({
 }: ActivityPeriodSelectorProps) {
   const options: { id: ActivityPeriod; label: string; icon: any }[] = [
     { id: "today", label: "Today", icon: Calendar },
-    { id: "tomorrow", label: "Tomorrow", icon: CalendarDays },
-    { id: "all", label: "All Activities", icon: ListTodo },
+    { id: "tomorrow", label: "Tomorrow", icon: CalendarDots },
+    { id: "all", label: "All Activities", icon: ListChecks },
   ];
 
   return (

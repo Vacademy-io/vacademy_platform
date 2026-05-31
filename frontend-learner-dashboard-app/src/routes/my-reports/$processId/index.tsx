@@ -42,7 +42,7 @@ function RouteComponent() {
 
   if (!selectedReport) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-96">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-neutral-700 mb-2">
             Report Not Found

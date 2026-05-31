@@ -1,12 +1,12 @@
 import React from "react";
-import { Search, BookOpen, BarChart3, Loader2 } from "lucide-react";
+import { MagnifyingGlass, BookOpen, ChartBar, SpinnerGap } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 const TOOL_DISPLAY_MAP: Record<string, { label: string; icon: React.ElementType }> = {
-  get_learning_progress: { label: "Checking your learning progress...", icon: BarChart3 },
+  get_learning_progress: { label: "Checking your learning progress...", icon: ChartBar },
   get_student_feedback: { label: "Reviewing your performance data...", icon: BookOpen },
-  search_related_resources: { label: "Searching for related content...", icon: Search },
-  semantic_search_content: { label: "Searching your course materials...", icon: Search },
+  search_related_resources: { label: "Searching for related content...", icon: MagnifyingGlass },
+  semantic_search_content: { label: "Searching your course materials...", icon: MagnifyingGlass },
 };
 
 interface ToolIndicatorProps {
@@ -16,7 +16,7 @@ interface ToolIndicatorProps {
 export const ToolIndicator: React.FC<ToolIndicatorProps> = ({ toolName }) => {
   const display = TOOL_DISPLAY_MAP[toolName] || {
     label: "Working on it...",
-    icon: Loader2,
+    icon: SpinnerGap,
   };
   const Icon = display.icon;
 

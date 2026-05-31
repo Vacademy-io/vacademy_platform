@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 
 interface Testimonial {
   name: string;
@@ -118,7 +118,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
   // Carousel Layout
   if (layout === "carousel") {
     return (
-      <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>
+      <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}> // design-lint-ignore: page-builder default color
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>
@@ -146,14 +146,14 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
                   className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
                   aria-label="Previous testimonial"
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <CaretLeft className="w-5 h-5" />
                 </button>
                 <button
                   onClick={nextTestimonial}
                   className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
                   aria-label="Next testimonial"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <CaretRight className="w-5 h-5" />
                 </button>
               </>
             )}
@@ -180,7 +180,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
 
   // Grid / Grid-Scroll Layout
   return (
-    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>
+    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}> // design-lint-ignore: page-builder default color
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>

@@ -12,7 +12,7 @@ import { EmailLogin } from "./EmailOtpForm";
 import { UsernameLogin } from "./UsernamePasswordForm";
 import { PhoneLoginForm } from "./PhoneLoginForm";
 import { Preferences } from "@capacitor/preferences";
-import { FcGoogle } from "react-icons/fc";
+import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: brand logo, no phosphor equivalent
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import {
   HOLISTIC_INSTITUTE_ID,
@@ -745,7 +745,7 @@ export function LoginForm({
               setPrimaryColor(
                 details?.institute_theme_code ??
                   import.meta.env.VITE_DEFAULT_THEME_COLOR ??
-                  "#E67E22",
+                  "#E67E22", // design-lint-ignore: theme fallback color passed to setPrimaryColor, not a CSS class
               );
             }
           } catch (error) {
@@ -886,7 +886,7 @@ export function LoginForm({
               }}
               className="inline-block"
             >
-              <ClipLoader size={40} color="#374151" />
+              <ClipLoader size={40} color="#374151" /* design-lint-ignore: spinner prop, not a CSS class */ />
             </motion.div>
           </div>
           <motion.h2
@@ -913,14 +913,14 @@ export function LoginForm({
   return (
     <div
       className={`${
-        type ? "h-[400px] overflow-auto" : "min-h-screen overflow-hidden"
+        type ? "h-reg-400 overflow-auto" : "min-h-screen overflow-hidden"
       } bg-background relative mt-10`}
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
 
       {/* Centered container */}
-      <div className="w-full min-h-[60vh] flex items-center justify-center p-4">
+      <div className="w-full min-h-screen-60 flex items-center justify-center p-4">
         <div className="w-full max-w-lg xl:max-w-xl">
           {/* Prominent Institute Branding above the card */}
           {domainRouting.instituteId && (

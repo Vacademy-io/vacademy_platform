@@ -144,6 +144,9 @@ public class RenewalPaymentService {
             // TODO: Get user and send notification
             // UserDTO user = authService.getUserById(userPlan.getUserId());
             // notificationService.sendRenewalSuccessEmail(user, userPlan, newEndDate);
+            // When implementing, also append a billing-contact recipient via
+            // BillingContactRecipientResolver.buildBillingContactRecipient(userPlan.getUserId(), user.getEmail())
+            // so renewal confirmations reach the same billing inbox as the initial invoice.
         }
     }
 
@@ -166,6 +169,9 @@ public class RenewalPaymentService {
             // TODO: Get user and send notification
             // UserDTO user = authService.getUserById(userPlan.getUserId());
             // notificationService.sendRenewalFailureEmail(user, userPlan);
+            // When implementing, also append a billing-contact recipient via
+            // BillingContactRecipientResolver.buildBillingContactRecipient(userPlan.getUserId(), user.getEmail())
+            // so dunning / failed-renewal emails reach the same billing inbox.
         }
     }
 }

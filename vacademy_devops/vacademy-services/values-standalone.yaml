@@ -1,0 +1,50 @@
+# Overlay for STANDALONE single-server client deployments (k3s on one box).
+# Deploy:  helm upgrade --install vacademy ./vacademy-services \
+#            -f values.yaml -f values-standalone.yaml -f values.secret.yaml
+#
+# Self-contained: bundled Postgres (baselines auto-loaded), no pgbouncer, both
+# frontends, and a Let's Encrypt ingress for one client domain. The install.sh
+# wizard fills in domain, email, enabled optional services, and client keys.
+
+# Single-server: one replica each (cloud prod uses 2 for auth/admin-core).
+replicaCount: 1
+
+standalone:
+  enabled: true
+  domain: ""                 # REQUIRED — set by installer (e.g. app.client.com)
+
+postgres:
+  bundled: true
+  loadBaseline: true
+
+# Services connect DIRECTLY to the bundled Postgres (pgbouncer is for the
+# managed-DB cloud prod only).
+pgbouncer:
+  enabled: false
+
+frontends:
+  enabled: true
+
+certManager:
+  enabled: true
+  email: ""                  # REQUIRED for Let's Encrypt — set by installer
+
+ingress:
+  className: traefik         # k3s default ingress controller
+
+env:
+  springProfile: prod
+  db:
+    host: postgres           # bundled Postgres Service
+    port: "5432"
+    username: postgres
+
+# Mandatory tier on by default; installer flips optional services per client choice.
+services:
+  auth_service: { enabled: true }
+  admin_core_service: { enabled: true }
+  media_service: { enabled: true }
+  assessment_service: { enabled: false }
+  ai_service: { enabled: false }
+  notification_service: { enabled: false }
+  community_service: { enabled: false }

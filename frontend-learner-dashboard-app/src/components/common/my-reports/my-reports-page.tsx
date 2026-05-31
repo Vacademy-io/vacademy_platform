@@ -20,7 +20,7 @@ import {
 import { MyButton } from "@/components/design-system/button";
 import { format } from "date-fns";
 import { useReportStore } from "@/stores/report-store";
-import { X } from "phosphor-react";
+import { X } from "@phosphor-icons/react";
 
 export default function MyReportsPage() {
   const navigate = useNavigate();
@@ -73,7 +73,7 @@ export default function MyReportsPage() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-reg-400">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-neutral-700 mb-2">
             Error Loading Reports
@@ -86,7 +86,7 @@ export default function MyReportsPage() {
 
   if (!reportsData || reportsData.reports.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-reg-400">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-neutral-700 mb-2">
             No Reports Found

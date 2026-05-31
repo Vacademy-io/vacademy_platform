@@ -10,7 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, Users, RefreshCw, X, Check, ChevronsUpDown, Loader2, Upload } from 'lucide-react';
+import { Plus, Trash, Users, ArrowsClockwise, X, Check, CaretUpDown, SpinnerGap, UploadSimple } from '@phosphor-icons/react';
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -156,43 +156,58 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     let mobile_number = '';
     let username = '';
 
-    // Helper to find field by name (case-insensitive)
-    const findFieldByName = (names: string[]) => {
-      return instituteCustomFields.find(f => 
-        names.some(name => f.custom_field.fieldName.toLowerCase() === name.toLowerCase())
-      );
+    // Match core identity fields by `fieldKey` (the stable machine ID set at
+    // field creation by the backend's CustomFieldKeyGenerator) — NOT by the
+    // freeform display label `fieldName`, which admins can rename freely
+    // (e.g. "Full Name (First Name & Last Name)") and which breaks string match.
+    // Two key patterns coexist in production:
+    //   - Legacy seeded defaults:  "full_name" / "email" / "phone_number"
+    //   - Admin-created via UI:    "<slug>_inst_<instituteId>"
+    const matchKey = (prefix: string) => (f: InstituteCustomField) => {
+      const k = f.custom_field.fieldKey;
+      return k === prefix || k.startsWith(prefix + '_inst_');
     };
 
-    // Name field - could be 'name', 'Name', 'Full Name', 'full_name'
-    const nameField = findFieldByName(['name', 'full name', 'full_name']);
-    if (nameField) {
-      full_name = formData[nameField.custom_field.fieldKey] || '';
-    }
+    const nameField  = instituteCustomFields.find(matchKey('full_name'));
+    const emailField = instituteCustomFields.find(matchKey('email'));
+    const phoneField = instituteCustomFields.find(matchKey('phone_number'));
 
-    // If no single name field, try First Name + Last Name combination
+    if (nameField)  full_name     = formData[nameField.custom_field.fieldKey] || '';
+    if (emailField) email         = formData[emailField.custom_field.fieldKey] || '';
+    if (phoneField) mobile_number = formData[phoneField.custom_field.fieldKey] || '';
+
+    // Fallback for split-name forms (institutes using First Name + Last Name
+    // instead of a single combined Full Name field).
     if (!full_name) {
-      const firstNameField = findFieldByName(['first name', 'firstname']);
-      const lastNameField = findFieldByName(['last name', 'lastname']);
-      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] : '';
-      const lastName = lastNameField ? formData[lastNameField.custom_field.fieldKey] : '';
-      full_name = `${firstName || ''} ${lastName || ''}`.trim();
+      const firstNameField = instituteCustomFields.find(matchKey('first_name'));
+      const lastNameField  = instituteCustomFields.find(matchKey('last_name'));
+      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] || '' : '';
+      const lastName  = lastNameField ? formData[lastNameField.custom_field.fieldKey] || '' : '';
+      full_name = `${firstName} ${lastName}`.trim();
     }
 
-    // Email field - could be 'email', 'Email'
-    const emailField = findFieldByName(['email']);
-    email = emailField ? formData[emailField.custom_field.fieldKey] : '';
-
-    // Phone field - could be 'phone', 'Phone', 'Mobile', 'mobile_number'
-    const phoneField = findFieldByName(['phone', 'mobile', 'mobile_number']);
-    mobile_number = phoneField ? formData[phoneField.custom_field.fieldKey] : '';
-
-    // If standard fields form fallback (if custom fields didn't cover them or failed to load)
+    // Fallback for institutes whose invite form has no custom fields configured.
+    // The hardcoded Email/Full Name/Mobile inputs render in that branch (see the
+    // `instituteCustomFields.length === 0` body of the dialog below).
     if (!email && formData.email) email = formData.email;
     if (!full_name && formData.full_name) full_name = formData.full_name;
     if (!mobile_number && formData.mobile_number) mobile_number = formData.mobile_number;
 
     if (!email || !full_name) {
-      toast.error('Email and Name are required fields.');
+      // Distinguish "user left a visible input blank" from "this invite form
+      // has no recognizable email/name field configured" — the latter is an
+      // admin/config problem and needs a different message so the user doesn't
+      // think they're missing an input that doesn't exist.
+      const hasFormFields = instituteCustomFields.length > 0;
+      const isConfigProblem =
+        hasFormFields && (!emailField || (!nameField && !full_name));
+      if (isConfigProblem) {
+        toast.error(
+          "This institute's invite form is missing a recognizable Email or Full Name field. Ask an admin to verify the invite form configuration."
+        );
+      } else {
+        toast.error('Email and Name are required fields.');
+      }
       return;
     }
 
@@ -435,7 +450,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               inputClass="!w-full h-10 !rounded-md !border-input"
               buttonClass="!rounded-l-md !border-input"
               countryCodeEditable={false}
-              enableAreaCodes={true}
+              enableAreaCodes={false}
               disableCountryGuess={false}
               preferredCountries={preferredCountries}
             />
@@ -471,11 +486,11 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={loadMembers} variant="outline" size="sm">
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <ArrowsClockwise className="w-4 h-4 mr-2" />
             Refresh
           </Button>
           <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
-            <Upload className="w-4 h-4 mr-2" />
+            <UploadSimple className="w-4 h-4 mr-2" />
             Bulk Upload
           </Button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
@@ -485,14 +500,14 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                 Add Learner
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto p-4 sm:p-6 z-[9999]">
+            <DialogContent className="max-w-md w-vw-95 max-h-screen-90 overflow-y-auto p-4 sm:p-6 z-50">
               <DialogHeader>
                 <DialogTitle>Add New Learner</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 {loadingCustomFields ? (
                   <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                    <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
                   </div>
                 ) : instituteCustomFields.length > 0 ? (
                   <>
@@ -547,7 +562,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   <Label htmlFor="roles">Organization Roles *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <div className="flex min-h-[40px] w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
+                      <div className="flex min-h-10 w-full flex-wrap items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer">
                         <div className="flex flex-wrap gap-1">
                           {formData.comma_separated_org_roles.split(',').filter(Boolean).length > 0 ? (
                             formData.comma_separated_org_roles.split(',').filter(Boolean).map((role: string) => (
@@ -580,10 +595,10 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                             <span className="text-muted-foreground">Select the Roles</span>
                           )}
                         </div>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                        <CaretUpDown className="h-4 w-4 shrink-0 opacity-50" />
                       </div>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[10000]" align="start">
+                    <PopoverContent className="w-radix-popover p-0 z-50" align="start">
                       <Command>
                         <CommandList>
                           <CommandEmpty>No role found.</CommandEmpty>
@@ -693,7 +708,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             {selectedMembers.length > 0 && (
               <>
                 <Button variant="destructive" size="sm" onClick={openTerminateDialog} className="text-white">
-                  <Trash2 className="w-4 h-4 mr-2 text-white" />
+                  <Trash className="w-4 h-4 mr-2 text-white" />
                   Terminate Selected ({selectedMembers.length})
                 </Button>
 
@@ -719,7 +734,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                       >
                         {isTerminating ? (
                           <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
                             Terminating...
                           </>
                         ) : (

@@ -155,7 +155,9 @@ public class InstituteCustomFiledService {
         List<CustomFields> active = customFieldRepository.findByFieldKeyWithLock(fieldKey,
                 StatusEnum.ACTIVE.name());
         if (!active.isEmpty()) {
-            return active.get(0);
+            CustomFields existing = active.get(0);
+            applyMutableFieldUpdates(existing, cfDto);
+            return customFieldRepository.save(existing);
         }
 
         // No active row — check for ANY row with the same key (including
@@ -167,12 +169,28 @@ public class InstituteCustomFiledService {
         if (!anyStatus.isEmpty()) {
             CustomFields existing = anyStatus.get(0);
             existing.setStatus(StatusEnum.ACTIVE.name());
+            applyMutableFieldUpdates(existing, cfDto);
             return customFieldRepository.save(existing);
         }
 
         CustomFields newCF = new CustomFields(cfDto);
         newCF.setFieldKey(fieldKey);
         return customFieldRepository.save(newCF);
+    }
+
+    private void applyMutableFieldUpdates(CustomFields existing, CustomFieldDTO cfDto) {
+        if (StringUtils.hasText(cfDto.getConfig())) {
+            existing.setConfig(cfDto.getConfig());
+        }
+        if (StringUtils.hasText(cfDto.getFieldName())) {
+            existing.setFieldName(cfDto.getFieldName());
+        }
+        if (StringUtils.hasText(cfDto.getFieldType())) {
+            existing.setFieldType(cfDto.getFieldType());
+        }
+        if (cfDto.getIsMandatory() != null) {
+            existing.setIsMandatory(cfDto.getIsMandatory());
+        }
     }
 
     /**

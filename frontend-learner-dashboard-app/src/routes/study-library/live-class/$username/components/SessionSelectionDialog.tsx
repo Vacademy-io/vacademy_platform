@@ -35,7 +35,7 @@ export function SessionSelectionDialog({
 }: SessionSelectionDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-screen-80 overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold text-neutral-800 dark:text-neutral-100 flex items-center gap-2">
             <WarningCircle size={28} className="text-primary-600" />

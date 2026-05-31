@@ -1,5 +1,5 @@
 import React from "react";
-import { Check, ArrowUpRight, X } from "lucide-react";
+import { Check, ArrowUpRight, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 
@@ -44,7 +44,7 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
       exit={{ opacity: 0 }}
     >
       <motion.div
-        className="w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
+        className="w-full max-w-md rounded-2xl bg-slate-900 border border-white/10 p-6 shadow-2xl max-h-screen-85 overflow-y-auto"
         initial={{ scale: 0.85, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.85, opacity: 0 }}
@@ -81,7 +81,7 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
                   cy="50"
                   r="44"
                   fill="none"
-                  stroke={scorePercent >= 70 ? "#4ade80" : scorePercent >= 40 ? "#fbbf24" : "#f87171"}
+                  stroke={scorePercent >= 70 ? "hsl(var(--success-500))" : scorePercent >= 40 ? "hsl(var(--warning-500))" : "hsl(var(--danger-500))"}
                   strokeWidth="6"
                   strokeLinecap="round"
                   strokeDasharray={circumference}
@@ -94,7 +94,7 @@ export const SessionScorecard: React.FC<SessionScorecardProps> = ({
                 <span className="text-2xl font-bold text-white">
                   {total_questions ? `${score}/${total_questions}` : `${scorePercent}%`}
                 </span>
-                <span className="text-[10px] text-white/40 uppercase tracking-wider">Score</span>
+                <span className="text-caption text-white/40 uppercase tracking-wider">Score</span>
               </div>
             </div>
           </div>

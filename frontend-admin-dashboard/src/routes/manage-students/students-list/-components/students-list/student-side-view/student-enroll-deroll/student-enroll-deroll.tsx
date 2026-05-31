@@ -288,9 +288,9 @@ export const StudentEnrollDeroll = () => {
             <AlertDialog open={isActionModalOpen} onOpenChange={setIsActionModalOpen}>
                 <AlertDialogContent className="rounded-2xl border-neutral-100 shadow-2xl overflow-hidden p-0 gap-0">
                     <div className="h-2 w-full bg-rose-500" />
-                    <div className="p-6">
+                    <div className="p-4 sm:p-6">
                         <AlertDialogHeader>
-                            <AlertDialogTitle className="flex items-center gap-3 text-2xl font-bold text-neutral-800">
+                            <AlertDialogTitle className="flex items-center gap-3 text-h3 font-bold text-neutral-800 sm:text-h2">
                                 {handleActionIcon(currentAction?.label || '')}
                                 {currentAction?.label}
                             </AlertDialogTitle>

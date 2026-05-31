@@ -48,6 +48,7 @@ export interface ActivityContent {
     question_slides: QuestionSlide[];
     assignment_slides: AssignmentSlide[];
     video_slides_questions: VideoSlideQuestion[];
+    quiz_sides?: QuizSlide[];
 }
 export interface QuestionSlide {
     id: string;
@@ -65,6 +66,17 @@ export interface AssignmentSlide {
     marks: number | null;
     feedback: string | null;
     checked_file_id: string | null;
+    late_submission?: boolean | null;
+}
+
+export interface QuizSlide {
+    id: string;
+    response_json: string;
+    response_status: string;
+    question_id: string;
+    activity_id: string;
+    instructor_feedback?: string | null;
+    instructor_feedback_file_id?: string | null;
 }
 
 export interface VideoSlideQuestion {

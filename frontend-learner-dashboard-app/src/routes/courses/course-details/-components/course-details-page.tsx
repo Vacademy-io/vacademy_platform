@@ -635,7 +635,7 @@ export const CourseDetailsPage = () => {
                     courseId={searchParams.courseId || ""}
                 />
                 {/* Top Banner */}
-                <div className="relative min-h-[200px] sm:min-h-[250px] md:min-h-[300px]">
+                <div className="relative min-h-48 sm:min-h-64 md:min-h-72">
                     {/* Transparent black overlay */}
                     {form.watch("courseData").courseBannerMediaId ? (
                         <div className="pointer-events-none absolute inset-0 z-10 bg-black/50" />
@@ -723,7 +723,7 @@ export const CourseDetailsPage = () => {
                                             form.watch("courseData")
                                                 .courseMediaId
                                         }
-                                        className="!w-full sm:!w-[320px] md:!w-[370px] lg:!w-[370px]"
+                                        className="!w-full sm:!w-80 md:!w-96 lg:!w-96"
                                     />
                                 </div>
                             )}
@@ -841,7 +841,7 @@ export const CourseDetailsPage = () => {
                             )}
                             {/* Enroll Button Card - shown above CourseStructureDetails for smaller screens */}
                             <div className="lg:hidden mb-6">
-                                <div className="w-full max-w-[350px] rounded-lg border bg-white p-4 sm:p-6 shadow-lg">
+                                <div className="w-full max-w-reg-350 rounded-lg border bg-white p-4 sm:p-6 shadow-lg">
                                     {/* Course Stats */}
                                     <h2 className="mb-3 sm:mb-4 text-base sm:text-lg font-bold line-clamp-2">
                                         {form.getValues("courseData").title}
@@ -1063,7 +1063,7 @@ export const CourseDetailsPage = () => {
                                                                         instructor.email
                                                                     }
                                                                 />
-                                                                <AvatarFallback className="bg-[#3B82F6] text-xs font-medium text-white">
+                                                                <AvatarFallback className="bg-info-500 text-xs font-medium text-white">
                                                                     {getInitials(
                                                                         instructor.email
                                                                     )}
@@ -1083,7 +1083,7 @@ export const CourseDetailsPage = () => {
                         </div>
 
                         {/* Right Column - Full width on mobile, 1/3 on larger screens */}
-                        <div className="hidden lg:block max-w-[350px] lg:w-1/3 lg:max-w-sm mb-12">
+                        <div className="hidden lg:block max-w-reg-350 lg:w-1/3 lg:max-w-sm mb-12">
                             <CourseStatsSidebar
                                 title={form.getValues("courseData").title}
                                 levelOptions={levelOptions}

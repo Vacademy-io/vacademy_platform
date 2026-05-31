@@ -27,12 +27,20 @@ export interface ProductPageInviteMappingResponse {
 
 export interface ProductPageAggregatedField {
     field: {
+        /** InstituteCustomField PK */
         id: string;
-        field_key: string;
-        field_name: string;
-        field_type: string;
-        is_mandatory: boolean;
-        form_order: number;
+        /** CustomFields PK — used as the customFieldId for add/remove API calls */
+        field_id: string;
+        /** CustomFieldDTO serializes camelCase (no @JsonNaming on that class) */
+        custom_field: {
+            id: string;
+            fieldKey: string;
+            fieldName: string;
+            fieldType: string;
+            isMandatory: boolean | null;
+            formOrder: number | null;
+        } | null;
+        is_mandatory: boolean | null;
     };
     enroll_invite_ids: string[];
 }
@@ -71,7 +79,7 @@ export interface ProductPageRequest {
 export interface ProductPageSettings {
     defaultStep: 'CATALOG' | 'CART' | 'PAYMENT';
     allowCourseDeselection: boolean;
-    gtmContainerId: string;
+    gtmContainerId?: string;
     tnc: {
         enabled: boolean;
         content: string;
@@ -90,17 +98,22 @@ export interface ProductPageSettings {
     coupon: {
         enabled: boolean;
     };
+    afterPaymentRedirectUrl?: string;
+    showLoginButton?: boolean;
+    successPageContent?: string;
 }
 
 export const DEFAULT_PRODUCT_PAGE_SETTINGS: ProductPageSettings = {
     defaultStep: 'CATALOG',
     allowCourseDeselection: true,
-    gtmContainerId: '',
     tnc: { enabled: false, content: '', externalUrl: '' },
     invoice: { enabled: true, channels: ['EMAIL'] },
     suggestedCourses: { enabled: false, heading: 'People also buy' },
     disableBackNavigation: false,
     coupon: { enabled: false },
+    afterPaymentRedirectUrl: '',
+    showLoginButton: true,
+    successPageContent: '',
 };
 
 export interface ProductPageCouponRequest {

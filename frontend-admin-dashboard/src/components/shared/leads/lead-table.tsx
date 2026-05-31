@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import {
     Envelope,
     Phone,
@@ -71,10 +71,19 @@ interface Col {
 
 const relativeTime = (iso?: string | null) => {
     if (!iso) return '';
-    const d = new Date(iso);
+    // Backend serialises every Timestamp as a bare ISO string with NO timezone
+    // marker (the raw DB wall-clock value). The convention here is to treat that
+    // value as UTC and convert to the browser's local timezone for display, so
+    // an IST user sees the right wall-clock for a row stored in UTC.
+    const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(iso);
+    const normalized = hasTimezone ? iso : `${iso.replace(' ', 'T')}Z`;
+    const d = new Date(normalized);
     if (Number.isNaN(d.getTime())) return '';
-    if (d.toDateString() === new Date().toDateString()) return `Today at ${format(d, 'h:mm a')}`;
-    return formatDistanceToNow(d, { addSuffix: true });
+    // Always show an absolute date + clock — never "X hours ago" or "Today at …" —
+    // so the lead-name subtitle / activity timestamp are unambiguous at a glance.
+    // Year suffix only when it differs from today (e.g. "12 Aug 2025, 4:30 PM").
+    const isCurrentYear = d.getFullYear() === new Date().getFullYear();
+    return format(d, isCurrentYear ? 'd MMM, h:mm a' : 'd MMM yyyy, h:mm a');
 };
 
 /** Compact, premium one-line activity cell (latest note + add affordance). */
@@ -293,28 +302,45 @@ export function LeadTable({
             thClass: 'w-28',
             show: showOps,
             interactive: true,
-            render: (vm, profile) =>
-                vm.userId ? (
+            render: (vm, profile) => {
+                if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
+                const explicitTier = profile?.lead_tier;
+                const derivedTier =
+                    !explicitTier && profile?.best_score != null
+                        ? profile.best_score >= 80
+                            ? 'HOT'
+                            : profile.best_score >= 50
+                              ? 'WARM'
+                              : 'COLD'
+                        : undefined;
+                return (
                     <LeadInlineSelect
-                        value={profile?.lead_tier}
+                        value={explicitTier ?? derivedTier}
                         options={LEAD_TIER_OPTIONS}
                         placeholder="Set tier"
                         onChange={(t) => actions.onSetTier?.(vm.userId!, vm.name, t as LeadTier)}
                     />
-                ) : (
-                    <span className="text-sm text-neutral-300">—</span>
-                ),
+                );
+            },
         },
         {
             id: 'reachout',
-            header: 'Reach out by',
+            header: 'Reach out in',
             thClass: 'min-w-36',
             show: showOps,
-            render: (vm) => <SlaDeadlineCell dueAt={vm.tatDueAt} overdue={vm.tatOverdue} />,
+            render: (vm) => (
+                <SlaDeadlineCell
+                    mode="response"
+                    dueAt={vm.tatDueAt}
+                    overdue={vm.tatOverdue}
+                    respondedAt={vm.firstResponseAt}
+                    baselineAt={vm.submittedIso}
+                />
+            ),
         },
         {
             id: 'followup',
-            header: 'Follow up by',
+            header: 'Follow up at',
             thClass: 'min-w-36',
             show: showOps,
             render: (vm) => (
@@ -380,7 +406,7 @@ export function LeadTable({
                 vm.userId ? (
                     <ActivityCell
                         summary={notesOf(vm)}
-                        onAdd={() => actions.onAddNote?.(vm.userId!, vm.name)}
+                        onAdd={() => actions.onAddNote?.(vm.userId!, vm.name, vm.responseId)}
                     />
                 ) : (
                     <span className="text-sm text-neutral-300">—</span>

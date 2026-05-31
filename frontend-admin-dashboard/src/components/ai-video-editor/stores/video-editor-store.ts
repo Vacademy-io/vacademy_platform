@@ -17,12 +17,15 @@ import {
 } from '../utils/caption-rendering';
 
 /**
- * Which backend table this timeline lives in. `'reel'` routes `/frame/*`
- * saves to `/external/reels/v1/frame/*` (which updates
- * `ai_reels.s3_urls.time_based_frame`) instead of the AI-gen-video table.
+ * Which backend table this timeline lives in + which `/frame/*` base
+ * `saveChanges` hits:
+ *   'video'  → `/external/video/v1/frame/*`  (ai_gen_video)
+ *   'reel'   → `/external/reels/v1/frame/*`  (ai_reels)
+ *   'studio' → `/external/studio/v1/builds/{id}/frame/*` (ai_studio_builds;
+ *              the build id is passed as `videoId`, in the PATH not the body)
  * Defaults to `'video'` for compatibility with every existing caller.
  */
-export type EditorKind = 'video' | 'reel';
+export type EditorKind = 'video' | 'reel' | 'studio';
 
 export interface InitParams {
     videoId: string;
@@ -82,6 +85,40 @@ function persistViewMode(m: ViewMode): void {
     if (typeof window === 'undefined') return;
     try {
         window.localStorage.setItem(VIEW_MODE_LS_KEY, m);
+    } catch {
+        /* private mode — fine, just won't persist */
+    }
+}
+
+// ── Timeline zoom (px-per-second) ───────────────────────────────────────────
+//
+// Horizontal zoom for the timeline. Stored as an absolute pixels-per-second
+// value (NOT a multiplier) so the playhead, ticks, and content width all share
+// one source of truth and don't drift when the viewport resizes. `null` means
+// "fit to viewport width" — the default, identical to the pre-zoom behaviour.
+// Persisted to localStorage like viewMode (per-device).
+
+export const MIN_PX_PER_SEC = 2;
+export const MAX_PX_PER_SEC = 400;
+const TIMELINE_ZOOM_LS_KEY = 'vx-timeline-zoom';
+
+function loadTimelineZoom(): number | null {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(TIMELINE_ZOOM_LS_KEY);
+        if (raw == null || raw === 'fit') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    } catch {
+        return null;
+    }
+}
+
+function persistTimelineZoom(px: number | null): void {
+    if (typeof window === 'undefined') return;
+    try {
+        if (px == null) window.localStorage.setItem(TIMELINE_ZOOM_LS_KEY, 'fit');
+        else window.localStorage.setItem(TIMELINE_ZOOM_LS_KEY, String(px));
     } catch {
         /* private mode — fine, just won't persist */
     }
@@ -394,6 +431,10 @@ export interface VideoEditorState {
      *  them. Both modes expose every underlying control. */
     viewMode: ViewMode;
 
+    /** Timeline horizontal zoom in pixels-per-second. `null` = fit-to-width
+     *  (default). Persisted to localStorage. */
+    timelineZoom: number | null;
+
     /** Per-entry user-set display names ({entryId: name}). Persisted to
      *  localStorage keyed by videoId; not yet sent to the backend. Empty
      *  string / missing key falls back to the derived friendly name. */
@@ -494,6 +535,13 @@ export interface VideoEditorState {
      *  (advanced pre-expanded, tag-name badges visible) presentation. */
     setViewMode: (m: ViewMode) => void;
     toggleViewMode: () => void;
+
+    /** Set timeline zoom in px/sec, or `null` to fit-to-width. */
+    setTimelineZoom: (pxPerSec: number | null) => void;
+    /** Multiply the current effective zoom by `factor` (clamped). Pass the
+     *  current fit px/sec as `currentFitPxPerSec` so a first zoom from
+     *  fit-mode (`timelineZoom === null`) starts from the visible scale. */
+    zoomTimelineBy: (factor: number, currentFitPxPerSec: number) => void;
 
     /** Set a user-chosen display name for an entry. Empty string clears the
      *  override and falls back to the auto-derived friendly name. Persists to
@@ -637,6 +685,16 @@ export interface VideoEditorState {
     regenerateShot: (shotIdx: number, newText: string) => Promise<{ ok: boolean; error?: string }>;
 
     /**
+     * Mute one shot's audio — replace its narration window with silence of
+     * equal length. Duration-neutral (no ripple): the slot and all downstream
+     * timing are preserved. The shot stays in `meta.shots[]` with empty
+     * text/audio so the user can re-narrate it later. Also sets the matching
+     * entry's per-entry audio ref to `policy: 'silent'`. Refuses (ok:false)
+     * for `intrinsic_only` shots.
+     */
+    silenceShot: (shotIdx: number) => Promise<{ ok: boolean; error?: string }>;
+
+    /**
      * Generate a new HTML shot to fill `[gapStart, gapEnd]` on the
      * timeline. Server uses the narration in that range as the LLM's
      * primary script and combines it with the optional `userHint` for
@@ -752,6 +810,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     selectedLayerPath: null,
     isPreviewMode: false,
     viewMode: loadViewMode(),
+    timelineZoom: loadTimelineZoom(),
     displayNames: {},
     dirtyEntryIds: [],
     htmlEditedEntryIds: [],
@@ -956,6 +1015,19 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         const next: ViewMode = get().viewMode === 'simple' ? 'developer' : 'simple';
         persistViewMode(next);
         set({ viewMode: next });
+    },
+
+    setTimelineZoom: (pxPerSec) => {
+        const next =
+            pxPerSec == null ? null : Math.max(MIN_PX_PER_SEC, Math.min(MAX_PX_PER_SEC, pxPerSec));
+        persistTimelineZoom(next);
+        set({ timelineZoom: next });
+    },
+    zoomTimelineBy: (factor, currentFitPxPerSec) => {
+        const base = get().timelineZoom ?? currentFitPxPerSec;
+        const next = Math.max(MIN_PX_PER_SEC, Math.min(MAX_PX_PER_SEC, base * factor));
+        persistTimelineZoom(next);
+        set({ timelineZoom: next });
     },
 
     setEntryDisplayName: (entryId, name) => {
@@ -1510,11 +1582,17 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         // Reels and AI-gen videos live in different DB tables, so frame
         // saves go to different endpoints. The payload shape diverges in
         // exactly one place: reels expect `reel_id` instead of `video_id`.
+        // Studio puts the build id in the PATH (not the body), so its
+        // frameBase embeds `videoId` (= build id) and the body's id field is
+        // harmless/ignored. Reels + video carry the id in the body.
         const isReel = kind === 'reel';
-        const frameBase = isReel
-            ? `${AI_SERVICE_BASE_URL}/external/reels/v1/frame`
-            : `${AI_SERVICE_BASE_URL}/external/video/v1/frame`;
-        const idField = isReel ? 'reel_id' : 'video_id';
+        const isStudio = kind === 'studio';
+        const frameBase = isStudio
+            ? `${AI_SERVICE_BASE_URL}/external/studio/v1/builds/${videoId}/frame`
+            : isReel
+              ? `${AI_SERVICE_BASE_URL}/external/reels/v1/frame`
+              : `${AI_SERVICE_BASE_URL}/external/video/v1/frame`;
+        const idField = isReel ? 'reel_id' : isStudio ? 'build_id' : 'video_id';
 
         // Collect entries that need saving
         const toSave = entries.filter(
@@ -2033,6 +2111,25 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 }
                 return sent;
             });
+            // Mirror the server's per-entry audio ref ("entry owns its audio
+            // clip") onto the base entry that maps 1:1 to the edited shot
+            // (lowest-z non-branding entry starting at the shot's start).
+            const audioRef = {
+                clip_url: updatedShot.audio_url ?? '',
+                duration_s: updatedShot.audio_duration_s ?? updatedShot.duration ?? 0,
+                policy: 'narration_only' as const,
+            };
+            let matchEntryId: string | null = null;
+            let matchZ = Number.POSITIVE_INFINITY;
+            for (const e of s.entries) {
+                if (e.id?.startsWith('branding-')) continue;
+                if (e.inTime == null || Math.abs(e.inTime - oldStart) > 0.05) continue;
+                const z = typeof e.z === 'number' ? e.z : 0;
+                if (z < matchZ) {
+                    matchZ = z;
+                    matchEntryId = e.id;
+                }
+            }
             const updatedEntries = s.entries.map((e) => {
                 const next = { ...e };
                 let mutated = false;
@@ -2042,6 +2139,10 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 }
                 if (e.exitTime != null && e.exitTime >= oldEnd - epsilon) {
                     next.exitTime = e.exitTime + duration_delta;
+                    mutated = true;
+                }
+                if (e.id === matchEntryId) {
+                    next.audio = audioRef;
                     mutated = true;
                 }
                 return mutated ? next : e;
@@ -2058,6 +2159,86 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     shots: updatedShots,
                     sentences: updatedSentences,
                     total_duration: newTotal,
+                },
+                entries: updatedEntries,
+            };
+        });
+        return { ok: true };
+    },
+
+    silenceShot: async (shotIdx) => {
+        const { videoId, apiKey, regeneratingShotIdx, regeneratingSentenceId, meta } = get();
+        // Shares the master audio with sentence/shot regen — one in-flight at a time.
+        if (regeneratingShotIdx != null || regeneratingSentenceId != null) {
+            return { ok: false, error: 'Another regen is already in flight' };
+        }
+        if (!videoId || !apiKey) {
+            return { ok: false, error: 'Video not initialized' };
+        }
+        const shots = meta.shots ?? [];
+        const targetIdx = shots.findIndex((s) => s.shot_idx === shotIdx);
+        if (targetIdx === -1) {
+            return { ok: false, error: `Shot ${shotIdx} not found` };
+        }
+        const target = shots[targetIdx];
+        if (!target) {
+            return { ok: false, error: `Shot ${shotIdx} not found` };
+        }
+        if (target.audio_policy === 'intrinsic_only') {
+            return {
+                ok: false,
+                error: 'This shot carries intrinsic audio (source clip / Veo) — it cannot be muted here.',
+            };
+        }
+
+        set({ regeneratingShotIdx: shotIdx });
+        const { apiSilenceShot } = await import('../utils/sentence-api');
+        const result = await apiSilenceShot(videoId, apiKey, shotIdx);
+
+        if (!result.ok) {
+            set({ regeneratingShotIdx: null });
+            return { ok: false, error: result.error };
+        }
+
+        const { shot: silencedShot, new_global_audio_url } = result.data;
+        // Silence preserves total length → no shot/sentence/entry ripple. Only
+        // the target shot, the master audio URL, and the matching entry's
+        // per-entry audio ref (→ 'silent') change.
+        set((s) => {
+            const matchStart = silencedShot.start_time;
+            let matchEntryId: string | null = null;
+            let matchZ = Number.POSITIVE_INFINITY;
+            for (const e of s.entries) {
+                if (e.id?.startsWith('branding-')) continue;
+                if (e.inTime == null || Math.abs(e.inTime - matchStart) > 0.05) continue;
+                const z = typeof e.z === 'number' ? e.z : 0;
+                if (z < matchZ) {
+                    matchZ = z;
+                    matchEntryId = e.id;
+                }
+            }
+            const updatedEntries = matchEntryId
+                ? s.entries.map((e) =>
+                      e.id === matchEntryId
+                          ? {
+                                ...e,
+                                audio: {
+                                    clip_url: '',
+                                    duration_s: silencedShot.duration ?? 0,
+                                    policy: 'silent' as const,
+                                },
+                            }
+                          : e
+                  )
+                : s.entries;
+            return {
+                regeneratingShotIdx: null,
+                audioUrl: new_global_audio_url || s.audioUrl,
+                meta: {
+                    ...s.meta,
+                    shots: (s.meta.shots ?? []).map((sh, i) =>
+                        i === targetIdx ? silencedShot : sh
+                    ),
                 },
                 entries: updatedEntries,
             };
@@ -2170,7 +2351,15 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     },
 
     loadCaptionWords: async () => {
-        const { wordsUrl } = get();
+        const { wordsUrl, meta } = get();
+        // narration.words.json times are MP3-relative (t=0 at narration start),
+        // but the editor's whole clock is the master timeline. When an intro
+        // exists the narration starts at `audio_start_at`, so we lift every word
+        // onto the master clock here (the render server does the equivalent via
+        // `audio_delay`; the read-only player instead subtracts audio_start_at
+        // from its clock). Doing it once at load keeps the timeline caption
+        // pills AND the live karaoke overlay aligned with everything else.
+        const audioStartAt = meta.audio_start_at ?? 0;
         if (!wordsUrl) {
             set({ captionWords: [], captionPhrases: [] });
             return;
@@ -2201,8 +2390,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 )
                 .map((w) => ({
                     word: String(w.word),
-                    start: Number(w.start),
-                    end: Number(w.end),
+                    start: Number(w.start) + audioStartAt,
+                    end: Number(w.end) + audioStartAt,
                 }));
             set({ captionWords: validWords, captionPhrases: buildPhrases(validWords) });
         } catch (err) {

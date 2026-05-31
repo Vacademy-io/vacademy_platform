@@ -1,12 +1,12 @@
 import React from "react";
 import {
   Lightbulb,
-  FileQuestion,
+  FileDashed,
   BookOpen,
-  MessageSquareQuote,
+  ChatCircleText,
   Repeat,
-  HelpCircle,
-} from "lucide-react";
+  Question,
+} from "@phosphor-icons/react";
 import { MessageIntent } from "@/services/chatbot-api";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
       },
       {
         label: "Quiz me",
-        icon: FileQuestion,
+        icon: FileDashed,
         prompt: "Quiz me on ",
         intent: "practice",
       },
@@ -65,7 +65,7 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
       },
       {
         label: "Prerequisites",
-        icon: HelpCircle,
+        icon: Question,
         prompt: "What are the prerequisites for this course?",
         intent: "doubt",
       },
@@ -84,7 +84,7 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
       },
       {
         label: "Explain concept",
-        icon: MessageSquareQuote,
+        icon: ChatCircleText,
         prompt: "Explain the concept being tested in this question",
         intent: "doubt",
       },
@@ -101,13 +101,13 @@ export const getQuickActions = (pathname: string): QuickAction[] => {
     },
     {
       label: "Ask a doubt",
-      icon: HelpCircle,
+      icon: Question,
       prompt: "I have a question about ",
       intent: "doubt",
     },
     {
       label: "Practice",
-      icon: FileQuestion,
+      icon: FileDashed,
       prompt: "Quiz me on ",
       intent: "practice",
     },
@@ -151,8 +151,8 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
           className={cn(
             "inline-flex items-center font-medium rounded-full transition-colors disabled:opacity-50",
             compact
-              ? "h-5 px-2 text-[10px] text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20"
-              : "h-6 px-2.5 text-[11px] text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20",
+              ? "h-5 px-2 text-caption text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20"
+              : "h-6 px-2.5 text-caption text-muted-foreground bg-muted/50 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20",
           )}
         >
           <action.icon

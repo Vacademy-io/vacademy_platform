@@ -42,7 +42,7 @@ export function NotifcationCard({
                 {title}
               </h3>
               {isNew && (
-                <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] px-1.5 h-5 flex-shrink-0">
+                <Badge variant="secondary" className="bg-primary/10 text-primary text-caption px-1.5 h-5 flex-shrink-0">
                   New
                 </Badge>
               )}

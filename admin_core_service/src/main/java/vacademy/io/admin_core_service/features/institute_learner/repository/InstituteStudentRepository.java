@@ -256,6 +256,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.expiry_date AS "expiryDate",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
+          s.billing_contact_name AS "billingContactName",
+          s.billing_contact_email AS "billingContactEmail",
+          s.billing_contact_role AS "billingContactRole",
           ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
           ssigm.institute_id AS "instituteId",
           ssigm.group_id AS "groupId",
@@ -336,7 +339,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+               s.billing_contact_role, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
@@ -437,6 +441,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.expiry_date AS "expiryDate",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
+          s.billing_contact_name AS "billingContactName",
+          s.billing_contact_email AS "billingContactEmail",
+          s.billing_contact_role AS "billingContactRole",
           ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
           ssigm.institute_id AS "instituteId",
           ssigm.group_id AS "groupId",
@@ -525,7 +532,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+               s.billing_contact_role, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
@@ -759,6 +767,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.expiry_date AS "expiryDate",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
+          s.billing_contact_name AS "billingContactName",
+          s.billing_contact_email AS "billingContactEmail",
+          s.billing_contact_role AS "billingContactRole",
           ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
           ssigm.institute_id AS "instituteId",
           ssigm.group_id AS "groupId",
@@ -847,7 +858,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+               s.billing_contact_role, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
@@ -958,6 +970,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.expiry_date AS "expiryDate",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
+          s.billing_contact_name AS "billingContactName",
+          s.billing_contact_email AS "billingContactEmail",
+          s.billing_contact_role AS "billingContactRole",
           ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
           ssigm.institute_id AS "instituteId",
           ssigm.group_id AS "groupId",
@@ -1063,7 +1078,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+               s.billing_contact_role, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
@@ -1179,6 +1195,19 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
    * Find all student records for a specific user ID
    */
   List<Student> findByUserId(String userId);
+
+  /**
+   * Find student records for a user scoped to a single institute (via SSIGM).
+   * Used by the billing-contact resolver so that a user enrolled in multiple
+   * institutes does not leak one institute's billing contact into another
+   * institute's outbound emails.
+   */
+  @Query(value = "SELECT DISTINCT s.* FROM student s " +
+                 "JOIN student_session_institute_group_mapping ssigm ON ssigm.user_id = s.user_id " +
+                 "WHERE s.user_id = :userId AND ssigm.institute_id = :instituteId",
+         nativeQuery = true)
+  List<Student> findByUserIdAndInstituteId(@Param("userId") String userId,
+                                           @Param("instituteId") String instituteId);
 
   // ── Lightweight paginated student user IDs (no payment_log/custom-field JOIN) ──
   // Only used when paymentStatuses filter is NOT active. The join to payment_log was
@@ -1770,6 +1799,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.expiry_date AS "expiryDate",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
+          s.billing_contact_name AS "billingContactName",
+          s.billing_contact_email AS "billingContactEmail",
+          s.billing_contact_role AS "billingContactRole",
           ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
           ssigm.institute_id AS "instituteId",
           ssigm.group_id AS "groupId",
@@ -1818,7 +1850,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+               s.billing_contact_role, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json,
                up.payment_option_json, ssigm.destination_package_session_id,
                ssigm.user_plan_id, up.enroll_invite_id, ei.name,
@@ -1872,6 +1905,9 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.expiry_date AS "expiryDate",
           s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
           s.parents_to_mother_email AS "parentsToMotherEmail",
+          s.billing_contact_name AS "billingContactName",
+          s.billing_contact_email AS "billingContactEmail",
+          s.billing_contact_role AS "billingContactRole",
           ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
           ssigm.institute_id AS "instituteId",
           ssigm.group_id AS "groupId",
@@ -1922,13 +1958,20 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
                s.parents_mobile_number, s.parents_email, s.linked_institute_name,
                s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
-               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               s.parents_to_mother_email, s.billing_contact_name, s.billing_contact_email,
+               s.billing_contact_role, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status,
                ssigm.destination_package_session_id, ssigm.user_plan_id,
                ssigm.source, ssigm.type, ssigm.type_id, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
-      ORDER BY s.user_id, ssigm.enrolled_date DESC NULLS LAST
+      ORDER BY s.user_id,
+               CASE
+                   WHEN ssigm.status = 'ACTIVE' THEN 0
+                   WHEN ssigm.status = 'INACTIVE' THEN 1
+                   ELSE 2
+               END,
+               ssigm.enrolled_date DESC NULLS LAST
       """)
   List<StudentListV2Projection> getStudentSlimDataForUserIds(
       @Param("userIds") List<String> userIds,

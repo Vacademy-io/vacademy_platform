@@ -794,7 +794,7 @@ const AudienceResponseForm = ({
                     scale="large"
                     layoutVariant="default"
                     disabled={loading}
-                    className="min-w-[120px]"
+                    className="min-w-32"
                   >
                     {loading ? "Submitting..." : "Submit Response"}
                   </MyButton>

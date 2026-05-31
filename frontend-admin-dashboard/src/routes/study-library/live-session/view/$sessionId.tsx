@@ -4,40 +4,45 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
+import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, processRecording, getTranscriptionStatus } from '../-services/utils';
-import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus } from '../-services/utils';
+import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
+// Migrated from lucide-react to @phosphor-icons/react per design-system
+// governance (`docs/design-system/06-governance.md` — banned-icon-library
+// rule). Phosphor uses slightly different names for some glyphs, so
+// `as`-aliases keep all existing usage sites untouched.
 import {
-    CalendarRange,
+    CalendarDots as CalendarRange,
     Timer,
-    UsersRound,
-    Link2,
+    UsersThree as UsersRound,
+    Link as Link2,
     MonitorPlay,
     MapPin,
-    Edit,
+    PencilSimple as Edit,
     ArrowLeft,
-    CheckCircle2,
+    CheckCircle as CheckCircle2,
     Copy,
     Bell,
     FileText,
-    Share2,
+    ShareNetwork as Share2,
     List,
     Calendar as CalendarIcon,
     Users,
-    Video,
+    VideoCamera as Video,
     Play,
-    Download,
+    DownloadSimple as Download,
     Clock,
-    RefreshCw,
-    CloudDownload,
-    AlertTriangle,
+    ArrowsClockwise as RefreshCw,
+    CloudArrowDown as CloudDownload,
+    Warning as AlertTriangle,
     FileAudio,
-    Languages,
-} from 'lucide-react';
+    Translate as Languages,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { SessionCalendarView } from '../-components/session-calendar-view';
 import { format, addMinutes, isAfter, isBefore, parseISO } from 'date-fns';
@@ -546,7 +551,7 @@ function ViewLiveSession() {
     if (error || !sessionData) {
         return (
             <LayoutContainer>
-                <div className="flex h-[calc(100vh-100px)] items-center justify-center">
+                <div className="flex min-h-screen items-center justify-center">
                     <div className="text-center">
                         <h2 className="text-2xl font-bold text-destructive">Error</h2>
                         <p className="mt-2 text-muted-foreground">
@@ -793,7 +798,7 @@ function ViewLiveSession() {
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                                <TableHead className="pl-6 w-[50%]">Field Label</TableHead>
+                                                <TableHead className="pl-6 w-1/2">Field Label</TableHead>
                                                 <TableHead>Type</TableHead>
                                                 <TableHead className="text-right pr-6">Required</TableHead>
                                             </TableRow>
@@ -805,13 +810,13 @@ function ViewLiveSession() {
                                                         {field.label}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge variant="secondary" className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                                                        <Badge variant="secondary" className="font-mono text-xs uppercase tracking-wider text-muted-foreground/80">
                                                             {field.type}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right pr-6">
                                                         {field.required ? (
-                                                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px] font-medium uppercase tracking-wider">
+                                                            <Badge variant="destructive" className="h-5 px-1.5 text-xs font-medium uppercase tracking-wider">
                                                                 Required
                                                             </Badge>
                                                         ) : (
@@ -1433,7 +1438,7 @@ function ViewLiveSession() {
                                             <div className="flex items-center justify-between">
                                                 <Badge
                                                     variant="outline"
-                                                    className="border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-wider text-primary"
+                                                    className="border-primary/20 bg-primary/5 text-xs font-semibold uppercase tracking-wider text-primary"
                                                 >
                                                     {notification.type.replace(/_/g, ' ')}
                                                 </Badge>
@@ -1446,13 +1451,13 @@ function ViewLiveSession() {
                                             </div>
                                             <div className="flex flex-wrap gap-2">
                                                 {notification.notifyBy.mail && (
-                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-[10px] font-medium">
+                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-xs font-medium">
                                                         <div className="size-1.5 rounded-full bg-blue-500" />
                                                         Email
                                                     </Badge>
                                                 )}
                                                 {notification.notifyBy.whatsapp && (
-                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-[10px] font-medium">
+                                                    <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-xs font-medium">
                                                         <div className="size-1.5 rounded-full bg-green-500" />
                                                         WhatsApp
                                                     </Badge>
@@ -1478,7 +1483,7 @@ function ViewLiveSession() {
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Thumbnail</span>
-                                                <Badge variant="outline" className="text-[10px] text-green-600 border-green-200 bg-green-50">Attached</Badge>
+                                                <Badge variant="outline" className="text-xs text-green-600 border-green-200 bg-green-50">Attached</Badge>
                                             </div>
                                             {thumbnailUrl ? (
                                                 <div className="group relative aspect-video w-full overflow-hidden rounded-md border bg-muted shadow-sm">
@@ -1569,7 +1574,7 @@ function InfoItem({
                 {icon}
             </div>
             <div className="flex-1 space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors group-hover:text-muted-foreground">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors group-hover:text-muted-foreground">
                     {label}
                 </div>
                 <div className="text-sm font-medium text-foreground">{value}</div>
@@ -1682,8 +1687,24 @@ function RecordingTranscribeAction({
     const [errorMessage, setErrorMessage] = useState<string | undefined>(rec.transcriptionError);
     const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
     const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
+    // When the teacher reuses a past paper from the Transcript dialog, we
+    // stash the artifact here and pass it as `initialArtifact` so the
+    // assessment modal opens straight into Preview state — skipping the
+    // form + LLM call.
+    const [reuseArtifact, setReuseArtifact] = useState<AssessmentArtifact | null>(null);
     const [sourceTextUrl, setSourceTextUrl] = useState<string | undefined>();
     const [englishTextUrl, setEnglishTextUrl] = useState<string | undefined>();
+    // Cached LLM-generated study notes. Populated from the transcription
+    // status response and refreshed whenever the user regenerates (the
+    // dialog calls saveStudyNotes and returns the updated row).
+    const [savedNotesMarkdown, setSavedNotesMarkdown] = useState<string | undefined>();
+    const [savedNotesGeneratedAt, setSavedNotesGeneratedAt] = useState<string | undefined>();
+
+    // Institute-level kill switch for the transcription feature. Defaults to
+    // false (see `DEFAULT_LIVE_SESSION_SETTINGS.recordingTranscriptionEnabled`)
+    // so transcription stays opt-in until an admin turns it on in
+    // Settings → Live Session Settings → Recording Transcription.
+    const { settings: liveSessionSettings } = useLiveSessionSettings();
 
     const handleData = useCallback((data: RecordingTranscriptionStatus) => {
         setStatus(data.status);
@@ -1691,6 +1712,8 @@ function RecordingTranscribeAction({
         setErrorMessage(data.errorMessage ?? undefined);
         setSourceTextUrl(data.sourceTextUrl ?? undefined);
         setEnglishTextUrl(data.englishTextUrl ?? undefined);
+        setSavedNotesMarkdown(data.savedNotesMarkdown ?? undefined);
+        setSavedNotesGeneratedAt(data.savedNotesGeneratedAt ?? undefined);
     }, []);
 
     // Alert the user on the RUNNING → COMPLETED transition. Two channels:
@@ -1805,25 +1828,47 @@ function RecordingTranscribeAction({
                 <TranscriptActionsDialog
                     open={transcriptModalOpen}
                     onOpenChange={setTranscriptModalOpen}
+                    scheduleId={rec.scheduleId}
+                    recordingId={rec.recordingId}
                     sourceTextUrl={sourceTextUrl}
                     englishTextUrl={englishTextUrl}
                     detectedLanguage={detectedLanguage}
                     recordingTitle={rec.recordingId}
+                    savedNotesMarkdown={savedNotesMarkdown}
+                    savedNotesGeneratedAt={savedNotesGeneratedAt}
+                    onSavedNotesChange={(markdown, generatedAt) => {
+                        setSavedNotesMarkdown(markdown);
+                        setSavedNotesGeneratedAt(generatedAt);
+                    }}
                     onCreateAssessment={() => {
+                        setReuseArtifact(null);
                         setTranscriptModalOpen(false);
+                        setAssessmentModalOpen(true);
+                    }}
+                    onOpenArtifact={(artifact) => {
+                        setReuseArtifact(artifact);
                         setAssessmentModalOpen(true);
                     }}
                 />
 
                 <CreateAssessmentFromRecordingModal
                     open={assessmentModalOpen}
-                    onOpenChange={setAssessmentModalOpen}
+                    onOpenChange={(next) => {
+                        setAssessmentModalOpen(next);
+                        if (!next) {
+                            // Clear the reuse artifact on close so the next
+                            // "Create Assessment" click lands in the empty
+                            // form state, not Preview with stale data.
+                            setReuseArtifact(null);
+                        }
+                    }}
                     scheduleId={rec.scheduleId}
                     recordingId={rec.recordingId}
                     detectedLanguage={detectedLanguage}
                     batches={batches}
                     sourceTextUrl={sourceTextUrl}
                     englishTextUrl={englishTextUrl}
+                    initialArtifact={reuseArtifact}
                 />
             </>
         );
@@ -1844,6 +1889,16 @@ function RecordingTranscribeAction({
     }
 
     const inFlight = polling || isPending;
+
+    // Hide the "Process Recording" entry point when the institute has the
+    // transcription feature disabled. We only gate the *new-job* affordance —
+    // the COMPLETED / FAILED / RUNNING / QUEUED branches above remain
+    // reachable so existing transcripts stay viewable and in-flight jobs
+    // keep polling regardless of the toggle.
+    if (!liveSessionSettings.recordingTranscriptionEnabled) {
+        return null;
+    }
+
     return (
         <button
             onClick={() => mutate()}

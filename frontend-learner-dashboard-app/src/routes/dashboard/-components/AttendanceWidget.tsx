@@ -41,7 +41,7 @@ function DayDot({
     <div className="flex flex-col items-center gap-1">
       <div
         className={cn(
-          "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold transition-colors",
+          "w-7 h-7 rounded-full flex items-center justify-center text-caption font-semibold transition-colors",
           status === "PRESENT" &&
             "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300",
           status === "ABSENT" &&
@@ -64,7 +64,7 @@ function DayDot({
                 ? "•"
                 : "–"}
       </div>
-      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className="text-caption text-muted-foreground">{label}</span>
     </div>
   );
 }
@@ -149,7 +149,7 @@ export function AttendanceWidget() {
                     setPeriod(p);
                   }}
                   className={cn(
-                    "h-6 px-2 text-[11px] font-medium rounded-md",
+                    "h-6 px-2 text-caption font-medium rounded-md",
                     period === p
                       ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:text-emerald-300 [.ui-play_&]:!bg-white/20 [.ui-play_&]:!text-white"
                       : "text-muted-foreground hover:text-foreground [.ui-play_&]:!text-white/70"
@@ -196,7 +196,7 @@ export function AttendanceWidget() {
                     `${pct}%`
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
+                <div className="text-caption text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
                   Overall
                 </div>
               </div>
@@ -220,7 +220,7 @@ export function AttendanceWidget() {
                     </>
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
+                <div className="text-caption text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
                   Streak
                 </div>
               </div>
@@ -241,7 +241,7 @@ export function AttendanceWidget() {
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
+                <div className="text-caption text-muted-foreground [.ui-play_&]:!text-white/80 mt-0.5">
                   Days Present
                 </div>
               </div>

@@ -1,8 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { GraduationCap, RotateCcw } from "lucide-react";
+import { GraduationCap, ArrowCounterClockwise } from "@phosphor-icons/react";
 import { FormProvider, UseFormReturn, useWatch } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import ComboboxField from "@/components/design-system/combobox-field";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
@@ -96,6 +98,20 @@ export interface InviteData {
 }
 
 // Registration step props interface
+export interface BillingContactState {
+  hasSeparate: boolean;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export const EMPTY_BILLING_CONTACT: BillingContactState = {
+  hasSeparate: false,
+  name: "",
+  email: "",
+  role: "",
+};
+
 export interface RegistrationStepProps {
   /** Course data containing all course-related information */
   courseData: FinalCourseData;
@@ -107,6 +123,12 @@ export interface RegistrationStepProps {
   onSubmit: (values: FormValues) => void;
   /** React Hook Form instance */
   form: UseFormReturn<FormValues>;
+  /** Admin gate: invite enabled "Collect Billing Contact Details" */
+  collectBillingContact?: boolean;
+  /** Controlled billing-contact state (lifted to enroll-form) */
+  billingContact?: BillingContactState;
+  /** Callback fired when any billing-contact field changes */
+  onBillingContactChange?: (next: BillingContactState) => void;
 }
 
 const currencySymbols: { [key: string]: string } = {
@@ -152,7 +174,14 @@ const RegistrationStep = ({
   instituteId,
   onSubmit,
   form,
+  collectBillingContact = false,
+  billingContact = EMPTY_BILLING_CONTACT,
+  onBillingContactChange,
 }: RegistrationStepProps) => {
+  const updateBillingContact = (patch: Partial<BillingContactState>) => {
+    if (!onBillingContactChange) return;
+    onBillingContactChange({ ...billingContact, ...patch });
+  };
   // Sub-step: 0 = fill details, 1 = verify OTP
   const [subStep, setSubStep] = useState(0);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
@@ -287,6 +316,20 @@ const RegistrationStep = ({
     if (!emailRegex.test(email)) {
       toast.error("Please enter a valid email address");
       return;
+    }
+
+    if (collectBillingContact && billingContact.hasSeparate) {
+      const trimmedName = billingContact.name.trim();
+      const trimmedEmail = billingContact.email.trim();
+      const trimmedRole = billingContact.role.trim();
+      if (!trimmedName || !trimmedEmail || !trimmedRole) {
+        toast.error("Please complete the billing contact details");
+        return;
+      }
+      if (!emailRegex.test(trimmedEmail)) {
+        toast.error("Please enter a valid billing contact email");
+        return;
+      }
     }
 
     // If email OTP verification is disabled, skip directly to form submission
@@ -636,7 +679,98 @@ const RegistrationStep = ({
                   );
                 }
               )}
-              
+
+              {collectBillingContact && (
+                <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="billing-contact-toggle"
+                      checked={billingContact.hasSeparate}
+                      onCheckedChange={(checked) =>
+                        updateBillingContact({ hasSeparate: Boolean(checked) })
+                      }
+                      className="mt-1"
+                    />
+                    <label
+                      htmlFor="billing-contact-toggle"
+                      className="flex-1 cursor-pointer select-none"
+                    >
+                      <div className="text-sm font-semibold text-gray-900">
+                        Add a separate billing contact
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Choose this if the person who will receive invoices and
+                        renewal notices for this enrollment is different from
+                        you (e.g. a parent / guardian, your employer, or your
+                        finance team).
+                      </p>
+                    </label>
+                  </div>
+
+                  {billingContact.hasSeparate && (
+                    <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor="billing-contact-name"
+                          className="text-sm font-medium text-gray-800"
+                        >
+                          Billing Contact Full Name
+                          <span className="text-danger-600"> *</span>
+                        </label>
+                        <Input
+                          id="billing-contact-name"
+                          type="text"
+                          value={billingContact.name}
+                          onChange={(e) =>
+                            updateBillingContact({ name: e.target.value })
+                          }
+                          placeholder="First name & last name"
+                          required
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor="billing-contact-email"
+                          className="text-sm font-medium text-gray-800"
+                        >
+                          Billing Contact Email
+                          <span className="text-danger-600"> *</span>
+                        </label>
+                        <Input
+                          id="billing-contact-email"
+                          type="email"
+                          value={billingContact.email}
+                          onChange={(e) =>
+                            updateBillingContact({ email: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor="billing-contact-role"
+                          className="text-sm font-medium text-gray-800"
+                        >
+                          Role
+                          <span className="text-danger-600"> *</span>
+                        </label>
+                        <Input
+                          id="billing-contact-role"
+                          type="text"
+                          value={billingContact.role}
+                          onChange={(e) =>
+                            updateBillingContact({ role: e.target.value })
+                          }
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Next Button */}
               <div className="flex items-center justify-between pt-4">
                 <button
@@ -644,7 +778,7 @@ const RegistrationStep = ({
                   className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
                   onClick={() => form.reset()}
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <ArrowCounterClockwise className="w-4 h-4" />
                   Reset
                 </button>
                 
@@ -655,7 +789,7 @@ const RegistrationStep = ({
                   layoutVariant="default"
                   onClick={handleNextClick}
                   disable={isLoadingOtp || form.formState.isSubmitting}
-                  className="min-w-[140px]"
+                  className="min-w-reg-150"
                 >
                   {isLoadingOtp || form.formState.isSubmitting ? (
                     <>

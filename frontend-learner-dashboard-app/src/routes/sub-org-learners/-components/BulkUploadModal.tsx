@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { UploadSimple, DownloadSimple, FileXls, CheckCircle, XCircle, WarningCircle, SpinnerGap } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { AdminMappings, InstituteCustomField, AddMemberRequest, addMember } from '@/services/sub-organization-learner-management';
@@ -484,10 +484,10 @@ export function BulkUploadModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl w-[95vw] max-h-[80vh] overflow-hidden flex flex-col top-[50%] translate-y-[-50%]">
+      <DialogContent className="max-w-2xl w-vw-95 max-h-screen-80 overflow-hidden flex flex-col top-1/2 translate-y-[-50%]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5" />
+            <FileXls className="w-5 h-5" />
             Bulk Upload Learners
           </DialogTitle>
         </DialogHeader>
@@ -507,7 +507,7 @@ export function BulkUploadModal({
           {/* Download Template Button */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <Button variant="outline" size="sm" onClick={downloadSampleSheet} className="w-full sm:w-auto">
-              <Download className="w-4 h-4 mr-2" />
+              <DownloadSimple className="w-4 h-4 mr-2" />
               Download Sample Template
             </Button>
             <p className="text-xs text-gray-500">
@@ -538,7 +538,7 @@ export function BulkUploadModal({
             
             {isUploading ? (
               <div className="space-y-3">
-                <Loader2 className="w-8 h-8 text-primary-500 mx-auto animate-spin" />
+                <SpinnerGap className="w-8 h-8 text-primary-500 mx-auto animate-spin" />
                 <p className="text-gray-600 text-sm">
                   Processing {processedRows} of {totalRows} learners...
                 </p>
@@ -546,14 +546,14 @@ export function BulkUploadModal({
               </div>
             ) : isDragging ? (
               <div className="py-4">
-                <Upload className="w-10 h-10 text-primary-500 mx-auto mb-2" />
+                <UploadSimple className="w-10 h-10 text-primary-500 mx-auto mb-2" />
                 <p className="text-primary-600 font-medium">
                   Drop your file here
                 </p>
               </div>
             ) : (
               <>
-                <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <UploadSimple className="w-8 h-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600 text-sm mb-2">
                   Drag and drop your file here, or
                 </p>
@@ -579,7 +579,7 @@ export function BulkUploadModal({
                 <div className="flex gap-2">
                   {successCount > 0 && (
                     <Badge variant="default" className="bg-green-100 text-green-800">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      <CheckCircle className="w-3 h-3 mr-1" />
                       {successCount} Success
                     </Badge>
                   )}
@@ -592,7 +592,7 @@ export function BulkUploadModal({
                 </div>
               </div>
 
-              <ScrollArea className="h-[160px] border rounded-lg">
+              <ScrollArea className="h-40 border rounded-lg">
                 <div className="p-2 space-y-1.5">
                   {uploadResults.map((result, index) => (
                     <div
@@ -604,9 +604,9 @@ export function BulkUploadModal({
                       }`}
                     >
                       {result.status === 'success' ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                        <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                       ) : (
-                        <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                        <WarningCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 truncate text-sm">

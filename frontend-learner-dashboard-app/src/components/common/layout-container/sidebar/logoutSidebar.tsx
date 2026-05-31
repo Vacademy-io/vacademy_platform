@@ -19,7 +19,7 @@ import { useStudentPermissions } from "@/hooks/use-student-permissions";
 import { Preferences } from "@capacitor/preferences";
 import { Student } from "@/types/user/user-detail";
 import { getPublicUrl } from "@/services/upload_file";
-import { User, X } from "lucide-react";
+import { User, X } from "@phosphor-icons/react";
 import { useIsIOS } from "@/hooks/useIsIOS";
 import { Capacitor } from "@capacitor/core";
 
@@ -127,7 +127,7 @@ export const LogoutSidebar = ({
       <SheetContent
         side="right"
         hideCloseButton={isIOS}
-        className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-[86vw] sm:w-80 transition-all duration-300 ease-in-out shadow-xl"
+        className="sidebar-content flex flex-col bg-white border-l border-neutral-200 dark:bg-neutral-900 dark:border-neutral-800 p-0 w-vw-86 sm:w-80 transition-all duration-300 ease-in-out shadow-xl"
       >
         <SheetHeader className={`px-5 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-white to-neutral-50 dark:from-neutral-900 dark:to-neutral-900 ${isIOS ? 'mt-10' : ''}`}>
           <div className="flex items-center justify-center">

@@ -58,6 +58,11 @@ export const StudentsListSection = () => {
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            // The student sidebar renders into a Radix portal at <body>, outside
+            // tableRef. Treat any click inside the portal as "inside" so internal
+            // taps (tabs, scroll, etc.) don't close the sheet — especially on touch.
+            if (target?.closest('[data-sidebar="sidebar"]')) return;
             if (
                 tableRef.current &&
                 !tableRef.current.contains(event.target as Node) &&
@@ -115,6 +120,14 @@ export const StudentsListSection = () => {
             page: 0,
             size: 100,
         })
+    );
+
+    const hasOrgAssociatedBatches = useMemo(
+        () =>
+            (instituteDetails?.batches_for_sessions || []).some(
+                (b) => b.is_org_associated === true
+            ),
+        [instituteDetails]
     );
 
     // Role-based column hiding: read the current role's display settings from cache.
@@ -505,6 +518,16 @@ export const StudentsListSection = () => {
                                                         plan_type: paymentFilterApplied,
                                                         amount_paid: paymentFilterApplied,
                                                         preffered_batch: false,
+                                                        membership_role:
+                                                            hasOrgAssociatedBatches &&
+                                                            roleEnabledCustomFields.has(
+                                                                'membership_role'
+                                                            ),
+                                                        membership_type:
+                                                            hasOrgAssociatedBatches &&
+                                                            roleEnabledCustomFields.has(
+                                                                'membership_type'
+                                                            ),
                                                     };
                                                 })(),
                                             }}

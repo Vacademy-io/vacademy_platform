@@ -423,6 +423,20 @@ export default defineConfig(({ mode }) => {
                 "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: wasm:; worker-src * blob:; frame-src *; frame-ancestors 'self' https://www.youtube.com https://youtube.com https://*.youtube.com;",
         },
         proxy: {
+            // --- Local backend microservices ---------------------------------
+            // Active only when VITE_BACKEND_URL points at this dev origin (see
+            // .env.development.local). Each service runs on its own port and
+            // serves its own "/<name>-service/..." path prefix, so NO rewrite is
+            // needed. When VITE_BACKEND_URL is the default staging URL these
+            // routes are never hit (requests go straight to the absolute host).
+            // ai-service is a Python/FastAPI app run via uvicorn on :8077.
+            '/auth-service': { target: 'http://localhost:8071', changeOrigin: true },
+            '/admin-core-service': { target: 'http://localhost:8072', changeOrigin: true },
+            '/community-service': { target: 'http://localhost:8073', changeOrigin: true },
+            '/assessment-service': { target: 'http://localhost:8074', changeOrigin: true },
+            '/media-service': { target: 'http://localhost:8075', changeOrigin: true },
+            '/notification-service': { target: 'http://localhost:8076', changeOrigin: true },
+            '/ai-service': { target: 'http://localhost:8077', changeOrigin: true },
             '/youtube': {
                 target: 'https://www.youtube.com',
                 changeOrigin: true,

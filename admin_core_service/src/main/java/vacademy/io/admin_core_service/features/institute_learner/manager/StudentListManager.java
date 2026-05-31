@@ -49,6 +49,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -398,11 +399,28 @@ public class StudentListManager {
                 studentListFilter.getInstituteIds(),
                 List.of(StatusEnum.ACTIVE.name()));
 
-        // First-wins map collapses multi-enrollment users to one row. The slim query
-        // is ORDERed by ssigm.enrolled_date DESC so the latest enrollment lands first.
+        // When the caller filtered by package_session_ids, the surfaced row's batch
+        // column must reflect the filtered batch — not the user's most recent
+        // enrollment in some other batch. The slim query intentionally joins ALL of
+        // a user's ssigm rows (so allPackageSessionIds below can fan out for side-view
+        // tabs), so we pick the matching row here at the collapse step.
+        Set<String> filterPsIds = studentListFilter.getPackageSessionIds() == null
+                ? Collections.emptySet()
+                : new HashSet<>(studentListFilter.getPackageSessionIds());
+        BinaryOperator<StudentListV2Projection> pickWinner = filterPsIds.isEmpty()
+                ? (existing, incoming) -> existing
+                : (existing, incoming) -> {
+                    if (existing.getPackageSessionId() != null && filterPsIds.contains(existing.getPackageSessionId())) {
+                        return existing;
+                    }
+                    if (incoming.getPackageSessionId() != null && filterPsIds.contains(incoming.getPackageSessionId())) {
+                        return incoming;
+                    }
+                    return existing;
+                };
         Map<String, StudentListV2Projection> projMap = projections.stream()
                 .filter(p -> p.getUserId() != null)
-                .collect(Collectors.toMap(StudentListV2Projection::getUserId, p -> p, (a, b) -> a));
+                .collect(Collectors.toMap(StudentListV2Projection::getUserId, p -> p, pickWinner, LinkedHashMap::new));
 
         // Aggregate every enrollment's package_session_id per user BEFORE collapsing,
         // so side-view tabs that fetch batch-scoped data can iterate every ps_id, not
@@ -571,6 +589,9 @@ public class StudentListManager {
             dto.setExpiryDate(parseTimestamp(p.getExpiryDate()));
             dto.setParentsToMotherMobileNumber(p.getParentsToMotherMobileNumber());
             dto.setParentsToMotherEmail(p.getParentsToMotherEmail());
+            dto.setBillingContactName(p.getBillingContactName());
+            dto.setBillingContactEmail(p.getBillingContactEmail());
+            dto.setBillingContactRole(p.getBillingContactRole());
 
             dto.setPaymentStatus(p.getPaymentStatus());
             dto.setPackageSessionId(p.getPackageSessionId());

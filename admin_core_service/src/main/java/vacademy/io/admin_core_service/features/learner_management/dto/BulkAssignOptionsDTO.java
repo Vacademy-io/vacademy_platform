@@ -27,11 +27,11 @@ public class BulkAssignOptionsDTO {
     private String duplicateHandling = "SKIP";
 
     @Builder.Default
-    private boolean notifyLearners = true;
+    private boolean notifyLearners = false;
 
-    /** Whether to send credentials (registration email) to new users. Default: true */
+    /** Whether to send credentials (registration email) to new users. Default: false */
     @Builder.Default
-    private boolean sendCredentials = true;
+    private boolean sendCredentials = false;
 
     /** Optional external transaction reference */
     private String transactionId;

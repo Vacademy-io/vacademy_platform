@@ -24,12 +24,20 @@ export interface AdConnectorSetupRequest {
     audienceId: string;
     platformPageId?: string;
     platformFormId: string;
+    /** Human-readable form name (e.g. "Wakad_leadform_2026"). Persisted so the
+     *  connector list can show names instead of opaque IDs. */
+    platformFormName?: string;
     routingRulesJson?: string;
     fieldMappingJson?: string;
     producesSourceType?: string;
     sessionKey?: string;
     selectedPageId?: string;
     googleKey?: string;
+    /**
+     * Stringified JSON object of per-connector defaults stamped onto every
+     * lead (e.g. '{"Center Name":"Wakad"}'). Form values always win.
+     */
+    defaultValuesJson?: string;
 }
 
 export interface ConnectorSaveResult {
@@ -109,6 +117,8 @@ export interface ConnectorListItem {
     audienceId: string;
     platformPageId: string | null;
     platformFormId: string | null;
+    /** Human-readable form name captured at create time. Null on older rows. */
+    platformFormName: string | null;
     connectionStatus: string;
     producesSourceType: string | null;
     createdAt: string | null;

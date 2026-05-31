@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
-import { ShoppingBag, BookOpen, ArrowRight, X } from "lucide-react";
+import { ShoppingBag, BookOpen, ArrowRight, X } from "@phosphor-icons/react";
 
 interface BuyRentSectionProps {
   heading?: string;
@@ -153,14 +153,14 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
                 ].map(({ step, title, desc }) => (
                   <div key={step} className="flex gap-2 sm:gap-3">
                     {/* PRIMARY ACCENT: Step number */}
-                    <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-[10px] sm:text-xs font-medium">
+                    <div className="flex-shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-caption sm:text-xs font-medium">
                       {step}
                     </div>
                     <div>
                       {/* Title - darker neutral */}
                       <h4 className="text-xs sm:text-sm font-medium text-gray-800">{title}</h4>
                       {/* Description - NEUTRAL */}
-                      <p className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">{desc}</p>
+                      <p className="text-caption sm:text-xs text-gray-500 hidden sm:block">{desc}</p>
                     </div>
                   </div>
                 ))}

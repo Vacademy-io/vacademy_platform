@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Preferences } from "@capacitor/preferences";
-import { Table as TableIcon, List, CalendarCheck, Loader2 } from "lucide-react";
+import { Table as TableIcon, List, CalendarCheck, SpinnerGap } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
@@ -202,11 +202,11 @@ function PlanningLogsPage() {
         {/* Today's Plannings */}
         {isLoadingPeriodId ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+            <SpinnerGap className="size-8 animate-spin text-muted-foreground" />
           </div>
         ) : isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+            <SpinnerGap className="size-8 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-8 text-center">

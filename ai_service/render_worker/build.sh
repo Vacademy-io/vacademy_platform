@@ -52,6 +52,14 @@ if [ -d "$SCRIPT_DIR/extractor" ]; then
     cp -r "$SCRIPT_DIR/extractor" "$BUILD_DIR/extractor/"
 fi
 
+# Copy the pdf_ocr package (copy-check OCR pipeline — paddleocr/pymupdf based).
+# main.py imports `from pdf_ocr import run_pdf_ocr_pipeline`; without this
+# block the curated build context omits it and the resulting image
+# ModuleNotFoundErrors on the first /pdf-ocr-jobs request.
+if [ -d "$SCRIPT_DIR/pdf_ocr" ]; then
+    cp -r "$SCRIPT_DIR/pdf_ocr" "$BUILD_DIR/pdf_ocr/"
+fi
+
 echo "==> Building Docker image..."
 cd "$BUILD_DIR"
 docker build -t vacademy-render:latest .

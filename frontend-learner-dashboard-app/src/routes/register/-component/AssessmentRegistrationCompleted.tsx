@@ -152,14 +152,14 @@ const AssessmentRegistrationCompleted = ({
 
           {/* Title + assessment name */}
           <div className="flex flex-col items-center gap-1.5 text-center">
-            <span className="inline-flex items-center gap-1 rounded-full bg-success-50 border border-success-200 px-3 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-success-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-success-50 border border-success-200 px-3 py-0.5 text-caption font-semibold uppercase tracking-wide text-success-700">
               <Sparkle size={12} weight="fill" />
               Registration Completed
             </span>
             <h1 className="text-xl sm:text-2xl font-semibold text-neutral-900">
               You&apos;re all set!
             </h1>
-            <p className="text-sm text-neutral-500 max-w-[26ch]">
+            <p className="text-sm text-neutral-500 max-w-ch-26">
               {assessmentName}
             </p>
           </div>
@@ -168,7 +168,7 @@ const AssessmentRegistrationCompleted = ({
           <div className="w-full rounded-2xl border border-primary-100 bg-gradient-to-r from-primary-50 to-primary-50/30 px-4 py-4">
             {isLive ? (
               <div className="flex flex-col items-center gap-1.5">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success-700">
+                <div className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-success-700">
                   <span className="size-1.5 rounded-full bg-success-500 animate-pulse" />
                   Live Now
                 </div>

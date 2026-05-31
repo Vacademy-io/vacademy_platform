@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type { ScoreCard } from "./quiz-viewer";
-import type { QuizAttemptLog } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
+import type { QuizAttemptLog, QuizSideEntry } from "@/services/study-library/tracking-api/get-quiz-slide-activity-logs";
+import { getPublicUrl } from "@/services/upload_file";
 
 interface Option {
   id: string;
@@ -65,6 +66,58 @@ function renderCommaSeparated(elements: React.ReactNode[]) {
   );
 }
 
+const InstructorFeedbackPanel = ({
+  feedback,
+  fileId,
+}: {
+  feedback: string;
+  fileId: string;
+}) => {
+  const [fileUrl, setFileUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (fileId) {
+      getPublicUrl(fileId)
+        .then((url) => {
+          if (!cancelled) setFileUrl(url);
+        })
+        .catch(() => {
+          if (!cancelled) setFileUrl("");
+        });
+    } else {
+      setFileUrl("");
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [fileId]);
+
+  if (!feedback && !fileId) return null;
+  return (
+    <div className="mt-2 rounded-lg border border-primary-200 bg-primary-50 p-4">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary-600">
+        Instructor feedback
+      </div>
+      {feedback && (
+        <div className="whitespace-pre-wrap text-sm text-neutral-800">
+          {feedback}
+        </div>
+      )}
+      {fileId && fileUrl && (
+        <a
+          href={fileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary-500 hover:underline"
+        >
+          View attachment
+        </a>
+      )}
+    </div>
+  );
+};
+
 const getOptionHtml = (q: Question, idOrValue: string | number | undefined) => {
   // ✅ Handle undefined/null values
   if (idOrValue === undefined || idOrValue === null || idOrValue === '') {
@@ -112,6 +165,225 @@ const getCorrectAnswers = (q: Question): (string | number)[] => {
 export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, onRestart, scoreCard, showCorrectAnswers = true, passed, passPercentage, attemptNumber, maxAttempts, canReattempt = true, attemptLogs }) => {
   const [showFullPassageIdx, setShowFullPassageIdx] = useState<number | null>(null);
   const [showPastAttempts, setShowPastAttempts] = useState(false);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+
+  // The attempt whose per-question feedback is currently being shown.
+  // Backend ordering of attemptLogs varies (asc vs desc); pick the attempt
+  // with the latest timestamp AND non-empty quiz_sides so we always show the
+  // learner's most recent meaningful attempt.
+  const activeAttempt = useMemo(() => {
+    if (!attemptLogs || attemptLogs.length === 0) return null;
+    if (selectedAttemptId) {
+      return attemptLogs.find((a) => a.id === selectedAttemptId) ?? attemptLogs[0];
+    }
+    const ts = (l: QuizAttemptLog) =>
+      new Date(l.end_time ?? l.start_time ?? 0).getTime();
+    const sorted = [...attemptLogs].sort((a, b) => ts(b) - ts(a));
+    return sorted.find((a) => (a.quiz_sides?.length ?? 0) > 0) ?? sorted[0];
+  }, [attemptLogs, selectedAttemptId]);
+
+  const defaultLatestAttemptId = useMemo(() => {
+    if (!attemptLogs || attemptLogs.length === 0) return null;
+    const ts = (l: QuizAttemptLog) =>
+      new Date(l.end_time ?? l.start_time ?? 0).getTime();
+    const sorted = [...attemptLogs].sort((a, b) => ts(b) - ts(a));
+    return (sorted.find((a) => (a.quiz_sides?.length ?? 0) > 0) ?? sorted[0])?.id ?? null;
+  }, [attemptLogs]);
+
+  const isViewingPastAttempt =
+    !!attemptLogs && !!activeAttempt && defaultLatestAttemptId !== activeAttempt.id;
+
+  // Count feedback entries (text or file) per attempt — used to show a
+  // "N notes" indicator in the Past Attempts list.
+  const feedbackCountByAttemptId = useMemo(() => {
+    const counts = new Map<string, number>();
+    attemptLogs?.forEach((a) => {
+      const count =
+        a.quiz_sides?.filter(
+          (qs) =>
+            (qs.instructor_feedback && qs.instructor_feedback.trim() !== '') ||
+            qs.instructor_feedback_file_id
+        ).length ?? 0;
+      counts.set(a.id, count);
+    });
+    return counts;
+  }, [attemptLogs]);
+
+  // Per-question feedback for the active attempt.
+  const feedbackByQuestionId = useMemo(() => {
+    const map = new Map<string, QuizSideEntry>();
+    activeAttempt?.quiz_sides?.forEach((qs) => {
+      if (qs.question_id) map.set(qs.question_id, qs);
+    });
+    return map;
+  }, [activeAttempt]);
+
+  // Per-attempt score summary derived from the persisted quiz_sides response_json.
+  // Two code paths depending on payload shape:
+  //   - ENRICHED (today's quiz-viewer enrichment, response_json has marks +
+  //     maxMarks + isCorrect): sum the persisted marks/maxMarks directly.
+  //   - LEGACY ({answer:<id>} only, response_status="SUBMITTED"): we have to
+  //     derive correctness. Look up the question by id, compare the saved
+  //     answer ids against getCorrectAnswers(q), and award 1 mark per correct.
+  //     (The original marks_per_question isn't stored on legacy quiz_sides;
+  //     1 mark per question keeps the score in the same scale as the total.)
+  // NOTE: declared here (BEFORE activeAttemptScore / effectiveScoreCard) because
+  // those downstream consts call .get() on it during render. Moving this lower
+  // triggers a temporal-dead-zone ReferenceError in production builds.
+  const scoreByAttemptId = useMemo(() => {
+    const map = new Map<string, { earned: number; total: number; pct: number }>();
+    const questionLookup = new Map<string, Question>();
+    questions.forEach((q) => {
+      if (q.id) questionLookup.set(q.id, q);
+    });
+    attemptLogs?.forEach((a) => {
+      let earned = 0;
+      let total = 0;
+      a.quiz_sides?.forEach((qs) => {
+        let parsed:
+          | {
+              marks?: number;
+              maxMarks?: number;
+              isCorrect?: boolean;
+              answer?: string | number | string[];
+              selectedOptions?: Array<{ id: string }>;
+            }
+          | null = null;
+        if (qs.response_json) {
+          try {
+            parsed = JSON.parse(qs.response_json);
+          } catch {
+            parsed = null;
+          }
+        }
+        // Enriched payload — trust the persisted marks/maxMarks.
+        if (parsed && typeof parsed.maxMarks === 'number') {
+          total += parsed.maxMarks;
+          if (typeof parsed.marks === 'number') {
+            earned += Math.max(0, parsed.marks);
+          } else if (parsed.isCorrect) {
+            earned += parsed.maxMarks;
+          }
+          return;
+        }
+        // Legacy payload — score by comparing saved answer vs current correct answers.
+        total += 1;
+        if (!parsed) return;
+        const q = questionLookup.get(qs.question_id);
+        if (!q) return;
+        const answerIds: string[] =
+          Array.isArray(parsed.selectedOptions) && parsed.selectedOptions.length > 0
+            ? parsed.selectedOptions.map((o) => String(o.id))
+            : parsed.answer != null
+              ? Array.isArray(parsed.answer)
+                ? parsed.answer.map(String)
+                : [String(parsed.answer)]
+              : [];
+        if (answerIds.length === 0) return;
+        const correctIds = getCorrectAnswers(q).map(String);
+        if (correctIds.length === 0) return;
+        const isCorrect =
+          answerIds.length === correctIds.length &&
+          correctIds.every((c) => answerIds.includes(c));
+        if (isCorrect) earned += 1;
+      });
+      const pct = total > 0 ? Math.round((earned / total) * 100) : 0;
+      map.set(a.id, { earned, total, pct });
+    });
+    return map;
+  }, [attemptLogs, questions]);
+
+  // Per-question learner answer for the active attempt, parsed from quiz_sides.
+  // When viewing the default-latest attempt this typically matches the
+  // `userAnswers` prop (parent computes it the same way), but for past attempts
+  // the prop is stale, so we override on a per-question basis.
+  const activeAttemptAnswers = useMemo(() => {
+    const map = new Map<string, string | number | string[]>();
+    activeAttempt?.quiz_sides?.forEach((qs) => {
+      if (!qs.question_id || !qs.response_json) return;
+      try {
+        const parsed = JSON.parse(qs.response_json);
+        if (Array.isArray(parsed.selectedOptions) && parsed.selectedOptions.length > 0) {
+          const ids = parsed.selectedOptions.map((o: { id: string }) => String(o.id));
+          map.set(qs.question_id, ids.length === 1 ? ids[0] : ids);
+        } else if (parsed.answer != null) {
+          map.set(
+            qs.question_id,
+            Array.isArray(parsed.answer)
+              ? parsed.answer.map(String)
+              : (parsed.answer as string | number),
+          );
+        }
+      } catch {
+        // skip malformed entries
+      }
+    });
+    return map;
+  }, [activeAttempt]);
+
+  // Score for the active attempt — drives the Score Card and Pass/Fail banner
+  // when the learner clicks into a past attempt.
+  // Decision matrix:
+  //   - active attempt has real quiz_sides → compute from scoreByAttemptId
+  //   - active attempt has empty quiz_sides (defensive — should not happen
+  //     after the backend sourceType filter, but keep as safety net) →
+  //     synthesize a zero-score card so the learner sees 0 / N with all
+  //     questions marked as Skipped, instead of an empty UI or (worse) the
+  //     LATEST attempt's score leaking through
+  //   - no active attempt (e.g. fresh submission, attemptLogs not loaded yet)
+  //     → fall back to the parent's scoreCard prop
+  const activeAttemptScore = scoreByAttemptId.get(activeAttempt?.id ?? '') ?? null;
+  const activeAttemptHasData =
+    (activeAttempt?.quiz_sides?.length ?? 0) > 0 && (activeAttemptScore?.total ?? 0) > 0;
+  const effectiveScoreCard = activeAttemptHasData
+    ? {
+        earned: activeAttemptScore!.earned,
+        totalMarks: activeAttemptScore!.total,
+        correct: 0,
+        wrong: 0,
+        skipped: 0,
+      }
+    : activeAttempt && !activeAttemptHasData && questions.length > 0
+      ? {
+          earned: 0,
+          totalMarks: questions.length,
+          correct: 0,
+          wrong: 0,
+          skipped: questions.length,
+        }
+      : scoreCard;
+  // Recompute correct/wrong/skipped counts for the active attempt so the
+  // score card breakdown stays in sync with what's shown per-question.
+  const effectiveScoreCardWithCounts = useMemo(() => {
+    if (!effectiveScoreCard) return scoreCard;
+    let correct = 0;
+    let wrong = 0;
+    let skipped = 0;
+    questions.forEach((q) => {
+      const ans = activeAttemptAnswers.get(q.id) ?? userAnswers[q.id];
+      const isAnswered =
+        ans != null && !(typeof ans === 'string' && ans.trim() === '') && !(Array.isArray(ans) && ans.length === 0);
+      if (!isAnswered) {
+        skipped++;
+        return;
+      }
+      const correctAnswers = getCorrectAnswers(q);
+      const ok =
+        correctAnswers.length > 0 &&
+        (Array.isArray(ans)
+          ? ans.length === correctAnswers.length && correctAnswers.map(String).every((c) => ans.map(String).includes(c))
+          : correctAnswers.map(String).includes(String(ans)));
+      if (ok) correct++;
+      else wrong++;
+    });
+    return { ...effectiveScoreCard, correct, wrong, skipped };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveScoreCard, activeAttemptAnswers, userAnswers, questions]);
+  const effectivePassed =
+    effectiveScoreCardWithCounts && passPercentage != null && effectiveScoreCardWithCounts.totalMarks > 0
+      ? (effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100 >= passPercentage
+      : passed;
+
   const PASSAGE_LIMIT = 200;
 
   // Helper to get plain text from HTML
@@ -147,7 +419,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
   const getOptionLabel = (idx: number) => String.fromCharCode(97 + idx) + ") ";
 
   return (
-    <div className="w-full min-h-[80vh] bg-white rounded-xl shadow-lg p-4 sm:p-8">
+    <div className="w-full min-h-screen-80 bg-white rounded-xl shadow-lg p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h2 className="text-primary-800 text-base font-bold">Quiz Review</h2>
@@ -172,75 +444,91 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
         )}
       </div>
 
-      {/* Score Card */}
-      {scoreCard && scoreCard.totalMarks > 0 && (
+      {/* Score Card — driven by the active attempt when the learner clicks
+          into a past attempt; otherwise reflects the latest/freshly-submitted
+          attempt scoreCard prop. */}
+      {effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0 && (
         <div className="mb-8 rounded-xl border border-primary-200 bg-primary-50 p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <span className="text-lg">📊</span>
-            <span className="font-semibold text-primary-800">Your Score</span>
+            <span className="font-semibold text-primary-800">
+              {isViewingPastAttempt ? 'Attempt Score' : 'Your Score'}
+            </span>
           </div>
           <div className="mb-4 flex items-baseline gap-3">
             <span className="text-3xl font-bold text-primary-700">
-              {scoreCard.earned % 1 === 0 ? scoreCard.earned : scoreCard.earned.toFixed(2)}
+              {effectiveScoreCardWithCounts.earned % 1 === 0
+                ? effectiveScoreCardWithCounts.earned
+                : effectiveScoreCardWithCounts.earned.toFixed(2)}
             </span>
-            <span className="text-lg text-primary-500">/ {scoreCard.totalMarks} marks</span>
+            <span className="text-lg text-primary-500">/ {effectiveScoreCardWithCounts.totalMarks} marks</span>
             <span className="ml-auto rounded-full bg-primary-100 px-3 py-1 text-sm font-semibold text-primary-700">
-              {scoreCard.totalMarks > 0 ? Math.round((scoreCard.earned / scoreCard.totalMarks) * 100) : 0}%
+              {effectiveScoreCardWithCounts.totalMarks > 0
+                ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
+                : 0}%
             </span>
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
             <span className="flex items-center gap-1.5 font-medium text-green-700">
-              <span>✅</span> Correct: {scoreCard.correct}
+              <span>✅</span> Correct: {effectiveScoreCardWithCounts.correct}
             </span>
             <span className="flex items-center gap-1.5 font-medium text-red-600">
-              <span>❌</span> Wrong: {scoreCard.wrong}
+              <span>❌</span> Wrong: {effectiveScoreCardWithCounts.wrong}
             </span>
             <span className="flex items-center gap-1.5 font-medium text-gray-500">
-              <span>⏭</span> Skipped: {scoreCard.skipped}
+              <span>⏭</span> Skipped: {effectiveScoreCardWithCounts.skipped}
             </span>
           </div>
         </div>
       )}
 
       {/* Pass / Fail Banner */}
-      {passed === true && (
+      {effectivePassed === true && (
         <div className="mb-8 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
           <span className="text-2xl">🎉</span>
           <div>
-            <div className="font-semibold text-green-800">You passed!</div>
+            <div className="font-semibold text-green-800">
+              {isViewingPastAttempt ? 'Attempt passed' : 'You passed!'}
+            </div>
             <div className="text-sm text-green-700">
-              Required: {passPercentage}% — Your score:{" "}
-              {scoreCard && scoreCard.totalMarks > 0
-                ? Math.round((scoreCard.earned / scoreCard.totalMarks) * 100)
+              Required: {passPercentage}% — Score:{" "}
+              {effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0
+                ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
                 : 0}
               %
             </div>
           </div>
         </div>
       )}
-      {passed === false && (
+      {effectivePassed === false && (
         <div className="mb-8 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
           <div className="flex items-center gap-3">
             <span className="text-2xl">😔</span>
             <div>
-              <div className="font-semibold text-red-800">You did not pass</div>
+              <div className="font-semibold text-red-800">
+                {isViewingPastAttempt ? 'Attempt did not pass' : 'You did not pass'}
+              </div>
               <div className="text-sm text-red-700">
-                Required: {passPercentage}% — Your score:{" "}
-                {scoreCard && scoreCard.totalMarks > 0
-                  ? Math.round((scoreCard.earned / scoreCard.totalMarks) * 100)
+                Required: {passPercentage}% — Score:{" "}
+                {effectiveScoreCardWithCounts && effectiveScoreCardWithCounts.totalMarks > 0
+                  ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
                   : 0}
                 %
               </div>
             </div>
           </div>
-          <button
-            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow transition-colors ${canReattempt ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-300 cursor-not-allowed'}`}
-            onClick={canReattempt ? onRestart : undefined}
-            disabled={!canReattempt}
-            type="button"
-          >
-            {canReattempt ? 'Reattempt Quiz' : 'No attempts remaining'}
-          </button>
+          {/* Reattempt button intentionally still uses canReattempt (overall
+              attempts-remaining business logic) — NOT the viewed attempt. */}
+          {!isViewingPastAttempt && (
+            <button
+              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow transition-colors ${canReattempt ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-300 cursor-not-allowed'}`}
+              onClick={canReattempt ? onRestart : undefined}
+              disabled={!canReattempt}
+              type="button"
+            >
+              {canReattempt ? 'Reattempt Quiz' : 'No attempts remaining'}
+            </button>
+          )}
         </div>
       )}
 
@@ -257,17 +545,69 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           {showPastAttempts && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <div className="space-y-2">
-                {attemptLogs.map((log, i) => (
-                  <div key={log.id} className="flex items-center justify-between rounded bg-white px-3 py-2 text-sm shadow-sm">
-                    <span className="font-medium text-gray-700">Attempt #{attemptLogs.length - i}</span>
-                    <span className="text-gray-400 text-xs">
-                      {log.end_time ? new Date(log.end_time).toLocaleString() : "—"}
-                    </span>
-                  </div>
-                ))}
+                {attemptLogs.map((log, i) => {
+                  const attemptNum = attemptLogs.length - i;
+                  const isActive = activeAttempt?.id === log.id;
+                  const feedbackCount = feedbackCountByAttemptId.get(log.id) ?? 0;
+                  const score = scoreByAttemptId.get(log.id);
+                  return (
+                    <button
+                      key={log.id}
+                      type="button"
+                      onClick={() => setSelectedAttemptId(log.id)}
+                      className={`flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-sm shadow-sm transition-colors ${
+                        isActive
+                          ? 'border border-primary-300 bg-primary-50'
+                          : 'border border-transparent bg-white hover:border-primary-200 hover:bg-primary-50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium text-gray-700">
+                          Attempt #{attemptNum}
+                        </span>
+                        {score && score.total > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                            {score.earned}/{score.total} ({score.pct}%)
+                          </span>
+                        )}
+                        {feedbackCount > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
+                            📝 {feedbackCount} {feedbackCount === 1 ? 'note' : 'notes'}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {log.end_time ? new Date(log.end_time).toLocaleString() : '—'}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Past-attempt notice — shown when the learner clicked a non-latest attempt */}
+      {isViewingPastAttempt && activeAttempt && (
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3">
+          <div className="text-sm text-primary-700">
+            {activeAttemptHasData
+              ? 'Viewing a past attempt.'
+              : 'This attempt has no recorded responses — all questions are shown as Skipped.'}
+            {activeAttempt.end_time && (
+              <span className="ml-1 text-xs text-primary-600">
+                ({new Date(activeAttempt.end_time).toLocaleString()})
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedAttemptId(null)}
+            className="rounded-md border border-primary-300 bg-white px-3 py-1 text-xs font-semibold text-primary-700 hover:bg-primary-100"
+          >
+            Back to latest
+          </button>
         </div>
       )}
 
@@ -276,9 +616,17 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
           const passage = getPassageText(q);
           const questionText = getQuestionText(q);
           const explanation = getExplanationText(q);
-          const userAnswer = userAnswers[q.id];
+          // When viewing a past attempt, show ONLY that attempt's answer (no
+          // fallback to the latest, which would mix data across attempts).
+          // For the default-latest view, fall back to the userAnswers prop so
+          // the localStorage path / brand-new submissions still render before
+          // the backend refetch lands.
+          const userAnswer = isViewingPastAttempt
+            ? activeAttemptAnswers.get(q.id)
+            : (activeAttemptAnswers.get(q.id) ?? userAnswers[q.id]);
           const correctAnswers = getCorrectAnswers(q);
           const isMulti = Array.isArray(userAnswer);
+          const feedbackEntry = feedbackByQuestionId.get(q.id);
 
           // Passage show more/less logic
           const passagePlain = getPlainText(passage);
@@ -434,6 +782,12 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                   <div className="mb-1 text-xs font-semibold text-gray-700">Explanation</div>
                   <div className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: explanation }} />
                 </div>
+              )}
+              {feedbackEntry && (
+                <InstructorFeedbackPanel
+                  feedback={feedbackEntry.instructor_feedback ?? ""}
+                  fileId={feedbackEntry.instructor_feedback_file_id ?? ""}
+                />
               )}
             </div>
           );

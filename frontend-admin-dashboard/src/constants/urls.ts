@@ -1,6 +1,9 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
+// Local admin-core override — kept for ad-hoc dev testing. Production callers
+// must use BASE_URL; flip specific URL constants to this only while testing locally.
+export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 
@@ -59,6 +62,11 @@ export const VIMOTION_REQUEST_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion
 export const VIMOTION_VERIFY_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/verify-signup-otp`;
 export const VIMOTION_SIGNUP = `${BASE_URL}/auth-service/v1/vimotion/signup`;
 export const VIMOTION_LOGIN = `${BASE_URL}/auth-service/v1/vimotion/login`;
+export const VIMOTION_VALIDATE_INVITE_CODE = `${BASE_URL}/auth-service/v1/vimotion/invite-codes/validate`;
+export const VIMOTION_CONFIG = `${BASE_URL}/auth-service/v1/vimotion/config`;
+export const VIMOTION_WAITLIST_JOIN = `${BASE_URL}/auth-service/v1/vimotion/waitlist/join`;
+export const VIMOTION_WAITLIST_STATUS = `${BASE_URL}/auth-service/v1/vimotion/waitlist/status`;
+export const VIMOTION_WAITLIST_COUNT = `${BASE_URL}/auth-service/v1/vimotion/waitlist/count`;
 
 // Vimotion brand kits + studio avatars (admin_core_service, JWT-auth)
 export const VIMOTION_BRAND_KITS = `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits`;
@@ -143,6 +151,8 @@ export const COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS = (counselorUserId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/memberships`;
 export const COUNSELOR_POOL_COUNSELOR_STATUS_MULTI = (counselorUserId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/counselors/${counselorUserId}/status-multi`;
+export const COUNSELOR_POOL_COUNSELOR_MONTHLY_TARGET = (poolId: string, counselorUserId: string) =>
+    `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/counselors/${counselorUserId}/monthly-target`;
 export const COUNSELOR_POOL_SCHEDULE = (poolId: string) =>
     `${BASE_URL}/admin-core-service/v1/counselor-pool/${poolId}/schedule`;
 
@@ -339,6 +349,9 @@ export const GET_USER_DOC_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/
 export const GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/learner-video-question-activity-logs`;
 export const GET_QUESTION_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/question-slide-activity-logs`;
 export const GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
+export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
+export const GET_SLIDE_BY_ID = `${"http://localhost:8072"}/admin-core-service/slide/v1/slide`;
+export const SAVE_QUIZ_QUESTION_FEEDBACK = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;
@@ -412,39 +425,60 @@ export const GET_PRESENTATION_LIST = `${BASE_URL}/community-service/presentation
 export const ADD_PRESENTATION = `${BASE_URL}/community-service/presentation/add-presentation`;
 export const GET_PRESENTATION = `${BASE_URL}/community-service/presentation/get-presentation`;
 export const EDIT_PRESENTATION = `${BASE_URL}/community-service/presentation/edit-presentation`;
-export const RETRY_AI_URL = `${BASE_URL}/media-service/ai/retry/task`;
-export const START_PROCESSING_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/start-process-pdf-file-id`;
-export const LIST_INDIVIDUAL_AI_TASKS_URL = `${BASE_URL}/media-service/task-status/get-all`;
-export const GET_INDIVIDUAL_AI_TASK_QUESTIONS = `${BASE_URL}/media-service/task-status/get-result`;
-export const GET_INDIVIDUAL_CHAT_WITH_PDF_AI_TASK_QUESTIONS = `${BASE_URL}/media-service/ai/chat-with-pdf/get-chat`;
-export const SORT_SPLIT_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/pdf-to-extract-topic-questions`;
-export const SORT_QUESTIONS_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/topic-wise/pdf-to-questions`;
-export const GENERATE_QUESTIONS_FROM_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/pdf-to-questions`;
-export const GENERATE_QUESTIONS_FROM_IMAGE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/image-to-questions`;
-export const GENERATE_FEEDBACK_FROM_FILE_AI_URL = `${BASE_URL}/media-service/ai/lecture/generate-feedback`;
-export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/html-to-questions`;
-export const CONVERT_PDF_TO_HTML_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/pdf-to-html`;
-export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${BASE_URL}/media-service/ai/get-question-pdf/math-parser/html-to-questions`;
+// Migrated to ai_service: rebuilds the task from its stored params + re-resolves
+// the model, then schedules a fresh task.
+export const RETRY_AI_URL = `${AI_SERVICE_BASE_URL}/ai/retry/task`;
+// Migrated to ai_service (MathPix PDF→HTML + question engine).
+export const START_PROCESSING_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/start-process-pdf-file-id`;
+// All AI task types are migrated — task list + question result are served by
+// ai_service (no media fallback / merge anymore).
+export const GET_INDIVIDUAL_AI_TASK_QUESTIONS_AI_SERVICE = `${AI_SERVICE_BASE_URL}/task-status/get-result`;
+// Migrated to ai_service (chat turns stored in ai_task; model from registry).
+export const GET_INDIVIDUAL_CHAT_WITH_PDF_AI_TASK_QUESTIONS = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-chat`;
+export const SORT_SPLIT_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-extract-topic-questions`;
+export const SORT_QUESTIONS_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/topic-wise/pdf-to-questions`;
+export const GENERATE_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-questions`;
+export const GENERATE_QUESTIONS_FROM_IMAGE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/image-to-questions`;
+// Migrated to ai_service: single-step feedback — pass the uploaded audio fileId;
+// ai_service resolves it, transcribes in-house, and generates the feedback.
+export const GENERATE_FEEDBACK_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/lecture/generate-feedback`;
+// Migrated to ai_service (sync HTML→questions; PDF→HTML stays on media for now).
+export const HTML_TO_QUESTIONS_FROM_FILE_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
+export const CONVERT_PDF_TO_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/pdf-to-html`;
+export const GET_QUESTIONS_URL_FROM_HTML_AI_URL = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/math-parser/html-to-questions`;
 export const SHARE_CREDENTIALS = `${BASE_URL}/auth-service/v1/user-operation/send-passwords`;
-export const CHAT_WITH_PDF_AI_URL = `${BASE_URL}/media-service/ai/chat-with-pdf/get-response`;
-export const PROCESS_AUDIO_FILE = `${BASE_URL}/media-service/ai/get-question-audio/audio-parser/start-process-audio-file-id`;
-export const GET_QUESTIONS_FROM_AUDIO = `${BASE_URL}/media-service/ai/get-question-audio/audio-parser/audio-to-questions`;
+// Migrated to ai_service: PDF→HTML (MathPix, cached) + chat prompt; still-
+// processing returns 425 so the FE retry loop (onError) re-polls.
+export const CHAT_WITH_PDF_AI_URL = `${AI_SERVICE_BASE_URL}/ai/chat-with-pdf/get-response`;
+// Migrated to ai_service: single-step audio → in-house transcribe → questions.
+export const GET_QUESTIONS_FROM_AUDIO = `${AI_SERVICE_BASE_URL}/ai/get-question-audio/audio-parser/audio-to-questions`;
 
 // Evaluation AI Free tool
 export const CREATE_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/create`;
 export const ADD_QUESTIONS_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment/sections`;
 export const GET_ASSESSMENT_URL = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
 
-export const EVALUATION_TOOL_EVALUATE_ASSESSMENT = `${BASE_URL}/media-service/ai/evaluation-tool/evaluate-assessment`;
-export const EVALUATION_TOOL_STATUS = `${BASE_URL}/media-service/ai/evaluation-tool/status`;
+// Migrated to ai_service (metadata from assessment-service + 2-step LLM via
+// ai_task; model from registry). status/{taskId} maps PROGRESS→PROCESSING.
+export const EVALUATION_TOOL_EVALUATE_ASSESSMENT = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/evaluate-assessment`;
+export const EVALUATION_TOOL_STATUS = `${AI_SERVICE_BASE_URL}/ai/evaluation-tool/status`;
 export const EVALUATION_TOOL_GET_QUESTION = `${BASE_URL}/assessment-service/evaluation-tool/assessment`;
-export const GET_QUESTIONS_FROM_TEXT = `${BASE_URL}/media-service/ai/get-question-pdf/from-text`;
-export const GET_LECTURE_PLAN_URL = `${BASE_URL}/media-service/ai/lecture/generate-plan`;
-export const GET_LECTURE_PLAN_PREVIEW_URL = `${BASE_URL}/media-service/task-status/get/lecture-plan`;
-export const GET_LECTURE_FEEDBACK_PREVIEW_URL = `${BASE_URL}/media-service/task-status/get/lecture-feedback`;
+export const GET_QUESTIONS_FROM_TEXT = `${AI_SERVICE_BASE_URL}/ai/get-question-pdf/from-text`;
+// Lecture planner + feedback: migrated to ai_service (hard cut). Both kick-offs
+// and result polling are served by ai_service, which resolves the model from the
+// DB-backed registry (fixing the hardcoded dead model id) and, for feedback,
+// transcribes the audio in-house.
+export const GET_LECTURE_PLAN_URL = `${AI_SERVICE_BASE_URL}/ai/lecture/generate-plan`;
+export const GET_LECTURE_PLAN_PREVIEW_URL = `${AI_SERVICE_BASE_URL}/task-status/get/lecture-plan`;
+export const GET_LECTURE_FEEDBACK_PREVIEW_URL = `${AI_SERVICE_BASE_URL}/task-status/get/lecture-feedback`;
 
-// AI Model Selection
-export const GET_AVAILABLE_AI_MODELS = `${BASE_URL}/media-service/ai/retry/available-models`;
+// ai_service get-all — TaskStatusDto-shaped list of this institute's AI tasks.
+// Every AI task type now lives in ai_service, so this is the single source for
+// the AI-center task history (the old media merge + per-type routing is gone).
+export const LIST_INDIVIDUAL_AI_TASKS_URL_AI_SERVICE = `${AI_SERVICE_BASE_URL}/task-status/get-all`;
+
+// AI Model Selection — migrated to ai_service (registry-backed model list).
+export const GET_AVAILABLE_AI_MODELS = `${AI_SERVICE_BASE_URL}/ai/retry/available-models`;
 export const GET_AI_MODELS_V2 = `${AI_SERVICE_BASE_URL}/models/v2/list`;
 export const GET_AI_MODELS_USE_CASE = `${AI_SERVICE_BASE_URL}/models/v2/use-case`;
 export const INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/lms-report-setting/institute-setting`;
@@ -486,6 +520,11 @@ export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
 // Layer 3 — Create Assessment from a completed recording transcript.
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
+
+// Persist LLM-generated study notes (Markdown) so the next dialog open
+// can show them without re-running the LLM. POST body: { markdown: string }.
+export const RECORDING_STUDY_NOTES = (scheduleId: string, recordingId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/study-notes`;
 
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
@@ -759,6 +798,12 @@ export const WHITE_LABEL_SETUP = `${BASE_URL}/admin-core-service/institute/white
 export const WHITE_LABEL_STATUS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/institute/white-label/v1/status?instituteId=${instituteId}`;
 
+// Institute Payment Gateway Admin CRUD
+export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/payment-gateways?instituteId=${instituteId}`;
+export const INSTITUTE_PAYMENT_GATEWAY_BY_ID = (instituteId: string, mappingId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/payment-gateways/${mappingId}?instituteId=${instituteId}`;
+
 // Application Stage
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;
 
@@ -826,3 +871,16 @@ export const CREATE_PRODUCT_PAGE_COUPON = (coursePageId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/create?coursePageId=${coursePageId}`;
 export const DELETE_PRODUCT_PAGE_COUPON = (couponCodeId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/coupon/${couponCodeId}`;
+export const ADD_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/add`;
+export const REMOVE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string, customFieldId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/${customFieldId}`;
+export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${productPageId}/custom-fields/create`;
+
+// Institute-scoped coupon management (backend V308/V309). The CRUD endpoints
+// are admin-gated via JWT + clientId header (auto-injected by axiosInstance);
+// validate is a public endpoint used by all three learner checkout surfaces.
+export const COUPON_BASE = `${BASE_URL}/admin-core-service/v1/coupon`;
+export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
+export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;

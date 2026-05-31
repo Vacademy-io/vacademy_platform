@@ -31,18 +31,18 @@ export function ResponseBreakdownComponent({
     {
       responseType: "Attempted",
       value: responseData.attempted,
-      fill: "#97D4B4",
+      fill: "#97D4B4", // design-lint-ignore: chart series colors
     },
     {
       responseType: "skipped",
       value: responseData.skipped,
-      fill: "#EEE",
+      fill: "#EEE", // design-lint-ignore: chart series colors
     },
   ];
   return (
     <ChartContainer
       config={chartConfig}
-      className="mx-auto aspect-square h-[180px]"
+      className="mx-auto aspect-square h-reg-180"
     >
       <PieChart>
         <ChartTooltip

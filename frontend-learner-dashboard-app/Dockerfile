@@ -1,12 +1,13 @@
 # Multi-stage Dockerfile for Vacademy Learner Dashboard
 # Stage 1: Build the React application
-FROM node:21-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Set working directory
 WORKDIR /app
 
-# Install pnpm globally
-RUN npm install -g pnpm
+# Install pnpm globally (pin to the project's pnpm 9; unpinned 'pnpm' now pulls
+# pnpm 10 which requires Node >=22.13 and breaks the build)
+RUN npm install -g pnpm@9
 
 # Copy package files
 COPY package.json pnpm-lock.yaml ./

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Briefcase, MessageCircle, FileQuestion } from "lucide-react";
+import { Briefcase, ChatCircle, FileDashed } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,13 +29,13 @@ const MODES: {
     key: "voice_doubt",
     label: "Discuss your Doubt",
     description: "Talk through your doubts with voice interaction",
-    icon: MessageCircle,
+    icon: ChatCircle,
   },
   {
     key: "voice_oral_test",
     label: "Take Oral Test",
     description: "Test your knowledge with verbal Q&A",
-    icon: FileQuestion,
+    icon: FileDashed,
   },
 ];
 
@@ -83,7 +83,7 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -156,7 +156,7 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
                   className="w-full rounded-lg bg-white/5 border border-white/10 text-white text-sm px-3 py-2 outline-none focus:border-primary/50 placeholder:text-white/25"
                 />
                 {!topic.trim() && (
-                  <p className="text-[10px] text-white/30 mt-1">
+                  <p className="text-caption text-white/30 mt-1">
                     {selectedMode === "voice_doubt" ? "Optional — or just start talking" : "Recommended — helps generate better questions"}
                   </p>
                 )}

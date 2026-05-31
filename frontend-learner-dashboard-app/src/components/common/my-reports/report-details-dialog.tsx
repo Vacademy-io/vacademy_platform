@@ -85,7 +85,7 @@ export default function ReportDetailsDialog({
       open={isOpen}
       onOpenChange={onClose}
       dialogWidth="max-w-4xl"
-      className="max-h-[80vh]"
+      className="max-h-screen-80"
     >
       <div className="mb-4 text-sm text-neutral-600">{description}</div>
       <div className="flex flex-col md:flex-row gap-2 w-full">

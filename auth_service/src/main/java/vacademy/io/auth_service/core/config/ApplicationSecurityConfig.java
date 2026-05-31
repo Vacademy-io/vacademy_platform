@@ -88,7 +88,12 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/vimotion/request-signup-otp",
             "/auth-service/v1/vimotion/verify-signup-otp",
             "/auth-service/v1/vimotion/signup",
-            "/auth-service/v1/vimotion/login"
+            "/auth-service/v1/vimotion/login",
+            "/auth-service/v1/vimotion/invite-codes/validate",
+            "/auth-service/v1/vimotion/config",
+            "/auth-service/v1/vimotion/waitlist/join",
+            "/auth-service/v1/vimotion/waitlist/status",
+            "/auth-service/v1/vimotion/waitlist/count"
     };
 
     @Autowired

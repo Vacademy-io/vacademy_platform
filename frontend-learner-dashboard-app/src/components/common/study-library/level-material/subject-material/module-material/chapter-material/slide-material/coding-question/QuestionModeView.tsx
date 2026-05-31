@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Play, Send, Check, X, Loader2, Clock } from "lucide-react";
+import { Play, PaperPlaneTilt, Check, X, SpinnerGap, Clock } from "@phosphor-icons/react";
 import { v4 as uuidv4 } from "uuid";
 import confetti from "canvas-confetti";
 import { Preferences } from "@capacitor/preferences";
@@ -553,7 +553,7 @@ export function QuestionModeView({ question, slideId }: Props) {
           value={language}
           onValueChange={(v) => handleLangChange(v as LangId)}
         >
-          <SelectTrigger className="h-8 w-[170px]">
+          <SelectTrigger className="h-8 w-reg-180">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -565,7 +565,7 @@ export function QuestionModeView({ question, slideId }: Props) {
           </SelectContent>
         </Select>
 
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-3xs">
           {def.executor}
         </Badge>
 
@@ -580,7 +580,7 @@ export function QuestionModeView({ question, slideId }: Props) {
 
           {pythonBlocked && (
             <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-              <Loader2 className="size-3 animate-spin" />
+              <SpinnerGap className="size-3 animate-spin" />
               Loading Python runtime…
             </span>
           )}
@@ -597,7 +597,7 @@ export function QuestionModeView({ question, slideId }: Props) {
             }
           >
             {isRunning ? (
-              <Loader2 className="mr-1 size-4 animate-spin" />
+              <SpinnerGap className="mr-1 size-4 animate-spin" />
             ) : (
               <Play className="mr-1 size-4" />
             )}
@@ -616,9 +616,9 @@ export function QuestionModeView({ question, slideId }: Props) {
             }
           >
             {isSubmitting ? (
-              <Loader2 className="mr-1 size-4 animate-spin" />
+              <SpinnerGap className="mr-1 size-4 animate-spin" />
             ) : (
-              <Send className="mr-1 size-4" />
+              <PaperPlaneTilt className="mr-1 size-4" />
             )}
             Submit
           </Button>
@@ -635,7 +635,7 @@ export function QuestionModeView({ question, slideId }: Props) {
             *deterrent* (paste-into-LLM). Not a security control — anyone
             can read the DOM. Code editor stays selectable. */}
         <div
-          className="w-2/5 min-w-[280px] select-none overflow-auto border-r bg-white p-4"
+          className="w-2/5 min-w-reg-280 select-none overflow-auto border-r bg-white p-4"
           style={{
             WebkitUserSelect: "none",
             MozUserSelect: "none",
@@ -758,7 +758,7 @@ export function QuestionModeView({ question, slideId }: Props) {
                         {r.visible ? "(sample)" : "(hidden)"}
                       </span>
                       {r.errorType && (
-                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800">
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-3xs font-semibold uppercase tracking-wide text-red-800">
                           {r.errorType === "TLE" && "TLE"}
                           {r.errorType === "MLE" && "MLE"}
                           {r.errorType === "COMPILE" && "Compile Error"}
@@ -777,7 +777,7 @@ export function QuestionModeView({ question, slideId }: Props) {
                     </div>
                     {r.visible &&
                       (r.passed ? (
-                        <pre className="overflow-auto rounded bg-white p-1 font-mono text-[11px]">
+                        <pre className="overflow-auto rounded bg-white p-1 font-mono text-2xs">
                           {r.stdout || "(empty)"}
                         </pre>
                       ) : (
@@ -787,12 +787,12 @@ export function QuestionModeView({ question, slideId }: Props) {
                         />
                       ))}
                     {r.stderr && (
-                      <pre className="mt-1 overflow-auto rounded bg-white p-1 font-mono text-[11px] text-red-700">
+                      <pre className="mt-1 overflow-auto rounded bg-white p-1 font-mono text-2xs text-red-700">
                         {r.stderr}
                       </pre>
                     )}
                     {r.error && (
-                      <div className="mt-1 text-[11px] text-red-700">
+                      <div className="mt-1 text-2xs text-red-700">
                         {r.error}
                       </div>
                     )}
@@ -823,18 +823,18 @@ export function QuestionModeView({ question, slideId }: Props) {
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <div className="text-[10px] font-semibold uppercase text-gray-500">
+                            <div className="text-3xs font-semibold uppercase text-gray-500">
                               Input
                             </div>
-                            <pre className="overflow-auto rounded bg-gray-50 p-1 font-mono text-[11px]">
+                            <pre className="overflow-auto rounded bg-gray-50 p-1 font-mono text-2xs">
                               {tc.stdin || "(empty)"}
                             </pre>
                           </div>
                           <div>
-                            <div className="text-[10px] font-semibold uppercase text-gray-500">
+                            <div className="text-3xs font-semibold uppercase text-gray-500">
                               Expected output
                             </div>
-                            <pre className="overflow-auto rounded bg-gray-50 p-1 font-mono text-[11px]">
+                            <pre className="overflow-auto rounded bg-gray-50 p-1 font-mono text-2xs">
                               {tc.expectedStdout || "(empty)"}
                             </pre>
                           </div>

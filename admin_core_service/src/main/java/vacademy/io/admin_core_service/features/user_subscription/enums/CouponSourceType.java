@@ -8,7 +8,9 @@ public enum CouponSourceType {
     STUDENT_REGISTRATION("STUDENT_REGISTRATION"),
     LEARNER_ENROLLMENT("LEARNER_ENROLLMENT"),
     ADMIN("ADMIN"),
-    SYSTEM("SYSTEM");
+    SYSTEM("SYSTEM"),
+    INSTITUTE("INSTITUTE"),
+    PRODUCT_PAGE("PRODUCT_PAGE");
 
     private final String value;
 

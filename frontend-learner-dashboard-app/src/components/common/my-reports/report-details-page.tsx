@@ -7,13 +7,11 @@ import { StudentReport } from "@/services/student-reports-api";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import { ArrowLeft } from "phosphor-react";
+import { ArrowLeft, List, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useReportStore } from "@/stores/report-store";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
-import { List } from "phosphor-react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface ReportDetailsPageProps {
   report: StudentReport;
@@ -22,14 +20,14 @@ interface ReportDetailsPageProps {
 const markdownComponents = {
   h3: ({ ...props }) => (
     <h3
-      className="mb-5 mt-0 text-[1.2rem] font-bold text-slate-900"
+      className="mb-5 mt-0 text-h3 font-bold text-slate-900"
       {...props}
     />
   ),
   table: ({ ...props }) => (
     <div className="my-6 overflow-x-auto">
       <table
-        className="w-full border-collapse border border-slate-200 text-[0.95rem]"
+        className="w-full border-collapse border border-slate-200 text-body"
         {...props}
       />
     </div>
@@ -171,9 +169,9 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
             className="h-6 w-6 p-0"
           >
             {isNavCollapsed ? (
-              <ChevronRight size={14} />
+              <CaretRight size={14} />
             ) : (
-              <ChevronLeft size={14} />
+              <CaretLeft size={14} />
             )}
           </Button>
         </div>
@@ -316,7 +314,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
             onClick={() => setIsMobileNavOpen(false)}
           />
           {/* Bottom Sheet */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-xl shadow-2xl z-50 xl:hidden max-h-[70vh] overflow-hidden">
+          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-xl shadow-2xl z-50 xl:hidden max-h-screen-70 overflow-hidden">
             <div className="p-4 border-b">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -332,7 +330,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
                 </Button>
               </div>
             </div>
-            <div className="overflow-y-auto max-h-[calc(70vh-80px)]">
+            <div className="overflow-y-auto max-h-[calc(70vh-80px)]"> {/* design-lint-ignore: viewport math */}
               <NavigationIndex isMobile />
             </div>
           </div>
@@ -341,7 +339,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
 
       {/* Mobile Navigation Toggle Button */}
       <div className="block xl:hidden">
-        <div className="fixed bottom-6 right-6 z-[60]">
+        <div className="fixed bottom-6 right-6 z-60">
           <Button
             onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
             className="rounded-full size-12 shadow-2xl bg-primary-400 text-white flex items-center justify-center"

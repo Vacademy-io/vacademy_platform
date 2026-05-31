@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Check, X, AlertCircle } from "lucide-react";
+import { CaretDown, CaretRight, Check, X, WarningCircle } from "@phosphor-icons/react";
 import { Badge } from "@/components/ui/badge";
 import { listSubmissions, getSubmission } from "./submission-store";
 import { LANGUAGE_REGISTRY } from "./language-registry";
@@ -23,7 +23,7 @@ const verdictBadge: Record<
   PARTIAL: {
     label: "Partial",
     className: "bg-amber-100 text-amber-700 border-amber-200",
-    Icon: AlertCircle,
+    Icon: WarningCircle,
   },
   REJECTED: {
     label: "Rejected",
@@ -104,9 +104,9 @@ export function SubmissionHistory({ slideId, refreshKey }: Props) {
               onClick={() => toggleOpen(summary.id)}
             >
               {open ? (
-                <ChevronDown className="size-4" />
+                <CaretDown className="size-4" />
               ) : (
-                <ChevronRight className="size-4" />
+                <CaretRight className="size-4" />
               )}
               <span
                 className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium ${v.className}`}
@@ -120,7 +120,7 @@ export function SubmissionHistory({ slideId, refreshKey }: Props) {
               <span className="text-xs text-gray-500">
                 {s.passedCount}/{s.totalCount} tests
               </span>
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-3xs">
                 {LANGUAGE_REGISTRY[s.language]?.label ?? s.language}
               </Badge>
               <span className="ml-auto text-xs text-gray-500">

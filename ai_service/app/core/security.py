@@ -152,8 +152,8 @@ async def _verify_and_fetch_user(auth_header: str, request: Request, settings: S
                     institute_id=client_id,
                     enabled=data.get("enabled", True),
                     is_root_user=bool(is_root),
-                    roles=data.get("roles", []),
-                    authorities=data.get("authorities", [])
+                    roles=data.get("roles") or [],
+                    authorities=data.get("authorities") or []
                 )
             else:
                  logger.warning(f"Auth Service returned {response.status_code} for user {full_username}: {response.text}")

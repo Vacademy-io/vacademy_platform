@@ -6,6 +6,14 @@ import LocalStorageUtils from "@/utils/localstorage";
 type GenerateCertificateRequest = {
     user_id: string;
     package_session_id: string;
+    // Learner's current completion percentage. REQUIRED for a fresh render:
+    // the backend re-validates it against the institute's auto-issue threshold
+    // and returns no certificate when it's missing or below the threshold.
+    completion_percentage?: number;
+    // Human-readable course name used for the {{COURSE_NAME}} token, the audit
+    // row, and the issued-certificate email. Falls back to the package name on
+    // the backend when omitted.
+    course_name?: string;
 };
 
 type GenerateCertificateResponse = {
@@ -54,12 +62,22 @@ export const generateCertificateUrl = async ({
     learnerId,
     packageSessionId,
     generatedAt,
+    completionPercentage,
+    courseName,
+    regenerate,
 }: {
     learnerId: string;
     packageSessionId: string;
     generatedAt: string;
+    completionPercentage?: number;
+    courseName?: string;
+    // When true the backend bypasses the cached file id on the learner mapping
+    // and re-renders against the *current* template. Used by the Refresh flow.
+    regenerate?: boolean;
 }) => {
     const instituteId = await getInstituteIdSync();
+    // Field names are snake_case to match CertificationGenerationRequest
+    // (@JsonNaming(SnakeCaseStrategy)) on the backend.
     const response = await authenticatedAxiosInstance({
         method: "POST",
         url: GENERATE_CERTIFICATE,
@@ -70,47 +88,53 @@ export const generateCertificateUrl = async ({
         },
         data: {
             completion_date: generatedAt,
+            completion_percentage: completionPercentage,
+            course_name: courseName,
+            regenerate: regenerate ?? false,
         },
     });
-    return response?.data;
+    return response;
 };
-
-// Mock function that mimics backend API
-export async function mockGenerateCertificate(
-    payload: GenerateCertificateRequest
-): Promise<GenerateCertificateResponse> {
-    const { user_id, package_session_id } = payload;
-    const generatedAt = new Date().toISOString();
-    // Randomly decide scenario; 60% already generated, 40% newly generated
-    const newlyGenerated = false;
-    const url = await generateCertificateUrl({
-        learnerId: user_id,
-        packageSessionId: package_session_id,
-        generatedAt,
-    });
-
-    // Simulate slight network delay
-    await new Promise((r) => setTimeout(r, 500 + Math.random() * 500));
-
-    if (newlyGenerated) {
-        return { status: 200, url, generated_at: generatedAt };
-    }
-    return { status: 202, url, generated_at: generatedAt };
-}
 
 export async function generateCertificateWithCache(
     payload: GenerateCertificateRequest,
-    opts?: { bypassCache?: boolean }
+    opts?: { bypassCache?: boolean; regenerate?: boolean }
 ): Promise<GenerateCertificateResponse> {
-    const { user_id, package_session_id } = payload;
-    if (!opts?.bypassCache) {
+    const { user_id, package_session_id, completion_percentage, course_name } =
+        payload;
+
+    // A regenerate request must always reach the backend so the freshly-saved
+    // template is rendered; it also skips (and overwrites) the local cache that
+    // would otherwise keep returning the stale PDF URL for up to 3 hours.
+    const bypass = opts?.bypassCache || opts?.regenerate;
+    if (!bypass) {
         const cached = getCachedCertificateStatus(user_id, package_session_id);
         if (cached) return cached;
     }
 
-    const response = await mockGenerateCertificate(payload);
-    setCachedCertificateStatus(user_id, package_session_id, response);
-    return response;
+    const generatedAt = new Date().toISOString();
+    const response = await generateCertificateUrl({
+        learnerId: user_id,
+        packageSessionId: package_session_id,
+        generatedAt,
+        completionPercentage: completion_percentage,
+        courseName: course_name,
+        regenerate: opts?.regenerate,
+    });
+
+    // The controller returns the certificate URL as the response body, with
+    // HTTP 200 for a freshly-rendered certificate and 202 for a cached one.
+    const url =
+        typeof response?.data === "string"
+            ? response.data
+            : (response?.data?.url ?? "");
+    const result: GenerateCertificateResponse = {
+        status: response?.status === 200 ? 200 : 202,
+        url,
+        generated_at: generatedAt,
+    };
+    setCachedCertificateStatus(user_id, package_session_id, result);
+    return result;
 }
 
 export type { GenerateCertificateRequest, GenerateCertificateResponse };

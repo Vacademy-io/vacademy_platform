@@ -348,83 +348,86 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                         <LayerHandlesOverlay scale={scale} canvasW={canvasW} canvasH={canvasH} />
                     )}
                 </div>
+            </div>
 
-                {/* Scale label */}
-                <div
-                    style={{
-                        position: 'absolute',
-                        bottom: 6,
-                        right: 8,
-                        background: 'rgba(0,0,0,0.4)',
-                        color: '#fff',
-                        fontSize: 10,
-                        fontFamily: 'monospace',
-                        padding: '1px 5px',
-                        borderRadius: 3,
-                        pointerEvents: 'none',
-                        zIndex: 10001,
-                    }}
-                >
-                    {Math.round(scale * 100)}%
-                </div>
+            {/* Guides toggle pill — moved out of the canvas frame into the
+                outer container's top-left so it can't sit on top of the video
+                content. Pinned to the editor pane's corner; never enters the
+                canvas's bounding box regardless of aspect ratio. */}
+            <div
+                style={{
+                    position: 'absolute',
+                    top: 6,
+                    left: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    background: 'rgba(255,255,255,0.95)',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 6,
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                    padding: 2,
+                    zIndex: 10001,
+                    fontSize: 10,
+                    fontFamily: 'system-ui, sans-serif',
+                }}
+            >
+                <GuideToggle
+                    label="Safe"
+                    active={guides.safe}
+                    onClick={() => setGuides((g) => ({ ...g, safe: !g.safe }))}
+                    title="Show broadcast safe areas (action 95% / title 90%)"
+                />
+                <GuideToggle
+                    label="Thirds"
+                    active={guides.thirds}
+                    onClick={() => setGuides((g) => ({ ...g, thirds: !g.thirds }))}
+                    title="Show rule-of-thirds grid"
+                />
+                <GuideToggle
+                    label="Center"
+                    active={guides.center}
+                    onClick={() => setGuides((g) => ({ ...g, center: !g.center }))}
+                    title="Show center crosshair"
+                />
+                {guidesActive && (
+                    <button
+                        type="button"
+                        onClick={() => setGuides({ safe: false, thirds: false, center: false })}
+                        title="Hide all guides"
+                        style={{
+                            marginLeft: 2,
+                            padding: '2px 4px',
+                            color: '#9ca3af',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: 10,
+                        }}
+                    >
+                        ×
+                    </button>
+                )}
+            </div>
 
-                {/* Guides toggle pill — top-right of the canvas, sits above
-                    the iframes via z-index. Each segment toggles independently. */}
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: 6,
-                        right: 8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                        background: 'rgba(255,255,255,0.95)',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: 6,
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                        padding: 2,
-                        zIndex: 10001,
-                        fontSize: 10,
-                        fontFamily: 'system-ui, sans-serif',
-                    }}
-                >
-                    <GuideToggle
-                        label="Safe"
-                        active={guides.safe}
-                        onClick={() => setGuides((g) => ({ ...g, safe: !g.safe }))}
-                        title="Show broadcast safe areas (action 95% / title 90%)"
-                    />
-                    <GuideToggle
-                        label="Thirds"
-                        active={guides.thirds}
-                        onClick={() => setGuides((g) => ({ ...g, thirds: !g.thirds }))}
-                        title="Show rule-of-thirds grid"
-                    />
-                    <GuideToggle
-                        label="Center"
-                        active={guides.center}
-                        onClick={() => setGuides((g) => ({ ...g, center: !g.center }))}
-                        title="Show center crosshair"
-                    />
-                    {guidesActive && (
-                        <button
-                            type="button"
-                            onClick={() => setGuides({ safe: false, thirds: false, center: false })}
-                            title="Hide all guides"
-                            style={{
-                                marginLeft: 2,
-                                padding: '2px 4px',
-                                color: '#9ca3af',
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                fontSize: 10,
-                            }}
-                        >
-                            ×
-                        </button>
-                    )}
-                </div>
+            {/* Scale label — bottom-right of the outer container, also out of
+                the canvas frame so it doesn't obscure content. */}
+            <div
+                style={{
+                    position: 'absolute',
+                    bottom: 6,
+                    right: 8,
+                    background: 'rgba(0,0,0,0.4)',
+                    color: '#fff',
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    pointerEvents: 'none',
+                    zIndex: 10001,
+                }}
+            >
+                {Math.round(scale * 100)}%
             </div>
         </div>
     );

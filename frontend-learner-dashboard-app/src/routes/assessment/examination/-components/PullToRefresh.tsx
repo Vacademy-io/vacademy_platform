@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
+import { SpinnerGap } from '@phosphor-icons/react';
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
@@ -81,7 +81,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, children }) =>
             opacity: pullDistance / THRESHOLD,
           }}
         >
-          <Loader2 
+          <SpinnerGap 
             className="transition-transform"
             style={{ 
               transform: `rotate(${rotation}deg)`,

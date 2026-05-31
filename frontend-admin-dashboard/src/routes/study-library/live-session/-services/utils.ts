@@ -14,6 +14,7 @@ import {
     SYNC_RECORDINGS_FROM_BBB,
     RECORDING_TRANSCRIBE,
     RECORDING_CREATE_ASSESSMENT,
+    RECORDING_STUDY_NOTES,
     RECORDING_PUBLISH_ASSESSMENT,
     RECORDING_LIST_ASSESSMENTS,
 } from '@/constants/urls';
@@ -197,6 +198,13 @@ export interface RecordingTranscriptionStatus {
     errorMessage?: string | null;
     createdAt?: string | null;
     updatedAt?: string | null;
+    /** Cached study notes Markdown — non-null when the user has previously
+     * clicked "Generate Lecture Notes" on this recording. The dialog uses
+     * this to skip the action picker and jump straight to the notes view. */
+    savedNotesMarkdown?: string | null;
+    /** ISO timestamp of when {@link savedNotesMarkdown} was produced. Used
+     * for the "Generated X ago" hint above cached notes. */
+    savedNotesGeneratedAt?: string | null;
 }
 
 export interface NotificationAction {
@@ -596,6 +604,24 @@ export const getTranscriptionStatus = async (
 ): Promise<RecordingTranscriptionStatus> => {
     const response = await authenticatedAxiosInstance.get<RecordingTranscriptionStatus>(
         RECORDING_TRANSCRIBE(scheduleId, recordingId)
+    );
+    return response.data;
+};
+
+/**
+ * Persist LLM-generated study notes alongside the transcript row. Called by
+ * the transcript dialog after a successful /transcript/generate-notes call,
+ * so the next time the user opens this recording's dialog we can show the
+ * cached notes immediately instead of re-running the LLM.
+ */
+export const saveStudyNotes = async (
+    scheduleId: string,
+    recordingId: string,
+    markdown: string,
+): Promise<RecordingTranscriptionStatus> => {
+    const response = await authenticatedAxiosInstance.post<RecordingTranscriptionStatus>(
+        RECORDING_STUDY_NOTES(scheduleId, recordingId),
+        { markdown },
     );
     return response.data;
 };

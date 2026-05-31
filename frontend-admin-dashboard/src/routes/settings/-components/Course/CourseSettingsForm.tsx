@@ -13,9 +13,11 @@ import { Label } from '@/components/ui/label';
 import {
     CourseSettingsData,
     DripConditionsSettings,
+    EnrollmentNotificationsSettings,
     OfferPricingSettings,
 } from '@/types/course-settings';
 import { BookOpen, Eye, Users, Save, Image, Play, List, Layers, RotateCcw } from 'lucide-react';
+import { Bell } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { DripConditionsCard } from './DripConditionsCard';
@@ -146,6 +148,22 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
         setFormData((prev) => ({
             ...prev,
             offerPricing,
+        }));
+    };
+
+    const updateEnrollmentNotifications = (
+        key: keyof EnrollmentNotificationsSettings,
+        value: boolean
+    ) => {
+        setFormData((prev) => ({
+            ...prev,
+            enrollmentNotifications: {
+                showNotifyLearners:
+                    prev.enrollmentNotifications?.showNotifyLearners ?? true,
+                showSendCredentials:
+                    prev.enrollmentNotifications?.showSendCredentials ?? true,
+                [key]: value,
+            },
         }));
     };
 
@@ -635,6 +653,66 @@ export const CourseSettingsForm: React.FC<CourseSettingsFormProps> = ({
                     settings={formData.offerPricing ?? { enabled: false }}
                     onUpdate={updateOfferPricing}
                 />
+
+                {/* Enrollment Notifications Section */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Bell size={20} weight="duotone" className="text-primary-500" />
+                            Enrollment Notifications
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            Controls which notification toggles admins see in the bulk enrollment
+                            dialog. When a toggle is turned off here, the corresponding option is
+                            hidden in the dialog AND forced to off in the API request — so no
+                            emails go out by accident.
+                        </p>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="flex items-center justify-between">
+                                <Label
+                                    htmlFor="show-notify-learners"
+                                    className="flex items-center gap-2"
+                                >
+                                    <span>Show &ldquo;Notify Learners&rdquo; in bulk enroll</span>
+                                </Label>
+                                <Switch
+                                    id="show-notify-learners"
+                                    checked={
+                                        formData.enrollmentNotifications?.showNotifyLearners ??
+                                        true
+                                    }
+                                    onCheckedChange={(value) =>
+                                        updateEnrollmentNotifications('showNotifyLearners', value)
+                                    }
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                                <Label
+                                    htmlFor="show-send-credentials"
+                                    className="flex items-center gap-2"
+                                >
+                                    <span>Show &ldquo;Send Credentials&rdquo; in bulk enroll</span>
+                                </Label>
+                                <Switch
+                                    id="show-send-credentials"
+                                    checked={
+                                        formData.enrollmentNotifications?.showSendCredentials ??
+                                        true
+                                    }
+                                    onCheckedChange={(value) =>
+                                        updateEnrollmentNotifications(
+                                            'showSendCredentials',
+                                            value
+                                        )
+                                    }
+                                />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             <Separator />

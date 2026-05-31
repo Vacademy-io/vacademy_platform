@@ -173,6 +173,9 @@ public class LearnerBatchEnrollService {
         studentExtraDetails.setParentsToMotherMobileNumber(learnerExtraDetails.getParentsToMotherMobileNumber());
         studentExtraDetails.setParentsToMotherEmail(learnerExtraDetails.getParentsToMotherEmail());
         studentExtraDetails.setLinkedInstituteName(learnerExtraDetails.getLinkedInstituteName());
+        studentExtraDetails.setBillingContactName(learnerExtraDetails.getBillingContactName());
+        studentExtraDetails.setBillingContactEmail(learnerExtraDetails.getBillingContactEmail());
+        studentExtraDetails.setBillingContactRole(learnerExtraDetails.getBillingContactRole());
         return studentExtraDetails;
     }
 
@@ -267,10 +270,9 @@ public class LearnerBatchEnrollService {
         // Process each item in the bulk request
         for (BulkLearnerApprovalRequestDTO.LearnerApprovalItem item : request.getItems()) {
             try {
-                // Validate individual item
+                // enrollInviteId is optional — null when the learner was not added via an enroll invite
                 if (item.getPackageSessionIds() == null || item.getPackageSessionIds().isEmpty() ||
-                        item.getUserId() == null || item.getUserId().trim().isEmpty() ||
-                        item.getEnrollInviteId() == null || item.getEnrollInviteId().trim().isEmpty()) {
+                        item.getUserId() == null || item.getUserId().trim().isEmpty()) {
                     log.warn("Skipping invalid item: userId={}, enrollInviteId={}, packageSessionIds={}",
                             item.getUserId(), item.getEnrollInviteId(), item.getPackageSessionIds());
                     continue; // Skip invalid items

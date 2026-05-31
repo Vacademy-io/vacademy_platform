@@ -476,6 +476,41 @@ public class FeeTrackingService {
                         .collect(Collectors.toList());
         }
 
+        /**
+         * Fetch all StudentFeePayment rows for a specific UserPlan, validate they all
+         * belong to {@code userId}, and return them as {@link StudentFeePaymentDTO}s.
+         *
+         * <p>Used by the open (no-JWT) CPO dues endpoint so the caller can see their
+         * full installment schedule after enrollment without needing a JWT.</p>
+         */
+        @Transactional(readOnly = true)
+        public List<StudentFeePaymentDTO> getCpoDuesByUserPlan(String userId, String userPlanId) {
+                List<StudentFeePayment> bills = studentFeePaymentRepository.findByUserPlanId(userPlanId);
+
+                if (bills == null || bills.isEmpty()) {
+                        return Collections.emptyList();
+                }
+
+                // Validate all rows belong to the expected user
+                for (StudentFeePayment bill : bills) {
+                        if (!userId.equals(bill.getUserId())) {
+                                throw new vacademy.io.common.exceptions.VacademyException(
+                                        "UserPlan " + userPlanId + " does not belong to user " + userId);
+                        }
+                }
+
+                Map<String, FeeMeta> billIdToMeta = buildFeeMetaMap(bills);
+                Map<String, StudentFeeAdjustmentHistory> adjustmentMap =
+                                adjustmentResolver.loadCurrentEventsForBills(bills);
+
+                return bills.stream()
+                                .map(bill -> mapToPaymentDTO(
+                                                bill,
+                                                billIdToMeta.get(bill.getId()),
+                                                adjustmentResolver.lookup(bill, adjustmentMap)))
+                                .collect(Collectors.toList());
+        }
+
         @Transactional(readOnly = true)
         public List<StudentFeePaymentDTO> getStudentDues(String userId, String instituteId) {
                 List<StudentFeePayment> allBills = fetchBillsForUserAndInstitute(userId, instituteId);

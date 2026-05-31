@@ -1,4 +1,5 @@
 // activity-log-dialog.tsx
+import React from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
@@ -20,6 +21,9 @@ import {
     getUserDocActivityLogs,
     getQuestionSlideActivityLogs,
     getAssignmentSlideActivityLogs,
+    getQuizSlideActivityLogs,
+    getSlideByIdQuery,
+    saveQuizQuestionFeedback,
     getUserVideoResponseSlideActivityLogs,
     gradeAssignmentSubmission,
 } from '@/services/study-library/slide-operations/user-slide-activity-logs';
@@ -53,6 +57,7 @@ interface AssignmentRowData {
     marks: number | null;
     feedback: string | null;
     checkedFileId: string | null;
+    lateSubmission: boolean;
 }
 
 const FileCell = ({ files }: { files: AssignmentFileInfo[] }) => {
@@ -201,22 +206,32 @@ const SubmissionCard = ({
                                 </span>
                                 <span className="text-xs text-neutral-500">{row.uploadTime}</span>
                             </div>
-                            {isGraded ? (
-                                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-                                        {row.marks} marks
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                {row.lateSubmission && (
+                                    <span
+                                        className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700"
+                                        title="Submitted after the assignment's end date"
+                                    >
+                                        Late
                                     </span>
-                                    {row.checkedFileId && (
-                                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-                                            ✓ Checked
+                                )}
+                                {isGraded ? (
+                                    <>
+                                        <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+                                            {row.marks} marks
                                         </span>
-                                    )}
-                                </div>
-                            ) : (
-                                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                                    Pending Review
-                                </span>
-                            )}
+                                        {row.checkedFileId && (
+                                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                                                ✓ Checked
+                                            </span>
+                                        )}
+                                    </>
+                                ) : (
+                                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                                        Pending Review
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         {/* Submitted Files */}
@@ -452,6 +467,455 @@ const SubmissionCard = ({
     );
 };
 
+interface QuizSlideOption {
+    id?: string;
+    text?: { content?: string };
+    text_data?: { content?: string };
+    content?: string;
+    name?: string;
+    option_text?: string;
+}
+
+interface QuizSlideQuestion {
+    id: string;
+    text?: { content?: string };
+    text_data?: { content?: string };
+    questionName?: string;
+    question_type?: string;
+    auto_evaluation_json?: string;
+    autoEvaluationJson?: string;
+    marks?: number | null;
+    negative_marking?: number | null;
+    options?: QuizSlideOption[];
+}
+
+const getQuizQuestionName = (q?: QuizSlideQuestion): string =>
+    q?.text_data?.content ?? q?.text?.content ?? q?.questionName ?? '';
+
+const getOptionText = (opt?: QuizSlideOption): string =>
+    opt?.text?.content ??
+    opt?.text_data?.content ??
+    opt?.content ??
+    opt?.option_text ??
+    opt?.name ??
+    '';
+
+const getQuizCorrectOptionIds = (q?: QuizSlideQuestion): string[] => {
+    const raw = q?.auto_evaluation_json ?? q?.autoEvaluationJson;
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        const list: unknown[] | undefined =
+            (Array.isArray(parsed?.correctAnswers) && parsed.correctAnswers) ||
+            (Array.isArray(parsed?.data?.correctAnswers) && parsed.data.correctAnswers) ||
+            (Array.isArray(parsed?.correctOptionIds) && parsed.correctOptionIds) ||
+            (Array.isArray(parsed?.data?.correctOptionIds) && parsed.data.correctOptionIds) ||
+            undefined;
+        if (!list || list.length === 0) return [];
+        const first = list[0];
+        if (typeof first === 'number' && q?.options?.length) {
+            return list.map((idx) => String(q.options?.[idx as number]?.id ?? idx));
+        }
+        return list.map(String);
+    } catch {
+        return [];
+    }
+};
+
+const UUID_RE =
+    /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+const lookupOptionName = (q: QuizSlideQuestion | undefined, id: string): string => {
+    const match = q?.options?.find((o) => String(o.id ?? '') === String(id));
+    if (match) {
+        const text = getOptionText(match);
+        if (text) return text;
+    }
+    // If the raw value is a UUID we couldn't resolve, blank it out so the cell
+    // doesn't show a meaningless identifier. The dash placeholder is rendered
+    // by the JSX when the value is empty. Non-UUID values (numeric / typed
+    // answers) flow through unchanged.
+    if (UUID_RE.test(id)) return '';
+    return id;
+};
+
+interface QuizQuestionRow {
+    trackedId: string;
+    questionId: string;
+    questionName: string;
+    selectedAnswer: string;
+    selectedAnswerIds: string[];
+    correctAnswer: string;
+    correctAnswerIds: string[];
+    isCorrect: boolean;
+    marks: number;
+    maxMarks: number;
+    responseStatus: string;
+    instructorFeedback: string;
+    instructorFeedbackFileId: string;
+    slideQuestionOptionsCount: number;
+}
+
+interface QuizAttemptRow {
+    activityId: string;
+    attemptNumber: number;
+    activityDate: string;
+    startTime: string;
+    endTime: string;
+    duration: string;
+    earnedMarks: number;
+    totalMarks: number;
+    percentage: number;
+    passed: boolean | null;
+    questions: QuizQuestionRow[];
+}
+
+const QuestionFeedbackEditor = ({
+    trackedId,
+    initialFeedback,
+    initialFileId,
+    uploaderUserId,
+    onSaved,
+}: {
+    trackedId: string;
+    initialFeedback: string;
+    initialFileId: string;
+    uploaderUserId: string;
+    onSaved: () => void;
+}) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [feedback, setFeedback] = useState(initialFeedback);
+    const [fileId, setFileId] = useState(initialFileId);
+    const [fileUrl, setFileUrl] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+        setFeedback(initialFeedback);
+        setFileId(initialFileId);
+    }, [initialFeedback, initialFileId]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (fileId) {
+            getPublicUrl(fileId)
+                .then((url) => {
+                    if (!cancelled) setFileUrl(url);
+                })
+                .catch(() => {
+                    if (!cancelled) setFileUrl('');
+                });
+        } else {
+            setFileUrl('');
+        }
+        return () => {
+            cancelled = true;
+        };
+    }, [fileId]);
+
+    const handleUpload = async (file: File) => {
+        if (!uploaderUserId) return;
+        setIsUploading(true);
+        try {
+            const id = await UploadFileInS3(
+                file,
+                () => {},
+                uploaderUserId,
+                'QUIZ_FEEDBACK',
+                'TEACHER',
+                true
+            );
+            if (id) setFileId(id);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await saveQuizQuestionFeedback({
+                tracked_id: trackedId,
+                instructor_feedback: feedback.trim() || null,
+                instructor_feedback_file_id: fileId || null,
+            });
+            setIsEditing(false);
+            onSaved();
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleCancel = () => {
+        setFeedback(initialFeedback);
+        setFileId(initialFileId);
+        setIsEditing(false);
+    };
+
+    const hasFeedback = Boolean(feedback) || Boolean(fileId);
+
+    if (!isEditing) {
+        if (!hasFeedback) {
+            return (
+                <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="text-caption font-medium text-primary-500 hover:underline"
+                >
+                    + Add instructor feedback
+                </button>
+            );
+        }
+        return (
+            <div className="flex flex-col gap-1 rounded-md border border-primary-100 bg-primary-50 px-3 py-2">
+                <div className="flex items-start justify-between gap-3">
+                    <p className="text-caption font-semibold uppercase tracking-wide text-primary-600">
+                        Instructor feedback
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="text-caption text-primary-500 hover:underline"
+                    >
+                        Edit
+                    </button>
+                </div>
+                {feedback && (
+                    <p className="whitespace-pre-wrap text-body text-neutral-800">{feedback}</p>
+                )}
+                {fileId && fileUrl && (
+                    <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-caption text-primary-500 hover:underline"
+                    >
+                        <DownloadSimple size={12} weight="bold" /> View attachment
+                    </a>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-2 rounded-md border border-primary-200 bg-primary-50 p-3">
+            <p className="text-caption font-semibold uppercase tracking-wide text-primary-600">
+                Instructor feedback
+            </p>
+            <textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Write feedback for this question..."
+                rows={3}
+                className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-800 focus:border-primary-400 focus:outline-none"
+            />
+            <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-1 text-caption font-medium text-primary-500 hover:underline">
+                    <UploadSimple size={14} weight="bold" />
+                    {fileId ? 'Replace file' : 'Attach file'}
+                    <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void handleUpload(file);
+                            e.target.value = '';
+                        }}
+                    />
+                </label>
+                {isUploading && <Spinner size={14} className="animate-spin text-primary-500" />}
+                {fileId && fileUrl && !isUploading && (
+                    <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-caption text-neutral-600 hover:underline"
+                    >
+                        <DownloadSimple size={12} weight="bold" /> View
+                    </a>
+                )}
+                {fileId && (
+                    <button
+                        type="button"
+                        onClick={() => setFileId('')}
+                        className="text-caption text-danger-600 hover:underline"
+                        disabled={isUploading}
+                    >
+                        Remove
+                    </button>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleCancel}
+                        disabled={isSaving}
+                        className="rounded-md px-3 py-1 text-caption font-medium text-neutral-600 hover:bg-neutral-100 disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving || isUploading}
+                        className="inline-flex items-center gap-1 rounded-md bg-primary-500 px-3 py-1 text-caption font-medium text-white hover:bg-primary-600 disabled:opacity-50"
+                    >
+                        {isSaving && <Spinner size={12} className="animate-spin" />}
+                        {isSaving ? 'Saving...' : 'Save'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const QuizAttemptCard = ({
+    attempt,
+    uploaderUserId,
+    onFeedbackSaved,
+}: {
+    attempt: QuizAttemptRow;
+    uploaderUserId: string;
+    onFeedbackSaved: () => void;
+}) => {
+    const passBadge =
+        attempt.passed == null ? null : attempt.passed ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2 py-0.5 text-caption font-semibold text-success-700">
+                <CheckCircle size={12} weight="bold" /> Passed
+            </span>
+        ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-danger-50 px-2 py-0.5 text-caption font-semibold text-danger-600">
+                <XIcon size={12} weight="bold" /> Failed
+            </span>
+        );
+
+    return (
+        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-3">
+                <div className="flex flex-col gap-0.5">
+                    <p className="text-caption font-semibold uppercase tracking-wide text-primary-500">
+                        Attempt {attempt.attemptNumber}
+                    </p>
+                    <p className="text-caption text-neutral-600">
+                        {attempt.activityDate}
+                        {attempt.startTime ? ` · ${attempt.startTime.trim()}` : ''} · {attempt.duration}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end">
+                        <p className="text-caption text-neutral-500">Score</p>
+                        <p className="text-subtitle font-semibold text-neutral-900">
+                            {attempt.earnedMarks}/{attempt.totalMarks}
+                            {attempt.totalMarks > 0 && (
+                                <span className="ml-1 text-body font-regular text-neutral-500">
+                                    ({attempt.percentage}%)
+                                </span>
+                            )}
+                        </p>
+                    </div>
+                    {passBadge}
+                </div>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-body">
+                    <thead className="bg-neutral-50">
+                        <tr className="border-b border-neutral-200 text-left text-caption text-neutral-600">
+                            <th className="px-4 py-2 font-semibold">#</th>
+                            <th className="px-4 py-2 font-semibold">Question</th>
+                            <th className="px-4 py-2 font-semibold">Learner Answer</th>
+                            <th className="px-4 py-2 font-semibold">Correct Answer</th>
+                            <th className="px-4 py-2 font-semibold">Result</th>
+                            <th className="px-4 py-2 font-semibold">Marks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {attempt.questions.length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={6}
+                                    className="px-4 py-6 text-center text-caption text-neutral-500"
+                                >
+                                    No question responses recorded
+                                </td>
+                            </tr>
+                        ) : (
+                            attempt.questions.map((q, idx) => (
+                                <React.Fragment key={q.trackedId || idx}>
+                                    <tr className="border-b border-neutral-100 align-top">
+                                        <td className="px-4 py-3 text-caption text-neutral-500">
+                                            {idx + 1}
+                                        </td>
+                                        <td
+                                            className="px-4 py-3 text-body text-neutral-800"
+                                            dangerouslySetInnerHTML={{
+                                                __html: q.questionName || '—',
+                                            }}
+                                        />
+                                        <td className="px-4 py-3 text-body text-neutral-700">
+                                            {q.selectedAnswer ? (
+                                                q.selectedAnswer
+                                            ) : q.responseStatus === 'SKIPPED' ? (
+                                                <span className="text-neutral-400">
+                                                    Skipped
+                                                </span>
+                                            ) : (
+                                                <span
+                                                    className="text-neutral-400"
+                                                    title="Answer was recorded but the option text could not be looked up. This usually means the quiz was edited after this attempt."
+                                                >
+                                                    Answer recorded
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-body text-neutral-700">
+                                            {q.correctAnswer || (
+                                                <span className="text-neutral-400">—</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {q.responseStatus === 'SKIPPED' ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-medium text-neutral-600">
+                                                    Skipped
+                                                </span>
+                                            ) : q.isCorrect ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-success-50 px-2 py-0.5 text-caption font-medium text-success-700">
+                                                    <CheckCircle size={12} weight="bold" />
+                                                    Correct
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-danger-50 px-2 py-0.5 text-caption font-medium text-danger-600">
+                                                    <XIcon size={12} weight="bold" />
+                                                    Wrong
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-body font-medium text-neutral-800">
+                                            {q.marks}/{q.maxMarks}
+                                        </td>
+                                    </tr>
+                                    {q.trackedId && (
+                                        <tr className="border-b border-neutral-100 last:border-b-0">
+                                            <td className="px-4 pb-3 pt-0" />
+                                            <td colSpan={5} className="px-4 pb-3 pt-0">
+                                                <QuestionFeedbackEditor
+                                                    trackedId={q.trackedId}
+                                                    initialFeedback={q.instructorFeedback}
+                                                    initialFileId={q.instructorFeedbackFileId}
+                                                    uploaderUserId={uploaderUserId}
+                                                    onSaved={onFeedbackSaved}
+                                                />
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
 export const ActivityLogDialog = ({
     selectedUser,
     slideData,
@@ -498,6 +962,14 @@ export const ActivityLogDialog = ({
                 pageNo: page,
                 pageSize: pageSize,
             });
+        }
+        if (activeItem?.source_type === 'QUIZ') {
+            return getQuizSlideActivityLogs({
+                userId,
+                slideId,
+                pageNo: page,
+                pageSize: pageSize,
+            });
         } else {
             return getUserDocActivityLogs({
                 userId,
@@ -526,6 +998,19 @@ export const ActivityLogDialog = ({
         isLoading: isVideoResponseLoading,
         error: isVideoResponseError,
     } = useQuery(queryConfigVideoResponse);
+
+    const quizSlideIdForFetch =
+        activeItem?.source_type === 'QUIZ'
+            ? selectedUser && slideData
+                ? slideData.slide_id
+                : activeItem?.id || ''
+            : '';
+    const { data: fetchedQuizSlide } = useQuery(
+        getSlideByIdQuery({
+            slideId: quizSlideIdForFetch,
+            enabled: Boolean(quizSlideIdForFetch),
+        })
+    );
 
     const formatDateTime = (timestamp: number) => {
         return new Date(timestamp).toLocaleString();
@@ -586,6 +1071,184 @@ export const ActivityLogDialog = ({
             }));
         }
 
+        if (activeItem?.source_type === 'QUIZ') {
+            const safeParse = (s: string) => {
+                try {
+                    return JSON.parse(s);
+                } catch {
+                    return null;
+                }
+            };
+            const quizSlide =
+                (fetchedQuizSlide as { quiz_slide?: typeof activeItem.quiz_slide } | undefined)
+                    ?.quiz_slide ?? activeItem?.quiz_slide;
+            const slideQuestions: QuizSlideQuestion[] =
+                (quizSlide?.questions as QuizSlideQuestion[] | undefined) ?? [];
+            const qLookup = new Map<string, QuizSlideQuestion>(
+                slideQuestions.filter((q) => q.id).map((q) => [q.id, q])
+            );
+            const defaultMaxMarks =
+                (quizSlide?.marks_per_question as number | undefined) ?? 1;
+            const defaultNegMarks =
+                (quizSlide?.negative_marking as number | undefined) ?? 0;
+            const passPercentage = quizSlide?.pass_percentage ?? null;
+            const total = activityLogs.totalElements ?? activityLogs.content.length;
+
+            transformedContent = activityLogs.content.map(
+                (item: ActivityContent, idx: number) => {
+                    const startStr = formatDateTime(item.start_time_in_millis);
+                    const endStr = formatDateTime(item.end_time_in_millis);
+                    const durationMinutes =
+                        (item.end_time_in_millis - item.start_time_in_millis) /
+                        1000 /
+                        60;
+                    // When the backend persisted no per-question rows for this attempt
+                    // (e.g. submission errored before quiz_sides saved), synthesize a row
+                    // per quiz-slide question marked as Skipped so the admin still sees
+                    // the question list + the maximum possible score for that attempt.
+                    const baseSides: typeof item.quiz_sides =
+                        item.quiz_sides && item.quiz_sides.length > 0
+                            ? item.quiz_sides
+                            : slideQuestions.map((sq) => ({
+                                  id: '',
+                                  response_json: '',
+                                  response_status: 'SKIPPED',
+                                  question_id: sq.id,
+                                  activity_id: item.id,
+                              }));
+                    const questions = baseSides.map((qs) => {
+                        const parsed = qs.response_json
+                            ? safeParse(qs.response_json)
+                            : null;
+                        const slideQ = qLookup.get(qs.question_id);
+                        const questionName =
+                            parsed?.questionName || getQuizQuestionName(slideQ);
+                        const correctIds = getQuizCorrectOptionIds(slideQ);
+                        // Selected answer: prefer the enriched payload; fall back to the
+                        // pre-enrichment shape { answer: <id|ids> } and look option text up
+                        // from the slide config.
+                        let selectedAnswer = '';
+                        let answerIds: string[] = [];
+                        if (
+                            Array.isArray(parsed?.selectedOptions) &&
+                            parsed.selectedOptions.length > 0
+                        ) {
+                            answerIds = parsed.selectedOptions.map(
+                                (o: { id: string }) => String(o.id)
+                            );
+                            selectedAnswer = parsed.selectedOptions
+                                .map((o: { name: string }) => o.name)
+                                .join(', ');
+                        } else if (parsed?.answer != null) {
+                            const raw = parsed.answer;
+                            answerIds = Array.isArray(raw)
+                                ? raw.map(String)
+                                : [String(raw)];
+                            selectedAnswer = answerIds
+                                .map((id) => lookupOptionName(slideQ, id))
+                                .join(', ');
+                        }
+                        const correctAnswer =
+                            (Array.isArray(parsed?.correctOptions) &&
+                            parsed.correctOptions.length > 0
+                                ? parsed.correctOptions
+                                      .map((o: { name: string }) => o.name)
+                                      .join(', ')
+                                : correctIds
+                                      .map((id) => lookupOptionName(slideQ, id))
+                                      .join(', ')) || '';
+                        const isAnswered = answerIds.length > 0;
+                        const computedCorrect =
+                            isAnswered &&
+                            correctIds.length > 0 &&
+                            answerIds.length === correctIds.length &&
+                            correctIds.every((c) => answerIds.includes(c));
+                        const isCorrect =
+                            typeof parsed?.isCorrect === 'boolean'
+                                ? parsed.isCorrect
+                                : computedCorrect;
+                        const slideMaxMarks =
+                            (slideQ?.marks as number | null | undefined) ??
+                            defaultMaxMarks;
+                        const slideNegMarks =
+                            (slideQ?.negative_marking as number | null | undefined) ??
+                            defaultNegMarks;
+                        const maxMarks =
+                            typeof parsed?.maxMarks === 'number'
+                                ? parsed.maxMarks
+                                : slideMaxMarks;
+                        const fallbackEarned = !isAnswered
+                            ? 0
+                            : isCorrect
+                              ? maxMarks
+                              : -slideNegMarks;
+                        const marks =
+                            typeof parsed?.marks === 'number'
+                                ? parsed.marks
+                                : fallbackEarned;
+                        const responseStatus =
+                            qs.response_status === 'SKIPPED' ||
+                            qs.response_status === 'CORRECT' ||
+                            qs.response_status === 'WRONG'
+                                ? qs.response_status
+                                : !isAnswered
+                                  ? 'SKIPPED'
+                                  : isCorrect
+                                    ? 'CORRECT'
+                                    : 'WRONG';
+                        return {
+                            trackedId: qs.id,
+                            questionId: qs.question_id,
+                            questionName,
+                            selectedAnswer,
+                            selectedAnswerIds: answerIds,
+                            correctAnswer,
+                            correctAnswerIds: correctIds,
+                            isCorrect,
+                            marks,
+                            maxMarks,
+                            responseStatus,
+                            instructorFeedback: qs.instructor_feedback ?? '',
+                            instructorFeedbackFileId: qs.instructor_feedback_file_id ?? '',
+                            slideQuestionOptionsCount: slideQ?.options?.length ?? 0,
+                        };
+                    });
+                    const earnedMarks = Math.max(
+                        0,
+                        questions.reduce((sum, q) => sum + q.marks, 0)
+                    );
+                    const totalMarks = questions.reduce(
+                        (sum, q) => sum + q.maxMarks,
+                        0
+                    );
+                    const percentage =
+                        totalMarks > 0
+                            ? Math.round((earnedMarks / totalMarks) * 100)
+                            : 0;
+                    const passed =
+                        passPercentage != null && totalMarks > 0
+                            ? percentage >= passPercentage
+                            : null;
+                    return {
+                        activityId: item.id,
+                        attemptNumber: total - (page * pageSize + idx),
+                        activityDate: startStr.split(',')[0],
+                        startTime: startStr.split(',')[1],
+                        endTime: endStr.split(',')[1],
+                        duration: `${durationMinutes.toFixed(2)} mins`,
+                        earnedMarks,
+                        totalMarks,
+                        percentage,
+                        passed,
+                        questions,
+                    };
+                }
+            );
+            transformedContent = (transformedContent as QuizAttemptRow[]).sort(
+                (a, b) => a.attemptNumber - b.attemptNumber
+            );
+        }
+
         if (activeItem?.source_type === 'ASSIGNMENT') {
             transformedContent = activityLogs.content
                 .filter((item: ActivityContent) => item.source_type === 'ASSIGNMENT')
@@ -606,6 +1269,7 @@ export const ActivityLogDialog = ({
                         marks: submission?.marks ?? null,
                         feedback: submission?.feedback ?? null,
                         checkedFileId: submission?.checked_file_id ?? null,
+                        lateSubmission: !!submission?.late_submission,
                     };
                 });
         }
@@ -618,7 +1282,7 @@ export const ActivityLogDialog = ({
             total_elements: activityLogs.totalElements,
             last: activityLogs.last,
         };
-    }, [activityLogs, page, pageSize, selectedUser, slideData, activeItem]);
+    }, [activityLogs, page, pageSize, selectedUser, slideData, activeItem, fetchedQuizSlide]);
 
     const tableDataVideoResponse = useMemo(() => {
         if (!activityLogsVideoResponse) {
@@ -928,6 +1592,42 @@ export const ActivityLogDialog = ({
                                     )}
                                 </div>
                             )}
+
+                            {activeItem?.source_type === 'QUIZ' && (() => {
+                                const adminToken = getTokenFromCookie(TokenKey.accessToken);
+                                const adminUserId =
+                                    getTokenDecodedData(adminToken)?.sub || '';
+                                const handleFeedbackSaved = () => {
+                                    queryClient.invalidateQueries({
+                                        queryKey: ['GET_QUIZ_SLIDE_ACTIVITY_LOGS'],
+                                    });
+                                };
+                                return (
+                                    <div className="mt-6 px-4">
+                                        <div className="flex flex-col gap-4">
+                                            {(tableData.content as QuizAttemptRow[]).map(
+                                                (attempt) => (
+                                                    <QuizAttemptCard
+                                                        key={attempt.activityId}
+                                                        attempt={attempt}
+                                                        uploaderUserId={adminUserId}
+                                                        onFeedbackSaved={handleFeedbackSaved}
+                                                    />
+                                                )
+                                            )}
+                                        </div>
+                                        {tableData.total_pages > 1 && (
+                                            <div className="my-6">
+                                                <MyPagination
+                                                    currentPage={page}
+                                                    totalPages={tableData.total_pages}
+                                                    onPageChange={handlePageChange}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {activeItem?.source_type === 'ASSIGNMENT' && (
                                 <div className="mt-6 px-4">

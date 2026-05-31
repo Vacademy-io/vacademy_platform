@@ -40,7 +40,7 @@ export const MyDialog = ({
             <DialogTrigger asChild>{trigger}</DialogTrigger>
             <DialogContent
                 data-dialog-id={dialogId}
-                className={`${dialogWidth} dialog-no-close-icon flex max-h-[80vh] max-w-[80vw] flex-col p-0 ${className}`}
+                className={`${dialogWidth} dialog-no-close-icon flex max-h-screen-80 max-w-vw-80 flex-col p-0 ${className}`}
                 onInteractOutside={(e) => {
                     if (isTour) e.preventDefault();
                 }}

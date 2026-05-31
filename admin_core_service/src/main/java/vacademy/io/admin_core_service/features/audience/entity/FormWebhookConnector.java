@@ -117,6 +117,13 @@ public class FormWebhookConnector {
     @Column(name = "platform_form_id", length = 255)
     private String platformFormId;
 
+    /** Human-readable form name shown in the admin connector list (e.g.
+     *  "Wakad_leadform_2026"). Captured at connector-create time so we don't
+     *  need to call Meta Graph API on every list render. Nullable for older
+     *  rows and Google connectors. */
+    @Column(name = "platform_form_name", length = 255)
+    private String platformFormName;
+
     /** JSON routing rules for conditional lead routing to different audiences.
      *  Example: {"rules":[...],"default_audience_id":"uuid","no_match_action":"USE_DEFAULT"} */
     @Column(name = "routing_rules_json", columnDefinition = "TEXT")

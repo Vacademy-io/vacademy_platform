@@ -41,7 +41,7 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { toast } from 'sonner';
-import { BASE_URL, EDIT_PRESENTATION } from '@/constants/urls';
+import { AI_SERVICE_BASE_URL, BASE_URL, EDIT_PRESENTATION } from '@/constants/urls';
 import { useQueryClient } from '@tanstack/react-query';
 import { MyButton } from '@/components/design-system/button';
 import {
@@ -256,7 +256,8 @@ export default function ManageVolt() {
 
         try {
             const response = await authenticatedAxiosInstance.post(
-                `${BACKEND_URL}/media-service/ai/presentation/generateFromData`,
+                // Migrated to ai_service (was media-service/ai/presentation).
+                `${AI_SERVICE_BASE_URL}/ai/presentation/generateFromData`,
                 {
                     language: aiLanguage,
                     text: aiTopic,

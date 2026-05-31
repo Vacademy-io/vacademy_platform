@@ -19,4 +19,11 @@ public class LearnerPackageSessionsEnrollDTO {
     private PaymentInitiationRequestDTO paymentInitiationRequest;
     private List<CustomFieldValueDTO>customFieldValues;
     private Date startDate;
+
+    /**
+     * Optional. Discount coupon code the learner entered at checkout.
+     * Backend re-validates it via CouponValidationService and atomically
+     * decrements usage_limit at UserPlan creation. Null/blank = no coupon.
+     */
+    private String couponCode;
 }

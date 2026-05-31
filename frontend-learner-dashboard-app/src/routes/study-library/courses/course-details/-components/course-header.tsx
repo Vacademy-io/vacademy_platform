@@ -66,7 +66,7 @@ export const CourseHeader = ({
             className={cn(
               "relative",
               hasBannerBackdrop &&
-                "overflow-hidden rounded-2xl border border-border/50 shadow-sm min-h-[220px] sm:min-h-[280px] lg:min-h-[320px]",
+                "overflow-hidden rounded-2xl border border-border/50 shadow-sm min-h-56 sm:min-h-72 lg:min-h-80",
             )}
           >
             {hasBannerBackdrop && (
@@ -111,7 +111,7 @@ export const CourseHeader = ({
                         key={index}
                         variant="secondary"
                         className={cn(
-                          "uppercase tracking-wide text-[10px] sm:text-xs font-semibold px-2.5 py-1",
+                          "uppercase tracking-wide text-caption sm:text-xs font-semibold px-2.5 py-1",
                           // Vibrant Styles - Flat Pastel
                           "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
                           "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",

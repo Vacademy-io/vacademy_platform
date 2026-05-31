@@ -14,4 +14,19 @@ public interface PaymentLogLineItemRepository extends JpaRepository<PaymentLogLi
 
     // Example: Find line items by type
     // List<PaymentLogLineItem> findByType(String type);
+
+    /**
+     * True when any PaymentLog of this UserPlan already has a line item with
+     * the given source_id. Used by PaymentService to skip recording the same
+     * coupon discount twice (e.g. when LearnerInstallmentPaymentService
+     * re-invokes handlePayment for subsequent installments on a UserPlan that
+     * was originally enrolled with a coupon).
+     */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT COUNT(li) > 0 FROM PaymentLogLineItem li " +
+                    "WHERE li.paymentLog.userPlan.id = :userPlanId " +
+                    "AND li.sourceId = :sourceId")
+    boolean existsByPaymentLog_UserPlan_IdAndSourceId(
+            @org.springframework.data.repository.query.Param("userPlanId") String userPlanId,
+            @org.springframework.data.repository.query.Param("sourceId") String sourceId);
 }

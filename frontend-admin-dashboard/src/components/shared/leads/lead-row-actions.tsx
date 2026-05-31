@@ -54,7 +54,7 @@ export function LeadRowActions({
                     aria-label="Add note"
                     onClick={(e) => {
                         e.stopPropagation();
-                        actions.onAddNote!(userId!, name);
+                        actions.onAddNote!(userId!, name, vm.responseId);
                     }}
                     className={QUICK}
                 >

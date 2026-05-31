@@ -29,4 +29,12 @@ public interface AppliedCouponDiscountRepository extends JpaRepository<AppliedCo
             @Param("couponStatuses") List<String> couponStatuses,
             @Param("appliedStatuses") List<String> appliedStatuses
     );
+
+    /**
+     * Latest active discount linked to a given coupon. Used by the generic
+     * CouponValidationService once the coupon row has been resolved.
+     */
+    Optional<AppliedCouponDiscount> findFirstByCouponCode_IdAndStatusOrderByCreatedAtDesc(
+            String couponCodeId, String status
+    );
 }

@@ -118,6 +118,16 @@ export interface OfferPricingSettings {
     rounding?: OfferPriceRoundingMode; // Whole-unit rounding applied to discounted price; default 'NONE'
 }
 
+/**
+ * Controls which enrollment-side notification toggles are surfaced in the bulk-assign
+ * flow. The toggles default to OFF on the server; these flags only decide whether the
+ * admin can see them at all in the dialog.
+ */
+export interface EnrollmentNotificationsSettings {
+    showNotifyLearners: boolean;
+    showSendCredentials: boolean;
+}
+
 export interface CourseSettingsData {
     courseInformation: CourseInformation;
     courseStructure: CourseStructure;
@@ -127,6 +137,7 @@ export interface CourseSettingsData {
     permissions: Permissions;
     dripConditions: DripConditionsSettings;
     offerPricing?: OfferPricingSettings;
+    enrollmentNotifications?: EnrollmentNotificationsSettings;
 }
 
 export interface CourseSettings {
@@ -190,5 +201,9 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
     offerPricing: {
         enabled: false,
         rounding: 'NONE',
+    },
+    enrollmentNotifications: {
+        showNotifyLearners: true,
+        showSendCredentials: true,
     },
 };

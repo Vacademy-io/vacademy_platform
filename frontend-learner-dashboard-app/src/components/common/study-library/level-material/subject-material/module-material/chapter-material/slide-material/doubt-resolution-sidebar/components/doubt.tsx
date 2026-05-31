@@ -121,7 +121,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                                 status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"}
                             />
                             {doubt.status !== "RESOLVED" && doubt.replies.length > 0 && (
-                                <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+                                <span className="rounded-full bg-green-50 px-2 py-0.5 text-3xs font-semibold uppercase tracking-wide text-green-700">
                                     Teacher answered
                                 </span>
                             )}

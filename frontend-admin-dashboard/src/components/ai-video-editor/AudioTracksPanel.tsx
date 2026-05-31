@@ -25,14 +25,10 @@ import {
     apiUpdateAudioTrack,
     apiDeleteAudioTrack,
 } from './utils/audio-track-api';
+import { trackColor } from './utils/track-layout';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
 import { toast } from 'sonner';
-
-const TRACK_COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#14b8a6'];
-function trackColor(idx: number): string {
-    return TRACK_COLORS[idx % TRACK_COLORS.length]!;
-}
 
 const ACCEPTED_AUDIO = 'audio/mpeg,audio/wav,audio/ogg,audio/aac,audio/mp4,audio/webm,audio/*';
 

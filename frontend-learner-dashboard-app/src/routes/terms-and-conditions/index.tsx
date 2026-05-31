@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { FileText, ArrowLeft, Users, CreditCard, AlertCircle, BookOpen } from "lucide-react";
+import { FileText, ArrowLeft, Users, CreditCard, WarningCircle, BookOpen } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Preferences } from "@capacitor/preferences";
@@ -236,7 +236,7 @@ function TermsAndConditions() {
           >
             <div className="flex items-center space-x-3 mb-6">
               <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-white" />
+                <WarningCircle className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-xl font-bold text-gray-900">User Conduct and Prohibited Activities</h2>
             </div>

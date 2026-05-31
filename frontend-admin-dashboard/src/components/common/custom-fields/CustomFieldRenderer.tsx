@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { MyInput } from '@/components/design-system/input';
+import PhoneNumberInput from '@/components/design-system/phone-number-input';
 import {
     Select,
     SelectContent,
@@ -12,8 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarBlank } from '@phosphor-icons/react';
-import { Loader2 } from 'lucide-react';
+import { CalendarBlank, Spinner } from '@phosphor-icons/react';
 import { format } from 'date-fns';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
@@ -171,15 +171,14 @@ export const CustomFieldRenderer = ({
 
         case 'phone':
             return (
-                <MyInput
-                    inputType="tel"
-                    inputPlaceholder={`Enter ${name}`}
-                    input={value || ''}
-                    onChangeFunction={(e) => handleChange(e.target.value)}
-                    size="large"
-                    className="w-full"
-                    disabled={disabled}
+                <PhoneNumberInput
+                    name={name}
+                    label=""
+                    value={value || ''}
+                    onChange={(_n, val) => handleChange(val)}
+                    placeholder={`Enter ${name}`}
                     required={required}
+                    disabled={disabled}
                 />
             );
 
@@ -224,7 +223,7 @@ export const CustomFieldRenderer = ({
                     disabled={disabled}
                     required={required}
                     rows={3}
-                    className="min-h-[60px] w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
             );
 
@@ -330,7 +329,7 @@ export const CustomFieldRenderer = ({
                     />
                     {isUploading && (
                         <div className="flex items-center gap-2 text-sm text-neutral-600">
-                            <Loader2 className="size-4 animate-spin" />
+                            <Spinner className="size-4 animate-spin" />
                             Uploading...
                         </div>
                     )}

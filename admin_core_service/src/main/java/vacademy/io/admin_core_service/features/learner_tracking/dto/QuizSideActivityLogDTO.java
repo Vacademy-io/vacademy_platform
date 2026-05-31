@@ -13,4 +13,6 @@ public class QuizSideActivityLogDTO {
     private String responseStatus;
     private String activityId;
     private String questionId;
+    private String instructorFeedback;
+    private String instructorFeedbackFileId;
 }

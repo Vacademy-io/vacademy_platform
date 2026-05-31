@@ -10,7 +10,7 @@ import { MyButton } from "@/components/design-system/button";
 import { getPublicUrl } from "@/services/upload_file";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import SessionExpiry from "./sessionExpiery";
-import { User } from "lucide-react";
+import { User } from "@phosphor-icons/react";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { HOLISTIC_INSTITUTE_ID, GET_DASHBOARD_DATA } from "@/constants/urls";
 import { getTerminology } from "../layout-container/sidebar/utils";

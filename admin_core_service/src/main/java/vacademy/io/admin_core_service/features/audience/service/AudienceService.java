@@ -18,6 +18,8 @@ import vacademy.io.admin_core_service.features.audience.repository.AudienceRespo
 import vacademy.io.admin_core_service.features.audience.entity.LeadScore;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceCommunication;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceCommunicationRepository;
+import vacademy.io.admin_core_service.features.audience.repository.LeadFollowupRepository;
+import vacademy.io.admin_core_service.features.audience.entity.LeadFollowup;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -163,6 +165,9 @@ public class AudienceService {
 
     @Autowired
     private vacademy.io.admin_core_service.features.audience.service.LeadSlaConfigService leadSlaConfigService;
+
+    @Autowired
+    private LeadFollowupRepository leadFollowupRepository;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -1138,7 +1143,9 @@ public class AudienceService {
                     "ADMIN", actorId, actorName,
                     title, null,
                     meta,
-                    response != null ? response.getStudentUserId() : null);
+                    response != null
+                            ? (response.getUserId() != null ? response.getUserId() : response.getStudentUserId())
+                            : null);
         } catch (Exception e) {
             logger.warn("Failed to log MANUAL_SCORE_UPDATE journey event for response={}: {}", responseId,
                     e.getMessage(), e);
@@ -1718,6 +1725,18 @@ public class AudienceService {
             }
         }
 
+        // Resolve the institute's tatHours up-front so the SLA-state filter can derive
+        // the deadline live as `submitted_at + tatHours`. Needs to happen BEFORE the
+        // repo call because the predicate is bound at query time. Returns null when
+        // the institute hasn't enabled TAT — SQL guards with `:tatHours IS NOT NULL`.
+        Integer filterTatHours = resolveFilterTatHours(
+                filterDTO.getInstituteId() != null && !filterDTO.getInstituteId().isBlank()
+                        ? filterDTO.getInstituteId()
+                        : (filterDTO.getAudienceId() != null
+                            ? audienceRepository.findById(filterDTO.getAudienceId())
+                                    .map(Audience::getInstituteId).orElse(null)
+                            : null));
+
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
         // view.
@@ -1736,6 +1755,8 @@ public class AudienceService {
                     filterDTO.getAssignedCounselorId(),
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
+                    filterDTO.getSlaFilter(),
+                    filterTatHours,
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
@@ -1763,6 +1784,8 @@ public class AudienceService {
                 overallStatusStr,
                 customFieldFiltersJson,
                 conversionStatusFilter,
+                filterDTO.getSlaFilter(),
+                filterTatHours,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 pageable);
@@ -1800,6 +1823,27 @@ public class AudienceService {
             logger.warn("Failed to serialize customFieldFilters; ignoring filter", e);
             return null;
         }
+    }
+
+    /**
+     * Reads the institute's TAT hours from LEAD_SETTING for use in the SLA-state filter
+     * (the predicate derives `tat_due_at = submitted_at + tatHours` live so it matches
+     * the row-level badge regardless of scheduler timing). Returns null when the institute
+     * has no setting, TAT is disabled, or any read failure — the SQL guards with
+     * `:tatHours IS NOT NULL` so a null safely turns the predicate off.
+     */
+    private Integer resolveFilterTatHours(String instituteId) {
+        if (instituteId == null || instituteId.isBlank()) return null;
+        try {
+            vacademy.io.admin_core_service.features.audience.dto.LeadSlaConfigDTO sla =
+                    leadSlaConfigService.getSchedulerConfig(instituteId);
+            if (sla != null && sla.getTatReminder() != null && sla.getTatReminder().isEnabled()) {
+                return sla.getTatReminder().getTatHours();
+            }
+        } catch (Exception ex) {
+            logger.warn("Failed to read TAT hours for SLA filter (institute={}): {}", instituteId, ex.getMessage());
+        }
+        return null;
     }
 
     private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses, String instituteId) {
@@ -1870,6 +1914,18 @@ public class AudienceService {
                         vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLeadId,
                         vacademy.io.admin_core_service.features.audience.dto.LeadLastActionProjection::getLastActionAt,
                         (a, b) -> a));
+
+        // Counsellor-scheduled callbacks override the SLA-derived deadline in the "Follow up at"
+        // column. We pick the earliest OPEN row per lead — that is the next callback the counsellor
+        // promised. If nothing is scheduled, we fall back to lastAction + followUpSlaHours (and
+        // ultimately to null → the cell shows the em-dash placeholder).
+        final Map<String, Timestamp> scheduledFollowupByResponseId = !responseIds.isEmpty()
+                ? leadFollowupRepository.findOpenByAudienceResponseIds(responseIds).stream()
+                        .collect(Collectors.toMap(
+                                LeadFollowup::getAudienceResponseId,
+                                LeadFollowup::getScheduleTime,
+                                (a, b) -> a.before(b) ? a : b))
+                : Collections.emptyMap();
 
         // Batch fetch counselor assignments (enquiry_id → counselor userId)
         List<String> enquiryIds = content.stream()
@@ -1987,9 +2043,12 @@ public class AudienceService {
                     ? Timestamp.from(response.getSubmittedAt().toInstant().plusSeconds(tatHoursFinal * 3600L))
                     : response.getTatDueAt();
             Timestamp lastAction = lastActionByResponseId.get(response.getId());
-            Timestamp computedFollowUpDueAt = (followUpSlaHoursFinal != null && lastAction != null)
-                    ? Timestamp.from(lastAction.toInstant().plusSeconds(followUpSlaHoursFinal * 3600L))
-                    : null;
+            // "Follow up at" = ONLY a counsellor-explicitly-scheduled callback (a row in
+            // `lead_followup`). Do NOT auto-fill from the SLA deadline (last action +
+            // followUpSlaHours) — the cell is about "when did the counsellor promise to call
+            // back", not "when does the SLA reminder fire". The SLA breach is surfaced
+            // separately via tat_reminder_stage / follow_up_overdue.
+            Timestamp computedFollowUpDueAt = scheduledFollowupByResponseId.get(response.getId());
             // First-response timestamp powers the "Reach out by → ✓ Responded" display.
             // Strict TAT definition: first counsellor activity (timeline_event by assigned
             // counsellor)
@@ -4349,7 +4408,7 @@ public class AudienceService {
                     "Lead captured from "
                             + (savedResponse.getSourceType() != null ? savedResponse.getSourceType() : "UNKNOWN"),
                     metadata,
-                    savedResponse.getStudentUserId());
+                    savedResponse.getUserId() != null ? savedResponse.getUserId() : savedResponse.getStudentUserId());
         } catch (Exception e) {
             logger.warn("Failed to log LEAD_SUBMITTED journey event for response {}: {}",
                     savedResponse.getId(), e.getMessage(), e);

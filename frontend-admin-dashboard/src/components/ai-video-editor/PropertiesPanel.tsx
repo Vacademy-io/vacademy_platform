@@ -10,7 +10,6 @@ import {
     Wand2,
     Check,
     X,
-    Code2,
     AlertTriangle,
     Download,
     Zap,
@@ -50,6 +49,7 @@ import {
 } from './utils/transitions';
 import { LayersTab } from './LayersTab';
 import { SliderField } from './OverlayEditor';
+import { MediaPicker } from './MediaPicker';
 import { ShotCaptionOverride } from './ShotCaptionOverride';
 import { AdvancedSection } from './AdvancedSection';
 import { friendlyEntryName } from './registry/friendly-labels';
@@ -110,73 +110,84 @@ interface TransformTabProps {
     canvasH: number;
 }
 
-function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
-    const {
-        entryTransforms,
-        entryBackgrounds,
-        updateEntryTransform,
-        resetEntryTransform,
-        updateEntryBackground,
-    } = useVideoEditorStore(
+// Small section heading used to group the composed sections inside the
+// task-first Edit / Animate tabs.
+function SectionLabel({ label }: { label: string }) {
+    return (
+        <div className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+            {label}
+        </div>
+    );
+}
+
+// Background picker — extracted so it can live in the task-first "Edit" tab
+// (background is a look/content property) rather than under Position & Size.
+function BackgroundSection({ entryId }: { entryId: string }) {
+    const { entryBackgrounds, updateEntryBackground } = useVideoEditorStore(
         useShallow((s) => ({
-            entryTransforms: s.entryTransforms,
             entryBackgrounds: s.entryBackgrounds,
-            updateEntryTransform: s.updateEntryTransform,
-            resetEntryTransform: s.resetEntryTransform,
             updateEntryBackground: s.updateEntryBackground,
         }))
     );
-    const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
     const background = entryBackgrounds[entryId] ?? '';
     // Only feed a valid 7-char hex into <input type="color"> (it can't render gradients/named colors).
     const pickerValue = /^#[0-9a-fA-F]{6}$/.test(background) ? background : '#ffffff';
+    return (
+        <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
+            <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-gray-600">Background</span>
+                {background && (
+                    <button
+                        onClick={() => updateEntryBackground(entryId, undefined)}
+                        className="text-[10px] text-gray-400 hover:text-gray-700"
+                    >
+                        Clear
+                    </button>
+                )}
+            </div>
+            <div className="flex items-center gap-1.5">
+                <input
+                    type="color"
+                    value={pickerValue}
+                    onChange={(e) => updateEntryBackground(entryId, e.target.value)}
+                    className="h-7 w-9 cursor-pointer rounded border border-gray-300 bg-white p-0"
+                    aria-label="Background color"
+                />
+                <span
+                    className="h-7 flex-1 truncate rounded border border-gray-200 bg-white px-2 py-1 font-mono text-[11px] text-gray-600"
+                    title={background || 'No background — transparent'}
+                >
+                    {background || <span className="text-gray-300">No background</span>}
+                </span>
+            </div>
+            <AdvancedSection label="Custom background CSS">
+                <input
+                    type="text"
+                    value={background}
+                    placeholder="#ffffff or linear-gradient(...) or url(...)"
+                    onChange={(e) => updateEntryBackground(entryId, e.target.value)}
+                    className="h-7 w-full rounded border border-gray-300 px-2 font-mono text-[11px] focus:border-indigo-400 focus:outline-none"
+                />
+                <p className="text-[10px] text-gray-400">
+                    Solid color, CSS gradient, or image URL — applied behind this shot.
+                </p>
+            </AdvancedSection>
+        </div>
+    );
+}
+
+function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
+    const { entryTransforms, updateEntryTransform, resetEntryTransform } = useVideoEditorStore(
+        useShallow((s) => ({
+            entryTransforms: s.entryTransforms,
+            updateEntryTransform: s.updateEntryTransform,
+            resetEntryTransform: s.resetEntryTransform,
+        }))
+    );
+    const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
 
     return (
         <div className="space-y-3 p-3">
-            {/* Background — color picker is the primary control. The raw CSS
-                text input (which accepts gradients / image URLs) is tucked
-                into the Advanced disclosure inside this card so layman users
-                aren't staring at `linear-gradient(...)` placeholders. */}
-            <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
-                <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-medium text-gray-600">Background</span>
-                    {background && (
-                        <button
-                            onClick={() => updateEntryBackground(entryId, undefined)}
-                            className="text-[10px] text-gray-400 hover:text-gray-700"
-                        >
-                            Clear
-                        </button>
-                    )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <input
-                        type="color"
-                        value={pickerValue}
-                        onChange={(e) => updateEntryBackground(entryId, e.target.value)}
-                        className="h-7 w-9 cursor-pointer rounded border border-gray-300 bg-white p-0"
-                        aria-label="Background color"
-                    />
-                    <span
-                        className="h-7 flex-1 truncate rounded border border-gray-200 bg-white px-2 py-1 font-mono text-[11px] text-gray-600"
-                        title={background || 'No background — transparent'}
-                    >
-                        {background || <span className="text-gray-300">No background</span>}
-                    </span>
-                </div>
-                <AdvancedSection label="Custom background CSS">
-                    <input
-                        type="text"
-                        value={background}
-                        placeholder="#ffffff or linear-gradient(...) or url(...)"
-                        onChange={(e) => updateEntryBackground(entryId, e.target.value)}
-                        className="h-7 w-full rounded border border-gray-300 px-2 font-mono text-[11px] focus:border-indigo-400 focus:outline-none"
-                    />
-                    <p className="text-[10px] text-gray-400">
-                        Solid color, CSS gradient, or image URL — applied behind this shot.
-                    </p>
-                </AdvancedSection>
-            </div>
             <SliderField
                 label="X Offset"
                 value={transform.x}
@@ -798,6 +809,8 @@ interface MediaItemProps {
 function MediaItem({ el, onReplace, onDelete }: MediaItemProps) {
     const { uploadFile, getPublicUrl } = useFileUpload();
     const [uploading, setUploading] = useState(false);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const dims = useVideoEditorStore((s) => s.meta.dimensions);
 
     const handleFileChange = useCallback(
         async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -878,6 +891,20 @@ function MediaItem({ el, onReplace, onDelete }: MediaItemProps) {
                     disabled={uploading}
                 />
             </label>
+            <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="mt-1 w-full rounded py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50"
+            >
+                Browse stock, AI &amp; library…
+            </button>
+            <MediaPicker
+                open={pickerOpen}
+                accept={el.tagName === 'VIDEO' ? 'video' : 'image'}
+                orientation={(dims?.height ?? 0) > (dims?.width ?? 0) ? 'portrait' : 'landscape'}
+                onSelect={(url) => onReplace(el.index, url)}
+                onClose={() => setPickerOpen(false)}
+            />
         </div>
     );
 }
@@ -1035,7 +1062,12 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-type Tab = 'layers' | 'transform' | 'motion' | 'text' | 'media' | 'code';
+// Task-first tabs: Edit (content — text/media/background), Animate
+// (transitions + position/size), Advanced (DOM tree + raw code). Replaces the
+// old type-per-tab layout so the default view is "edit the content", not the
+// DOM tree.
+type Tab = 'edit' | 'animate' | 'advanced';
+type AdvancedView = 'layers' | 'code';
 
 interface PropertiesPanelProps {
     /**
@@ -1075,7 +1107,8 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             displayNames: s.displayNames,
         }))
     );
-    const [tab, setTab] = useState<Tab>('layers');
+    const [tab, setTab] = useState<Tab>('edit');
+    const [advancedView, setAdvancedView] = useState<AdvancedView>('layers');
 
     // ── Remake state ───────────────────────────────────────────────────────
     const [remakeOpen, setRemakeOpen] = useState(false);
@@ -1453,24 +1486,16 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             >
                 {(
                     [
-                        { id: 'layers', icon: <Layers className="size-3" />, label: 'Elements' },
+                        // Task-first tabs. Edit = the 90% case (text / media /
+                        // background / captions). Animate = transitions +
+                        // position/size. Advanced = DOM tree + raw code.
+                        { id: 'edit', icon: <Type className="size-3" />, label: 'Edit' },
+                        { id: 'animate', icon: <Zap className="size-3" />, label: 'Animate' },
                         {
-                            id: 'transform',
+                            id: 'advanced',
                             icon: <Sliders className="size-3" />,
-                            label: 'Position & Size',
+                            label: 'Advanced',
                         },
-                        { id: 'motion', icon: <Zap className="size-3" />, label: 'Transitions' },
-                        { id: 'text', icon: <Type className="size-3" />, label: 'Text' },
-                        {
-                            id: 'media',
-                            icon: <Image className="size-3" />,
-                            label: 'Images & Video',
-                        },
-                        // Overlays tab merged into Elements — overlay rows are
-                        // selectable in the Layers tree, the inspector routes
-                        // to OverlayEditor when the node has data-vx-overlay-id,
-                        // and add-overlay buttons live in the Elements toolbar.
-                        { id: 'code', icon: <Code2 className="size-3" />, label: 'Code' },
                     ] as const
                 ).map(({ id, icon, label }) => (
                     <button
@@ -1491,32 +1516,80 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
 
             {/* Tab content */}
             <div
-                className={['flex-1', tab === 'code' ? 'overflow-hidden' : 'overflow-y-auto'].join(
-                    ' '
-                )}
+                className={[
+                    'flex-1',
+                    tab === 'advanced' && advancedView === 'code'
+                        ? 'overflow-hidden'
+                        : 'overflow-y-auto',
+                ].join(' ')}
             >
-                {tab === 'transform' && (
-                    <TransformTab entryId={entryId} canvasW={canvasW} canvasH={canvasH} />
-                )}
-                {tab === 'motion' && (
-                    <MotionTab entryId={entryId} inTime={inTime} exitTime={outTime} />
-                )}
-                {tab === 'text' && (
-                    <TextTab
-                        entryId={entryId}
-                        entryHtml={entry.html}
-                        canvasW={canvasW}
-                        canvasH={canvasH}
-                    />
-                )}
-                {tab === 'media' && <MediaTab entryId={entryId} entryHtml={entry.html} />}
-                {tab === 'layers' && (
-                    <>
+                {/* Edit — the default, task-first view: change text, swap
+                    media, set the background, toggle captions. */}
+                {tab === 'edit' && (
+                    <div className="flex flex-col">
+                        <SectionLabel label="Text" />
+                        <TextTab
+                            entryId={entryId}
+                            entryHtml={entry.html}
+                            canvasW={canvasW}
+                            canvasH={canvasH}
+                        />
+                        <SectionLabel label="Images & Video" />
+                        <MediaTab entryId={entryId} entryHtml={entry.html} />
+                        <SectionLabel label="Background" />
+                        <div className="p-3 pt-2">
+                            <BackgroundSection entryId={entryId} />
+                        </div>
+                        <SectionLabel label="Captions" />
                         <ShotCaptionOverride entryId={entryId} />
-                        <LayersTab entryId={entryId} entryHtml={entry.html} />
-                    </>
+                    </div>
                 )}
-                {tab === 'code' && <HtmlTab entryId={entryId} entryHtml={entry.html} />}
+
+                {/* Animate — transitions + position/size/rotation. */}
+                {tab === 'animate' && (
+                    <div className="flex flex-col">
+                        <SectionLabel label="Transitions" />
+                        <MotionTab entryId={entryId} inTime={inTime} exitTime={outTime} />
+                        <SectionLabel label="Position & Size" />
+                        <TransformTab entryId={entryId} canvasW={canvasW} canvasH={canvasH} />
+                    </div>
+                )}
+
+                {/* Advanced — DOM tree (Layers, incl. add-overlay) + raw Code,
+                    behind a sub-toggle. The technical stuff lives here so the
+                    default view stays simple. */}
+                {tab === 'advanced' && (
+                    <div
+                        className={['flex flex-col', advancedView === 'code' ? 'h-full' : ''].join(
+                            ' '
+                        )}
+                    >
+                        <div className="flex shrink-0 items-center gap-1 border-b border-gray-100 px-2 py-1.5">
+                            {(['layers', 'code'] as AdvancedView[]).map((v) => (
+                                <button
+                                    key={v}
+                                    type="button"
+                                    onClick={() => setAdvancedView(v)}
+                                    className={[
+                                        'rounded px-2 py-1 text-[11px] font-medium',
+                                        advancedView === v
+                                            ? 'bg-indigo-50 text-indigo-600'
+                                            : 'text-gray-500 hover:text-gray-700',
+                                    ].join(' ')}
+                                >
+                                    {v === 'layers' ? 'Layers' : 'Code'}
+                                </button>
+                            ))}
+                        </div>
+                        {advancedView === 'layers' ? (
+                            <LayersTab entryId={entryId} entryHtml={entry.html} />
+                        ) : (
+                            <div className="min-h-0 flex-1">
+                                <HtmlTab entryId={entryId} entryHtml={entry.html} />
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Footer: HTML size */}

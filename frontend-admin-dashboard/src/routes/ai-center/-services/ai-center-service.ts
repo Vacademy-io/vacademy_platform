@@ -5,7 +5,7 @@ import {
     GENERATE_FEEDBACK_FROM_FILE_AI_URL,
     GENERATE_QUESTIONS_FROM_FILE_AI_URL,
     GENERATE_QUESTIONS_FROM_IMAGE_AI_URL,
-    GET_INDIVIDUAL_AI_TASK_QUESTIONS,
+    GET_INDIVIDUAL_AI_TASK_QUESTIONS_AI_SERVICE,
     GET_INDIVIDUAL_CHAT_WITH_PDF_AI_TASK_QUESTIONS,
     GET_LECTURE_FEEDBACK_PREVIEW_URL,
     GET_LECTURE_PLAN_PREVIEW_URL,
@@ -14,8 +14,7 @@ import {
     GET_QUESTIONS_FROM_TEXT,
     GET_QUESTIONS_URL_FROM_HTML_AI_URL,
     HTML_TO_QUESTIONS_FROM_FILE_AI_URL,
-    LIST_INDIVIDUAL_AI_TASKS_URL,
-    PROCESS_AUDIO_FILE,
+    LIST_INDIVIDUAL_AI_TASKS_URL_AI_SERVICE,
     RETRY_AI_URL,
     SORT_QUESTIONS_FILE_AI_URL,
     SORT_SPLIT_FILE_AI_URL,
@@ -48,15 +47,18 @@ export const handleRetryAITask = async (taskId: string) => {
 
 export const handleGetListIndividualTopics = async (taskType?: string) => {
     const instituteId = getInstituteId();
+
+    // All AI task types now live in ai_service — a single source for the
+    // history list (the phased media merge + per-type routing has been removed).
     const response = await axios({
         method: 'GET',
-        url: LIST_INDIVIDUAL_AI_TASKS_URL,
+        url: LIST_INDIVIDUAL_AI_TASKS_URL_AI_SERVICE,
         params: {
             instituteId,
             ...(taskType ? { taskType } : {}),
         },
     });
-    return response?.data;
+    return Array.isArray(response?.data) ? response.data : [];
 };
 
 export const handleQueryGetListIndividualTopics = (taskType?: string) => {
@@ -68,12 +70,13 @@ export const handleQueryGetListIndividualTopics = (taskType?: string) => {
 };
 
 export const handleGetQuestionsInvidualTask = async (taskId: string) => {
+    // Every question task type lives in ai_service now — single call, no
+    // media fallback. get-result converts the stored LLM JSON to
+    // AutoQuestionPaperResponse (empty while the task isn't done yet).
     const response = await axios({
         method: 'GET',
-        url: GET_INDIVIDUAL_AI_TASK_QUESTIONS,
-        params: {
-            taskId,
-        },
+        url: GET_INDIVIDUAL_AI_TASK_QUESTIONS_AI_SERVICE,
+        params: { taskId },
     });
     return response?.data;
 };
@@ -193,16 +196,18 @@ export const handleGenerateAssessmentImage = async (
 };
 
 export const handleEvaluateLecture = async (
-    audioId: string,
+    fileId: string,
     taskName: string,
     preferredModel?: string
 ) => {
     const instituteId = getInstituteId();
+    // Migrated to ai_service: pass the uploaded audio fileId directly; ai_service
+    // resolves it, transcribes in-house, and generates the feedback (single step).
     const response = await axios({
         method: 'GET',
         url: GENERATE_FEEDBACK_FROM_FILE_AI_URL,
         params: {
-            audioId,
+            fileId,
             taskName,
             instituteId,
             ...(preferredModel && { preferredModel }),
@@ -257,20 +262,8 @@ export const handleGetQuestionsFromHTMLUrl = async (html: string, userPrompt: st
     return response?.data;
 };
 
-export const handleStartProcessUploadedAudioFile = async (fileId: string) => {
-    const response = await axios({
-        method: 'POST',
-        url: PROCESS_AUDIO_FILE,
-        // params: {
-        //     audioId: fileId
-        // },
-        data: { file_id: fileId },
-    });
-    return response?.data;
-};
-
 export const handleGetQuestionsFromAudio = async (
-    audioId: string,
+    fileId: string,
     numQuestions: string | null,
     prompt: string | null,
     difficulty: string | null,
@@ -280,11 +273,13 @@ export const handleGetQuestionsFromAudio = async (
     preferredModel?: string
 ) => {
     const instituteId = getInstituteId();
+    // Migrated to ai_service: pass the uploaded audio fileId directly; ai_service
+    // resolves it, transcribes in-house, and generates questions (single step).
     const response = await axios({
         method: 'GET',
         url: GET_QUESTIONS_FROM_AUDIO,
         params: {
-            audioId: audioId,
+            fileId,
             numQuestions: numQuestions,
             prompt: prompt,
             difficulty: difficulty,

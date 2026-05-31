@@ -116,14 +116,18 @@ public class CounselorPoolController {
 
     /**
      * Flip a counselor's status across all audiences in this pool. When marking
-     * INACTIVE, the request body must include backup_counselor_user_id.
+     * INACTIVE, the request body must include backup_counselor_user_id. The
+     * acting admin is forwarded to the service so any per-lead reassign
+     * (when reassign_existing_leads=true) logs the timeline event under the
+     * right actor.
      */
     @PatchMapping("/{poolId}/counselors/{counselorUserId}/status")
     public ResponseEntity<String> updateMemberStatus(
             @PathVariable String poolId,
             @PathVariable String counselorUserId,
-            @RequestBody UpdateMemberStatusRequest request) {
-        poolService.updateMemberStatus(poolId, counselorUserId, request);
+            @RequestBody UpdateMemberStatusRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        poolService.updateMemberStatus(poolId, counselorUserId, request, user);
         return ResponseEntity.ok("Status updated");
     }
 
@@ -143,13 +147,31 @@ public class CounselorPoolController {
      * Flip a counselor's status across MULTIPLE pools at once. All-or-nothing
      * — any per-pool failure rolls back the whole batch. Body carries the
      * pool_ids plus the same status/backup/reassign flag applied to each.
+     * The acting admin is forwarded so per-lead reassign timeline events
+     * record the right actor.
      */
     @PatchMapping("/counselors/{counselorUserId}/status-multi")
     public ResponseEntity<String> bulkUpdateMemberStatus(
             @PathVariable String counselorUserId,
-            @RequestBody BulkUpdateMemberStatusRequest request) {
-        poolService.bulkUpdateMemberStatusAcrossPools(counselorUserId, request);
+            @RequestBody BulkUpdateMemberStatusRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        poolService.bulkUpdateMemberStatusAcrossPools(counselorUserId, request, user);
         return ResponseEntity.ok("Status updated");
+    }
+
+    /**
+     * Set monthly_target per audience for one counsellor in this pool. Body
+     * carries a list of {audience_id, monthly_target} entries — one per cell
+     * of this counsellor's row in the audience × counsellor matrix. Null
+     * targets clear the cell; non-null must be >= 0.
+     */
+    @PatchMapping("/{poolId}/counselors/{counselorUserId}/monthly-target")
+    public ResponseEntity<String> updateMemberMonthlyTargets(
+            @PathVariable String poolId,
+            @PathVariable String counselorUserId,
+            @RequestBody UpdateMemberMonthlyTargetsRequest request) {
+        poolService.updateMemberMonthlyTargets(poolId, counselorUserId, request);
+        return ResponseEntity.ok("Monthly targets updated");
     }
 
     // ────────────────────────────────────────────────────────────────

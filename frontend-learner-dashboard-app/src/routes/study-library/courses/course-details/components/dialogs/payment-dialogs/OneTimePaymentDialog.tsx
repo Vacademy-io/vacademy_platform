@@ -8,8 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, Lock } from "lucide-react";
-import { SiStripe } from "react-icons/si";
+import { SpinnerGap, CheckCircle, Lock } from "@phosphor-icons/react";
+import { SiStripe } from "react-icons/si"; // design-lint-ignore: brand logo, no phosphor equivalent
 import {
   fetchEnrollmentDetails,
   getPaymentOptions,
@@ -28,6 +28,9 @@ import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -73,6 +76,42 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const [cardElement, setCardElement] = useState<any>(null);
   const [cardElementError, setCardElementError] = useState<string>('');
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
+
+  // Discount coupon — gated by institute toggle (admin Settings → Coupons).
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
+
+  // Drop the applied coupon if the learner switches plans — its discount was
+  // computed against the previous plan's price, and leaving it in place would
+  // make the gateway charge a different amount than the BE re-validates to.
+  const prevPlanIdRef = useRef<string | null | undefined>(selectedPaymentPlan?.id);
+  useEffect(() => {
+    const currentId = selectedPaymentPlan?.id;
+    if (prevPlanIdRef.current !== currentId) {
+      prevPlanIdRef.current = currentId;
+      if (couponCtx.state.appliedCode) {
+        couponCtx.clear();
+      }
+    }
+  }, [selectedPaymentPlan?.id, couponCtx]);
+
   const cardElementRef = useRef<HTMLDivElement>(null);
 
   // Fetch enrollment data when dialog opens
@@ -156,15 +195,15 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
             style: {
               base: {
                 fontSize: '16px',
-                color: '#374151',
+                color: '#374151', // design-lint-ignore: Stripe SDK element style data
                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 '::placeholder': {
-                  color: '#9CA3AF',
+                  color: '#9CA3AF', // design-lint-ignore: Stripe SDK element style data
                 },
                 padding: '8px 0',
               },
               invalid: {
-                color: '#DC2626',
+                color: '#DC2626', // design-lint-ignore: Stripe SDK element style data
               },
             },
             hidePostalCode: true,
@@ -262,13 +301,14 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         paymentGatewayData,
         selectedPaymentPlan,
         selectedPaymentOption,
-        amount: selectedPaymentPlan.actual_price,
+        amount: effectiveAmount,
         currency: selectedPaymentPlan.currency || enrollmentData.currency,
         description: `One-time payment for ${courseTitle}`,
         paymentType: 'one-time',
         paymentMethod,
         token,
         returnUrl: window.location.origin + "/courses", // Default return URL
+        couponCode: couponCtx.state.appliedCode,
       });
 
       // Close the main dialog
@@ -314,7 +354,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
           </DialogHeader>
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
+              <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
               <p className="text-gray-600">Loading payment options...</p>
             </div>
           </div>
@@ -346,7 +386,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-w-2xl max-h-screen-90 overflow-y-auto p-0">
           {/* Header */}
           <div className="bg-primary-50 px-6 py-4 rounded-t-lg">
             <div className="flex items-center gap-3">
@@ -538,6 +578,29 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 </div>
               </div>
               
+              {couponsEnabled && (
+                <div>
+                  <CouponInput
+                    state={couponCtx.state}
+                    onChange={couponCtx.setCode}
+                    onApply={couponCtx.apply}
+                    onClear={couponCtx.clear}
+                    currencySymbol={selectedPaymentPlan?.currency === "INR" ? "₹" : "$"}
+                  />
+                  {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                    <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                      <span className="text-gray-600">
+                        Subtotal {selectedPaymentPlan?.actual_price?.toFixed(2)} ·
+                        Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        You pay {effectiveAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Card className="shadow-sm border border-gray-200">
                 <CardContent className="p-6">
                   <div className={`border rounded-lg p-4 bg-white ${
@@ -545,7 +608,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                   }`}>
                     {!cardElementReady && (
                       <div className="flex items-center justify-center h-12 text-gray-500">
-                        <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                        <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
                         Loading payment form...
                       </div>
                     )}
@@ -571,7 +634,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                     >
                       {processingPayment ? (
                         <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <SpinnerGap className="w-5 h-5 animate-spin" />
                           Processing Payment...
                         </>
                       ) : (

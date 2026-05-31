@@ -4,7 +4,7 @@ import { ChartConfig, ChartContainer } from "@/components/ui/chart";
 const chartConfig = {
     visitors: {
         label: "Completion",
-        color: "#F6B97B",
+        color: "#F6B97B", // design-lint-ignore: chart series color
     },
 } satisfies ChartConfig;
 
@@ -17,12 +17,12 @@ export function CompletionStatusComponent({
         {
             browser: "visitors",
             visitors: completionPercentage,
-            fill: "#F6B97B",
+            fill: "#F6B97B", // design-lint-ignore: chart series color
         },
     ];
     return (
         <div className="rounded-full border border-neutral-200 ">
-            <ChartContainer config={chartConfig} className="h-[35px] w-[35px]">
+            <ChartContainer config={chartConfig} className="h-9 w-9">
                 <RadialBarChart
                     data={chartData}
                     startAngle={0}

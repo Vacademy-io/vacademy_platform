@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.payments.service.PaymentService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.handler.ReferralBenefitOrchestrator;
+import vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponDiscountUtil;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -120,6 +121,13 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 extraData, learnerExtraDetails, enrollInvite, userPlan);
 
         if (learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest() != null) {
+            // Snapshot what the FE asked the gateway to charge BEFORE we
+            // overwrite it. Used by the mismatch-warning below — a divergence
+            // indicates either a stale/tampered FE or a calc bug worth
+            // investigating before money moves.
+            Double feSuppliedAmount =
+                    learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+
             if (extraData.containsKey("OVERRIDE_TOTAL_AMOUNT")) {
                 Object amountObj = extraData.get("OVERRIDE_TOTAL_AMOUNT");
                 if (amountObj instanceof Number) {
@@ -131,6 +139,49 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                 log.info("Setting payment amount to {} from plan {}", paymentPlan.getActualPrice(),
                         paymentPlan.getId());
                 learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(paymentPlan.getActualPrice());
+            }
+
+            // Apply the validated coupon discount to whatever base amount we
+            // settled on above. BE is authoritative for the gateway charge —
+            // the FE-supplied amount is ignored. This is what turns a 10% off
+            // coupon on ₹500 into a ₹450 gateway capture.
+            Double currentAmount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+            double discountedAmount = CouponDiscountUtil.applyDiscount(
+                    currentAmount, userPlan.getAppliedCouponDiscount());
+            if (currentAmount != null && Double.compare(currentAmount, discountedAmount) != 0) {
+                log.info("Coupon {} reduced gateway amount {} -> {} on plan {}",
+                        userPlan.getAppliedCouponDiscount() != null
+                                ? userPlan.getAppliedCouponDiscount().getName()
+                                : null,
+                        currentAmount, discountedAmount, paymentPlan.getId());
+                learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().setAmount(discountedAmount);
+            }
+
+            // Telemetry: a >₹0.01 gap between what the FE asked for and what
+            // the BE settled on means either (a) a stale/buggy client, (b) a
+            // tampering attempt, or (c) a pricing/discount-calc divergence
+            // worth investigating. Logged at WARN so log aggregators can
+            // alert on it without polluting INFO-level traffic for the happy
+            // path. No action taken — the BE-derived amount has already won
+            // and the gateway will see the correct value.
+            //
+            // Multi-package child enrollments (PARENT_PAYMENT_LOG_ID set)
+            // always mismatch by design: each child reuses the parent's
+            // TOTAL amount as feSuppliedAmount but the BE narrows it to the
+            // child plan's price. Suppress so the WARN remains a real signal.
+            Double finalAmount = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest().getAmount();
+            boolean isMultiPackageChild = extraData.containsKey("PARENT_PAYMENT_LOG_ID");
+            if (!isMultiPackageChild && feSuppliedAmount != null && finalAmount != null
+                    && Math.abs(feSuppliedAmount - finalAmount) > 0.01) {
+                log.warn(
+                        "Gateway amount mismatch: fe_supplied={} be_derived={} user={} plan={} coupon={}",
+                        feSuppliedAmount,
+                        finalAmount,
+                        user.getId(),
+                        paymentPlan.getId(),
+                        userPlan.getAppliedCouponDiscount() != null
+                                ? userPlan.getAppliedCouponDiscount().getName()
+                                : null);
             }
 
             if (extraData.containsKey("PARENT_PAYMENT_LOG_ID")) {
@@ -158,8 +209,30 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
             PaymentInitiationRequestDTO paymentInitiationRequestDTO = learnerPackageSessionsEnrollDTO
                     .getPaymentInitiationRequest();
 
+            // A coupon that fully covers the price (or a flat coupon larger
+            // than the price) collapses gateway amount to 0 — Stripe and
+            // Razorpay both reject zero-amount intents. Skip the gateway and
+            // force a PAID log so the UserPlan transitions through the same
+            // PAID -> applyOperationsOnFirstPayment path as a real charge.
+            boolean fullyDiscountedByCoupon =
+                    userPlan.getAppliedCouponDiscount() != null
+                            && paymentInitiationRequestDTO.getAmount() != null
+                            && paymentInitiationRequestDTO.getAmount() <= 0.0;
+
             PaymentResponseDTO paymentResponseDTO;
-            if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
+            if (fullyDiscountedByCoupon) {
+                log.info("Coupon fully covers price for user {} on plan {} — skipping gateway",
+                        user.getId(), paymentPlan.getId());
+                Map<String, Object> paidExtras = new HashMap<>(extraData);
+                paidExtras.put("FORCE_PAID_STATUS", Boolean.TRUE);
+                paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
+                        user,
+                        learnerPackageSessionsEnrollDTO,
+                        instituteId,
+                        enrollInvite,
+                        userPlan,
+                        paidExtras);
+            } else if (extraData.containsKey("SKIP_PAYMENT_INITIATION")
                     && Boolean.TRUE.equals(extraData.get("SKIP_PAYMENT_INITIATION"))) {
                 log.info("Skipping payment initiation for user: {}", user.getId());
                 paymentResponseDTO = paymentService.handlePaymentWithoutGateway(
@@ -167,7 +240,8 @@ public class OneTimePaymentOptionOperation implements PaymentOptionOperationStra
                         learnerPackageSessionsEnrollDTO,
                         instituteId,
                         enrollInvite,
-                        userPlan);
+                        userPlan,
+                        extraData);
             } else {
                 log.info("Initiating payment through PaymentService for user: {}", user.getId());
                 paymentResponseDTO = paymentService.handlePayment(

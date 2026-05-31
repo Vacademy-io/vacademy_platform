@@ -1,7 +1,6 @@
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { List } from "@phosphor-icons/react";
+import { List, Sidebar } from "@phosphor-icons/react";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
-import { FiSidebar } from "react-icons/fi";
 import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
 import { LogoutSidebar } from "../sidebar/logoutSidebar";
@@ -180,7 +179,7 @@ export function Navbar() {
     );
     // Return a simplified navbar without role-dependent features
     return (
-      <div className="navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none">
+      <div className="navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none">
         <LogoutSidebar />
 
         {/* Left Section */}
@@ -227,7 +226,7 @@ export function Navbar() {
                 onClick={() => {}}
                 className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200"
               >
-                <FiSidebar className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
+                <Sidebar className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
               </div>
             </SidebarTrigger>
           )}
@@ -246,7 +245,7 @@ export function Navbar() {
                       <img
                         src={subOrgLogoUrl}
                         alt={subOrgName}
-                        className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
+                        className={`h-8 md:h-10 w-auto max-w-32 object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
                         onClick={
@@ -257,7 +256,7 @@ export function Navbar() {
                       />
                     ) : (
                       <div
-                        className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
+                        className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-caption font-semibold text-primary-700 dark:text-neutral-200${
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
                         onClick={
@@ -270,21 +269,21 @@ export function Navbar() {
                       </div>
                     )}
                     <div className="hidden md:flex flex-col leading-tight">
-                      <span className="text-xs font-semibold text-primary-900 dark:text-primary-100 truncate max-w-[120px]">
+                      <span className="text-xs font-semibold text-primary-900 dark:text-primary-100 truncate max-w-32">
                         {subOrgName}
                       </span>
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] text-muted-foreground">
+                        <span className="text-caption text-muted-foreground">
                           Powered by
                         </span>
                         {instituteLogoFileUrl ? (
                           <img
                             src={instituteLogoFileUrl}
                             alt={instituteName}
-                            className="h-3 w-auto max-w-[60px] object-contain"
+                            className="h-3 w-auto max-w-16 object-contain"
                           />
                         ) : (
-                          <span className="text-[9px] font-medium text-muted-foreground">
+                          <span className="text-caption font-medium text-muted-foreground">
                             {instituteName}
                           </span>
                         )}
@@ -303,13 +302,13 @@ export function Navbar() {
                             ? handleInstituteLogoClick
                             : undefined
                         }
-                        className={`h-8 md:h-10 w-auto max-w-[120px] object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
+                        className={`h-8 md:h-10 w-auto max-w-32 object-contain border border-primary-200/60 dark:border-neutral-700 rounded-sm${
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
                       />
                     ) : (
                       <div
-                        className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
+                        className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-caption font-semibold text-primary-700 dark:text-neutral-200${
                           homeIconClickRoute ? " cursor-pointer" : ""
                         }`}
                         onClick={
@@ -325,7 +324,7 @@ export function Navbar() {
                 )}
               </div>
               <div className="h-7 md:h-8 w-px bg-primary-200/50 dark:bg-neutral-700" />
-              <h1 className="text-base md:text-lg font-semibold text-primary-900 dark:text-primary-100 truncate max-w-[60vw] md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+              <h1 className="text-base md:text-lg font-semibold text-primary-900 dark:text-primary-100 truncate max-w-vw-60 md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
                 {navHeading || "Dashboard"}
               </h1>
             </div>
@@ -349,7 +348,7 @@ export function Navbar() {
 
   return (
     <div
-      className={`navbar sticky top-0 z-[9999] border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
+      className={`navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
     >
       <LogoutSidebar />
 
@@ -361,7 +360,7 @@ export function Navbar() {
               onClick={() => {}}
               className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
             >
-              <FiSidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
+              <Sidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
             </div>
           </SidebarTrigger>
         )}
@@ -410,13 +409,13 @@ export function Navbar() {
                   onClick={
                     homeIconClickRoute ? handleInstituteLogoClick : undefined
                   }
-                  className={`h-8 md:h-10 w-auto max-w-[120px] object-contain dark:border-neutral-700 rounded-sm${
+                  className={`h-8 md:h-10 w-auto max-w-32 object-contain dark:border-neutral-700 rounded-sm${
                     homeIconClickRoute ? " cursor-pointer" : ""
                   }`}
                 />
               ) : (
                 <div
-                  className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-[11px] md:text-[12px] font-semibold text-primary-700 dark:text-neutral-200${
+                  className={`h-7 w-7 md:h-8 md:w-8 rounded-sm bg-primary-200/40 dark:bg-neutral-700/60 flex items-center justify-center text-caption font-semibold text-primary-700 dark:text-neutral-200${
                     homeIconClickRoute ? " cursor-pointer" : ""
                   }`}
                   onClick={
@@ -431,7 +430,7 @@ export function Navbar() {
             <div className="flex items-center gap-2">
               <div className="w-1 h-6 bg-primary-600 dark:bg-primary-500 rounded-full shadow-sm"></div>
               <div className="relative">
-                <h1 className="text-sm md:text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-[60vw] md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+                <h1 className="text-sm md:text-base font-semibold text-neutral-900 dark:text-neutral-100 leading-tight truncate max-w-vw-60 md:max-w-none [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
                   {navHeading}
                 </h1>
                 <div className="absolute -bottom-0.5 left-0 right-0 h-px bg-primary-300/50 dark:bg-neutral-700"></div>

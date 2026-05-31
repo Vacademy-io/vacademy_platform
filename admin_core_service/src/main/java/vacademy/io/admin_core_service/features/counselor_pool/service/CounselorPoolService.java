@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
+import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counselor_pool.dto.*;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.*;
@@ -12,7 +13,10 @@ import vacademy.io.admin_core_service.features.counselor_pool.enums.AssignmentMo
 import vacademy.io.admin_core_service.features.counselor_pool.enums.PoolStatus;
 import vacademy.io.admin_core_service.features.counselor_pool.enums.SchedulePattern;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.*;
+import vacademy.io.admin_core_service.features.timeline.enums.LeadJourneyActionType;
+import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.*;
@@ -34,6 +38,8 @@ public class CounselorPoolService {
     private final CounselorPoolShiftRepository poolShiftRepository;
     private final CounselorPoolShiftMemberRepository poolShiftMemberRepository;
     private final UserLeadProfileRepository userLeadProfileRepository;
+    private final UserLeadProfileService userLeadProfileService;
+    private final TimelineEventService timelineEventService;
     private final AuthService authService;
 
     // ────────────────────────────────────────────────────────────────
@@ -286,7 +292,8 @@ public class CounselorPoolService {
     }
 
     @Transactional
-    public void updateMemberStatus(String poolId, String counselorUserId, UpdateMemberStatusRequest request) {
+    public void updateMemberStatus(String poolId, String counselorUserId, UpdateMemberStatusRequest request,
+                                   CustomUserDetails admin) {
         String status = request.getStatus();
         if (!PoolStatus.ACTIVE.name().equals(status) && !PoolStatus.INACTIVE.name().equals(status)) {
             throw new VacademyException("status must be ACTIVE or INACTIVE");
@@ -317,11 +324,102 @@ public class CounselorPoolService {
         if (reassignExistingLeads) {
             CounselorPool pool = poolRepository.findById(poolId)
                     .orElseThrow(() -> new VacademyException("Pool not found: " + poolId));
-            String backupName = resolveCounselorDisplayName(backupId);
-            int moved = userLeadProfileRepository.reassignOpenLeadsInPool(
-                    poolId, counselorUserId, backupId, backupName, pool.getInstituteId());
-            log.info("Reassigned {} open leads from counselor={} to backup={} in pool={} (institute={})",
-                    moved, counselorUserId, backupId, poolId, pool.getInstituteId());
+            reassignOpenLeadsToBackup(pool, counselorUserId, backupId, admin);
+        }
+    }
+
+    /**
+     * Move every OPEN lead currently assigned to the inactivated counselor
+     * (within this pool's audiences) to the backup. Each lead is routed
+     * through {@link UserLeadProfileService#assignCounselor} so the workflow
+     * trigger ({@code LEAD_ASSIGNED_TO_COUNSELOR}) fires per lead exactly
+     * like the manual reassign endpoint does. A {@code COUNSELOR_ASSIGNED}
+     * journey-timeline event is logged for each, with the acting admin as
+     * the actor — that way Charlie picking up Bhavna's 12 leads shows up
+     * on each of those leads' timelines, matching the audit trail produced
+     * by clicking Reassign by hand.
+     */
+    private void reassignOpenLeadsToBackup(CounselorPool pool, String fromCounselorUserId,
+                                           String backupUserId, CustomUserDetails admin) {
+        String instituteId = pool.getInstituteId();
+        List<String> userIds = userLeadProfileRepository.findOpenLeadUserIdsForCounselorInPool(
+                pool.getId(), fromCounselorUserId, instituteId);
+        if (userIds.isEmpty()) {
+            log.info("No open leads to reassign for counselor={} in pool={} (institute={})",
+                    fromCounselorUserId, pool.getId(), instituteId);
+            return;
+        }
+        String backupName = resolveCounselorDisplayName(backupUserId);
+
+        String actorId = admin != null ? admin.getUserId() : null;
+        String actorName = admin != null ? admin.getUsername() : null;
+
+        for (String userId : userIds) {
+            // Writes assigned_counselor_id + assigned_counselor_name and emits
+            // LEAD_ASSIGNED_TO_COUNSELOR. Joins the outer @Transactional via
+            // REQUIRED propagation, so a failure here rolls back the whole
+            // mark-inactive operation (all-or-nothing).
+            userLeadProfileService.assignCounselor(userId, instituteId, backupUserId, backupName);
+
+            // Timeline event mirrors the manual reassign controller's payload so
+            // the journey timeline reads identically regardless of how the
+            // reassign happened. logJourneyEvent is REQUIRES_NEW — wrapped in
+            // try/catch so logging failures don't roll back the reassignment.
+            try {
+                timelineEventService.logJourneyEvent(
+                        "USER_LEAD_PROFILE", userId,
+                        LeadJourneyActionType.COUNSELOR_ASSIGNED,
+                        "ADMIN", actorId, actorName,
+                        "Counselor reassigned",
+                        "Reassigned to " + (backupName != null ? backupName : backupUserId)
+                                + " (backup for inactivated counselor in pool \"" + pool.getName() + "\")",
+                        Map.of(
+                                "counselor_id", backupUserId,
+                                "counselor_name", backupName != null ? backupName : "",
+                                "reassigned_from", fromCounselorUserId,
+                                "pool_id", pool.getId(),
+                                "trigger", "POOL_MEMBER_INACTIVATED",
+                                "assigned_by", actorName != null ? actorName : ""),
+                        userId);
+            } catch (Exception e) {
+                log.warn("Failed to log COUNSELOR_ASSIGNED timeline event for user={} pool={}: {}",
+                        userId, pool.getId(), e.getMessage());
+            }
+        }
+
+        log.info("Reassigned {} open leads from counselor={} to backup={} in pool={} (institute={})",
+                userIds.size(), fromCounselorUserId, backupUserId, pool.getId(), instituteId);
+    }
+
+    /**
+     * Set monthly_target per audience for one counsellor in one pool. Each
+     * entry in the request is applied independently — null clears the target,
+     * non-null sets it. The matrix structure (one row per (pool, audience,
+     * counsellor)) means each entry maps to exactly one row update.
+     *
+     * Validation:
+     *   - monthly_target must be null or >= 0 (negative values rejected)
+     *
+     * Intentionally NOT validated (UI guarantees, harmless when violated):
+     *   - whether the counsellor has a row for the supplied audience_id
+     *   - whether the audience_id belongs to this pool
+     * In both cases an UPDATE affecting 0 rows is a silent no-op, which is
+     * the intended behaviour for direct API hits with stale or invalid ids.
+     */
+    @Transactional
+    public void updateMemberMonthlyTargets(String poolId, String counselorUserId,
+                                           UpdateMemberMonthlyTargetsRequest request) {
+        if (request == null || request.getTargets() == null || request.getTargets().isEmpty()) {
+            return; // Nothing to do — same shape as a save-with-no-changes.
+        }
+        for (UpdateMemberMonthlyTargetsRequest.TargetEntry entry : request.getTargets()) {
+            requireNonBlank(entry.getAudienceId(), "audience_id is required for each target entry");
+            Integer target = entry.getMonthlyTarget();
+            if (target != null && target < 0) {
+                throw new VacademyException("monthly_target must be zero or positive");
+            }
+            poolMemberRepository.updateMonthlyTarget(
+                    poolId, entry.getAudienceId(), counselorUserId, target);
         }
     }
 
@@ -381,7 +479,8 @@ public class CounselorPoolService {
      * counsellor and not pool-membership-bound.
      */
     @Transactional
-    public void bulkUpdateMemberStatusAcrossPools(String counselorUserId, BulkUpdateMemberStatusRequest request) {
+    public void bulkUpdateMemberStatusAcrossPools(String counselorUserId, BulkUpdateMemberStatusRequest request,
+                                                  CustomUserDetails admin) {
         requireNonBlank(counselorUserId, "counselorUserId is required");
         if (request == null || request.getPoolIds() == null || request.getPoolIds().isEmpty()) {
             throw new VacademyException("pool_ids must contain at least one pool");
@@ -404,7 +503,7 @@ public class CounselorPoolService {
         for (String poolId : poolIds) {
             // Each iteration is part of the outer @Transactional — any throw
             // from updateMemberStatus rolls back the work done for earlier pools.
-            updateMemberStatus(poolId, counselorUserId, perPool);
+            updateMemberStatus(poolId, counselorUserId, perPool, admin);
         }
     }
 

@@ -16,4 +16,5 @@ import lombok.NoArgsConstructor;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class VimotionRequestOtpRequest {
     private String phoneNumber;
+    private String inviteCode;
 }

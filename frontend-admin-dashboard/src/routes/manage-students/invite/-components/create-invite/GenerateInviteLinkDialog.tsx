@@ -37,7 +37,9 @@ import PostFormFillConfigurationCard from './-components/PostFormFillConfigurati
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleEnrollInvite, handleGetEnrollSingleInviteDetails } from './-services/enroll-invite';
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import { handleGetPaymentDetails } from './-services/get-payments';
 import { useUpdateInvite } from '../../-services/update-invite';
 import InviteNameCard from './-components/InviteNameCard';
@@ -166,6 +168,7 @@ const GenerateInviteLinkDialog = ({
                 redirectPath: '',
                 showLoginButton: true,
                 content: '',
+                collectBillingContactDetails: false,
             },
         },
     });
@@ -196,6 +199,21 @@ const GenerateInviteLinkDialog = ({
     const { instituteDetails, getPackageSessionId } = useInstituteDetailsStore();
     const allTags = instituteDetails?.tags || [];
     const INSTITUTE_ID = getCurrentInstituteId();
+
+    const { data: instituteVendorsList = [] } = useQuery<
+        { vendor: string; vendor_id: string }[]
+    >({
+        queryKey: ['institute-vendors', INSTITUTE_ID],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(
+                `${GET_INSTITUTE_VENDORS}?instituteId=${INSTITUTE_ID}`
+            );
+            return response.data;
+        },
+        enabled: !!INSTITUTE_ID,
+        staleTime: 5 * 60 * 1000,
+    });
+    const instituteVendor = instituteVendorsList[0] ?? null;
 
     // Helper function to safely parse JSON
     const safeJsonParse = (jsonString: string | null | undefined, defaultValue: unknown = null) => {
@@ -229,7 +247,8 @@ const GenerateInviteLinkDialog = ({
                 referralProgramDetails,
                 instituteDetails?.institute_logo_file_id || '',
                 inviteLinkId,
-                inviteLinkDetails
+                inviteLinkDetails,
+                instituteVendor
             );
 
             if (isEditInviteLink && inviteLinkId) {
@@ -245,6 +264,7 @@ const GenerateInviteLinkDialog = ({
                     paymentsData,
                     referralProgramDetails,
                     instituteLogoFileId: instituteDetails?.institute_logo_file_id || '',
+                    instituteVendor,
                 });
             }
         },
@@ -814,6 +834,7 @@ const GenerateInviteLinkDialog = ({
                     redirectPath: '',
                     showLoginButton: true,
                     content: '',
+                    collectBillingContactDetails: false,
                 },
             });
         }
@@ -831,7 +852,7 @@ const GenerateInviteLinkDialog = ({
 
     return (
         <Dialog open={showSummaryDialog} onOpenChange={setShowSummaryDialog}>
-            <DialogContent className="animate-fadeIn flex min-h-[90vh] min-w-[85vw] flex-col">
+            <DialogContent className="animate-fadeIn flex h-full w-full max-w-5xl flex-col">
                 <DialogHeader>
                     <div className="flex items-center justify-between">
                         <DialogTitle className="font-bold">
@@ -878,7 +899,7 @@ const GenerateInviteLinkDialog = ({
                     )}
                     <div className="my-3 border-b" />
                 </DialogHeader>
-                <div className="max-h-[70vh] flex-1 overflow-auto scroll-smooth">
+                <div className="flex-1 overflow-auto scroll-smooth">
                     <Form {...form}>
                         <form className="mt-6 space-y-6">
                             {/* Invite Name Card */}

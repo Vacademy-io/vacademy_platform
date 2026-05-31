@@ -56,7 +56,7 @@ import java.util.stream.Collectors;
  *
  *   5. POST /connector
  *        ← Frontend calls with {session_key, selected_page_id, form_id, mapping, ...}
- *        → Server resolves page access token from session, creates connector, marks CONSUMED
+ *        → Server resolves page access token from session, creates connector, keeps session AUTHORIZED (TTL refreshed) for more connectors
  *        → Subscribes page to Meta leadgen webhooks
  *
  *   6. POST /google/connector  (no OAuth — static key flow)
@@ -278,7 +278,9 @@ public class MetaOAuthController {
 
     /**
      * Creates the FormWebhookConnector using the token from the OAuth session.
-     * Marks the session as CONSUMED so it cannot be reused.
+     * The session is kept AUTHORIZED (and its TTL refreshed) so the admin can add
+     * multiple form→audience connectors from a single OAuth connection. It expires
+     * naturally via expires_at — no longer single-use.
      */
     @PostMapping("/connector")
     @Transactional
@@ -354,8 +356,11 @@ public class MetaOAuthController {
                     request.getSelectedPageId(), e.getMessage());
         }
 
-        // Consume the session — one-time use
-        state.setSessionStatus("CONSUMED");
+        // Keep the session AUTHORIZED so the admin can add more form→audience
+        // connectors without re-running OAuth. Refresh the TTL on each save so an
+        // actively-working admin doesn't hit the expiry mid-setup. The session
+        // still expires naturally via expires_at (cleaned up by the scheduled job).
+        state.setExpiresAt(LocalDateTime.now().plusMinutes(30));
         stateRepository.save(state);
 
         log.info("Meta connector created: id={}, page={} ({}), form={}",

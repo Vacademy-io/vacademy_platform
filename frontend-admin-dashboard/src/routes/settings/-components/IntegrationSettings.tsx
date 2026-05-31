@@ -567,15 +567,22 @@ function AddGoogleForm({ onSaved }: { onSaved: () => void }) {
 
 // ── Add Meta form ────────────────────────────────────────────────────────────
 
+/** True if an API error is the backend's "session not found or expired" signal. */
+function isSessionExpiredError(err: unknown): boolean {
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+    return !!msg && /session not found or expired/i.test(msg);
+}
+
 function AddMetaForm({
-    sessionKeyFromUrl,
+    sessionKey,
+    setSessionKey,
     onSaved,
 }: {
-    sessionKeyFromUrl?: string;
+    sessionKey: string;
+    setSessionKey: (key: string) => void;
     onSaved: () => void;
 }) {
     const instituteId = getCurrentInstituteId() ?? '';
-    const [sessionKey, setSessionKey] = useState(sessionKeyFromUrl || '');
     const [selectedPageId, setSelectedPageId] = useState('');
     const [formId, setFormId] = useState('');
     const [audienceId, setAudienceId] = useState('');
@@ -587,10 +594,6 @@ function AddMetaForm({
     const [stampValue, setStampValue] = useState('');
     const [stampValueTouched, setStampValueTouched] = useState(false);
     const { data: audiences = [] } = useAudienceList(instituteId);
-
-    useEffect(() => {
-        if (sessionKeyFromUrl) setSessionKey(sessionKeyFromUrl);
-    }, [sessionKeyFromUrl]);
 
     const {
         data: pages,
@@ -604,7 +607,11 @@ function AddMetaForm({
     });
 
     // Fetch forms when a page is selected
-    const { data: forms = [], isLoading: loadingForms } = useQuery({
+    const {
+        data: forms = [],
+        isLoading: loadingForms,
+        error: formsError,
+    } = useQuery({
         queryKey: ['meta-forms', sessionKey, selectedPageId],
         queryFn: () => listPageForms(sessionKey, selectedPageId),
         enabled: !!sessionKey && !!selectedPageId,
@@ -630,6 +637,17 @@ function AddMetaForm({
     useEffect(() => {
         setFieldMappings([]);
     }, [formId, audienceId]);
+
+    // The forms fetch is the first call after page selection to hit the OAuth
+    // session, so it's where a mid-flow expiry surfaces. Clear the session (which
+    // flips isAuthorized false and re-shows "Connect Meta Account") instead of
+    // letting the UI fall back to a misleading "No forms found".
+    useEffect(() => {
+        if (formsError && isSessionExpiredError(formsError)) {
+            setSessionKey('');
+            toast.error('Your Meta session expired. Please reconnect Meta.');
+        }
+    }, [formsError, setSessionKey]);
 
     // Auto-prefill the stamp value (e.g. "Wakad") from the selected Lead Gen
     // Form name, until the admin types into the value. Picking a different form
@@ -674,16 +692,27 @@ function AddMetaForm({
         },
         onSuccess: (result) => {
             toast.success(result.message);
+            // Keep sessionKey AND selectedPageId so the admin can immediately add
+            // another form (often on the same page) without reconnecting or
+            // re-picking the page — the backend keeps the session valid for more saves.
             setFormId('');
             setAudienceId('');
-            setSelectedPageId('');
             setFieldMappings([]);
             setStampFieldName('');
             setStampValue('');
             setStampValueTouched(false);
             onSaved();
         },
-        onError: () => toast.error('Failed to save Meta connector'),
+        onError: (err: unknown) => {
+            if (isSessionExpiredError(err)) {
+                setSessionKey('');
+                toast.error('Your Meta session expired. Please reconnect Meta and try again.');
+                return;
+            }
+            const msg = (err as { response?: { data?: { message?: string } } })?.response?.data
+                ?.message;
+            toast.error(msg ?? 'Failed to save Meta connector');
+        },
     });
 
     const isAuthorized = !!sessionKey && !!pages && pages.length > 0;
@@ -888,13 +917,20 @@ export default function IntegrationSettings() {
 
     const [showAddGoogle, setShowAddGoogle] = useState(false);
     const [showAddMeta, setShowAddMeta] = useState(!!sessionKeyFromUrl);
+    // Held here (not inside AddMetaForm) so the authorized Meta session survives
+    // collapsing the Add-connector panel or switching to the Google tab — both of
+    // which unmount AddMetaForm and would otherwise discard the session.
+    const [metaSessionKey, setMetaSessionKey] = useState(sessionKeyFromUrl || '');
 
     // Loaded once for both the connector list (id → name lookup) and AddMetaForm.
     const { data: audiences = [] } = useAudienceList(instituteId);
 
     useEffect(() => {
         if (oauthError) toast.error(`Meta OAuth failed: ${oauthError}`);
-        if (sessionKeyFromUrl) toast.success('Meta account connected');
+        if (sessionKeyFromUrl) {
+            toast.success('Meta account connected');
+            setMetaSessionKey(sessionKeyFromUrl);
+        }
         if (sessionKeyFromUrl || oauthError) {
             const clean = new URL(window.location.href);
             clean.searchParams.delete('session_key');
@@ -1020,7 +1056,11 @@ export default function IntegrationSettings() {
                     </div>
 
                     {showAddMeta && (
-                        <AddMetaForm sessionKeyFromUrl={sessionKeyFromUrl} onSaved={handleSaved} />
+                        <AddMetaForm
+                            sessionKey={metaSessionKey}
+                            setSessionKey={setMetaSessionKey}
+                            onSaved={handleSaved}
+                        />
                     )}
                     {showAddGoogle && <AddGoogleForm onSaved={handleSaved} />}
                 </CardContent>

@@ -14,9 +14,11 @@ import java.time.LocalDateTime;
  *
  * Lifecycle:
  *   PENDING    — state created at /initiate; browser is on Meta's consent screen
- *   AUTHORIZED — /callback succeeded; encrypted user token + pages stored server-side
- *   CONSUMED   — /connector save used this session; record is now dead
- *   EXPIRED    — expires_at passed before CONSUMED; cleaned up by scheduled job
+ *   AUTHORIZED — /callback succeeded; encrypted user token + pages stored server-side.
+ *                Stays AUTHORIZED across multiple /connector saves (TTL refreshed each
+ *                time) so several form→audience connectors can be added per OAuth flow.
+ *   EXPIRED    — expires_at passed; cleaned up by scheduled job
+ *   CONSUMED   — legacy single-use status; no longer set (sessions now expire via TTL)
  *
  * The frontend never sees access tokens — only the session UUID (id).
  */

@@ -1,5 +1,8 @@
 # Generated client secrets — never commit
 vacademy-services/values.secret.yaml
+# Hetzner cutover: filled-in copies of the template (real secrets) — never commit
+hetzner/values-prod-hetzner.yaml
+hetzner/values.secret.yaml
 # Local DB backups
 backups/
 # Helm packaging artifacts

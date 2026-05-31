@@ -1,0 +1,431 @@
+# =============================================================================
+# values-prod-hetzner.yaml.template
+# -----------------------------------------------------------------------------
+# Helm values overlay for the Vacademy "vac" release on the Hetzner Singapore
+# production cluster. Applied ON TOP OF the chart's default values.yaml:
+#
+#   helm upgrade --install vac vacademy_devops/vacademy-services \
+#       -n default \
+#       -f vacademy_devops/vacademy-services/values.yaml \
+#       -f vacademy_devops/hetzner/values-prod-hetzner.yaml
+#
+# This file is a TEMPLATE. To produce the real file:
+#
+#   cp values-prod-hetzner.yaml.template values-prod-hetzner.yaml
+#   # then fill every REPLACE_* token
+#
+# values-prod-hetzner.yaml MUST be gitignored. Never commit real secrets.
+#
+# -----------------------------------------------------------------------------
+# Filling the REPLACE_* values from the CURRENT Linode prod cluster
+# -----------------------------------------------------------------------------
+#
+# Most non-secret env values live in the chart-rendered ConfigMap on Linode.
+# Pull both the ConfigMap and the Secret from the live prod namespace:
+#
+#   # ConfigMap (env / URLs / regions / hosts):
+#   kubectl --context linode-prod -n default get cm myconfigmapv1.0 -o yaml \
+#       > /tmp/linode-prod-cm.yaml
+#
+#   # Secret (passwords, API keys, JWT key, OAuth):
+#   kubectl --context linode-prod -n default get secret vacademy-secrets -o yaml \
+#       > /tmp/linode-prod-secret.yaml
+#
+#   # Decode a single secret key (example):
+#   kubectl --context linode-prod -n default get secret vacademy-secrets \
+#       -o jsonpath='{.data.JWT_SECRET_KEY}' | base64 -d ; echo
+#
+# Map keys 1:1 into the corresponding fields below.
+#
+# -----------------------------------------------------------------------------
+# Only keys that DIFFER from the chart default are overridden here.
+# Anything not listed inherits the upstream values.yaml.
+# =============================================================================
+
+# Each Spring Boot microservice runs 2 replicas on Hetzner prod
+# (chart default is 1). 2 replicas spread across 3 k3s nodes gives HA without
+# overcommitting the CCX23 (4 vCPU / 16 GB) nodes.
+replicaCount: 2
+
+# -----------------------------------------------------------------------------
+# Standalone / bundled-Postgres path: DISABLED on cloud prod.
+# Hetzner prod uses the external HA Postgres pair (db-primary 10.0.0.4,
+# db-standby 10.0.0.5) fronted by pgBouncer running INSIDE the cluster.
+# -----------------------------------------------------------------------------
+standalone:
+  enabled: false
+
+postgres:
+  # The chart can ship a bundled Postgres StatefulSet for single-VM / dev
+  # deployments. We do NOT use that on cloud prod.
+  bundled: false
+
+# -----------------------------------------------------------------------------
+# Frontends: served by Cloudflare Pages on cloud prod, NOT from the cluster.
+#
+#   - admin.vacademy.io       -> Cloudflare Pages (frontend-admin-dashboard)
+#   - app.vacademy.io         -> Cloudflare Pages (frontend-learner-dashboard-app)
+#   - landing pages           -> Cloudflare Pages (landing_page)
+#
+# Only backend.vacademy.io (the API gateway via NGINX ingress) is served from
+# this cluster. Confirm via Cloudflare DNS before flipping traffic.
+# -----------------------------------------------------------------------------
+frontends:
+  enabled: false
+
+# -----------------------------------------------------------------------------
+# cert-manager + Let's Encrypt
+# Installed separately via `helm install cert-manager jetstack/cert-manager
+# --set crds.enabled=true`. The chart only creates the ClusterIssuer + the
+# Certificate resources referenced by the Ingress.
+# -----------------------------------------------------------------------------
+certManager:
+  enabled: true
+  # Ops contact used for Let's Encrypt registration + expiry warning emails.
+  email: REPLACE_WITH_OPS_EMAIL
+
+# -----------------------------------------------------------------------------
+# Ingress: NGINX (NOT traefik). k3s is installed with --disable traefik;
+# the official ingress-nginx manifest is applied before this chart.
+#
+# !!  CRITICAL CHART BUG  !!
+# When standalone.enabled=false (this overlay), templates/ingress.yaml does
+# NOT iterate .Values.ingress.hosts. It HARDCODES the rules block for
+# backend-stage.vacademy.io, u.vacademy.io, u.aanandham.uk, and hardcodes
+# the TLS secret to `vacademy-tls-secret`. It also hardcodes the annotation
+#   cert-manager.io/cluster-issuer: vacademy-stage-letsencrypt-prod-cert-issuer
+# So the ingress.hosts list AND ingress.clusterIssuer field below are
+# SILENTLY IGNORED on prod. Without action, after DNS flip:
+#   - requests to backend.vacademy.io will 404 at the ingress controller
+#     (no host match)
+#   - cert-manager will look up a ClusterIssuer named
+#     `vacademy-stage-letsencrypt-prod-cert-issuer` which does not exist on
+#     Hetzner, so no Certificate will issue and backend.vacademy.io will
+#     serve the default self-signed ingress cert -> browser hard-fail.
+#
+# REQUIRED FIX (MUST do ONE before cutover):
+#   (a) Patch chart templates/ingress.yaml's non-standalone branch to:
+#         - range over $.Values.ingress.hosts and emit the same path list
+#           per host (auth-service, admin-core-service, assessment-service,
+#           community-service, media-service, notification-service,
+#           ai-service, /login/oauth2)
+#         - render the annotation as
+#             cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer }}
+#       Then this overlay's ingress.hosts + clusterIssuer are honored.
+#   (b) OR stop using the chart's Ingress for prod: apply a hand-written
+#       Ingress manifest in vacademy_devops/hetzner/ that lists
+#       backend.vacademy.io with the per-service path list and the
+#       letsencrypt-prod ClusterIssuer annotation; set ingress.enabled=false
+#       here.
+#   (c) OR (workaround if chart cannot be touched) name the new ClusterIssuer
+#       on Hetzner exactly `vacademy-stage-letsencrypt-prod-cert-issuer` so
+#       the hardcoded annotation resolves, AND ensure a Service/Ingress
+#       fronts backend.vacademy.io some other way.
+# Do NOT ship the migration until one of (a)/(b)/(c) is in place.
+# -----------------------------------------------------------------------------
+ingress:
+  className: nginx
+  # ClusterIssuer name created by the cert-manager bootstrap.
+  # HTTP-01 challenge solved via the nginx ingress controller.
+  # NOTE: only consumed by the standalone branch of templates/ingress.yaml --
+  # the non-standalone branch hardcodes the issuer name. See header above.
+  clusterIssuer: letsencrypt-prod
+  # NOTE: only consumed by the standalone branch of templates/ingress.yaml.
+  # See critical header above before relying on this list on prod.
+  #
+  # Pre-cutover checklist item (see CUTOVER_PLAYBOOK.md): export the full
+  # set of A/AAAA/CNAME records pointing at the Linode LB from the Cloudflare
+  # API and add EVERY subdomain here (e.g. meeting., auth., learner-meeting.,
+  # ...). The Cloudflare DNS flip script's --records arg must mirror this
+  # list 1:1, otherwise any unlisted subdomain stays pointed at Linode after
+  # cutover AND the chart won't issue a cert for it on Hetzner.
+  hosts:
+    - admin.vacademy.io      # routed at edge -> Cloudflare; only listed here
+                             # so cert-manager can issue if we ever need to
+                             # serve admin from the cluster (failover).
+    - app.vacademy.io        # same: failover-ready, normally served by CF.
+    - backend.vacademy.io    # PRIMARY: API gateway for all microservices.
+    # TODO(pre-cutover): append any additional subdomains discovered via
+    # the Cloudflare DNS export (meeting., auth., etc.).
+
+# -----------------------------------------------------------------------------
+# pgBouncer (in-cluster connection pooler in front of the external Postgres
+# pair). Apps connect to host "pgbouncer" on port 6432 (see env.db.* below);
+# pgBouncer itself fans out to the Hetzner private IPs of the DB VMs.
+#
+# !!  CRITICAL: pgbouncer-userlist Secret is created OUT-OF-BAND  !!
+# templates/pgbouncer-deployment.yaml mounts a Secret named
+# `pgbouncer-userlist` at /etc/pgbouncer/userlist.txt, but NO template in
+# this chart creates that Secret. The pgbouncer.dbUsername / dbPassword
+# fields below are NOT consumed by the chart -- they are documentation
+# reminders only. If you only fill the fields below and run `helm upgrade`,
+# the pgbouncer Pod will CrashLoopBackOff on a missing-Secret volume mount.
+#
+# Generate and apply the Secret BEFORE `helm upgrade --install`:
+#
+#   # On db-primary (10.0.0.4), as the postgres OS user:
+#   psql -At -c "SELECT '\"'||rolname||'\" \"'||rolpassword||'\"' \
+#                 FROM pg_authid WHERE rolname='vacademy'" > userlist.txt
+#   # The rolpassword column contains the SCRAM-SHA-256 hash, which is what
+#   # pgBouncer needs when auth_type = scram-sha-256 in pgbouncer.ini.
+#
+#   # From your workstation, against the Hetzner cluster:
+#   scp root@5.223.55.54:/tmp/userlist.txt ./userlist.txt
+#   kubectl create secret generic pgbouncer-userlist \
+#       --from-file=userlist.txt -n default
+#
+# Also: server_tls_sslmode is hardcoded to `require` in the chart's
+# pgbouncer-configmap.yaml. The Hetzner postgres bring-up scripts MUST
+# enable `ssl = on` in postgresql.conf on both db-primary and db-standby
+# and provision a server cert (self-signed snakeoil is fine on the private
+# 10.0.0.0/24 net), otherwise pgBouncer will fail with
+# `SSL required but server has no SSL support`. If the chart cannot be
+# patched to expose .Values.pgbouncer.serverTlsSslMode, do NOT silently
+# disable TLS -- fix postgres TLS instead.
+# -----------------------------------------------------------------------------
+pgbouncer:
+  enabled: true
+  # Primary (read/write) Postgres VM, private IP on the 10.0.0.0/24 subnet.
+  dbHost: 10.0.0.4
+  # Hot-standby (read-only) Postgres VM, used for read replicas / analytics.
+  # The chart wires this into a separate pgbouncer pool if it supports reads.
+  dbReadHost: 10.0.0.5
+  # Postgres listens on the standard port on both VMs.
+  dbPort: "5432"
+  # App-level Postgres role. Has SELECT/INSERT/UPDATE/DELETE on all 6 DBs.
+  # NOT a superuser, NOT the replication user.
+  # NOTE: this field is NOT consumed by any chart template; pgBouncer
+  # authenticates clients via the out-of-band `pgbouncer-userlist` Secret
+  # (see header above). Kept here as a reminder of which role the userlist
+  # entry must correspond to.
+  dbUsername: vacademy
+
+# -----------------------------------------------------------------------------
+# Application environment (rendered into the shared ConfigMap consumed by
+# every Spring Boot service). Mirror the live Linode prod CM here.
+# -----------------------------------------------------------------------------
+env:
+  # !!  CAVEAT  !!
+  # The chart's `env.required` guard ONLY fails the template render when
+  # `.Values.secrets.jwtSecretKey` is empty. It does NOT scan the rest of
+  # this file for unfilled REPLACE_* tokens. To catch the rest, RELY ON the
+  # pre-deploy grep step at the bottom of this file:
+  #
+  #   grep -nE 'REPLACE(_WITH_)?' /tmp/vac-prod-hetzner.rendered.yaml
+  #
+  # Every placeholder in this overlay is therefore spelled as
+  # `REPLACE_WITH_<thing>` (not bare `REPLACE`) so the grep cannot miss it
+  # and so the chart's pgbouncer-configmap hasPrefix "REPLACE_WITH_" check
+  # also fires.
+  required: true
+
+  # Spring profile activated by every service in this cluster.
+  springProfile: prod
+
+  # Admin app username consumed by Spring services (APP_USERNAME env).
+  app:
+    username: admin
+
+  # Scheduler tick window (SCHEDULING_TIME_FRAME env, minutes).
+  schedulingTimeFrame: "30"
+
+  # ai-service tool executor base URL (TOOL_EXECUTOR_BASE_URL env). Empty
+  # value breaks ai-service tool calls -- must mirror the live Linode CM.
+  toolExecutorBaseUrl: REPLACE_WITH_TOOL_EXECUTOR_BASE_URL
+
+  # Public URL for the teacher/admin portal, used to build links inside
+  # password-reset / magic-invite emails (TEACHER_PORTAL_CLIENT_URL env).
+  # Empty value silently breaks every emailed link.
+  teacherPortalClientUrl: REPLACE_WITH_TEACHER_PORTAL_CLIENT_URL  # e.g. https://admin.vacademy.io
+
+  # CDN in front of media_service / S3 public bucket.
+  cloudFrontUrl: REPLACE_WITH_CLOUDFRONT_URL   # e.g. https://dXXXXX.cloudfront.net
+
+  # Database wiring as seen by the Java apps. They talk to the in-cluster
+  # pgBouncer Service, NOT directly to the DB VMs.
+  db:
+    host: pgbouncer
+    port: "6432"
+    # MUST be set explicitly. The chart default in values.yaml is `postgres`,
+    # which does NOT exist in the pgbouncer-userlist Secret (only `vacademy`
+    # is loaded). Leaving this unset = every auth attempt to pgBouncer fails
+    # with "no such user".
+    username: vacademy
+
+  # S3 (media_service uploads, exports, etc.).
+  s3:
+    region: REPLACE_WITH_S3_REGION                # e.g. ap-south-1
+    bucket: REPLACE_WITH_S3_BUCKET                # private bucket for internal assets
+    publicBucket: REPLACE_WITH_S3_PUBLIC_BUCKET   # bucket fronted by CloudFront
+
+  # Outbound SMTP relay (notification_service password reset / OTP fallback).
+  mail:
+    host: REPLACE_WITH_MAIL_HOST                  # e.g. email-smtp.ap-south-1.amazonaws.com
+    port: "587"
+
+  # AWS SES for transactional email.
+  ses:
+    senderEmail: REPLACE_WITH_SES_SENDER_EMAIL           # e.g. no-reply@vacademy.io
+    configurationSet: REPLACE_WITH_SES_CONFIGURATION_SET # SES configuration set name
+    eventsSqsUrl: REPLACE_WITH_SES_EVENTS_SQS_URL        # SQS queue receiving SES event notifications
+
+  # AWS SQS region/endpoint used by notification_service workers.
+  sqs:
+    region: REPLACE_WITH_SQS_REGION                # e.g. ap-south-1
+    endpoint: REPLACE_WITH_SQS_ENDPOINT            # e.g. https://sqs.ap-south-1.amazonaws.com
+
+# -----------------------------------------------------------------------------
+# Secrets (rendered into the `vacademy-secrets` Secret).
+#
+# !!  C R I T I C A L  !!
+# Every value below MUST be copied verbatim from the current Linode prod
+# Secret. Do NOT rotate as part of the migration -- rotate AFTER cutover.
+#
+# Several services have legacy hardcoded fallbacks; if jwtSecretKey changes,
+# every issued JWT (sessions, password-reset links, magic-link invites)
+# becomes invalid instantly. Keep it identical.
+# -----------------------------------------------------------------------------
+secrets:
+  # ===========================================================================
+  # !!! JWT signing key. MUST be byte-for-byte identical to the value currently
+  # in `vacademy-secrets.JWT_SECRET_KEY` on Linode prod. Some Java services
+  # have this value hardcoded as a fallback; a mismatch silently invalidates
+  # every active session and every outstanding email/invite token. DO NOT
+  # generate a new one. DO NOT rotate during cutover. !!!
+  # ===========================================================================
+  jwtSecretKey: REPLACE_WITH_CURRENT_PROD_JWT_SECRET_KEY
+
+  # Shared secret used for service-to-service auth on /internal/* endpoints.
+  internalClientSecret: REPLACE_WITH_INTERNAL_CLIENT_SECRET
+
+  # Password for the `vacademy` Postgres role. Consumed by Spring services as
+  # DB_PASSWORD when they connect to pgBouncer. MUST be the same plaintext
+  # password that hashes to the SCRAM verifier loaded into the
+  # `pgbouncer-userlist` Secret (see pgbouncer: section above). Missing this
+  # key = every service fails auth at pgBouncer with
+  # `password authentication failed for user "vacademy"`.
+  dbPassword: REPLACE_WITH_VACADEMY_USER_PASSWORD
+
+  # AWS IAM credentials for the S3 buckets named in env.s3.*
+  # Chart template keys: secrets.s3.accessKey -> S3_AWS_ACCESS_KEY,
+  #                      secrets.s3.accessSecret -> S3_AWS_ACCESS_SECRET.
+  # NOTE: it's `accessSecret`, NOT `secretKey`.
+  s3:
+    accessKey: REPLACE_WITH_S3_ACCESS_KEY
+    accessSecret: REPLACE_WITH_S3_ACCESS_SECRET
+
+  # SES SMTP credentials for transactional email.
+  # Chart template keys: secrets.ses.mailUsername -> AWS_MAIL_USERNAME,
+  #                      secrets.ses.mailPassword -> AWS_MAIL_PASSWORD.
+  # These are SES *SMTP* credentials (generated via the IAM console's
+  # "Create SMTP credentials" flow), NOT raw IAM access key / secret.
+  ses:
+    mailUsername: REPLACE_WITH_SES_SMTP_USERNAME    # SES SMTP user, NOT IAM access key
+    mailPassword: REPLACE_WITH_SES_SMTP_PASSWORD    # SES SMTP pass, NOT IAM secret
+
+  # AWS IAM credentials for SQS workers.
+  # Chart template keys: secrets.sqs.accessKey -> SQS_AWS_ACCESS_KEY,
+  #                      secrets.sqs.secretKey -> SQS_AWS_SECRET_KEY.
+  sqs:
+    accessKey: REPLACE_WITH_SQS_ACCESS_KEY
+    secretKey: REPLACE_WITH_SQS_SECRET_KEY
+
+  # OAuth client credentials for social login (Google / GitHub / etc.).
+  # Match the redirect URIs registered for backend.vacademy.io.
+  oauth:
+    googleClientId: REPLACE_WITH_GOOGLE_CLIENT_ID
+    googleClientSecret: REPLACE_WITH_GOOGLE_CLIENT_SECRET
+    githubClientId: REPLACE_WITH_GITHUB_CLIENT_ID
+    githubClientSecret: REPLACE_WITH_GITHUB_CLIENT_SECRET
+
+  # Third-party API keys consumed by various services. These key names are
+  # what templates/secret-env.yaml actually reads:
+  #   secrets.api.openrouter     -> OPENROUTER_API_KEY
+  #   secrets.api.gemini         -> GEMINI_API_KEY
+  #   secrets.api.youtube        -> YOUTUBE_API_KEY
+  #   secrets.api.unsplash       -> UNSPLASH_ACCESS_KEY
+  #   secrets.api.deepseek       -> DEEPSEEK_API_KEY (defaults to the literal
+  #                                 string "not-configured" if blank, because
+  #                                 Spring AI rejects an empty value)
+  #   secrets.api.fal            -> FAL_API_KEY
+  #   secrets.api.whatsappToken  -> WHATSAPP_ACCESS_TOKEN
+  #
+  # NOTE: razorpay / twilio / openai / anthropic / posthog / deepgram keys
+  # do NOT have chart-template wiring today. If any of those are actually
+  # consumed by services in prod, AUDIT the running Linode pods for the real
+  # env-var names and add matching entries to chart templates/configmap.yaml
+  # or templates/secret-env.yaml BEFORE the migration. Filling them in below
+  # without that chart work will NOT propagate them to the pods.
+  api:
+    openrouter: REPLACE_WITH_OPENROUTER_API_KEY
+    gemini: REPLACE_WITH_GEMINI_API_KEY
+    youtube: REPLACE_WITH_YOUTUBE_API_KEY
+    unsplash: REPLACE_WITH_UNSPLASH_ACCESS_KEY
+    deepseek: REPLACE_WITH_DEEPSEEK_API_KEY
+    fal: REPLACE_WITH_FAL_API_KEY
+    whatsappToken: REPLACE_WITH_WHATSAPP_ACCESS_TOKEN
+
+  # Sentry error reporting. The chart reads `secrets.sentry.dsn` (NOT
+  # `secrets.api.sentryDsn`); using the wrong key sends an empty DSN to the
+  # pods and Sentry init silently no-ops.
+  sentry:
+    dsn: REPLACE_WITH_SENTRY_DSN
+    authToken: REPLACE_WITH_SENTRY_AUTH_TOKEN
+
+# =============================================================================
+# Pre-deploy verification
+# -----------------------------------------------------------------------------
+# Run these BEFORE `helm upgrade --install` against the Hetzner cluster.
+# Any failure here MUST block the deploy.
+#
+# 1. Lint the chart with the merged values (catches schema / type errors):
+#
+#      helm lint vacademy_devops/vacademy-services \
+#          -f vacademy_devops/vacademy-services/values.yaml \
+#          -f vacademy_devops/hetzner/values-prod-hetzner.yaml
+#
+# 2. Dry-run render the full manifest (catches missing REPLACE_* tokens
+#    when env.required=true, and lets you eyeball the rendered ConfigMap /
+#    Secret / Ingress / Deployments before they hit the API server):
+#
+#      helm template vac vacademy_devops/vacademy-services \
+#          -n default \
+#          -f vacademy_devops/vacademy-services/values.yaml \
+#          -f vacademy_devops/hetzner/values-prod-hetzner.yaml \
+#          > /tmp/vac-prod-hetzner.rendered.yaml
+#
+#      grep -nE 'REPLACE(_WITH_[A-Z0-9_]+)?' /tmp/vac-prod-hetzner.rendered.yaml && \
+#          { echo "FAIL: unfilled REPLACE_* tokens"; exit 1; }
+#
+#    Every placeholder in this overlay is REPLACE_WITH_<thing>; the regex
+#    above also catches a bare `REPLACE` if anything slips in. The chart's
+#    `env.required` guard only validates secrets.jwtSecretKey -- this grep
+#    is the actual safety net for everything else.
+#
+# 3. Server-side dry-run against the live cluster (catches RBAC / admission /
+#    schema drift; does NOT mutate anything):
+#
+#      helm upgrade --install vac vacademy_devops/vacademy-services \
+#          -n default \
+#          -f vacademy_devops/vacademy-services/values.yaml \
+#          -f vacademy_devops/hetzner/values-prod-hetzner.yaml \
+#          --dry-run=server
+#
+# 4. Sanity-check the rendered Ingress hostnames + the rendered pgBouncer
+#    Deployment:
+#
+#      yq '. | select(.kind=="Ingress")'    /tmp/vac-prod-hetzner.rendered.yaml
+#      yq '. | select(.kind=="Deployment" and .metadata.name=="pgbouncer")' \
+#          /tmp/vac-prod-hetzner.rendered.yaml
+#
+# 5. From inside the cluster, confirm pgBouncer can reach db-primary BEFORE
+#    apps roll out:
+#
+#      kubectl -n default run pgcheck --rm -it --restart=Never \
+#          --image=postgres:16.14 -- \
+#          psql "host=10.0.0.4 port=5432 user=vacademy dbname=auth_service \
+#                sslmode=disable" -c 'select 1;'
+#
+# Only proceed with the real `helm upgrade --install` (no --dry-run) after
+# all five checks pass.
+# =============================================================================

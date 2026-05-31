@@ -302,6 +302,18 @@ const EnrollByInvite = ({
       ?.collectBillingContactDetails
   );
 
+  // Per-field config for the billing-contact form. The admin writes this under
+  // postformfillConfiguration.billingContactFields in the invite settingJson;
+  // RegistrationStep falls back to the legacy hard-coded labels + required
+  // semantics when the key is absent so older invites keep their current UX.
+  const billingContactFields = (inviteConfig as {
+    billingContactFields?: {
+      name?:  { label?: string; required?: boolean };
+      email?: { label?: string; required?: boolean };
+      role?:  { label?: string; required?: boolean; options?: string };
+    };
+  })?.billingContactFields;
+
   // Inject GTM if the institute has configured a container ID
   useEffect(() => {
     const gtmId = inviteData?.gtm_container_id;
@@ -2304,6 +2316,7 @@ const EnrollByInvite = ({
             collectBillingContact={collectBillingContact}
             billingContact={billingContact}
             onBillingContactChange={setBillingContact}
+            billingContactFields={billingContactFields}
           />
         );
       case 1: {
@@ -2514,6 +2527,7 @@ const EnrollByInvite = ({
             collectBillingContact={collectBillingContact}
             billingContact={billingContact}
             onBillingContactChange={setBillingContact}
+            billingContactFields={billingContactFields}
           />
         );
     }

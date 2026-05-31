@@ -90,6 +90,9 @@ public class UserPlanService {
     private ObjectMapper objectMapper;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
+
+    @Autowired
     private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationRepository;
 
     @Autowired
@@ -483,31 +486,77 @@ public class UserPlanService {
                 return;
             }
 
-            // Send credential email asynchronously to avoid blocking the payment webhook thread
-            String learndashBaseUrl = getLearndashBaseUrlFromPackageSessions(packageSessionIds);
-            asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learndashBaseUrl);
+            // Honor the COURSE_SETTING.enrollmentNotifications.{showSendCredentials,showNotifyLearners}
+            // toggles that the admin display-settings page writes — the same gate bulk/v3/assign and
+            // the admin "Enrol Customer" button already respect. When both are off, no enrollment
+            // mail goes out at all even for paid enrollments. Default both to true for back-compat.
+            boolean showSendCredentials = readCourseSettingEnrollmentFlag(instituteId, "showSendCredentials");
+            boolean showNotifyLearners  = readCourseSettingEnrollmentFlag(instituteId, "showNotifyLearners");
 
-            // Send dynamic enrollment notification
-            dynamicNotificationService.sendDynamicNotification(
-                    NotificationEventType.LEARNER_ENROLL,
-                    firstPackageSessionId,
-                    instituteId,
-                    userDTO,
-                    paymentOption,
-                    enrollInvite);
-            logger.info("Enrollment notification sent successfully for user: {}", userDTO.getId());
+            // Send credential email asynchronously to avoid blocking the payment webhook thread.
+            // Gated by showSendCredentials so the post-payment path can't ship credentials the
+            // admin disabled at the institute level.
+            if (showSendCredentials) {
+                String learndashBaseUrl = getLearndashBaseUrlFromPackageSessions(packageSessionIds);
+                asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learndashBaseUrl);
+            } else {
+                logger.info("Skipping credential email after payment: COURSE_SETTING.showSendCredentials=false " +
+                        "for institute {}", instituteId);
+            }
 
-            // Send referral invitation email
-            dynamicNotificationService.sendReferralInvitationNotification(
-                    instituteId,
-                    userDTO,
-                    enrollInvite);
-            logger.info("Referral invitation sent successfully for user: {}", userDTO.getId());
+            // Send dynamic enrollment notification + referral invite. Both are "learner notifications"
+            // for the purposes of this gate, so they share the showNotifyLearners flag.
+            if (showNotifyLearners) {
+                dynamicNotificationService.sendDynamicNotification(
+                        NotificationEventType.LEARNER_ENROLL,
+                        firstPackageSessionId,
+                        instituteId,
+                        userDTO,
+                        paymentOption,
+                        enrollInvite);
+                logger.info("Enrollment notification sent successfully for user: {}", userDTO.getId());
+
+                dynamicNotificationService.sendReferralInvitationNotification(
+                        instituteId,
+                        userDTO,
+                        enrollInvite);
+                logger.info("Referral invitation sent successfully for user: {}", userDTO.getId());
+            } else {
+                logger.info("Skipping LEARNER_ENROLL + referral notification after payment: " +
+                        "COURSE_SETTING.showNotifyLearners=false for institute {}", instituteId);
+            }
 
         } catch (Exception e) {
             logger.error("Error sending enrollment notifications after payment for UserPlan ID: {}. " +
                     "Enrollment is complete but notification failed.", userPlan.getId(), e);
             // Don't throw exception - enrollment is complete, notification is secondary
+        }
+    }
+
+    /**
+     * Reads INSTITUTE.setting.COURSE_SETTING.data.enrollmentNotifications.{flagKey}.
+     * Defaults to {@code true} when the setting block or flag is missing — matches
+     * the FE DEFAULT_COURSE_SETTINGS so behavior is unchanged for institutes that
+     * never touched the toggle. Failures default to true rather than false so a
+     * setting-read blip can't silently swallow a payment-confirmation email.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean readCourseSettingEnrollmentFlag(String instituteId, String flagKey) {
+        try {
+            Object data = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, "COURSE_SETTING");
+            if (!(data instanceof java.util.Map)) {
+                return true;
+            }
+            Object enrollmentNotifications = ((java.util.Map<String, Object>) data).get("enrollmentNotifications");
+            if (!(enrollmentNotifications instanceof java.util.Map)) {
+                return true;
+            }
+            Object flag = ((java.util.Map<String, Object>) enrollmentNotifications).get(flagKey);
+            return !(flag instanceof Boolean) || (Boolean) flag;
+        } catch (Exception e) {
+            logger.warn("Could not read COURSE_SETTING.enrollmentNotifications.{} for institute {}: {}",
+                    flagKey, instituteId, e.getMessage());
+            return true;
         }
     }
 

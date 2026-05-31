@@ -1,6 +1,7 @@
 import { useAssessmentStore } from "@/stores/assessment-store";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { toast } from "sonner";
+import { getBackendErrorMessage } from "@/utils/error-message";
 import {
   Assessment_List_Filter,
   ASSESSMENT_PREVIEW,
@@ -8,6 +9,7 @@ import {
 } from "@/constants/urls";
 import { Preferences } from "@capacitor/preferences";
 import {
+  Assessment,
   assessmentTypes,
   distribution_duration_types,
   SectionDto,
@@ -64,7 +66,16 @@ const getDuration = async (): Promise<{
   return {
     can_switch_section: assessment?.can_switch_section || false,
     duration: assessment?.duration || 1,
-    distribution_duration: assessment?.distribution_duration || "QUESTION",
+    // The list API returns this field as `distribution_duration`, but the
+    // assessment-detail / public-registration API returns it as
+    // `duration_distribution`. Read both spellings so the live test uses the
+    // real mode. Default to ASSESSMENT (one overall timer) — never QUESTION —
+    // so a missing field can't spin up a 0-length per-question timer that
+    // auto-advances every question.
+    distribution_duration:
+      assessment?.distribution_duration ||
+      assessment?.duration_distribution ||
+      "ASSESSMENT",
   };
 };
 
@@ -125,6 +136,34 @@ export const storeAssessmentInfo = async (assessmentInfo: any) => {
   });
 };
 
+// Resolve a full assessment record by id from the learner's own lists.
+// Used as a fallback when the InstructionID_and_AboutID storage key is absent
+// (direct/public link, or the InstructionPage read winning the race against the
+// navigation source's write) so the exam flow can self-heal instead of crashing.
+export const resolveAssessmentById = async (
+  id: string
+): Promise<Assessment | undefined> => {
+  const tabs = [
+    assessmentTypes.LIVE,
+    assessmentTypes.UPCOMING,
+    assessmentTypes.PAST,
+  ];
+
+  for (const tab of tabs) {
+    const response = await fetchAssessmentData(0, 100, tab, "ASSESSMENT");
+    const assessments = response?.content ?? [];
+    const matchedAssessment = assessments.find(
+      (assessment: Assessment) => assessment.assessment_id === id
+    );
+
+    if (matchedAssessment) {
+      return matchedAssessment;
+    }
+  }
+
+  return undefined;
+};
+
 export const fetchPreviewData = async (
   assessment_id: string,
   batch_id?: string
@@ -160,14 +199,6 @@ export const fetchPreviewData = async (
       return;
     }
 
-    console.log(
-      "Student Enrolled Batch (package_session_id):",
-      student_details.package_session_id
-    );
-    console.log("Input Batch ID:", batch_id);
-
-
-
     const sessions = await getAllSessionListFromStorage();
     const batchIds = sessions?.map((session) => session.id).filter(Boolean) || [];
 
@@ -200,8 +231,6 @@ export const fetchPreviewData = async (
       institute_id: institute_id,
       assessment_id: assessment_id,
     };
-
-    console.log("Batch IDs being sent:", requestBody.batch_ids);
 
     const response = await authenticatedAxiosInstance.post(
       `${ASSESSMENT_PREVIEW}`,
@@ -274,13 +303,11 @@ export const fetchPreviewData = async (
     // Surface the backend's actual reason (e.g. not registered for this
     // assessment, assessment not yet started, attempt already live) instead of
     // failing silently. VacademyException is serialized as ErrorInfo.ex.
-    const errorData = (
-      error as { response?: { data?: { ex?: string; message?: string } } }
-    )?.response?.data;
     toast.error(
-      errorData?.ex ||
-        errorData?.message ||
+      getBackendErrorMessage(
+        error,
         "Unable to start the assessment. Please try again."
+      )
     );
   }
 };

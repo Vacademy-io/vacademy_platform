@@ -104,13 +104,18 @@ export const AssessmentCard = ({
 
   const handleSurveyConfirm = async () => {
     try {
-      await fetchPreviewData(
+      // fetchPreviewData surfaces its own error toast and resolves to undefined
+      // on failure (it never throws), so only navigate when the preview loaded —
+      // otherwise we'd drop the user into an empty LearnerLiveTest screen.
+      const response = await fetchPreviewData(
         assessmentInfo.assessment_id,
         assessmentInfo.batch_id || assessmentInfo.package_session_id,
       );
-      navigate({
-        to: `/assessment/examination/${assessmentInfo.assessment_id}/LearnerLiveTest`,
-      });
+      if (response) {
+        navigate({
+          to: `/assessment/examination/${assessmentInfo.assessment_id}/LearnerLiveTest`,
+        });
+      }
     } catch (error) {
       console.error("Error fetching survey data:", error);
       toast.error("Failed to start survey. Please try again.");
@@ -140,7 +145,10 @@ export const AssessmentCard = ({
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
 
       if ((maxAttempts ?? 1) > usedAttempts) {
-        storeAssessmentInfo(assessmentInfo);
+        // Await the write so InstructionID_and_AboutID is persisted before the
+        // InstructionPage mounts and reads it — otherwise the first load reads
+        // a null key and crashes (works only after a refresh).
+        await storeAssessmentInfo(assessmentInfo);
 
         if (assessmentInfo.play_mode === "SURVEY") {
           setShowSurveyConfirmDialog(true);
@@ -154,8 +162,9 @@ export const AssessmentCard = ({
         return;
       }
     } else {
-      // Normal start
-      storeAssessmentInfo(assessmentInfo);
+      // Normal start. Await the write (see note above) so the InstructionPage
+      // never reads InstructionID_and_AboutID before it has been persisted.
+      await storeAssessmentInfo(assessmentInfo);
       if (assessmentInfo.play_mode === "SURVEY") {
         setShowSurveyConfirmDialog(true);
       } else {

@@ -3,8 +3,11 @@ package vacademy.io.assessment_service.features.open_registration.manager;
 
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentInstituteMappingRepository;
@@ -125,7 +128,52 @@ public class AssessmentPublicPageManager {
         Optional<Assessment> assessment = assessmentRepository.findByAssessmentIdAndInstituteId(registerOpenAssessmentRequestDto.getAssessmentId(), registerOpenAssessmentRequestDto.getInstituteId());
         validateRegisterRequest(assessment);
 
-        addUserToAssessment(registerOpenAssessmentRequestDto.getParticipantDTO(), userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get(), registerOpenAssessmentRequestDto.getCustomFieldRequestList());
+        BasicParticipantDTO participantDTO = registerOpenAssessmentRequestDto.getParticipantDTO();
+
+        // Resolve the user id: prefer the participant payload, fall back to the query param.
+        // This value is persisted into the UNIQUE(assessment_id, user_id) column, so a blank id
+        // makes every anonymous registrant collide on user_id=''. Reject it up front instead of
+        // letting the batch insert blow up with a raw 500 (duplicate key violation).
+        String resolvedUserId = StringUtils.hasText(participantDTO.getUserId())
+                ? participantDTO.getUserId()
+                : userId;
+        if (!StringUtils.hasText(resolvedUserId)) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "A valid user is required to register for this assessment.");
+        }
+        participantDTO.setUserId(resolvedUserId);
+
+        // The unique constraint is (assessment_id, user_id), and it covers soft-deleted rows too.
+        // Look up any prior registration for this pair so we never blindly insert a duplicate.
+        Optional<AssessmentUserRegistration> existingRegistration =
+                assessmentUserRegistrationRepository.findTopByUserIdAndAssessmentId(resolvedUserId, registerOpenAssessmentRequestDto.getAssessmentId());
+        if (existingRegistration.isPresent()) {
+            AssessmentUserRegistration registration = existingRegistration.get();
+            if ("DELETED".equalsIgnoreCase(registration.getStatus())) {
+                // A previous registration was soft-deleted. Reactivate it in place — inserting a
+                // fresh row would violate UNIQUE(assessment_id, user_id) against the deleted one.
+                registration.setStatus(ACTIVE.name());
+                registration.setRegistrationTime(new Date());
+                registration.setReattemptCount((participantDTO.getReattemptCount() == null)
+                        ? assessment.get().getReattemptCount() : participantDTO.getReattemptCount());
+                assessmentUserRegistrationRepository.save(registration);
+                return ResponseEntity.ok("Registered successfully");
+            }
+            // An active registration already exists — treat a repeat submission as idempotent.
+            return ResponseEntity.ok("Already registered");
+        }
+
+        try {
+            addUserToAssessment(participantDTO, userId, registerOpenAssessmentRequestDto.getInstituteId(), assessment.get(), registerOpenAssessmentRequestDto.getCustomFieldRequestList());
+        } catch (DataIntegrityViolationException e) {
+            String rootCause = e.getMostSpecificCause().getMessage();
+            if (rootCause != null && rootCause.contains("assessment_user_registration_unique")) {
+                // A concurrent identical submission raced past the existence check and won the
+                // insert. Surface a clean conflict instead of the raw duplicate-key 500.
+                throw new VacademyException(HttpStatus.CONFLICT, "You are already registered for this assessment.");
+            }
+            // Any other integrity violation is a different problem — don't mislabel it.
+            throw e;
+        }
         return ResponseEntity.ok("Registered successfully");
     }
 
@@ -145,7 +193,9 @@ public class AssessmentPublicPageManager {
         assessmentParticipantRegistration.setSourceId(userId);
         assessmentParticipantRegistration.setRegistrationTime(new Date());
         addCustomUserValues(customFieldRequestList, assessmentParticipantRegistration);
-        return assessmentUserRegistrationRepository.save(assessmentParticipantRegistration);
+        // saveAndFlush so a UNIQUE(assessment_id, user_id) violation surfaces here (inside the
+        // caller's try/catch) rather than at transaction commit, where it could not be handled.
+        return assessmentUserRegistrationRepository.saveAndFlush(assessmentParticipantRegistration);
     }
 
     void addCustomUserValues(List<AssessmentRegistrationCustomFieldRequest> customFields, AssessmentUserRegistration assessmentUserRegistration) {

@@ -62,6 +62,14 @@ export const handleRegisterOpenParticipant = async (
   participantsDto: ParticipantsDataInterface,
   custom_field_request_list: DynamicSchemaData
 ) => {
+  // A blank user_id is persisted into the backend's UNIQUE(assessment_id, user_id)
+  // column, so every anonymous registrant would collide on user_id=''. Fail fast
+  // here instead of triggering a duplicate-key 500 on the second registration.
+  if (!participantsDto.user_id || participantsDto.user_id.trim() === "") {
+    throw new Error(
+      "Cannot register: your account could not be resolved. Please verify your email and try again."
+    );
+  }
   const response = await axios({
     method: "POST",
     url: REGISTER_PARTICIPANT_URL,

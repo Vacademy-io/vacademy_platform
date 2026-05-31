@@ -265,7 +265,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     } catch (error: any) {
       console.error('Error adding member:', error);
       // Extract error message from API response
-      const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || 'Failed to add learner';
+      const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || 'Failed to add staff';
       toast.error(errorMessage);
     } finally {
       setIsAdding(false);
@@ -301,13 +301,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         user_ids: selectedMembers,
       });
 
-      toast.success(`Successfully terminated ${selectedMembers.length} learner(s)`);
+      toast.success(`Successfully terminated ${selectedMembers.length} staff member(s)`);
       setSelectedMembers([]);
       setIsTerminateDialogOpen(false);
       loadMembers(); // Refresh the list
     } catch (error) {
       console.error('Error terminating members:', error);
-      toast.error('Failed to terminate learners. Please try again.');
+      toast.error('Failed to terminate staff. Please try again.');
     } finally {
       setIsTerminating(false);
     }
@@ -482,7 +482,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{(adminMappings.find(m => m.package_session_id === selectedPackageSession) || adminMappings[0])?.sub_org_details?.institute_name || 'Sub Organization'}</h1>
-          <p className="text-gray-600 mt-1">Manage learners for your {(adminMappings.find(m => m.package_session_id === selectedPackageSession) || adminMappings[0])?.sub_org_details?.institute_name || 'Sub Organization'}</p>
+          <p className="text-gray-600 mt-1">Manage staff for your {(adminMappings.find(m => m.package_session_id === selectedPackageSession) || adminMappings[0])?.sub_org_details?.institute_name || 'Sub Organization'}</p>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={loadMembers} variant="outline" size="sm">
@@ -497,12 +497,12 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Learner
+                Add Staff
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md w-vw-95 max-h-screen-90 overflow-y-auto p-4 sm:p-6 z-50">
               <DialogHeader>
-                <DialogTitle>Add New Learner</DialogTitle>
+                <DialogTitle>Add New Staff</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 {loadingCustomFields ? (
@@ -530,7 +530,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData((prev: any) => ({ ...prev, email: e.target.value }))}
-                        placeholder="learner@example.com"
+                        placeholder="staff@example.com"
                         className={formData.email && !validateEmail(formData.email) ? "border-red-500" : ""}
                       />
                     </div>
@@ -641,7 +641,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                     Cancel
                   </Button>
                   <Button onClick={handleAddMember} className="w-full sm:w-auto" disabled={isAdding}>
-                    {isAdding ? 'Adding...' : 'Add Learner'}
+                    {isAdding ? 'Adding...' : 'Add Staff'}
                   </Button>
                 </div>
               </div>
@@ -692,7 +692,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
-                Learners ({members.length})
+                Staff ({members.length})
               </CardTitle>
               {selectedPackageSession && (
                 <p className="text-sm text-gray-600 mt-1">
@@ -701,7 +701,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               )}
               {selectedMembers.length > 0 && (
                 <p className="text-sm text-gray-600 mt-1">
-                  {selectedMembers.length} learner{selectedMembers.length > 1 ? 's' : ''} selected
+                  {selectedMembers.length} staff member{selectedMembers.length > 1 ? 's' : ''} selected
                 </p>
               )}
             </div>
@@ -719,7 +719,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         Confirm Termination
                       </AlertDialogTitle>
                       <AlertDialogDescription className="text-gray-600">
-                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> learner{selectedMembers.length > 1 ? 's' : ''}?
+                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> staff member{selectedMembers.length > 1 ? 's' : ''}?
                         This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -752,13 +752,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-              <span className="ml-3 text-gray-600">Loading learners...</span>
+              <span className="ml-3 text-gray-600">Loading staff...</span>
             </div>
           ) : members.length === 0 ? (
             <div className="text-center py-8">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No learners found</h3>
-              <p className="text-gray-600">Start by adding learners to this package session.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No staff found</h3>
+              <p className="text-gray-600">Start by adding staff to this package session.</p>
             </div>
           ) : (
             (() => {

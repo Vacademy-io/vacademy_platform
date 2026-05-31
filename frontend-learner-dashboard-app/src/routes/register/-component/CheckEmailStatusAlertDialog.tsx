@@ -262,7 +262,9 @@ const CheckEmailStatusAlertDialog = ({
           ...prevValues,
           email: {
             ...registrationForm.getValues("email"),
-            value: userDetails?.email || "",
+            // Fall back to the just-verified email when the user exists in auth
+            // but isn't yet an institute learner (userDetails is null).
+            value: userDetails?.email || email,
           },
           full_name: {
             ...registrationForm.getValues("full_name"),

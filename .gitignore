@@ -153,3 +153,6 @@ vacademy_devops/**/values-*.secret.yaml
 
 # Hetzner migration: operator-filled values (Cloudflare/DB tokens) — never commit
 vacademy_devops/hetzner/topology.env
+
+# Hetzner migration: operator-filled prod values overlay (real secrets)
+vacademy_devops/hetzner/values-prod-hetzner.yaml

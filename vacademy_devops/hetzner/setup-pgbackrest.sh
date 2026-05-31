@@ -150,14 +150,17 @@ if [[ -z "${HOST_KEY_LINE}" ]]; then
   exit 1
 fi
 
-# pgBackRest expects the base64 portion of the host key, hashed with sha256.
-# ssh-keygen -lf <file> -E sha256 prints: "<bits> SHA256:<base64hash> <comment> (<type>)"
-HOST_FINGERPRINT="$(printf '%s\n' "${HOST_KEY_LINE}" | ssh-keygen -E sha256 -lf /dev/stdin | awk '{print $2}' | sed 's/^SHA256://')"
-if [[ -z "${HOST_FINGERPRINT}" ]]; then
-  log_err "Failed to derive SHA256 fingerprint."
+# pgBackRest 2.58+ expects the fingerprint as raw HEX sha256 of the wire-format
+# pubkey, NOT the base64 form that ssh-keygen prints (`SHA256:<base64>`). Compute
+# it directly: extract the base64 pubkey blob from the keyscan line, decode,
+# sha256, hex-encode.
+PUBKEY_BASE64="$(printf '%s\n' "${HOST_KEY_LINE}" | awk '{print $3}')"
+HOST_FINGERPRINT="$(printf '%s' "${PUBKEY_BASE64}" | openssl base64 -d -A | sha256sum | awk '{print $1}')"
+if [[ -z "${HOST_FINGERPRINT}" || ${#HOST_FINGERPRINT} -ne 64 ]]; then
+  log_err "Failed to derive SHA256 fingerprint (expected 64 hex chars, got '${HOST_FINGERPRINT}')."
   exit 1
 fi
-log_ok "  Fingerprint (sha256): ${HOST_FINGERPRINT}"
+log_ok "  Fingerprint (sha256 hex): ${HOST_FINGERPRINT}"
 
 # Pin the host key in postgres's known_hosts so non-pgbackrest sftp/ssh
 # attempts (e.g. operator restore-tests) also succeed without prompting.
@@ -224,8 +227,9 @@ cat >"${PGBR_CONF}" <<EOF
 repo1-type=sftp
 repo1-sftp-host=${STORAGE_BOX_HOST}
 repo1-sftp-host-port=${SFTP_PORT}
-repo1-sftp-user=${STORAGE_BOX_USER}
+repo1-sftp-host-user=${STORAGE_BOX_USER}
 repo1-sftp-host-key-hash-type=sha256
+repo1-sftp-host-key-check-type=fingerprint
 repo1-sftp-host-fingerprint=${HOST_FINGERPRINT}
 repo1-sftp-private-key-file=${POSTGRES_SSH_KEY}
 repo1-path=${REPO_PATH}

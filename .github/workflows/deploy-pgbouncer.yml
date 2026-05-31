@@ -16,11 +16,11 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
 
-      - name: Connect to LKE kubernetes cluster
+      - name: Connect to Hetzner k3s kubernetes cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
           method: kubeconfig
-          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
+          kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG }}
 
       - name: Create PgBouncer userlist secret
         run: |

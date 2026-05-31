@@ -171,7 +171,13 @@ export const fetchPreviewData = async (
     const sessions = await getAllSessionListFromStorage();
     const batchIds = sessions?.map((session) => session.id).filter(Boolean) || [];
 
-    // Build the resolved batch_ids list, filtering out any null/undefined values
+    // Build the resolved batch_ids list, filtering out any null/undefined values.
+    // This list may legitimately be EMPTY for PUBLIC / open-registration
+    // participants, who are never enrolled in a batch. Do NOT hard-block on an
+    // empty list: batch_ids is optional server-side, and the backend resolves an
+    // already-registered participant by (assessment_id + user_id). Registration
+    // is still mandatory — if the user has not registered, the backend rejects
+    // the start, and we surface that precise reason in the catch block below.
     const resolvedBatchIds: string[] = (
       batch_id
         ? [batch_id]
@@ -179,13 +185,6 @@ export const fetchPreviewData = async (
           ? batchIds
           : [student_details.package_session_id]
     ).filter((id): id is string => Boolean(id));
-
-    if (resolvedBatchIds.length === 0) {
-      toast.error(
-        "No enrolled batch found for this student. Please contact your institute."
-      );
-      return;
-    }
 
     const requestBody = {
       username: student_details.username,
@@ -272,6 +271,17 @@ export const fetchPreviewData = async (
     // return response.data;
   } catch (error) {
     console.error("Error fetching assessments:", error);
+    // Surface the backend's actual reason (e.g. not registered for this
+    // assessment, assessment not yet started, attempt already live) instead of
+    // failing silently. VacademyException is serialized as ErrorInfo.ex.
+    const errorData = (
+      error as { response?: { data?: { ex?: string; message?: string } } }
+    )?.response?.data;
+    toast.error(
+      errorData?.ex ||
+        errorData?.message ||
+        "Unable to start the assessment. Please try again."
+    );
   }
 };
 

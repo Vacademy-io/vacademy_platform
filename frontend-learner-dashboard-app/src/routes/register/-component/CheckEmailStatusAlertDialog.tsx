@@ -144,6 +144,7 @@ const CheckEmailStatusAlertDialog = ({
   const otp = form.watch("otp");
 
   // Check if form is valid
+  const isEmailValid = formSchema.shape.email.safeParse(email).success;
   const isFormValid =
     email.trim() !== "" && otp.every((digit) => digit.trim() !== "");
 
@@ -418,15 +419,6 @@ const CheckEmailStatusAlertDialog = ({
                 />
               </FormControl>
             </FormItem>
-            {!isOtpSent && (
-              <button
-                type="button"
-                className="text-primary-600 text-xs font-medium cursor-pointer -mt-2 w-fit hover:text-primary-700 transition-colors"
-                onClick={() => sendOtpMutation.mutate(email)}
-              >
-                Send OTP
-              </button>
-            )}
             {isOtpSent && (
               <>
                 <div className="flex justify-start gap-2.5">
@@ -469,17 +461,31 @@ const CheckEmailStatusAlertDialog = ({
               </>
             )}
             <div className="flex items-center justify-center flex-col gap-4">
-              <MyButton
-                type="button"
-                buttonType="primary"
-                scale="large"
-                layoutVariant="default"
-                className="w-full"
-                disable={!isFormValid}
-                onClick={form.handleSubmit(onSubmit)}
-              >
-                Submit
-              </MyButton>
+              {!isOtpSent ? (
+                <MyButton
+                  type="button"
+                  buttonType="primary"
+                  scale="large"
+                  layoutVariant="default"
+                  className="w-full"
+                  disable={!isEmailValid || sendOtpMutation.isPending}
+                  onClick={() => sendOtpMutation.mutate(email)}
+                >
+                  {sendOtpMutation.isPending ? "Sending OTP..." : "Send OTP"}
+                </MyButton>
+              ) : (
+                <MyButton
+                  type="button"
+                  buttonType="primary"
+                  scale="large"
+                  layoutVariant="default"
+                  className="w-full"
+                  disable={!isFormValid || verifyOtpMutation.isPending}
+                  onClick={form.handleSubmit(onSubmit)}
+                >
+                  {verifyOtpMutation.isPending ? "Verifying..." : "Verify & Continue"}
+                </MyButton>
+              )}
             </div>
           </form>
         </FormProvider>

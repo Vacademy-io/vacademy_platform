@@ -82,21 +82,20 @@ jobs:
           docker push $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
-      # Get the KUBECONFIG from : https://cloud.linode.com/kubernetes/clusters/189301/summary
+      # KUBECONFIG is sourced from the Hetzner k3s prod cluster (see /etc/rancher/k3s/k3s.yaml on the control-plane node)
 
       # TODO: This kubeconfig is global kubeconfig with access to whole cluster
       # In production refrain from using this and use k8s service account with limited access
       # Each service account has permissions like IAM and each has its own kubeconfig
       # replace global kubeconfig with service account's kubeconfig
-      # https://www.linode.com/content/terraforming-kubernetes-github-actions/
       # https://nicwortel.nl/blog/2022/continuous-deployment-to-kubernetes-with-github-actions
-      - name: Connect to LKE kubernetes cluster
+      - name: Connect to Hetzner k3s kubernetes cluster
         if: github.event_name == 'push'
         id: connect-to-k8s-cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
           method: kubeconfig
-          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG}}
+          kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG}}
 
       - name: Deploy to Kubernetes
         if: github.event_name == 'push'

@@ -26,8 +26,13 @@ DEFAULT_MODEL = "google/gemini-2.5-flash-lite"
 ESCALATION_MODEL = "google/gemini-2.5-flash"
 ESCALATION_CONF_THRESHOLD = 0.60
 MAX_ESCALATIONS_PER_COPY = 2
-WARN_TOKENS_PER_COPY = 20_000
-FAIL_TOKENS_PER_COPY = 50_000
+# Budget tuned for typical 8-question copies. Each grading call re-sends the
+# full OCR transcript + rubric + system prompt (~8.5k tokens), so 8 questions
+# burn ~70k tokens just on grading; criteria-generation and escalations add
+# more. Cap at 250k so we never zero out late questions due to a per-copy
+# limit. Per-call provider limits still apply independently.
+WARN_TOKENS_PER_COPY = 80_000
+FAIL_TOKENS_PER_COPY = 250_000
 
 
 def _strip_code_fence(text: str) -> str:

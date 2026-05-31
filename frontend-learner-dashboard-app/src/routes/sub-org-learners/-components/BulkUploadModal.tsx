@@ -122,10 +122,10 @@ export function BulkUploadModal({
     ws['!cols'] = colWidths;
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Learners');
+    XLSX.utils.book_append_sheet(wb, ws, 'Staff');
 
     // Download the file
-    XLSX.writeFile(wb, 'learner_bulk_upload_template.xlsx');
+    XLSX.writeFile(wb, 'staff_bulk_upload_template.xlsx');
     toast.success('Sample template downloaded successfully');
   };
 
@@ -358,7 +358,7 @@ export function BulkUploadModal({
         const errorMessage = 
           (error as { response?: { data?: { ex?: string; message?: string } } })?.response?.data?.ex || 
           (error as { response?: { data?: { ex?: string; message?: string } } })?.response?.data?.message || 
-          'Failed to add learner';
+          'Failed to add staff';
         
         results.push({
           rowNumber,
@@ -385,12 +385,12 @@ export function BulkUploadModal({
     const errorCount = results.filter(r => r.status === 'error').length;
 
     if (successCount > 0) {
-      toast.success(`Successfully added ${successCount} learner(s)`);
+      toast.success(`Successfully added ${successCount} staff member(s)`);
       onUploadComplete();
     }
     
     if (errorCount > 0) {
-      toast.error(`Failed to add ${errorCount} learner(s). Check the results below.`);
+      toast.error(`Failed to add ${errorCount} staff member(s). Check the results below.`);
     }
   };
 
@@ -488,7 +488,7 @@ export function BulkUploadModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileXls className="w-5 h-5" />
-            Bulk Upload Learners
+            Bulk Upload Staff
           </DialogTitle>
         </DialogHeader>
 
@@ -498,7 +498,7 @@ export function BulkUploadModal({
             <h4 className="font-medium text-blue-900 mb-1 text-sm">Instructions</h4>
             <ol className="text-xs text-blue-800 list-decimal list-inside space-y-0.5">
               <li>Download the sample template to see the required format</li>
-              <li>Fill in learner details (fields marked with * are mandatory)</li>
+              <li>Fill in staff details (fields marked with * are mandatory)</li>
               <li>Save your file and upload it below</li>
               <li>Each row will be processed individually</li>
             </ol>
@@ -540,7 +540,7 @@ export function BulkUploadModal({
               <div className="space-y-3">
                 <SpinnerGap className="w-8 h-8 text-primary-500 mx-auto animate-spin" />
                 <p className="text-gray-600 text-sm">
-                  Processing {processedRows} of {totalRows} learners...
+                  Processing {processedRows} of {totalRows} staff...
                 </p>
                 <Progress value={uploadProgress} className="w-full" />
               </div>

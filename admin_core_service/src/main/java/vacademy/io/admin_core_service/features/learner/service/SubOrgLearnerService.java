@@ -96,6 +96,7 @@ public class SubOrgLearnerService {
     private final CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+    private final vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -729,7 +730,14 @@ public class SubOrgLearnerService {
     }
 
     /**
-     * Create new user or fetch existing user with proper user_roles entry
+     * Create new user or fetch existing user with proper user_roles entry.
+     * <p>
+     * Honors the institute-level COURSE_SETTING.enrollmentNotifications.showSendCredentials
+     * toggle — same gate that bulk/v3/assign, the admin "Enrol Customer" button and
+     * learner/v1/enroll already follow. When the admin disabled "Send Credentials" in
+     * display settings, the auth-service credential email is suppressed for sub-org
+     * member adds too. Default is true for back-compat (any read failure also defaults
+     * to true so a setting-blip can't silently swallow a credential delivery).
      */
     private UserDTO createOrFetchUser(SubOrgEnrollRequestDTO request) {
         log.info("Creating or fetching user with email: {}, userId: {}",
@@ -746,9 +754,45 @@ public class SubOrgLearnerService {
             log.info("Generated password for user with email: {}", request.getUser().getEmail());
         }
 
+        boolean sendCredentials = readCourseSettingEnrollmentFlag(
+                request.getInstituteId(), "showSendCredentials");
+        if (!sendCredentials) {
+            log.info("Skipping credential email for sub-org member add: " +
+                    "COURSE_SETTING.showSendCredentials=false for institute {}",
+                    request.getInstituteId());
+        }
+
         return authService.createUserFromAuthService(
                 request.getUser(),
-                request.getInstituteId(), true);
+                request.getInstituteId(),
+                sendCredentials);
+    }
+
+    /**
+     * Reads INSTITUTE.setting.COURSE_SETTING.data.enrollmentNotifications.{flagKey}.
+     * Defaults to {@code true} when the setting block or flag is missing so behavior
+     * is unchanged for institutes that never touched the toggle. Mirrors the same
+     * helper in {@code LearnerEnrollRequestService} / {@code UserPlanService} —
+     * kept inline here to avoid cross-service dependency just for one JSON walk.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean readCourseSettingEnrollmentFlag(String instituteId, String flagKey) {
+        try {
+            Object data = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, "COURSE_SETTING");
+            if (!(data instanceof java.util.Map)) {
+                return true;
+            }
+            Object enrollmentNotifications = ((java.util.Map<String, Object>) data).get("enrollmentNotifications");
+            if (!(enrollmentNotifications instanceof java.util.Map)) {
+                return true;
+            }
+            Object flag = ((java.util.Map<String, Object>) enrollmentNotifications).get(flagKey);
+            return !(flag instanceof Boolean) || (Boolean) flag;
+        } catch (Exception e) {
+            log.warn("Could not read COURSE_SETTING.enrollmentNotifications.{} for institute {}: {}",
+                    flagKey, instituteId, e.getMessage());
+            return true;
+        }
     }
 
     private String generateRandomPassword(int length) {

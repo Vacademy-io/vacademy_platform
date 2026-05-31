@@ -49,6 +49,12 @@ export function HelpModal({ open, onOpenChange, type }: HelpModalProps) {
         ? JSON.parse(AssessmentData.value)
         : null;
       setAssessmentInfo(Assessment);
+      // Guard against a missing/half-written key — dereferencing
+      // Assessment.instruction_id on null throws "Cannot read properties of
+      // null (reading 'instruction_id')".
+      if (!Assessment?.instruction_id) {
+        return;
+      }
       const data = await fetchDataByIds(
         Assessment.instruction_id,
         GET_TEXT_VIA_IDS

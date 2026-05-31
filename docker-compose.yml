@@ -197,6 +197,39 @@ services:
     networks:
       - vacademy-network
 
+  # AI Service (Python / FastAPI). Connects to the admin_core_service DB
+  # (same instance as the Java services) and owns the migrated AI/LLM
+  # endpoints. Served under the /ai-service base path on port 8077.
+  ai-service:
+    build:
+      context: ./ai_service
+      dockerfile: Dockerfile
+    ports:
+      - "8077:8077"
+    environment:
+      - APP_ENV=${SPRING_PROFILES_ACTIVE:-stage}
+      # DB — discrete vars are assembled into a postgresql+psycopg URL by
+      # app/config.py::build_sqlalchemy_url(). Points at the admin_core DB.
+      - DB_HOST=${AI_SERVICE_DB_HOST:-postgres}
+      - DB_PORT=${AI_SERVICE_DB_PORT:-5432}
+      - DB_NAME=${AI_SERVICE_DB_NAME:-admin_core_service}
+      - DB_USERNAME=${DB_USERNAME:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-vacademy123}
+      # Inter-service URLs
+      - AUTH_SERVICE_BASE_URL=${AUTH_SERVICE_INTERNAL_URL:-http://auth-service:8071}
+      - AI_SERVICE_BASE_URL=${AI_SERVICE_INTERNAL_URL:-http://ai-service:8077/ai-service}
+      - CLIENT_NAME=${AI_CLIENT_NAME:-ai_service}
+      - CLIENT_SECRET=${CLIENT_SECRET:-}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-357638792F423F4428472B4B6250655368566D597133743677397A2443264629}
+      # API Keys
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-dummy_openrouter_key}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-dummy_gemini_key}
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - vacademy-network
+
   # API Gateway / Load Balancer (optional)
   nginx:
     image: nginx:alpine
@@ -211,6 +244,7 @@ services:
       - assessment-service
       - media-service
       - notification-service
+      - ai-service
     networks:
       - vacademy-network
 

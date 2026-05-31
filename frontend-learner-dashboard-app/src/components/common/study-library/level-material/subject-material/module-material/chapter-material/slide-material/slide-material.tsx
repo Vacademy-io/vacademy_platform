@@ -908,7 +908,7 @@ export const SlideMaterial = () => {
           setContent(
             <div
               key={`scorm-${activeItem.id}`}
-              className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+              className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
             >
               <ScormSlideComponent
                 slide={activeItem}

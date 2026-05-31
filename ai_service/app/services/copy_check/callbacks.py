@@ -1,6 +1,6 @@
 """Webhook callbacks back to Java assessment_service.
 
-Java exposes /internal/copy-check/{progress,question,complete,failed} guarded
+Java exposes /copy-check/callback/{progress,question,complete,failed} guarded
 by X-Internal-Service-Token. Each call is fire-and-forget with one retry on
 network errors; persistent failures are logged but never block the pipeline
 (Java's progress watchdog will reconcile via its own polling fallback).
@@ -54,7 +54,7 @@ async def progress(
     progress_pct: Optional[float] = None,
     layout_map: Optional[dict[str, Any]] = None,
 ) -> None:
-    await _post(f"{base_url.rstrip('/')}/internal/copy-check/progress", {
+    await _post(f"{base_url.rstrip('/')}/copy-check/callback/progress", {
         "process_id": process_id,
         "job_id": job_id,
         "step": step,
@@ -83,7 +83,7 @@ async def question_done(
         "confidence": verdict.get("confidence", 0),
         "rubric_version": rubric_version,
     }
-    await _post(f"{base_url.rstrip('/')}/internal/copy-check/question", payload)
+    await _post(f"{base_url.rstrip('/')}/copy-check/callback/question", payload)
 
 
 async def complete(
@@ -94,7 +94,7 @@ async def complete(
     total_max_marks: float,
     questions_evaluated: int,
 ) -> None:
-    await _post(f"{base_url.rstrip('/')}/internal/copy-check/complete", {
+    await _post(f"{base_url.rstrip('/')}/copy-check/callback/complete", {
         "process_id": process_id,
         "job_id": job_id,
         "total_marks_awarded": total_marks_awarded,
@@ -109,7 +109,7 @@ async def failed(
     job_id: str,
     error_message: str,
 ) -> None:
-    await _post(f"{base_url.rstrip('/')}/internal/copy-check/failed", {
+    await _post(f"{base_url.rstrip('/')}/copy-check/callback/failed", {
         "process_id": process_id,
         "job_id": job_id,
         "error_message": error_message,

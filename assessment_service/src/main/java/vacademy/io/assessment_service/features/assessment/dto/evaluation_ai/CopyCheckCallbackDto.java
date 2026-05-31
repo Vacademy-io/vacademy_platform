@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Parent container for all callback payloads ai_service POSTs back into
- * /internal/copy-check/{progress,question,complete,failed}. Each endpoint
+ * /copy-check/callback/{progress,question,complete,failed}. Each endpoint
  * uses one of the inner classes — Spring's @RequestBody picks the right one
  * based on the controller method signature.
  */

@@ -15,7 +15,13 @@ let isHandlingSessionTermination = false;
 
 // ── Session heartbeat: pings auth_service every 5 min to detect terminated sessions ──
 const SESSION_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
-let lastHeartbeatTime = 0;
+// Seed with the JS-context boot time, NOT 0, so cold-start does not immediately
+// validate the session. iOS WKWebView kills the JS context on swipe-close;
+// firing the heartbeat on the first request after relaunch hit a stale-session
+// 460 from the backend and logged users out. Deferring by one interval gives
+// the user 10 min of activity before we ask the backend if the session is
+// still authoritative.
+let lastHeartbeatTime = Date.now();
 
 async function sessionHeartbeat(accessToken: string, instituteId: string) {
   const now = Date.now();

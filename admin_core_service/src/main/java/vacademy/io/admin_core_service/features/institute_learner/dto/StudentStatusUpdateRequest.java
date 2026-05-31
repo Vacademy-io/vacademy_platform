@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -19,4 +21,12 @@ public class StudentStatusUpdateRequest {
     private String newState;
     private String instituteId;
     private String currentPackageSessionId;
+
+    /**
+     * Optional list of package sessions to act on in a single call (MAKE_INACTIVE).
+     * When present and non-empty, MAKE_INACTIVE deactivates the learner from every
+     * package session in this list with one UPDATE. When absent, the operation
+     * falls back to the single {@link #currentPackageSessionId}.
+     */
+    private List<String> packageSessionIds;
 }

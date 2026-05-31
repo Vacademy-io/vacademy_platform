@@ -4,7 +4,6 @@ import { getInstituteId } from '@/constants/helper';
 import {
     handleGetQuestionsFromAudio,
     handleQueryGetListIndividualTopics,
-    handleStartProcessUploadedAudioFile,
 } from '../../../-services/ai-center-service';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAICenter } from '../../../-contexts/useAICenterContext';
@@ -164,15 +163,11 @@ export const GenerateQuestionsFromAudio = ({
                 resetAll();
                 return;
             }
-            setPhase('processing');
-            const response = await handleStartProcessUploadedAudioFile(fileId);
-            if (response?.pdf_id) {
-                setAudioId(response.pdf_id);
-                setPhase('configuring');
-            } else {
-                setErrorMessage("We couldn't process this recording. Try another?");
-                resetAll();
-            }
+            // Single-step (migrated): hold the uploaded fileId; ai_service
+            // transcribes it in-house during generation. No separate
+            // transcription-submit step.
+            setAudioId(fileId);
+            setPhase('configuring');
         } catch (err) {
             console.error(err);
             setErrorMessage('Something went wrong reading your recording. Try again?');

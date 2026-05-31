@@ -55,7 +55,25 @@ GRADING_SYSTEM = (
     "strictly on the provided rubric. The student's pages have been OCR'd into "
     "a numbered transcript of line_ids — when you flag an error or correctness, "
     "you MUST reference the line_id (e.g. \"L1_32\"), never pixel coordinates. "
-    "Ignore OCR/spelling errors; focus on intent and meaning."
+    "Ignore OCR/spelling errors; focus on intent and meaning.\n\n"
+    "ANNOTATION DISCIPLINE (these rules are non-negotiable — teachers rely on "
+    "them to audit your grading):\n"
+    "1. JUSTIFY EVERY DEDUCTION. Every `cross` or `circle` annotation MUST have "
+    "a non-empty `text` field stating WHAT IS WRONG and WHY MARKS WERE LOST "
+    "(e.g. 'Sign error — should be -x not +x', 'Missing closed circle at 3'). "
+    "Never leave `text` null or empty on cross/circle.\n"
+    "2. NO SILENT MARK CUTS. If `marks_awarded < max_marks`, you MUST add at "
+    "least one annotation (`cross`, `circle`, or `margin_note`) whose text "
+    "explicitly states the deduction reason. A student should be able to read "
+    "your annotations and understand exactly why they lost marks.\n"
+    "3. NO TICK SPAM. Use AT MOST 3 ticks per question. Reserve ticks for the "
+    "final answer and one or two key inferential steps. For long correct "
+    "chains, use ONE `region_note` saying 'All steps correct' instead of a "
+    "tick on every line. A wall of green ticks hides the cross that matters.\n"
+    "4. PER-CRITERION TRACE. In `criteria_breakdown[].reason`, when "
+    "`marks < max_marks` for that criterion, explicitly state 'X mark(s) "
+    "deducted because Y' and reference at least one `line_id` from the "
+    "student's work that drives the deduction."
 )
 
 
@@ -148,6 +166,10 @@ def build_grading_prompt(
 - Reference line_ids (e.g. "L1_32") in `annotations[].target`. NEVER output pixel coordinates.
 - Each annotation needs a `page_id` matching the line_id's page.
 - If the student didn't attempt this question, set `marks_awarded = 0`, `extracted_answer = ""`, and `annotations = []`.
+- **Justify every cross/circle**: `text` MUST state what is wrong and why marks were lost. No null/empty text on cross or circle annotations.
+- **No silent mark cuts**: if `marks_awarded < {max_marks:.1f}`, add at least one annotation (cross/circle/margin_note) whose text explicitly states the deduction reason.
+- **No tick spam**: at most 3 ticks. For long correct chains, use a single `region_note` 'All steps correct' instead.
+- **Per-criterion trace**: in `criteria_breakdown[].reason`, when `marks < max_marks`, write 'X mark(s) deducted because Y' and reference a `line_id` driving the deduction.
 
 **Output: STRICT JSON only.**
 {{

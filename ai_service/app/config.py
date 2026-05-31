@@ -109,6 +109,17 @@ class Settings(BaseSettings):
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None
 
+    # MathPix (PDF → Markdown/HTML conversion for question generation). Defaults
+    # preserve the media_service credentials so the migrated PDF flow works
+    # out-of-box; override via MATHPIX_APP_ID / MATHPIX_APP_KEY.
+    mathpix_app_id: str = os.getenv("MATHPIX_APP_ID", "vacademy_8e6a90_950081")
+    mathpix_app_key: str = os.getenv(
+        "MATHPIX_APP_KEY",
+        "b27375705e35a88b52f041c5f8eba2dda6a23f36350300d39854c8301b1a9de4",
+    )
+    # docconverter.pro (DOCX → HTML). Token fetched at runtime if not set.
+    docconverter_base_url: str = os.getenv("DOCCONVERTER_BASE_URL", "https://api.docconverter.pro")
+
     # RunPod Configuration (legacy PiP avatar via EchoMimic)
     runpod_api_key: Optional[str] = None
     runpod_endpoint_id: Optional[str] = None
@@ -153,7 +164,18 @@ class Settings(BaseSettings):
     client_name: str = os.getenv("CLIENT_NAME", "ai_service")
     client_secret: Optional[str] = os.getenv("CLIENT_SECRET")
     auth_service_base_url: str = os.getenv("AUTH_SERVICE_BASE_URL", "http://auth-service:8071")
-    
+    # media_service base URL — used by migrated file-dependent features (lecture
+    # feedback, question-from-pdf/audio/image) to resolve a media fileId to a
+    # presigned S3 URL via /media-service/internal/get-url/id. media_service
+    # permanently owns file storage.
+    media_server_base_url: str = os.getenv("MEDIA_SERVER_BASE_URL", "http://media-service:8075")
+    # assessment_service base URL — used by the migrated AI evaluation tool to
+    # fetch assessment metadata (questions + per-question marking rubric) via the
+    # internal HMAC-gated endpoint /assessment-service/internal/evaluation-tool/
+    # metadata/{assessmentId}. Authenticated with client_name + client_secret
+    # (clientName / Signature headers), same scheme media_service used.
+    assessment_service_base_url: str = os.getenv("ASSESSMENT_SERVICE_BASE_URL", "http://assessment-service:8074")
+
     # JWT Configuration (Shared with Java services)
     # Default value works for dev/stage if matching common_service
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")

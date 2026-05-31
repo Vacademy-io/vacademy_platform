@@ -42,7 +42,13 @@ public class ApplicationSecurityConfig {
             "/assessment-service/scheduler/test/**", "/assessment-service/health/**",
             "/assessment-service/assessment/evaluation-criteria/**",
             "/assessment-service/assessment/evaluation-ai/**",
-            "/assessment-service/internal/copy-check/**" };
+            // Copy-check callbacks: deliberately NOT under /internal/** because
+            // InternalAuthFilter (common_service) intercepts anything whose URI
+            // contains "internal" and demands HMAC headers (clientName +
+            // Signature). ai_service signs callbacks with a simpler shared
+            // X-Internal-Service-Token, so we keep this path out of that filter's
+            // reach and rely on CopyCheckCallbackController.verify() for auth.
+            "/assessment-service/copy-check/callback/**" };
 
     @Autowired
     AssessmentJwtAuthFilter jwtAuthFilter;

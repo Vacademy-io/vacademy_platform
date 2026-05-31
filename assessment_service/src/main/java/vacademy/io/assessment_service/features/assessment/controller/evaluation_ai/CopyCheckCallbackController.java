@@ -1,5 +1,6 @@
 package vacademy.io.assessment_service.features.assessment.controller.evaluation_ai;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,14 +14,16 @@ import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.Copy
 import vacademy.io.assessment_service.features.assessment.service.evaluation_ai.CopyCheckCallbackService;
 
 /**
- * Callbacks from ai_service. Gated by X-Internal-Service-Token (shared
- * secret matched against assessment.copy-check.internal-token). Mounted at
- * /internal/copy-check/** — this matches the URL ai_service POSTs to in
- * callbacks.py and is whitelisted in ApplicationSecurityConfig so the JWT
- * filter doesn't reject these calls.
+ * Callbacks from ai_service. Gated by X-Internal-Service-Token (shared cluster
+ * secret INTERNAL_SERVICE_TOKEN). Mounted at /copy-check/callback/** — NOT
+ * under /internal/** because the cluster-wide InternalAuthFilter (in
+ * common_service) intercepts any URI containing "internal" and demands HMAC
+ * (clientName + Signature) headers that ai_service doesn't send. Keeping the
+ * path out of that filter's reach lets our controller-level token check run.
+ * Whitelisted in ApplicationSecurityConfig so the JWT filter doesn't reject.
  */
 @RestController
-@RequestMapping("/assessment-service/internal/copy-check")
+@RequestMapping("/assessment-service/copy-check/callback")
 @RequiredArgsConstructor
 @Slf4j
 public class CopyCheckCallbackController {
@@ -30,6 +33,17 @@ public class CopyCheckCallbackController {
     // Match the same shared cluster secret ai_service signs callbacks with.
     @Value("${internal.service.token:${assessment.copy-check.internal-token:}}")
     private String expectedToken;
+
+    @PostConstruct
+    void logTokenConfig() {
+        // One-time log line at startup so we can confirm Spring resolved
+        // the env var into expectedToken. Logs only the length, never the value.
+        if (expectedToken == null || expectedToken.isEmpty()) {
+            log.error("[copy-check] callback expectedToken is EMPTY at startup — callbacks will all 401. Set INTERNAL_SERVICE_TOKEN on assessment-service.");
+        } else {
+            log.info("[copy-check] callback expectedToken loaded OK (length={})", expectedToken.length());
+        }
+    }
 
     @PostMapping("/progress")
     public ResponseEntity<String> progress(
@@ -69,10 +83,22 @@ public class CopyCheckCallbackController {
 
     private boolean verify(String token) {
         if (expectedToken == null || expectedToken.isEmpty()) {
-            log.warn("[copy-check] internal token not configured — rejecting callback");
+            log.warn("[copy-check] callback rejected: expectedToken not configured");
             return false;
         }
-        if (token == null) return false;
-        return java.security.MessageDigest.isEqual(token.getBytes(), expectedToken.getBytes());
+        if (token == null) {
+            log.warn("[copy-check] callback rejected: missing X-Internal-Service-Token header");
+            return false;
+        }
+        boolean match = java.security.MessageDigest.isEqual(token.getBytes(), expectedToken.getBytes());
+        if (!match) {
+            // Log lengths only (never the value). If lengths match but the
+            // tokens don't, the two deployments are using different secrets.
+            log.warn(
+                "[copy-check] callback rejected: token mismatch (incoming length={}, expected length={})",
+                token.length(), expectedToken.length()
+            );
+        }
+        return match;
     }
 }

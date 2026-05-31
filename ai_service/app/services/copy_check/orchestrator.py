@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
 from . import callbacks, cancellation
-from .grader import CopyCheckGrader, call_llm_for_criteria
+from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
 from .mathpix_fallback import MathpixFallback
 from .render_client import CopyCheckRenderClient, OcrCancelled
 from .rubric import RubricResolver, load_snapshot
@@ -32,8 +32,11 @@ def _new_job_id() -> str:
 
 
 def _render_client() -> CopyCheckRenderClient:
-    base = os.getenv("RENDER_WORKER_URL", "")
-    key = os.getenv("RENDER_KEY", "")
+    # ai-service uses RENDER_SERVER_URL/RENDER_SERVER_KEY as the cluster-wide
+    # convention (already set on the deployment). Fall through to the names
+    # I used in the original plan for backward compat.
+    base = os.getenv("RENDER_SERVER_URL") or os.getenv("RENDER_WORKER_URL", "")
+    key = os.getenv("RENDER_SERVER_KEY") or os.getenv("RENDER_KEY", "")
     return CopyCheckRenderClient(base, key)
 
 
@@ -110,18 +113,36 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             except cancellation.Cancelled:
                 raise
             except Exception as e:
-                logger.exception(f"Grading failed for question {q.get('question_id')}")
-                verdict = {
-                    "question_id": q["question_id"],
-                    "marks_awarded": 0.0,
-                    "max_marks": float(q.get("max_marks") or 0),
-                    "extracted_answer": "",
-                    "feedback": f"Grading failed: {e}",
-                    "confidence": 0.0,
-                    "criteria_breakdown": [],
-                    "annotations": [],
-                    "status": "FAILED",
-                }
+                # One salvage attempt with the cheap default model before
+                # zeroing the question. The most common reason we land here
+                # is a transient network/parse glitch or the per-copy token
+                # cap being hit mid-batch — both of which a single retry
+                # with a clean state often clears. Without this, a single
+                # failure mid-batch silently steals marks from the student.
+                logger.warning(
+                    f"Grading failed for question {q.get('question_id')}: {e}; retrying once with {DEFAULT_MODEL}",
+                )
+                try:
+                    rubric = await rubric_resolver.resolve(q, DEFAULT_MODEL)
+                    raw = await grader.grade_question(q, rubric, layout_map, DEFAULT_MODEL)
+                    verdict = validate_and_cap(raw, q, layout_map)
+                except cancellation.Cancelled:
+                    raise
+                except Exception as retry_err:
+                    logger.exception(
+                        f"Retry also failed for question {q.get('question_id')}",
+                    )
+                    verdict = {
+                        "question_id": q["question_id"],
+                        "marks_awarded": 0.0,
+                        "max_marks": float(q.get("max_marks") or 0),
+                        "extracted_answer": "",
+                        "feedback": f"Grading failed after retry: {retry_err}",
+                        "confidence": 0.0,
+                        "criteria_breakdown": [],
+                        "annotations": [],
+                        "status": "FAILED",
+                    }
             total_awarded += verdict["marks_awarded"]
             total_max += verdict["max_marks"]
             evaluated += 1

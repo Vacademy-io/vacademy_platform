@@ -19,6 +19,7 @@ import { SlaDeadlineCell } from '@/components/shared/sla-deadline-cell';
 import { TatStatusBadge } from '@/components/shared/tat-status-badge';
 import type { LeadStatus as LeadStatusCatalogItem } from '@/hooks/use-lead-statuses';
 import type { LeadCardVM } from './lead-view-model';
+import { truncateName } from './lead-view-model';
 import type { LeadActionHandlers, LeadTier } from './lead-actions';
 import { LeadAvatar } from './lead-avatar';
 import { LeadInlineSelect, LEAD_TIER_OPTIONS } from './lead-inline-select';
@@ -212,7 +213,7 @@ export function LeadTable({
                             className="truncate text-left text-sm font-semibold text-neutral-900 hover:text-primary-600"
                             title={vm.name}
                         >
-                            {vm.name}
+                            {truncateName(vm.name)}
                         </button>
                         <div className="flex flex-wrap items-center gap-1.5">
                             {vm.submittedIso && (

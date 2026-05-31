@@ -1,4 +1,4 @@
-name: Deploy PgBouncer to LKE
+name: Deploy PgBouncer to k3s
 
 on:
   push:
@@ -50,7 +50,6 @@ jobs:
             ./vacademy_devops/vacademy-services \
             --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
             --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
-            --set pgbouncer.dbPort=26754 \
             --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
             --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
             --show-only templates/pgbouncer-configmap.yaml \
@@ -62,7 +61,6 @@ jobs:
             ./vacademy_devops/vacademy-services \
             --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
             --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
-            --set pgbouncer.dbPort=26754 \
             --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
             --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
             --show-only templates/pgbouncer-deployment.yaml \
@@ -71,7 +69,6 @@ jobs:
             ./vacademy_devops/vacademy-services \
             --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
             --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
-            --set pgbouncer.dbPort=26754 \
             --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
             --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
             --show-only templates/pgbouncer-service.yaml \

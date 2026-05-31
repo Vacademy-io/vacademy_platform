@@ -146,6 +146,9 @@ public class LearnerEnrollRequestService {
     @Autowired
     private vacademy.io.admin_core_service.features.packages.service.PackageSessionService packageSessionService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
+
     @Transactional
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO) {
         return recordLearnerRequest(learnerEnrollRequestDTO, Map.of());
@@ -943,16 +946,72 @@ public class LearnerEnrollRequestService {
 
             // LEVEL 2: Package says YES, now check institute-level setting
             boolean instituteSendCredentials = checkInstituteSendCredentialsFlag(instituteId);
+            if (!instituteSendCredentials) {
+                log.info("Institute {} LEARNER_ENROLLMENT_SETTING.sendCredentials=false", instituteId);
+                return false;
+            }
 
-            log.info("Final sendCredentials decision for institute {}: {}",
-                    instituteId, instituteSendCredentials);
-            return instituteSendCredentials;
+            // LEVEL 3: Honor the COURSE_SETTING.enrollmentNotifications.showSendCredentials
+            // master toggle that the admin display-settings page writes, and that
+            // bulk/v3/assign + the admin "Enrol Customer" button already follow.
+            // When the institute turns it off, no learner-side enrollment should mail
+            // credentials either — matches the user-visible "Send Credentials" switch.
+            boolean courseSettingShowSendCredentials =
+                    checkCourseSettingFlag(instituteId, "showSendCredentials");
+            log.info("Final sendCredentials decision for institute {}: LEARNER_ENROLLMENT_SETTING=true, " +
+                            "COURSE_SETTING.showSendCredentials={}",
+                    instituteId, courseSettingShowSendCredentials);
+            return courseSettingShowSendCredentials;
 
         } catch (Exception e) {
             log.error("Error in getSendCredentialsFlag for institute: {} - defaulting to sendCredentials=true",
                     instituteId, e);
             return true;
         }
+    }
+
+    /**
+     * Reads INSTITUTE.setting.COURSE_SETTING.data.enrollmentNotifications.{flagKey}.
+     * Defaults to {@code true} when the setting, the enrollmentNotifications block,
+     * or the specific flag is missing — matches the FE's
+     * {@code DEFAULT_COURSE_SETTINGS.enrollmentNotifications} defaults so behavior
+     * is unchanged for institutes that never touched the toggle.
+     * <p>
+     * Used as a second gate on top of {@code LEARNER_ENROLLMENT_SETTING.sendCredentials}
+     * and as the primary gate for the post-enrollment LEARNER_ENROLL notification.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean checkCourseSettingFlag(String instituteId, String flagKey) {
+        try {
+            Object data = instituteSettingService.getSettingByInstituteIdAndKey(
+                    instituteId, "COURSE_SETTING");
+            if (!(data instanceof Map)) {
+                return true;
+            }
+            Object enrollmentNotifications = ((Map<String, Object>) data).get("enrollmentNotifications");
+            if (!(enrollmentNotifications instanceof Map)) {
+                return true;
+            }
+            Object flag = ((Map<String, Object>) enrollmentNotifications).get(flagKey);
+            if (flag instanceof Boolean) {
+                return (Boolean) flag;
+            }
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not read COURSE_SETTING.enrollmentNotifications.{} for institute {}: {}",
+                    flagKey, instituteId, e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * Mirror of {@link #checkCourseSettingFlag} for the
+     * {@code showNotifyLearners} flag. Exposed as a public-package method so the
+     * post-payment notification path in {@code UserPlanService} can honor the
+     * same gate without duplicating the JSON walk.
+     */
+    public boolean shouldSendLearnerNotification(String instituteId) {
+        return checkCourseSettingFlag(instituteId, "showNotifyLearners");
     }
 
     /**

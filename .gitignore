@@ -150,3 +150,6 @@ vacademy_devops/**/values-*.secret.yaml
 
 # Per-developer Claude Code permissions — local-only, not for sharing
 .claude/settings.local.json
+
+# Hetzner migration: operator-filled values (Cloudflare/DB tokens) — never commit
+vacademy_devops/hetzner/topology.env

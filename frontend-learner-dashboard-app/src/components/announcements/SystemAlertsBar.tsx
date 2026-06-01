@@ -140,12 +140,22 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
     }
   };
 
+  const handleHtmlContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const link = target.closest('a');
+    if (link?.href) {
+      e.stopPropagation();
+      window.open(link.href, link.target || '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const renderAlertContent = (alert: UserMessage) => {
     if (alert.content.type === 'html') {
       return (
         <div
-          className="prose prose-sm max-w-none overflow-hidden break-words [&>*]:max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:overflow-x-auto [&_table]:block [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_meta]:hidden [&_style]:hidden [&_title]:hidden [&_head]:hidden [&_script]:hidden"
+          className="prose prose-sm max-w-none overflow-hidden break-words [&>*]:max-w-full [&_img]:max-w-full [&_img]:h-auto [&_table]:overflow-x-auto [&_table]:block [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_meta]:hidden [&_style]:hidden [&_title]:hidden [&_head]:hidden [&_script]:hidden [&_a]:cursor-pointer"
           dangerouslySetInnerHTML={{ __html: alert.content.content }}
+          onClick={handleHtmlContentClick}
         />
       );
     }

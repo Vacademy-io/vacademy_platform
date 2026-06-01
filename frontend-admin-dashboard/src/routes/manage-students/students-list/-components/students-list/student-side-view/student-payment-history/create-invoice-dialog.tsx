@@ -8,10 +8,8 @@ import {
     Plus,
     Trash,
     ClipboardText,
-    WhatsappLogo,
     DownloadSimple,
     CheckCircle,
-    EnvelopeSimple,
 } from '@phosphor-icons/react';
 
 import { MyDialog } from '@/components/design-system/dialog';
@@ -112,10 +110,6 @@ function SuccessView({
         }
     };
 
-    const whatsappText = encodeURIComponent(
-        `Hi ${userName}, your invoice ${result.invoice_number} for ${fmt(result.total_amount, result.currency)} is ready. Pay here: ${result.payment_link}`
-    );
-
     return (
         <div className="flex flex-col items-center gap-6 px-6 py-8 text-center">
             <StatusChip status="SUCCESS" text="Invoice Created!" textSize="text-subtitle" showIcon />
@@ -154,16 +148,6 @@ function SuccessView({
             )}
 
             <div className="flex flex-wrap items-center justify-center gap-3">
-                {result.payment_link && (
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() => window.open(`https://wa.me/?text=${whatsappText}`, '_blank')}
-                    >
-                        <WhatsappLogo className="mr-1.5 size-4" />
-                        Share on WhatsApp
-                    </MyButton>
-                )}
                 {result.pdf_url && (
                     <MyButton
                         buttonType="secondary"
@@ -290,11 +274,11 @@ export function CreateInvoiceDialog({
                                 </p>
 
                                 {/* Table header */}
-                                <div className="mb-1 grid grid-cols-12 gap-2 px-1">
-                                    <span className="col-span-5 text-caption font-medium text-neutral-500">Description</span>
-                                    <span className="col-span-2 text-caption font-medium text-neutral-500 text-right">Qty</span>
-                                    <span className="col-span-3 text-caption font-medium text-neutral-500 text-right">Price</span>
-                                    <span className="col-span-2 text-caption font-medium text-neutral-500 text-right">Amount</span>
+                                <div className="mb-1 flex items-center gap-2 px-3">
+                                    <span className="flex-1 text-caption font-medium text-neutral-500">Description</span>
+                                    <span className="w-14 shrink-0 text-right text-caption font-medium text-neutral-500">Qty</span>
+                                    <span className="w-24 shrink-0 text-right text-caption font-medium text-neutral-500">Price</span>
+                                    <span className="w-20 shrink-0 text-right text-caption font-medium text-neutral-500">Amount</span>
                                 </div>
 
                                 <div className="space-y-2">
@@ -306,25 +290,25 @@ export function CreateInvoiceDialog({
                                         return (
                                             <div
                                                 key={field.id}
-                                                className="grid grid-cols-12 items-start gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5"
+                                                className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5"
                                             >
                                                 {/* Description */}
                                                 <FormField
                                                     control={form.control}
                                                     name={`line_items.${index}.description`}
                                                     render={({ field: f }) => (
-                                                        <FormItem className="col-span-5 space-y-0.5">
+                                                        <FormItem className="min-w-0 flex-1 overflow-hidden">
                                                             <FormControl>
                                                                 <MyInput
                                                                     inputType="text"
                                                                     inputPlaceholder="e.g. Course Fee"
                                                                     input={f.value}
                                                                     onChangeFunction={f.onChange}
-                                                                    className="w-full"
+                                                                    className="w-full max-w-full"
+                                                                    error={form.formState.errors.line_items?.[index]?.description?.message}
                                                                     {...f}
                                                                 />
                                                             </FormControl>
-                                                            <FormMessage className="text-caption" />
                                                         </FormItem>
                                                     )}
                                                 />
@@ -334,7 +318,7 @@ export function CreateInvoiceDialog({
                                                     control={form.control}
                                                     name={`line_items.${index}.quantity`}
                                                     render={({ field: f }) => (
-                                                        <FormItem className="col-span-2 space-y-0.5">
+                                                        <FormItem className="w-14 shrink-0">
                                                             <FormControl>
                                                                 <MyInput
                                                                     inputType="text"
@@ -342,12 +326,12 @@ export function CreateInvoiceDialog({
                                                                     input={String(f.value)}
                                                                     onChangeFunction={f.onChange}
                                                                     className="w-full max-w-full text-right"
+                                                                    error={form.formState.errors.line_items?.[index]?.quantity?.message}
                                                                     ref={f.ref}
                                                                     name={f.name}
                                                                     onBlur={f.onBlur}
                                                                 />
                                                             </FormControl>
-                                                            <FormMessage className="text-caption" />
                                                         </FormItem>
                                                     )}
                                                 />
@@ -357,26 +341,26 @@ export function CreateInvoiceDialog({
                                                     control={form.control}
                                                     name={`line_items.${index}.unit_price`}
                                                     render={({ field: f }) => (
-                                                        <FormItem className="col-span-3 space-y-0.5">
+                                                        <FormItem className="w-24 shrink-0">
                                                             <FormControl>
                                                                 <MyInput
                                                                     inputType="text"
-                                                                    inputPlaceholder="0"
+                                                                    inputPlaceholder="0.00"
                                                                     input={String(f.value)}
                                                                     onChangeFunction={f.onChange}
                                                                     className="w-full max-w-full text-right"
+                                                                    error={form.formState.errors.line_items?.[index]?.unit_price?.message}
                                                                     ref={f.ref}
                                                                     name={f.name}
                                                                     onBlur={f.onBlur}
                                                                 />
                                                             </FormControl>
-                                                            <FormMessage className="text-caption" />
                                                         </FormItem>
                                                     )}
                                                 />
 
                                                 {/* Line total + delete */}
-                                                <div className="col-span-2 flex items-center justify-end gap-1.5 pt-1.5">
+                                                <div className="flex w-20 shrink-0 items-center justify-end gap-1 pt-1.5">
                                                     <span className="text-body font-semibold text-neutral-800 tabular-nums">
                                                         {fmt(lineTotal, currency)}
                                                     </span>
@@ -437,16 +421,6 @@ export function CreateInvoiceDialog({
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Email auto-send notice */}
-                            {invoiceSettings?.sendInvoiceEmail && (
-                                <div className="flex items-center gap-2 rounded-md border border-info-200 bg-info-50 px-3 py-2">
-                                    <EnvelopeSimple size={14} className="shrink-0 text-info-600" weight="fill" />
-                                    <p className="text-caption text-info-700">
-                                        Invoice email will be sent to the learner automatically after payment.
-                                    </p>
-                                </div>
-                            )}
 
                             {/* ── Due Date + Currency ── */}
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

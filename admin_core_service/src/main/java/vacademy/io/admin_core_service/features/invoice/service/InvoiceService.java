@@ -2873,9 +2873,11 @@ public class InvoiceService {
             try {
                 String amountStr = request.getCurrency() + " " + totalAmount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
                 String alertTitle = "New Invoice: " + amountStr;
-                String alertBody = "You have a new invoice (" + invoiceNumber + ") of " + amountStr
-                        + " due by " + (request.getDueDate() != null ? request.getDueDate().toLocalDate().toString() : "N/A")
-                        + ". Tap to pay: " + paymentLink;
+                String dueDateStr = request.getDueDate() != null ? request.getDueDate().toLocalDate().toString() : "N/A";
+                String alertBody = "You have a new invoice (<strong>" + invoiceNumber + "</strong>)"
+                        + " of <strong>" + amountStr + "</strong> due by " + dueDateStr + "."
+                        + "<br><br>"
+                        + "<a href=\"" + paymentLink + "\" target=\"_blank\" rel=\"noopener noreferrer\">Pay Now →</a>";
                 notificationService.createSystemAlertAnnouncement(
                         request.getInstituteId(),
                         List.of(userId),
@@ -2884,7 +2886,8 @@ public class InvoiceService {
                         "system",
                         institute.getInstituteName() != null ? institute.getInstituteName() : "Institute",
                         "ADMIN",
-                        Map.of("priority", 3, "isDismissible", true, "showBadge", true, "isActive", true));
+                        Map.of("priority", 3, "isDismissible", true, "showBadge", true, "isActive", true),
+                        "html");
             } catch (Exception e) {
                 log.warn("Failed to send invoice system alert to user {}: {}", userId, e.getMessage());
             }

@@ -363,10 +363,19 @@ public class NotificationService {
      *                      approve them. Real user-authored announcements still flow through the
      *                      normal approval setting.
      */
+    // Existing callers pass no contentType — default to "text" to preserve behaviour.
     public void createSystemAlertAnnouncement(
             String instituteId, List<String> userIds, String title, String body,
             String createdBy, String createdByName, String createdByRole,
             Map<String, Object> alertSettings) {
+        createSystemAlertAnnouncement(instituteId, userIds, title, body,
+                createdBy, createdByName, createdByRole, alertSettings, "text");
+    }
+
+    public void createSystemAlertAnnouncement(
+            String instituteId, List<String> userIds, String title, String body,
+            String createdBy, String createdByName, String createdByRole,
+            Map<String, Object> alertSettings, String contentType) {
         if (instituteId == null || instituteId.isEmpty()) return;
         if (userIds == null || userIds.isEmpty()) return;
 
@@ -388,9 +397,10 @@ public class NotificationService {
         // letting validation fail.
         String safeTitle = (title == null || title.isBlank()) ? "Notification" : title;
         String safeBody = (body == null || body.isBlank()) ? "Tap to view details." : body;
+        String safeContentType = (contentType == null || contentType.isBlank()) ? "text" : contentType;
 
         Map<String, Object> content = new java.util.HashMap<>();
-        content.put("type", "text");
+        content.put("type", safeContentType);
         content.put("content", safeBody);
 
         Map<String, Object> mode = new java.util.HashMap<>();

@@ -106,6 +106,24 @@ export class InstituteSettingsCache {
   }
 
   /**
+   * Returns the institute id the cache was populated for, or null when empty.
+   * Used by hooks that need to re-fetch a live setting from the BE without
+   * being tied to a specific route's params.
+   */
+  public async getCachedInstituteId(): Promise<string | null> {
+    try {
+      const stored = await Preferences.get({ key: "InstituteDetails" });
+      if (stored?.value) {
+        const parsed = JSON.parse(stored.value);
+        return typeof parsed?.id === "string" ? parsed.id : null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Clear cached settings (useful for testing or when switching institutes)
    */
   public async clearCache(): Promise<void> {

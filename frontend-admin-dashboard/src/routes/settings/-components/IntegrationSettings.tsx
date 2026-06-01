@@ -633,10 +633,21 @@ function AddMetaForm({
         enabled: !!instituteId && !!audienceId,
     });
 
-    // Reset mappings when form or audience changes
-    useEffect(() => {
+    // Picking a different form or audience invalidates the current field mapping.
+    // Reset it here, at event time — NOT in an effect. An effect keyed on
+    // [formId, audienceId] raced FieldMappingBuilder's auto-populate effect:
+    // child effects run before parent effects, so when the audience custom-fields
+    // are cached (a synchronous cache-hit, e.g. when adding a 2nd form in the same
+    // session) the parent reset ran last and clobbered the freshly built rows to
+    // [], leaving the mapping table empty even though the fields had loaded.
+    const selectForm = (id: string) => {
+        setFormId(id);
         setFieldMappings([]);
-    }, [formId, audienceId]);
+    };
+    const selectAudience = (id: string) => {
+        setAudienceId(id);
+        setFieldMappings([]);
+    };
 
     // The forms fetch is the first call after page selection to hit the OAuth
     // session, so it's where a mid-flow expiry surfaces. Clear the session (which
@@ -781,7 +792,7 @@ function AddMetaForm({
                                 <select
                                     className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                                     value={formId}
-                                    onChange={(e) => setFormId(e.target.value)}
+                                    onChange={(e) => selectForm(e.target.value)}
                                 >
                                     <option value="">Select a form...</option>
                                     {forms.map((f) => (
@@ -798,7 +809,7 @@ function AddMetaForm({
                                             : 'Select a page first'
                                     }
                                     value={formId}
-                                    onChange={(e) => setFormId(e.target.value)}
+                                    onChange={(e) => selectForm(e.target.value)}
                                 />
                             )}
                         </div>
@@ -807,7 +818,7 @@ function AddMetaForm({
                             <select
                                 className="w-full rounded-md border bg-white px-3 py-2 text-sm"
                                 value={audienceId}
-                                onChange={(e) => setAudienceId(e.target.value)}
+                                onChange={(e) => selectAudience(e.target.value)}
                             >
                                 <option value="">Select audience...</option>
                                 {audiences.map((a) => (

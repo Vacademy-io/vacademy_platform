@@ -2444,7 +2444,11 @@ const EnrollByInvite = ({
             amount={
               paymentType === "CPO"
                 ? cpoPayAmount
-                : getSelectedPaymentPrice(enrollmentData.selectedPayment)
+                : Math.max(
+                    0,
+                    getSelectedPaymentPrice(enrollmentData.selectedPayment) -
+                      (appliedCouponCode ? couponDiscount : 0),
+                  )
             }
             currency={
               paymentType === "CPO"

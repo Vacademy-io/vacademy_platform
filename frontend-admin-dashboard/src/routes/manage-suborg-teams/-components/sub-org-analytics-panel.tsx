@@ -6,6 +6,7 @@ import {
     BookOpen,
     GraduationCap,
     ChevronDown,
+    CircleCheck,
     Download,
     ExternalLink,
 } from 'lucide-react';
@@ -50,13 +51,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Plus } from '@phosphor-icons/react';
+import { Bell, Copy, Plus } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { MemberHistoryDrawer } from '@/routes/manage-custom-teams/sub-orgs/-components/member-history-drawer';
 import { RecordSubOrgPaymentDialog } from '@/routes/manage-custom-teams/sub-orgs/-components/record-sub-org-payment-dialog';
-import { triggerInvoiceReminderForSfp } from '@/routes/manage-custom-teams/-services/custom-team-services';
+import {
+    triggerInvoiceReminderForSfp,
+    sendInvoiceReminder,
+} from '@/routes/manage-custom-teams/-services/custom-team-services';
+import { CreateInvoiceDialog } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-payment-history/create-invoice-dialog';
+// Add-admin-user form (CPO installment editor + discount card). Used to be mounted
+// at deep-page level which made it visible on every tab; it now lives inside the
+// Admin Payment tab where the admin enrollment context belongs.
+import { AddUserToSubOrgSection } from '@/routes/manage-custom-teams/sub-orgs/-components/sub-org-detail-modal';
+import { MarkPaidDialog } from '@/routes/manage-custom-teams/sub-orgs/-components/mark-paid-dialog';
 import { CustomTeamsList } from '@/routes/manage-custom-teams/-components/custom-teams-list';
 
 interface Props {
@@ -122,10 +132,34 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         subtitle?: string;
     } | null>(null);
     const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+    // Create Invoice CTA in the Invoices tab — surfaces the same dialog the drawer
+    // uses, but pre-targeted at the sub-org admin user. Without this the only way
+    // to raise an admin invoice was to open the per-user drawer first.
+    const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+    // Per-row PENDING_PAYMENT actions on the Invoices tab.
+    //   copiedLinkId   — flips the Copy Link button to "Copied" for 2s
+    //   markPaidTarget — opens MarkPaidDialog scoped to one invoice
+    const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+    const [markPaidTarget, setMarkPaidTarget] = useState<{ id: string; number?: string } | null>(null);
+
+    const handleCopyInvoiceLink = async (invoiceId: string, link: string) => {
+        try {
+            await navigator.clipboard.writeText(link);
+            setCopiedLinkId(invoiceId);
+            toast.success('Payment link copied');
+            window.setTimeout(() => {
+                setCopiedLinkId((prev) => (prev === invoiceId ? null : prev));
+            }, 2000);
+        } catch (_err) {
+            toast.error('Could not copy to clipboard');
+        }
+    };
 
     const queryClient = useQueryClient();
     // Track which row is currently sending a reminder so we can show a per-row spinner
-    // instead of disabling every Remind button on the page.
+    // instead of disabling every Remind button on the page. One id space serves both
+    // the SFP reminder and the admin-invoice reminder — only one row can be in flight
+    // at a time per click.
     const [remindingId, setRemindingId] = useState<string | null>(null);
     const remindMutation = useMutation({
         mutationFn: (sfpId: string) => triggerInvoiceReminderForSfp(sfpId),
@@ -145,6 +179,36 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         },
         onError: (err: any) => {
             toast.error(err?.response?.data?.message || 'Failed to send reminder');
+        },
+    });
+
+    // Separate mutation for the admin-invoice reminder (POST /v1/invoices/{id}/send-reminder).
+    // Different endpoint + payload shape than the SFP reminder, but shares the
+    // remindingId state so the UI only spins one row at a time.
+    const invoiceReminderMutation = useMutation({
+        mutationFn: (invoiceId: string) => sendInvoiceReminder(invoiceId),
+        onMutate: (invoiceId) => setRemindingId(invoiceId),
+        onSettled: () => setRemindingId(null),
+        onSuccess: (data) => {
+            // Report channels honestly — email may be off in INVOICE_SETTING, in
+            // which case only the in-app alert fired; admin should know that.
+            const channels: string[] = [];
+            if (data.alert_sent) channels.push('in-app');
+            if (data.email_sent) channels.push('email');
+            const where = data.recipient_email ? ` to ${data.recipient_email}` : '';
+            toast.success(
+                channels.length > 0
+                    ? `Reminder sent${where} via ${channels.join(' + ')}`
+                    : `Reminder${where} — no channels delivered (check institute Invoice Settings)`
+            );
+            if (adminUserId) {
+                queryClient.invalidateQueries({
+                    queryKey: ['sub-org-admin-invoices', adminUserId],
+                });
+            }
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.message || 'Failed to send invoice reminder');
         },
     });
 
@@ -274,16 +338,35 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 {/* Admin payment */}
                 <TabsContent value="admin" className="mt-3">
                     <section className="rounded-lg border bg-white p-4">
-                        <header className="mb-3 flex items-center justify-between">
+                        <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                                 <Wallet className="h-4 w-4" />
                                 Admin payment{subOrgName ? ` — ${subOrgName}` : ''}
                             </h3>
-                            {admin?.payment_type === 'CPO' && (
-                                <Badge variant="secondary">
-                                    {admin.pending_installments_count ?? 0} pending
-                                </Badge>
-                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {admin?.payment_type === 'CPO' && (
+                                    <Badge variant="secondary">
+                                        {admin.pending_installments_count ?? 0} pending
+                                    </Badge>
+                                )}
+                                {/* Record an arbitrary amount and FIFO-fill it across the
+                                    admin's pending CPO installments. Same dialog the
+                                    Invoices tab exposes — surfaced here too because the
+                                    installment buckets visually live on this tab, so
+                                    "Record payment against these installments" is the
+                                    natural CTA next to them. */}
+                                {canEditLedger && adminUserPlanId && (
+                                    <MyButton
+                                        type="button"
+                                        buttonType="primary"
+                                        scale="small"
+                                        onClick={() => setRecordPaymentOpen(true)}
+                                    >
+                                        <Plus className="size-4" />
+                                        Record Offline Payment
+                                    </MyButton>
+                                )}
+                            </div>
                         </header>
                         {admin?.user_id ? (
                             <>
@@ -393,6 +476,22 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                             </p>
                         )}
                     </section>
+
+                    {/* Direct "Add admin user" form — CPO installment editor + discount
+                        card live in this section. Lets the institute admin enroll the
+                        sub-org admin directly (with installment overrides) instead of
+                        waiting for them to accept the invite link. Hidden from sub-org
+                        admins via the restrictedView gate so they don't see an admin-
+                        management form on their own /manage-suborg-teams page. */}
+                    {!restrictedView && instituteId && (
+                        <div className="mt-4 rounded-lg border bg-white p-4">
+                            <AddUserToSubOrgSection
+                                subOrgId={subOrgId}
+                                instituteId={instituteId}
+                                scopedInvites={scopedInvites}
+                            />
+                        </div>
+                    )}
                 </TabsContent>
 
                 {/* Courses / Learners / Invoices — hidden in restricted (sub-org-admin) view. */}
@@ -493,17 +592,30 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                 <FileText className="h-4 w-4" />
                                 Invoices ({invoices.length})
                             </h3>
-                            {canEditLedger && adminUserPlanId && (
-                                <MyButton
-                                    type="button"
-                                    buttonType="primary"
-                                    scale="small"
-                                    onClick={() => setRecordPaymentOpen(true)}
-                                >
-                                    <Plus className="size-4" />
-                                    Record Payment
-                                </MyButton>
-                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                                {adminUserId && (
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => setCreateInvoiceOpen(true)}
+                                    >
+                                        <Plus className="size-4" />
+                                        Create Invoice
+                                    </MyButton>
+                                )}
+                                {canEditLedger && adminUserPlanId && (
+                                    <MyButton
+                                        type="button"
+                                        buttonType="primary"
+                                        scale="small"
+                                        onClick={() => setRecordPaymentOpen(true)}
+                                    >
+                                        <Plus className="size-4" />
+                                        Record Offline Payment
+                                    </MyButton>
+                                )}
+                            </div>
                         </div>
                         {invoices.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
@@ -530,6 +642,15 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                             || status === 'OVERDUE'
                                             || status === 'PARTIAL'
                                             || status === 'PARTIAL_PAID');
+                                    // Real admin invoices in pending payment carry a
+                                    // payment_link and are eligible for Mark Paid; SFP
+                                    // synthetic rows are excluded (they have their own
+                                    // Remind flow).
+                                    const paymentLink = inv.payment_link || inv.paymentLink;
+                                    const isPendingAdminInvoice =
+                                        !isSfpRow
+                                        && status === 'PENDING_PAYMENT'
+                                        && typeof inv.id === 'string';
                                     return (
                                         <li
                                             key={inv.id}
@@ -555,6 +676,58 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                 >
                                                     <Bell className="size-3" />
                                                     {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                                </button>
+                                            )}
+                                            {isPendingAdminInvoice && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        invoiceReminderMutation.mutate(inv.id)
+                                                    }
+                                                    disabled={remindingId === inv.id}
+                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                                    title="Re-send the payment-due reminder (email + in-app alert)"
+                                                >
+                                                    <Bell className="size-3" />
+                                                    {remindingId === inv.id ? 'Sending…' : 'Remind'}
+                                                </button>
+                                            )}
+                                            {isPendingAdminInvoice && paymentLink && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                    title="Copy learner payment link"
+                                                >
+                                                    {copiedLinkId === inv.id ? (
+                                                        <>
+                                                            <CircleCheck className="size-3" />
+                                                            Copied
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Copy className="size-3" />
+                                                            Copy Link
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+                                            {isPendingAdminInvoice && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setMarkPaidTarget({
+                                                            id: inv.id,
+                                                            number:
+                                                                inv.invoice_number
+                                                                || inv.invoiceNumber
+                                                                || inv.id,
+                                                        })
+                                                    }
+                                                    className="inline-flex shrink-0 items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                    title="Record an offline / manual payment for this invoice"
+                                                >
+                                                    Mark Paid
                                                 </button>
                                             )}
                                             {url ? (
@@ -629,6 +802,43 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     suggestedAmount={suggestedAmount}
                 />
             )}
+
+            {/* Create Invoice from the Invoices tab — pre-targeted at the sub-org admin
+                user so an institute admin can raise an ad-hoc invoice without first
+                opening the per-user drawer. Invalidates the same query the tab reads
+                from so the new row appears immediately. */}
+            {adminUserId && instituteId && (
+                <CreateInvoiceDialog
+                    userId={adminUserId}
+                    userName={admin?.full_name || subOrgName || 'Sub-org admin'}
+                    instituteId={instituteId}
+                    open={createInvoiceOpen}
+                    onOpenChange={setCreateInvoiceOpen}
+                    onSuccess={() => {
+                        queryClient.invalidateQueries({
+                            queryKey: ['sub-org-admin-invoices', adminUserId],
+                        });
+                    }}
+                />
+            )}
+
+            {/* Mark Paid on any PENDING_PAYMENT row in the Invoices tab. markPaidTarget
+                carries the invoice id (for the API call) and the human invoice number
+                (for the dialog title + success toast). Refresh the same query the tab
+                reads from so the row flips to PAID in place. */}
+            <MarkPaidDialog
+                open={!!markPaidTarget}
+                onOpenChange={(o) => !o && setMarkPaidTarget(null)}
+                invoiceId={markPaidTarget?.id || ''}
+                invoiceNumber={markPaidTarget?.number}
+                onSuccess={() => {
+                    if (adminUserId) {
+                        queryClient.invalidateQueries({
+                            queryKey: ['sub-org-admin-invoices', adminUserId],
+                        });
+                    }
+                }}
+            />
         </div>
     );
 }

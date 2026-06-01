@@ -711,8 +711,57 @@ export interface InvoiceSummary {
     pdfFileId?: string;
     fileId?: string;
     file_id?: string;
+    /**
+     * Learner-facing pay page. Only populated by the backend when the invoice is
+     * PENDING_PAYMENT and is a real Invoice row (synthetic SFP rows leave this null).
+     * Drives the Copy Link button on the Invoices section.
+     */
+    payment_link?: string;
+    paymentLink?: string;
     [key: string]: unknown;
 }
+
+/**
+ * Re-send the payment-due reminder for a PENDING_PAYMENT admin invoice. Fires the
+ * same in-app alert + email the creation flow uses, prefixed with "Reminder:" so
+ * the learner can distinguish a follow-up from the original bill. Returns a per-
+ * channel breakdown so the FE can toast precisely (e.g. "Reminder sent to X" vs
+ * "Couldn't send email, but in-app alert delivered").
+ */
+export const sendInvoiceReminder = async (
+    invoiceId: string
+): Promise<{
+    invoice_id: string;
+    invoice_number: string;
+    recipient_email?: string;
+    email_sent: boolean;
+    alert_sent: boolean;
+    payment_link?: string;
+}> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/send-reminder`,
+    });
+    return response.data;
+};
+
+/**
+ * Record a manual / offline payment against a PENDING_PAYMENT admin invoice. The
+ * backend creates a MANUAL PaymentLog, links it to the invoice, flips status to
+ * PAID, and sends a best-effort confirmation email. Returns the updated invoice
+ * row so the FE can swap the list entry in place.
+ */
+export const markInvoicePaidManually = async (
+    invoiceId: string,
+    body: { transaction_id?: string; notes?: string }
+): Promise<InvoiceSummary> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`,
+        data: body,
+    });
+    return response.data;
+};
 
 /**
  * Record an offline payment against an existing sub-org admin's UserPlan. Same backend

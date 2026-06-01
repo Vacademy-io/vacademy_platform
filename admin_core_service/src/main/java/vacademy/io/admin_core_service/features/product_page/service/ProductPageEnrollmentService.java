@@ -260,8 +260,9 @@ public class ProductPageEnrollmentService {
             log.warn("Currency was missing from request; defaulted to {}", planCurrency);
         }
 
-        // Create / find user
-        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+        // Create / find user — use addLearnerRoute (same as learner/enroll) so the
+        // STUDENT role is assigned in the auth-service user_role table.
+        UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(
                 request.getUser(), request.getInstituteId(), false);
         payReq.setEmail(user.getEmail());
 

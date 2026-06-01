@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
@@ -6,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { MyButton } from '@/components/design-system/button';
 import {
     Select,
     SelectContent,
@@ -186,6 +186,10 @@ export default function CustomRoleDisplaySettings({
     const [hasChanges, setHasChanges] = useState(false);
     const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
 
+    // Snapshot of the last loaded/saved state for the Discard button in the
+    // sticky unsaved-changes bar.
+    const pristineSettingsRef = useRef<DisplaySettingsData | null>(null);
+
     const displaySettingsKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${roleId}`;
 
     useEffect(() => {
@@ -196,6 +200,7 @@ export default function CustomRoleDisplaySettings({
                 .filter((t) => t.id !== 'settings')
                 .map((t) => ({ ...t, visible: t.id === 'settings' ? false : t.visible }));
             setSettings(s);
+            pristineSettingsRef.current = s;
         };
         run();
     }, []);
@@ -405,6 +410,10 @@ export default function CustomRoleDisplaySettings({
                 },
             };
             await saveDisplaySettings(displaySettingsKey, fixed);
+            // Reflect the persisted (constrained) version locally so future
+            // discards return to the same baseline.
+            setSettings(fixed);
+            pristineSettingsRef.current = fixed;
             setHasChanges(false);
             toast.success('Custom role display settings saved');
         } catch (e: any) {
@@ -417,10 +426,16 @@ export default function CustomRoleDisplaySettings({
         }
     };
 
+    const discardChanges = () => {
+        if (!pristineSettingsRef.current) return;
+        setSettings(pristineSettingsRef.current);
+        setHasChanges(false);
+    };
+
     if (!settings) return <div className="p-2">Loading...</div>;
 
     return (
-        <div className="space-y-6 p-2">
+        <div className="space-y-6 p-2 pb-20">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-lg font-bold">Custom Role Display Settings</h1>
@@ -435,13 +450,6 @@ export default function CustomRoleDisplaySettings({
                     >
                         Reset to Defaults
                     </Button>
-                    <MyButton
-                        onClick={save}
-                        disabled={isSaving || !hasChanges}
-                        className="bg-primary-500"
-                    >
-                        {isSaving ? 'Saving...' : 'Save Changes'}
-                    </MyButton>
                 </div>
             </div>
 
@@ -2105,6 +2113,13 @@ export default function CustomRoleDisplaySettings({
                     </div>
                 </CardContent>
             </Card>
+
+            <UnsavedChangesBar
+                dirty={hasChanges}
+                saving={isSaving}
+                onSave={save}
+                onDiscard={discardChanges}
+            />
         </div>
     );
 }

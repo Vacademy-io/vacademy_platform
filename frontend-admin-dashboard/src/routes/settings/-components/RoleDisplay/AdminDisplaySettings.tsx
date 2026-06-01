@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
@@ -13,7 +14,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { MyButton } from '@/components/design-system/button';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
@@ -181,10 +181,15 @@ export default function AdminDisplaySettings() {
     const [hasChanges, setHasChanges] = useState(false);
     const [activeCategory, setActiveCategory] = useState<'CRM' | 'LMS' | 'AI'>('CRM');
 
+    // Snapshot of the last loaded/saved state, used by the Discard handler in
+    // the sticky unsaved-changes bar so the user can revert local edits.
+    const pristineSettingsRef = useRef<DisplaySettingsData | null>(null);
+
     useEffect(() => {
         const run = async () => {
             const s = await getDisplaySettingsWithFallback(ADMIN_DISPLAY_SETTINGS_KEY);
             setSettings(s);
+            pristineSettingsRef.current = s;
         };
         run();
     }, []);
@@ -394,6 +399,10 @@ export default function AdminDisplaySettings() {
                 ),
             };
             await saveDisplaySettings(ADMIN_DISPLAY_SETTINGS_KEY, fixed);
+            // Update the local state to the constrained version we actually
+            // persisted so future discards return to the same baseline.
+            setSettings(fixed);
+            pristineSettingsRef.current = fixed;
             setHasChanges(false);
             toast.success('Admin display settings saved');
         } catch (e) {
@@ -403,10 +412,16 @@ export default function AdminDisplaySettings() {
         }
     };
 
+    const discardChanges = () => {
+        if (!pristineSettingsRef.current) return;
+        setSettings(pristineSettingsRef.current);
+        setHasChanges(false);
+    };
+
     if (!settings) return <div className="p-2">Loading...</div>;
 
     return (
-        <div className="space-y-6 p-2">
+        <div className="space-y-6 p-2 pb-20">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-lg font-bold">Admin Display Settings</h1>
@@ -424,13 +439,6 @@ export default function AdminDisplaySettings() {
                     >
                         Reset to Defaults
                     </Button>
-                    <MyButton
-                        onClick={save}
-                        disabled={isSaving || !hasChanges}
-                        className="bg-primary-500"
-                    >
-                        {isSaving ? 'Saving...' : 'Save Changes'}
-                    </MyButton>
                 </div>
             </div>
 
@@ -2138,6 +2146,13 @@ export default function AdminDisplaySettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            <UnsavedChangesBar
+                dirty={hasChanges}
+                saving={isSaving}
+                onSave={save}
+                onDiscard={discardChanges}
+            />
         </div>
     );
 }

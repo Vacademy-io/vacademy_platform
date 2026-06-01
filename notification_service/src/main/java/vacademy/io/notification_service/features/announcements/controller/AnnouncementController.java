@@ -362,62 +362,66 @@ public class AnnouncementController {
         }
     }
 
-    // COMMENTED OUT - Unused endpoint (service method doesn't exist)
-    // /**
-    //  * Update existing email configuration
-    //  */
-    // @PutMapping("/email-configurations/{instituteId}/{emailType}")
-    // public ResponseEntity<EmailConfigDTO> updateEmailConfiguration(
-    //         @PathVariable String instituteId,
-    //         @PathVariable String emailType,
-    //         @RequestBody EmailConfigDTO emailConfig,
-    //         @RequestHeader(value = "Authorization", required = false) String authToken) {
-    //     try {
-    //         // Extract Bearer token if present
-    //         String token = null;
-    //         if (authToken != null && authToken.startsWith("Bearer ")) {
-    //             token = authToken.substring(7);
-    //         }
-    //
-    //         EmailConfigDTO updatedConfig = emailConfigurationService.updateEmailConfiguration(instituteId, emailType, emailConfig, token);
-    //         if (updatedConfig != null) {
-    //             return ResponseEntity.ok(updatedConfig);
-    //         } else {
-    //             return ResponseEntity.notFound().build();
-    //         }
-    //     } catch (Exception e) {
-    //         log.error("Error updating email configuration for institute: {} type: {}", instituteId, emailType, e);
-    //         return ResponseEntity.badRequest().build();
-    //     }
-    // }
+    /**
+     * Update an existing email configuration. The path param `{emailType}` is the
+     * primary key — it is immutable. Only email/name (and any optional fields the
+     * service knows how to persist) can change.
+     */
+    @PutMapping("/email-configurations/{instituteId}/{emailType}")
+    public ResponseEntity<?> updateEmailConfiguration(
+            @PathVariable String instituteId,
+            @PathVariable String emailType,
+            @RequestBody EmailConfigDTO emailConfig,
+            @RequestHeader(value = "Authorization", required = false) String authToken) {
+        try {
+            String token = null;
+            if (authToken != null && authToken.startsWith("Bearer ")) {
+                token = authToken.substring(7);
+            }
 
-    // COMMENTED OUT - Unused endpoint (service method doesn't exist)
-    // /**
-    //  * Delete email configuration
-    //  */
-    // @DeleteMapping("/email-configurations/{instituteId}/{emailType}")
-    // public ResponseEntity<Void> deleteEmailConfiguration(
-    //         @PathVariable String instituteId,
-    //         @PathVariable String emailType,
-    //         @RequestHeader(value = "Authorization", required = false) String authToken) {
-    //     try {
-    //         // Extract Bearer token if present
-    //         String token = null;
-    //         if (authToken != null && authToken.startsWith("Bearer ")) {
-    //             token = authToken.substring(7);
-    //         }
-    //
-    //         boolean deleted = emailConfigurationService.deleteEmailConfiguration(instituteId, emailType, token);
-    //         if (deleted) {
-    //             return ResponseEntity.noContent().build();
-    //         } else {
-    //             return ResponseEntity.notFound().build();
-    //         }
-    //     } catch (Exception e) {
-    //         log.error("Error deleting email configuration for institute: {} type: {}", instituteId, emailType, e);
-    //         return ResponseEntity.badRequest().build();
-    //     }
-    // }
+            EmailConfigDTO updatedConfig = emailConfigurationService.updateEmailConfiguration(
+                    instituteId, emailType, emailConfig, token);
+            if (updatedConfig != null) {
+                return ResponseEntity.ok(updatedConfig);
+            }
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error updating email configuration for institute: {} type: {}",
+                    instituteId, emailType, e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Delete an email configuration by type.
+     */
+    @DeleteMapping("/email-configurations/{instituteId}/{emailType}")
+    public ResponseEntity<?> deleteEmailConfiguration(
+            @PathVariable String instituteId,
+            @PathVariable String emailType,
+            @RequestHeader(value = "Authorization", required = false) String authToken) {
+        try {
+            String token = null;
+            if (authToken != null && authToken.startsWith("Bearer ")) {
+                token = authToken.substring(7);
+            }
+
+            boolean deleted = emailConfigurationService.deleteEmailConfiguration(
+                    instituteId, emailType, token);
+            if (deleted) {
+                return ResponseEntity.noContent().build();
+            }
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Error deleting email configuration for institute: {} type: {}",
+                    instituteId, emailType, e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 
     /**
      * Reject announcement (ADMIN)

@@ -95,7 +95,7 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
-// Lead Reports endpoints — pinned to localhost:8072 for local dev (swap to ${BASE_URL} for stage/prod).
+// Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
@@ -349,9 +349,9 @@ export const GET_USER_DOC_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/
 export const GET_VIDEO_RESPONSE_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/video-question-slide/learner-video-question-activity-logs`;
 export const GET_QUESTION_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/question-slide/question-slide-activity-logs`;
 export const GET_ASSIGNMENT_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/assignment-slide-activity-logs`;
-export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
-export const GET_SLIDE_BY_ID = `${"http://localhost:8072"}/admin-core-service/slide/v1/slide`;
-export const SAVE_QUIZ_QUESTION_FEEDBACK = `${"http://localhost:8072"}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
+export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
+export const GET_SLIDE_BY_ID = `${BASE_URL}/admin-core-service/slide/v1/slide`;
+export const SAVE_QUIZ_QUESTION_FEEDBACK = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/save-question-feedback`;
 export const GRADE_ASSIGNMENT_SUBMISSION = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/assignment-slide/grade`;
 export const GET_STUDENT_SUBJECT_PROGRESS = `${BASE_URL}/admin-core-service/subject/learner/v1/subjects`;
 export const GET_STUDENT_SLIDE_PROGRESS = `${BASE_URL}/admin-core-service/slide/institute-learner/v1/get-slides-with-status`;

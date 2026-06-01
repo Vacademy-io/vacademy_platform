@@ -1,23 +1,52 @@
 import { useEffect, useState } from "react";
+import { useParams } from "@tanstack/react-router";
 import AssessmentStartModal from "./StartAssessment";
 import { Preferences } from "@capacitor/preferences";
 import { GET_TEXT_VIA_IDS } from "@/constants/urls";
 import { fetchDataByIds } from "@/services/GetDataById";
 import { RichText, Assessment as AssessmentType } from "@/types/assessment";
+import {
+  resolveAssessmentById,
+  storeAssessmentInfo,
+} from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
 import AssessmentNavbar from "./AssessmentNavbar";
 import { AssessmentInstructions } from "./AssessmentInstructions";
 
 const InstructionPage = () => {
   const [instructions, setInstructions] = useState<RichText>();
   const [assessmentInfo, setAssessmentInfo] = useState<AssessmentType>();
+  const { assessmentId } = useParams({ strict: false });
   const fetchInstructions = async () => {
     try {
       const AssessmentData = await Preferences.get({
         key: "InstructionID_and_AboutID",
       });
-      const Assessment = AssessmentData.value
+      let Assessment = AssessmentData.value
         ? JSON.parse(AssessmentData.value)
         : null;
+
+      // First-load / public-link fallback. InstructionID_and_AboutID is written
+      // by whatever navigates here (assessment card click or post-registration).
+      // On a direct/public link — or if this read wins the race against that
+      // write — the key is absent. Resolve the assessment from the backend by
+      // its route id and persist it so the rest of the exam flow has what it
+      // needs, instead of dereferencing null and crashing.
+      if (!Assessment?.instruction_id && assessmentId) {
+        const resolved = await resolveAssessmentById(assessmentId);
+        if (resolved) {
+          await storeAssessmentInfo(resolved);
+          Assessment = resolved;
+        }
+      }
+
+      if (!Assessment?.instruction_id) {
+        console.error(
+          "Assessment details unavailable for",
+          assessmentId
+        );
+        return;
+      }
+
       setAssessmentInfo(Assessment);
       const data = await fetchDataByIds(
         Assessment.instruction_id,
@@ -30,7 +59,8 @@ const InstructionPage = () => {
   };
   useEffect(() => {
     fetchInstructions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessmentId]);
 
   return (
     <div className="min-h-screen relative">

@@ -80,6 +80,11 @@ export const recentLeadPhone = (lead: RecentLeadDetail) =>
 export const recentLeadAudience = (lead: RecentLeadDetail) =>
     lead.campaign_name || lead.source_audience_name || '-';
 
+// Truncate a display name for table/card views (full name is preserved in
+// the `title` tooltip and in CSV exports — only the on-screen label is cut).
+export const truncateName = (name: string, max = 30) =>
+    name.length > max ? `${name.slice(0, max).trimEnd()}…` : name;
+
 // ── Row → StudentTable mappers (moved from the two pages) ─────────────────────
 
 /**

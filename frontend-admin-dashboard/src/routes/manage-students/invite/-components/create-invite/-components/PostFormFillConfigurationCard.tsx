@@ -98,6 +98,76 @@ const PostFormFillConfigurationCard = ({ form }: PostFormFillConfigurationCardPr
                             </FormItem>
                         )}
                     />
+
+                    {form.watch('postformfillConfiguration.collectBillingContactDetails') && (
+                        <div className="space-y-4 rounded-lg border border-dashed p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
+                                Billing Contact Fields
+                            </p>
+                            <p className="text-xs text-neutral-500">
+                                Customize the labels learners see, mark fields optional, and (for the third field) supply dropdown options as a comma-separated list. Leave the options blank to render it as a free-text input.
+                            </p>
+
+                            {(['name', 'email', 'role'] as const).map((key) => (
+                                <div
+                                    key={key}
+                                    className="grid grid-cols-1 gap-3 rounded-md border bg-white p-3 sm:grid-cols-12"
+                                >
+                                    <FormField
+                                        control={form.control}
+                                        name={`postformfillConfiguration.billingContactFields.${key}.label` as const}
+                                        render={({ field }) => (
+                                            <FormItem className="sm:col-span-6">
+                                                <FormLabel className="text-xs">Field {key} label</FormLabel>
+                                                <FormControl>
+                                                    <Input placeholder="Field label" {...field} />
+                                                </FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    <FormField
+                                        control={form.control}
+                                        name={`postformfillConfiguration.billingContactFields.${key}.required` as const}
+                                        render={({ field }) => (
+                                            <FormItem className="flex items-center justify-between gap-2 sm:col-span-6">
+                                                <FormLabel className="text-xs">Required</FormLabel>
+                                                <FormControl>
+                                                    <Switch
+                                                        checked={field.value}
+                                                        onCheckedChange={field.onChange}
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+
+                                    {key === 'role' && (
+                                        <FormField
+                                            control={form.control}
+                                            name="postformfillConfiguration.billingContactFields.role.options"
+                                            render={({ field }) => (
+                                                <FormItem className="sm:col-span-12">
+                                                    <FormLabel className="text-xs">Options (comma-separated)</FormLabel>
+                                                    <FormControl>
+                                                        <Input
+                                                            placeholder="Owner, Manager, Finance"
+                                                            {...field}
+                                                        />
+                                                    </FormControl>
+                                                    <p className="text-xs text-neutral-500">
+                                                        Leave blank to render this field as a free-text input.
+                                                    </p>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </CardContent>
         </Card>

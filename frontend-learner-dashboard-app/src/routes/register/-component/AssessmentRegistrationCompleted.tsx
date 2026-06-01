@@ -11,10 +11,9 @@ import { Preferences } from "@capacitor/preferences";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
-  fetchAssessmentData,
+  resolveAssessmentById,
   storeAssessmentInfo,
 } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
-import { Assessment, assessmentTypes } from "@/types/assessment";
 import { CheckCircle, Timer, ArrowRight, Sparkle } from "@phosphor-icons/react";
 
 interface TimeLeft {
@@ -34,30 +33,6 @@ const AssessmentRegistrationCompleted = ({
 }) => {
   const navigate = useNavigate();
   const { data: instituteDetails } = useInstituteDetails();
-
-  const resolveAssessmentById = async (
-    id: string,
-  ): Promise<Assessment | undefined> => {
-    const tabs = [
-      assessmentTypes.LIVE,
-      assessmentTypes.UPCOMING,
-      assessmentTypes.PAST,
-    ];
-
-    for (const tab of tabs) {
-      const response = await fetchAssessmentData(0, 100, tab, "ASSESSMENT");
-      const assessments = response?.content ?? [];
-      const matchedAssessment = assessments.find(
-        (assessment: Assessment) => assessment.assessment_id === id,
-      );
-
-      if (matchedAssessment) {
-        return matchedAssessment;
-      }
-    }
-
-    return undefined;
-  };
 
   const branding: InstituteBranding = {
     instituteId: instituteDetails?.id || null,

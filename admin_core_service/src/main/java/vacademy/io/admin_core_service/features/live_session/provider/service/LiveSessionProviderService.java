@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.manager.Bbb
 import vacademy.io.admin_core_service.features.live_session.provider.repository.LiveSessionProviderConfigRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.support.ScheduleConflicts;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -35,6 +36,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +63,7 @@ public class LiveSessionProviderService {
     private final MediaService mediaService;
     private final WebClient.Builder webClientBuilder;
     private final BbbServerRouter bbbServerRouter;
+    private final vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomRecordingS3Service zoomRecordingS3Service;
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
 
@@ -239,6 +242,10 @@ public class LiveSessionProviderService {
                 .hostEmail(request.getHostEmail())
                 .sessionId(request.getSessionId())
                 .scheduleId(request.getScheduleId())
+                // Vendor-neutral fields (preferred); legacy per-vendor fields kept
+                // for one transition release.
+                .providerConfig(request.resolveProviderConfig())
+                .providerAccountId(request.resolveProviderAccountId())
                 .bbbConfig(request.getBbbConfig())
                 .zoomAccountId(request.getZoomAccountId())
                 .zoomConfig(request.getZoomConfig())
@@ -306,6 +313,19 @@ public class LiveSessionProviderService {
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
         return enrichUrls(parseExistingRecordings(schedule));
+    }
+
+    /**
+     * Admin-triggered "Sync to S3": mirrors every not-yet-mirrored Zoom cloud
+     * recording of a schedule to Vacademy storage so it survives Zoom's auto-delete.
+     * Idempotent (already-mirrored recordings are skipped). Returns the updated
+     * recording list with the count newly mirrored.
+     */
+    public RecordingSyncResultDTO syncRecordingsToS3(String scheduleId, String instituteId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        int mirrored = zoomRecordingS3Service.mirrorToS3(schedule, false, 0);
+        return RecordingSyncResultDTO.ok(getRecordings(scheduleId, instituteId), mirrored);
     }
 
     // -----------------------------------------------------------------------
@@ -752,6 +772,43 @@ public class LiveSessionProviderService {
         String providerName = configs.get(0).getProvider();
         return providerFactory.getStrategy(providerName)
                 .checkUserAvailability(requestedStartTimeIso, durationMinutes, instituteId, vendorUserId);
+    }
+
+    /**
+     * Double-booking check across a whole (recurring) session: for every schedule
+     * row, finds OTHER sessions' meetings booked on the same provider account that
+     * overlap that occurrence's slot. Runs against the persisted rows (their own
+     * meeting_date + start/last-entry time) so it needs no timezone parsing and
+     * covers every occurrence. Advisory — the caller decides whether to warn or
+     * block; conflicts are de-duplicated by the conflicting schedule id.
+     */
+    public UserScheduleAvailabilityDTO checkAvailabilityForSession(String sessionId, String providerAccountId) {
+        List<UserScheduleAvailabilityDTO.ConflictingSessionDTO> conflicts = new ArrayList<>();
+        if (sessionId == null || sessionId.isBlank() || providerAccountId == null || providerAccountId.isBlank()) {
+            return UserScheduleAvailabilityDTO.builder().available(true).conflicts(conflicts).build();
+        }
+        Set<String> seen = new HashSet<>();
+        for (SessionSchedule row : scheduleRepository.findBySessionId(sessionId)) {
+            if ("DELETED".equalsIgnoreCase(row.getStatus())
+                    || row.getMeetingDate() == null || row.getStartTime() == null || row.getLastEntryTime() == null) {
+                continue;
+            }
+            java.sql.Date meetingDate = (row.getMeetingDate() instanceof java.sql.Date sqlDate)
+                    ? sqlDate
+                    : new java.sql.Date(row.getMeetingDate().getTime());
+            List<Object[]> rows = scheduleRepository.findOverlappingSchedulesByProviderAccount(
+                    providerAccountId, meetingDate, row.getStartTime(), row.getLastEntryTime(), null, sessionId);
+            for (UserScheduleAvailabilityDTO.ConflictingSessionDTO conflict
+                    : ScheduleConflicts.map(rows, ScheduleConflicts.DEFAULT_ZONE)) {
+                if (conflict.getMeetingKey() == null || seen.add(conflict.getMeetingKey())) {
+                    conflicts.add(conflict);
+                }
+            }
+        }
+        return UserScheduleAvailabilityDTO.builder()
+                .available(conflicts.isEmpty())
+                .conflicts(conflicts)
+                .build();
     }
 
     // -----------------------------------------------------------------------

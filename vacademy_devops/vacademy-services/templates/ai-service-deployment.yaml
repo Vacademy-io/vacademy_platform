@@ -44,12 +44,16 @@ spec:
               value: "{{ .Values.services.ai_service.whisper.modelSize }}"
             {{- end }}
           resources:
+            {{- if .Values.services.ai_service.resources }}
+            {{- toYaml .Values.services.ai_service.resources | nindent 12 }}
+            {{- else }}
             requests:
               cpu: "500m"
               memory: "1Gi"
             limits:
               cpu: "1500m"
               memory: "3Gi"
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /ai-service/health

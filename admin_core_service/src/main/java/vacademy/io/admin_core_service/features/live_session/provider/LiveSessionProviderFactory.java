@@ -1,30 +1,32 @@
 package vacademy.io.admin_core_service.features.live_session.provider;
 
 import org.springframework.stereotype.Component;
-import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
-import vacademy.io.admin_core_service.features.live_session.provider.manager.ZohoMeetingManager;
-import vacademy.io.admin_core_service.features.live_session.provider.manager.ZoomMeetingManager;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
+import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Factory that resolves the correct LiveSessionProviderStrategy by
- * MeetingProvider enum.
- * To add a new provider: implement LiveSessionProviderStrategy, add a bean,
- * register here.
+ * Resolves the correct {@link LiveSessionProviderStrategy} by {@link MeetingProvider}.
+ *
+ * Strategies are auto-discovered: Spring injects every {@code LiveSessionProviderStrategy}
+ * bean and they are keyed by {@link LiveSessionProviderStrategy#getProviderName()}.
+ * To add a new provider you only implement the interface and annotate the bean —
+ * no edit here is required.
  */
 @Component
 public class LiveSessionProviderFactory {
 
     private final Map<MeetingProvider, LiveSessionProviderStrategy> strategies;
 
-    public LiveSessionProviderFactory(ZohoMeetingManager zoho, BbbMeetingManager bbb, ZoomMeetingManager zoom) {
-        this.strategies = Map.of(
-                MeetingProvider.ZOHO_MEETING, zoho,
-                MeetingProvider.BBB_MEETING, bbb,
-                MeetingProvider.ZOOM_MEETING, zoom);
+    public LiveSessionProviderFactory(List<LiveSessionProviderStrategy> strategyBeans) {
+        Map<MeetingProvider, LiveSessionProviderStrategy> map = new EnumMap<>(MeetingProvider.class);
+        for (LiveSessionProviderStrategy strategy : strategyBeans) {
+            map.put(MeetingProvider.fromString(strategy.getProviderName()), strategy);
+        }
+        this.strategies = map;
     }
 
     public LiveSessionProviderStrategy getStrategy(MeetingProvider provider) {

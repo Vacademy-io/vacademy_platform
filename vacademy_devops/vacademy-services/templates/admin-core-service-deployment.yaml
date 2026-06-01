@@ -7,7 +7,7 @@ metadata:
   labels:
     app: admin-core-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.services.admin_core_service.replicas | default .Values.replicaCount }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -40,12 +40,16 @@ spec:
             - secretRef:
                 name: vacademy-secrets
           resources:
+            {{- if .Values.services.admin_core_service.resources }}
+            {{- toYaml .Values.services.admin_core_service.resources | nindent 12 }}
+            {{- else }}
             requests:
               cpu: "250m"
               memory: "1Gi"
             limits:
               cpu: "1000m"
               memory: "2Gi"
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /admin-core-service/actuator/health

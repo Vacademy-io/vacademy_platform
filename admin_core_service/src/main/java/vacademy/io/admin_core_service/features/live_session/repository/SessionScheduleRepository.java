@@ -343,6 +343,43 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             @Param("endTime") java.sql.Time endTime,
             @Param("excludeSessionId") String excludeSessionId);
 
+    /**
+     * Other meetings booked on the SAME provider account that overlap a given
+     * time slot — the signal for double-booking (a single Zoom S2S account = one
+     * host = one concurrent meeting). Same overlap idiom as
+     * {@link #findConflictingSchedulesForResource}, keyed on the generic
+     * {@code provider_account_id} so any multi-account provider can reuse it.
+     * Returns rows: [sessionId, scheduleId, title, meetingDate, startTime, endTime].
+     */
+    @Query(value = """
+                SELECT DISTINCT
+                    s.id AS sessionId,
+                    ss.id AS scheduleId,
+                    s.title AS title,
+                    ss.meeting_date AS meetingDate,
+                    ss.start_time AS startTime,
+                    ss.last_entry_time AS endTime
+                FROM session_schedules ss
+                JOIN live_session s ON ss.session_id = s.id
+                WHERE ss.provider_account_id = :providerAccountId
+                  AND ss.meeting_date = :meetingDate
+                  AND ss.status != 'DELETED'
+                  AND ss.status != 'CANCELLED'
+                  AND s.status != 'DELETED'
+                  AND (:excludeScheduleId IS NULL OR ss.id != :excludeScheduleId)
+                  AND (:excludeSessionId IS NULL OR s.id != :excludeSessionId)
+                  AND ss.start_time < :endTime
+                  AND ss.last_entry_time > :startTime
+                ORDER BY ss.start_time
+            """, nativeQuery = true)
+    List<Object[]> findOverlappingSchedulesByProviderAccount(
+            @Param("providerAccountId") String providerAccountId,
+            @Param("meetingDate") java.sql.Date meetingDate,
+            @Param("startTime") java.sql.Time startTime,
+            @Param("endTime") java.sql.Time endTime,
+            @Param("excludeScheduleId") String excludeScheduleId,
+            @Param("excludeSessionId") String excludeSessionId);
+
     // Get calendar events for a user
     @Query(value = """
                 SELECT
@@ -408,6 +445,49 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             @Param("provider") String provider,
             @Param("providerAlt") String providerAlt,
             @Param("before") java.util.Date before);
+
+    /**
+     * Attendance-poll candidates bounded to recently-ENDED meetings (Zoom's
+     * past-meeting participant report only exists after a meeting ends, and we
+     * don't want to re-poll ancient meetings forever). Same shape as
+     * {@link #findNeedingAttendanceSync} plus an "ended" + "not older than
+     * earliestDate" bound.
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
+                WHERE ss.provider_meeting_id IS NOT NULL
+                  AND (ls.link_type = :provider OR ls.link_type = :providerAlt)
+                  AND ss.status != 'DELETED'
+                  AND (ss.last_attendance_sync_at IS NULL OR ss.last_attendance_sync_at < :before)
+                  AND ss.meeting_date >= :earliestDate
+                  AND (
+                      ss.meeting_date < CURRENT_DATE
+                      OR (ss.meeting_date = CURRENT_DATE AND ss.last_entry_time < CURRENT_TIME)
+                  )
+            """, nativeQuery = true)
+    List<SessionSchedule> findEndedSchedulesNeedingAttendanceSync(
+            @Param("provider") String provider,
+            @Param("providerAlt") String providerAlt,
+            @Param("before") java.util.Date before,
+            @Param("earliestDate") java.sql.Date earliestDate);
+
+    /**
+     * Zoom schedules that still hold un-mirrored cloud recordings (JSON contains a
+     * {@code ZOOM_CLOUD}-tagged entry). Drives the near-expiry S3-mirror rescue job.
+     * The LIKE bound keeps the scan to schedules with something left to mirror.
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                JOIN live_session ls ON ls.id = ss.session_id
+                WHERE (ls.link_type = :provider OR ls.link_type = :providerAlt)
+                  AND ss.status != 'DELETED'
+                  AND ss.provider_recordings_json IS NOT NULL
+                  AND ss.provider_recordings_json LIKE '%ZOOM_CLOUD%'
+            """, nativeQuery = true)
+    List<SessionSchedule> findZoomSchedulesWithCloudRecordings(
+            @Param("provider") String provider,
+            @Param("providerAlt") String providerAlt);
 
     /**
      * Used by the hourly provider sync scheduler.

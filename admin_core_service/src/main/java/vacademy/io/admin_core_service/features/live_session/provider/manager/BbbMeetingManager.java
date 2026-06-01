@@ -184,9 +184,10 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             }
         }
 
-        // Read BBB config from request (admin-set options)
+        // Read BBB config from request (admin-set options). resolveProviderConfig()
+        // prefers the generic providerConfig and falls back to the legacy bbbConfig.
         // Keys are snake_case because BbbConfigDTO uses @JsonNaming(SnakeCaseStrategy)
-        Map<String, Object> bbbCfg = request.getBbbConfig() != null ? request.getBbbConfig() : Map.of();
+        Map<String, Object> bbbCfg = request.resolveProviderConfig() != null ? request.resolveProviderConfig() : Map.of();
         boolean record = boolOrDefault(bbbCfg, "record", true);
         boolean autoStartRec = boolOrDefault(bbbCfg, "auto_start_recording", true);
         boolean muteOnStart = boolOrDefault(bbbCfg, "mute_on_start", true);

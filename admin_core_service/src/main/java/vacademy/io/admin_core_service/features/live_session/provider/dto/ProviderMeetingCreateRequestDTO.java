@@ -32,10 +32,37 @@ public class ProviderMeetingCreateRequestDTO {
      * e.g. "ZOHO_MEETING"
      */
     private String provider;
-    /** BBB-specific meeting config (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
+
+    /** Vendor-neutral meeting settings — preferred over the legacy per-vendor maps. */
+    private Map<String, Object> providerConfig;
+    /** Vendor-neutral provider-account selector — preferred over the legacy zoomAccountId. */
+    private String providerAccountId;
+
+    /** @deprecated use {@link #providerConfig}. */
+    @Deprecated
     private Map<String, Object> bbbConfig;
-    /** Which institute_zoom_account to create this meeting under (Zoom only). */
+    /** @deprecated use {@link #providerAccountId}. */
+    @Deprecated
     private String zoomAccountId;
-    /** Zoom-specific meeting settings (waitingRoom, muteUponEntry, autoRecording, joinBeforeHost, approvalType). */
+    /** @deprecated use {@link #providerConfig}. */
+    @Deprecated
     private Map<String, Object> zoomConfig;
+
+    /** Provider settings, preferring the generic field, falling back to the legacy per-vendor maps. */
+    public Map<String, Object> resolveProviderConfig() {
+        if (providerConfig != null && !providerConfig.isEmpty()) {
+            return providerConfig;
+        }
+        if (zoomConfig != null) {
+            return zoomConfig;
+        }
+        return bbbConfig;
+    }
+
+    /** Provider-account id, preferring the generic field, falling back to the legacy zoom field. */
+    public String resolveProviderAccountId() {
+        return (providerAccountId != null && !providerAccountId.isBlank())
+                ? providerAccountId
+                : zoomAccountId;
+    }
 }

@@ -5,7 +5,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
-import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, processRecording, getTranscriptionStatus } from '../-services/utils';
+import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, syncRecordingsToS3, processRecording, getTranscriptionStatus } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
@@ -522,6 +522,30 @@ function ViewLiveSession() {
         }
     }, [sessionData, groupedSchedules]);
 
+    // "Save to library" — mirror a schedule's Zoom cloud recordings to Vacademy S3
+    // so they survive Zoom's ~30-day auto-delete. Idempotent on the backend.
+    const [syncingS3Schedules, setSyncingS3Schedules] = useState<Set<string>>(new Set());
+    const handleSyncToS3 = useCallback(async (scheduleId: string) => {
+        const instituteId = sessionData?.schedule?.institute_id;
+        if (!instituteId || syncingS3Schedules.has(scheduleId)) return;
+        setSyncingS3Schedules((prev) => new Set(prev).add(scheduleId));
+        try {
+            const result = await syncRecordingsToS3(scheduleId, instituteId);
+            if (result?.recordings) {
+                setRefreshedRecordings((prev) => ({ ...prev, [scheduleId]: result.recordings }));
+            }
+            toast.success('Saving recording to library — it will stay available after Zoom expiry.');
+        } catch {
+            toast.error('Could not save to library. Please try again.');
+        } finally {
+            setSyncingS3Schedules((prev) => {
+                const next = new Set(prev);
+                next.delete(scheduleId);
+                return next;
+            });
+        }
+    }, [sessionData, syncingS3Schedules]);
+
     const uniqueNotifications = useMemo(() => {
         if (!sessionData?.notifications?.addedNotificationActions) return [];
         const seen = new Set();
@@ -1023,6 +1047,17 @@ function ViewLiveSession() {
                                             rec.playbackUrl ||
                                             (rec.fileId && recordingUrls[rec.fileId]) ||
                                             null;
+                                        const onS3 =
+                                            rec.recordingStorage === 'S3' ||
+                                            (!!rec.fileId && !!rec.recordingStorage);
+                                        const expiresInDays = rec.expiresAt
+                                            ? Math.ceil(
+                                                  (new Date(rec.expiresAt).getTime() - Date.now()) /
+                                                      86_400_000
+                                              )
+                                            : null;
+                                        const canSaveToLibrary =
+                                            rec.recordingStorage === 'ZOOM_CLOUD' && !rec.fileId;
                                         return (
                                             <div
                                                 key={rec.recordingId || idx}
@@ -1055,6 +1090,24 @@ function ViewLiveSession() {
                                                                     {formatDuration(rec.durationSeconds)}
                                                                 </span>
                                                             )}
+                                                            {onS3 ? (
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className="border-green-200 bg-green-50 text-green-700"
+                                                                >
+                                                                    Saved to library
+                                                                </Badge>
+                                                            ) : rec.recordingStorage === 'ZOOM_CLOUD' ? (
+                                                                <Badge
+                                                                    variant="outline"
+                                                                    className="border-amber-200 bg-amber-50 text-amber-700"
+                                                                >
+                                                                    Zoom Cloud
+                                                                    {expiresInDays !== null
+                                                                        ? ` · expires in ${Math.max(0, expiresInDays)}d`
+                                                                        : ''}
+                                                                </Badge>
+                                                            ) : null}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1110,6 +1163,20 @@ function ViewLiveSession() {
                                                                 </button>
                                                             )}
                                                         </>
+                                                    )}
+                                                    {canSaveToLibrary && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSyncToS3(rec.scheduleId)}
+                                                            disabled={syncingS3Schedules.has(rec.scheduleId)}
+                                                            title="Save this recording to the Vacademy library so it stays available after Zoom's ~30-day auto-delete"
+                                                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                                                        >
+                                                            <CloudDownload className="size-3" />
+                                                            {syncingS3Schedules.has(rec.scheduleId)
+                                                                ? 'Saving…'
+                                                                : 'Save to library'}
+                                                        </button>
                                                     )}
                                                     <RecordingYoutubeAction
                                                         rec={rec}

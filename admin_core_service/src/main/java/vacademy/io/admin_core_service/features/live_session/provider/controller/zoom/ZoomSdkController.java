@@ -13,6 +13,8 @@ import vacademy.io.admin_core_service.features.live_session.provider.service.zoo
 import vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomAccountStore;
 import vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomAttendanceService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomSdkSignatureService;
+import vacademy.io.admin_core_service.features.live_session.provider.security.JoinAuthorization;
+import vacademy.io.admin_core_service.features.live_session.provider.security.LiveSessionJoinAuthorizer;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRepository;
@@ -41,12 +43,19 @@ public class ZoomSdkController {
     private final ZoomAccessTokenService accessTokenService;
     private final ZoomAttendanceService attendanceService;
     private final UserRepository userRepository;
+    private final LiveSessionJoinAuthorizer joinAuthorizer;
 
     @GetMapping("/zoom-sdk-signature")
     public ResponseEntity<ZoomSdkSignatureResponse> getSdkSignature(
             @RequestParam String scheduleId,
-            @RequestParam(defaultValue = "0") int role,
+            @RequestParam(required = false) String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+
+        // Authorization is server-side: enrolment + institute isolation, and the
+        // join role is DERIVED (creator/admin => HOST), never taken from the client.
+        // A learner can no longer obtain a host ZAK by passing role=1.
+        JoinAuthorization auth = joinAuthorizer.authorize(scheduleId, user, instituteId);
+        int role = auth.role().toZoomRole();
 
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
@@ -68,7 +77,7 @@ public class ZoomSdkController {
         String signature = signatureService.buildSignature(
                 account, schedule.getProviderMeetingId(), role);
 
-        String zakToken = role == 1 ? accessTokenService.getZakToken(account) : null;
+        String zakToken = auth.role().isHost() ? accessTokenService.getZakToken(account) : null;
 
         long tokenExp = Instant.now().getEpochSecond() + signatureService.getValiditySeconds();
 
@@ -85,8 +94,8 @@ public class ZoomSdkController {
                 .build();
 
         // Mark attendance at join — reliable because the request is authenticated.
-        // Only for participants (learners); hosts joining as role=1 aren't counted.
-        if (role == 0) {
+        // Only for participants (learners); hosts aren't counted.
+        if (!auth.role().isHost()) {
             attendanceService.markPresent(schedule.getSessionId(), scheduleId,
                     user.getUserId(), response.getUserName(), schedule.getProviderMeetingId());
         }
@@ -105,7 +114,11 @@ public class ZoomSdkController {
     @GetMapping("/zoom-join-payload")
     public ResponseEntity<ZoomJoinPayloadResponse> getJoinPayload(
             @RequestParam String scheduleId,
+            @RequestParam(required = false) String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+
+        // Gate native (deep-link) joins behind the same enrolment + institute check.
+        joinAuthorizer.authorize(scheduleId, user, instituteId);
 
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,

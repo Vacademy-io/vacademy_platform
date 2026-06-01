@@ -20,9 +20,14 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.meeting.dto.*;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
+import vacademy.io.admin_core_service.features.live_session.provider.support.ScheduleConflicts;
+
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,13 +66,30 @@ public class ZoomMeetingManager implements LiveSessionProviderStrategy {
         return MeetingProvider.ZOOM_MEETING.name();
     }
 
+    // Capabilities — Zoom uses the embedded Meeting SDK (signature-based join),
+    // multiple per-institute accounts, and event webhooks.
+    @Override
+    public boolean supportsSdkJoin() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsMultiAccount() {
+        return true;
+    }
+
+    @Override
+    public boolean supportsWebhooks() {
+        return true;
+    }
+
     // -----------------------------------------------------------------------
     // Create meeting — POST /v2/users/me/meetings
     // -----------------------------------------------------------------------
 
     @Override
     public CreateMeetingResponseDTO createMeeting(CreateMeetingRequestDTO request, String instituteId) {
-        ZoomAccount account = resolveAccount(instituteId, request.getZoomAccountId());
+        ZoomAccount account = resolveAccount(instituteId, request.resolveProviderAccountId());
         String token = accessTokenService.getAccessToken(account);
 
         Map<String, Object> body = new HashMap<>();
@@ -83,7 +105,7 @@ public class ZoomMeetingManager implements LiveSessionProviderStrategy {
         if (request.getTimezone() != null && !request.getTimezone().isBlank()) {
             body.put("timezone", request.getTimezone());
         }
-        body.put("settings", buildSettings(request.getZoomConfig()));
+        body.put("settings", buildSettings(request.resolveProviderConfig()));
 
         JsonNode response;
         try {
@@ -140,18 +162,10 @@ public class ZoomMeetingManager implements LiveSessionProviderStrategy {
                 .build();
     }
 
-    // -----------------------------------------------------------------------
-    // Not yet supported in Phase 2 — implemented in later phases
-    // -----------------------------------------------------------------------
-
-    @Override
-    public ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
-            String participantEmail, String instituteId) {
-        // Zoom learners join through the embedded Meeting SDK using a signed JWT,
-        // not a pre-registered join link. See ZoomSdkController (Phase 3).
-        throw new VacademyException(HttpStatus.NOT_IMPLEMENTED,
-                "Zoom participant join uses the Meeting SDK signature endpoint, not getParticipantJoinLink");
-    }
+    // Note: getParticipantJoinLink is intentionally NOT overridden — Zoom learners
+    // join via the embedded Meeting SDK signature (see ZoomSdkController), so it
+    // falls through to the interface default (throws NOT_IMPLEMENTED). supportsSdkJoin()
+    // returns true to signal this.
 
     @Override
     public List<MeetingRecordingDTO> getRecordings(String providerMeetingId, String instituteId) {
@@ -299,10 +313,61 @@ public class ZoomMeetingManager implements LiveSessionProviderStrategy {
         }
     }
 
+    /**
+     * Detects double-booking: other meetings already booked on the SAME Zoom
+     * account ({@code provider_account_id}) that overlap the requested slot. A Zoom
+     * S2S account hosts one meeting at a time, so two overlapping meetings on one
+     * account collide. {@code vendorUserId} carries the Zoom account row id (=
+     * provider_account_id); when blank the institute's default account is used.
+     *
+     * Advisory by design — any failure degrades to "available" so a check never
+     * blocks scheduling.
+     */
     @Override
     public UserScheduleAvailabilityDTO checkUserAvailability(
             String requestedStartTimeIso, int durationMinutes, String instituteId, String vendorUserId) {
-        // No conflict checking for Zoom in v1 — always report available.
+        try {
+            String accountId = (vendorUserId != null && !vendorUserId.isBlank())
+                    ? vendorUserId
+                    : zoomAccountStore.findDefault(instituteId).map(ZoomAccount::getId).orElse(null);
+            if (accountId == null) {
+                return availableResponse(requestedStartTimeIso, durationMinutes);
+            }
+
+            ZonedDateTime start = OffsetDateTime.parse(requestedStartTimeIso)
+                    .atZoneSameInstant(ScheduleConflicts.DEFAULT_ZONE);
+            LocalDate date = start.toLocalDate();
+            LocalTime startTime = start.toLocalTime();
+            int minutes = durationMinutes > 0 ? durationMinutes : 60;
+            LocalTime endTime = startTime.plusMinutes(minutes);
+            // Same-day window only (classes don't cross midnight); clamp a wrap.
+            if (!endTime.isAfter(startTime)) {
+                endTime = LocalTime.of(23, 59, 59);
+            }
+
+            List<Object[]> rows = scheduleRepository.findOverlappingSchedulesByProviderAccount(
+                    accountId,
+                    java.sql.Date.valueOf(date),
+                    java.sql.Time.valueOf(startTime),
+                    java.sql.Time.valueOf(endTime),
+                    null, null);
+            List<UserScheduleAvailabilityDTO.ConflictingSessionDTO> conflicts =
+                    ScheduleConflicts.map(rows, ScheduleConflicts.DEFAULT_ZONE);
+
+            return UserScheduleAvailabilityDTO.builder()
+                    .available(conflicts.isEmpty())
+                    .requestedStartTime(requestedStartTimeIso)
+                    .requestedDurationMinutes(durationMinutes)
+                    .conflicts(conflicts)
+                    .build();
+        } catch (Exception e) {
+            log.warn("zoom.availability.check.failed reason={} msg={}",
+                    e.getClass().getSimpleName(), e.getMessage());
+            return availableResponse(requestedStartTimeIso, durationMinutes);
+        }
+    }
+
+    private static UserScheduleAvailabilityDTO availableResponse(String requestedStartTimeIso, int durationMinutes) {
         return UserScheduleAvailabilityDTO.builder()
                 .available(true)
                 .requestedStartTime(requestedStartTimeIso)

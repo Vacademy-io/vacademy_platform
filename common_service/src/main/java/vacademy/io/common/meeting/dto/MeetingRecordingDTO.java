@@ -44,4 +44,11 @@ public class MeetingRecordingDTO {
      * admin UI as a fallback when the embedded ?pwd= parameter is rejected.
      */
     private String passcode;
+    /**
+     * Where the recording currently lives: "ZOOM_CLOUD" (provider cloud, subject to
+     * the provider's auto-delete via {@link #expiresAt}) or "S3" (mirrored to
+     * Vacademy storage, permanent — {@link #fileId} set, {@link #expiresAt} cleared).
+     * Null for legacy rows. Drives the storage badge + "Sync to S3" affordance.
+     */
+    private String recordingStorage;
 }

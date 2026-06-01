@@ -480,8 +480,11 @@ export const GET_SESSION_BY_SESSION_ID = `${BASE_URL}/admin-core-service/get-ses
 export const LIVE_SESSION_REPORT_BY_SESSION_ID = `${BASE_URL}/admin-core-service/live-session-report/by-session-id`;
 export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
 export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
+export const CREATE_PROVIDER_MEETINGS_FOR_SESSION = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create-for-session`;
+export const PROVIDER_MEETING_AVAILABILITY_FOR_SESSION = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/availability-for-session`;
 export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
 export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
+export const SYNC_RECORDINGS_TO_S3 = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync-to-s3`;
 
 // ── Zoom integration ──
 // Per-institute Zoom account credentials (S2S OAuth + Meeting SDK pair).

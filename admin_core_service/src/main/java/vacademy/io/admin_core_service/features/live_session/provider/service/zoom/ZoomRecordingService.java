@@ -93,6 +93,11 @@ public class ZoomRecordingService {
             if (rec.getFileId() == null && rec.getExpiresAt() == null) {
                 rec.setExpiresAt(defaultExpiresAt);
             }
+            // Tag storage so the admin UI can show a "Zoom Cloud (expires in N days)"
+            // vs "Library/S3" badge. The S3 mirror flips this to "S3" once uploaded.
+            if (rec.getRecordingStorage() == null) {
+                rec.setRecordingStorage(rec.getFileId() != null ? "S3" : "ZOOM_CLOUD");
+            }
             // Always upsert latest URLs/metadata (download tokens rotate).
             byId.put(rec.getRecordingId(), rec);
         }
@@ -108,6 +113,23 @@ public class ZoomRecordingService {
         log.info("zoom.recording.persist scheduleId={} added={} total={}",
                 schedule.getId(), added, byId.size());
         return added;
+    }
+
+    /** Public read of the stored recordings (used by the S3 mirror service). */
+    public List<MeetingRecordingDTO> getStoredRecordings(SessionSchedule schedule) {
+        return parseExisting(schedule);
+    }
+
+    /** Serializes and saves the recordings list back onto the schedule. */
+    @Transactional
+    public void replaceRecordings(SessionSchedule schedule, List<MeetingRecordingDTO> recordings) {
+        try {
+            schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
+            scheduleRepository.save(schedule);
+        } catch (Exception e) {
+            log.error("zoom.recording.replace serialize failed for schedule {}: {}",
+                    schedule.getId(), e.getMessage());
+        }
     }
 
     private List<MeetingRecordingDTO> parseExisting(SessionSchedule schedule) {

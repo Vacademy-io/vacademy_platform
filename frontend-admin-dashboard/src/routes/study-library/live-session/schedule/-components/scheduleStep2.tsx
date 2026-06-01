@@ -35,7 +35,12 @@ import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { FieldErrors } from 'react-hook-form';
 import { transformFormToDTOStep2 } from '../../-constants/helper';
-import { createLiveSessionStep2, createProviderMeeting } from '../-services/utils';
+import {
+    createLiveSessionStep2,
+    createProviderMeeting,
+    createProviderMeetingsForSession,
+    checkProviderAvailabilityForSession,
+} from '../-services/utils';
 import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useNavigate } from '@tanstack/react-router';
@@ -606,8 +611,6 @@ export default function ScheduleStep2() {
                 instituteDetails?.id
             ) {
                 try {
-                    const sessionDetailsPayload = await getSessionBySessionId(sessionId);
-                    const schedules = sessionDetailsPayload?.schedule?.added_schedules || [];
                     const s = step1Data as any;
                     const altHostsRaw = (s?.zoomAlternativeHosts ?? '').trim();
                     const zoomConfig = {
@@ -635,33 +638,48 @@ export default function ScheduleStep2() {
                         watermark: s?.zoomWatermark ?? false,
                     };
 
-                    for (const schedule of schedules) {
-                        try {
-                            const durationMinutes = Number(schedule.duration) ||
-                                (Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes));
-
-                            const sessionStartDate = schedule.meetingDate || schedule.meeting_date || (step1Data as any)?.startDate || new Date().toISOString().split('T')[0];
-                            const formattedStartTime = formatZohoStartTime(sessionStartDate, schedule.startTime || schedule.start_time);
-
-                            await createProviderMeeting({
-                                instituteId: instituteDetails.id,
-                                sessionId: sessionId,
-                                scheduleId: schedule.id,
-                                topic: step1Data.title || sessionDetailsPayload?.schedule?.title || 'Live Class',
-                                agenda: step1Data.description || 'Live Subject Class',
-                                startTime: formattedStartTime,
-                                durationMinutes: durationMinutes > 0 ? durationMinutes : 30,
-                                timezone: step1Data.timeZone || sessionDetailsPayload?.schedule?.timezone || 'Asia/Kolkata',
-                                provider: 'ZOOM_MEETING',
-                                zoomAccountId: (step1Data as any).zoomAccountId,
-                                zoomConfig,
-                            });
-                        } catch (err) {
-                            console.error(`Error creating Zoom meeting for schedule ${schedule.id}:`, err);
+                    // One server-side call provisions a Zoom meeting for EVERY schedule of
+                    // the session (recurring => one meeting per occurrence). The backend
+                    // loops the rows idempotently and derives each occurrence's start time
+                    // + duration from its own row, so we no longer fan out N fragile calls
+                    // from the browser.
+                    // Advisory double-booking check: warn (don't block) if the chosen
+                    // Zoom account already has meetings overlapping any occurrence.
+                    try {
+                        const availability = await checkProviderAvailabilityForSession(
+                            sessionId,
+                            s.zoomAccountId
+                        );
+                        if (availability?.available === false) {
+                            const count = availability.conflicts?.length ?? 0;
+                            toast.warning(
+                                `Heads up: this Zoom account already has ${count} overlapping meeting${
+                                    count === 1 ? '' : 's'
+                                } at the selected time. Creating anyway.`
+                            );
                         }
+                    } catch {
+                        // advisory only — never block meeting creation
                     }
+
+                    const fallbackDuration =
+                        Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes);
+                    await createProviderMeetingsForSession({
+                        instituteId: instituteDetails.id,
+                        sessionId: sessionId,
+                        topic: step1Data.title || 'Live Class',
+                        agenda: step1Data.description || 'Live Subject Class',
+                        durationMinutes: fallbackDuration > 0 ? fallbackDuration : 30,
+                        timezone: step1Data.timeZone || 'Asia/Kolkata',
+                        provider: 'ZOOM_MEETING',
+                        // Vendor-neutral fields (preferred); legacy zoom* sent too for transition.
+                        providerConfig: zoomConfig,
+                        providerAccountId: s.zoomAccountId,
+                        zoomAccountId: s.zoomAccountId,
+                        zoomConfig,
+                    });
                 } catch (err) {
-                    console.error('Error fetching session details to create Zoom meeting:', err);
+                    console.error('Error creating Zoom meetings for session:', err);
                 }
             }
 

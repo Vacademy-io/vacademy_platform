@@ -38,7 +38,7 @@ public class PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionService 
             PaymentPlan paymentPlan) {
 
         return repository.findByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlanAndStatusIn(
-                        mapping, paymentPlan, List.of(StatusEnum.ACTIVE.name()))
+                        mapping, paymentPlan, List.of(StatusEnum.ACTIVE.name()), List.of(StatusEnum.ACTIVE.name()))
                 .map(result -> result.getReferralOption().toReferralOptionDTO());
     }
 

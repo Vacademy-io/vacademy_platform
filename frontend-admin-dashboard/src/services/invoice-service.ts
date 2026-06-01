@@ -4,6 +4,7 @@ import {
     GET_INVOICES_BY_INSTITUTE,
     GET_INVOICE_DOWNLOAD_URL,
     POST_ADMIN_CREATE_INVOICE,
+    POST_INVOICE_MARK_PAID_MANUAL,
 } from '@/constants/urls';
 
 export interface InvoiceLineItemDTO {
@@ -30,6 +31,7 @@ export interface InvoiceDTO {
     status: string;
     pdf_file_id: string | null;
     pdf_url: string | null;
+    payment_link: string | null;
     tax_included: boolean;
     created_at: string;
     updated_at: string;
@@ -119,6 +121,24 @@ export async function createAdminInvoice(
 ): Promise<AdminInvoicePaymentLinkResponse[]> {
     const response = await authenticatedAxiosInstance.post<AdminInvoicePaymentLinkResponse[]>(
         POST_ADMIN_CREATE_INVOICE,
+        request
+    );
+    return response.data;
+}
+
+// ─── Manual Payment ───────────────────────────────────────────────────────────
+
+export interface ManualInvoicePaymentRequest {
+    transaction_id?: string;
+    notes?: string;
+}
+
+export async function markInvoicePaidManually(
+    invoiceId: string,
+    request: ManualInvoicePaymentRequest
+): Promise<InvoiceDTO> {
+    const response = await authenticatedAxiosInstance.post<InvoiceDTO>(
+        POST_INVOICE_MARK_PAID_MANUAL(invoiceId),
         request
     );
     return response.data;

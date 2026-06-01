@@ -710,6 +710,8 @@ export const GET_INVOICES_BY_INSTITUTE = (instituteId: string) =>
 export const GET_INVOICE_DOWNLOAD_URL = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/download`;
 export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/create`;
+export const POST_INVOICE_MARK_PAID_MANUAL = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
 export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot

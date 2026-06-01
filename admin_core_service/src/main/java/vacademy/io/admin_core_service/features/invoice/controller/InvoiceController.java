@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.invoice.dto.AdminCreateInvoiceRequestDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.AdminInvoicePaymentLinkResponseDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
+import vacademy.io.admin_core_service.features.invoice.dto.ManualInvoicePaymentRequestDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.payment.dto.PaymentResponseDTO;
@@ -135,6 +136,21 @@ public class InvoiceController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
         PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Admin marks an invoice as paid via an offline / manual payment.
+     * Creates a MANUAL vendor PaymentLog, links it to the invoice, and sets status to PAID.
+     *
+     * POST /admin-core-service/v1/invoices/{invoiceId}/mark-paid-manual
+     */
+    @PostMapping("/{invoiceId}/mark-paid-manual")
+    public ResponseEntity<InvoiceDTO> markInvoicePaidManual(
+            @PathVariable String invoiceId,
+            @RequestBody ManualInvoicePaymentRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        InvoiceDTO invoice = invoiceService.markInvoicePaidManually(invoiceId, request, userDetails);
+        return ResponseEntity.ok(invoice);
     }
 
     /**

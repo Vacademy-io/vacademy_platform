@@ -293,8 +293,8 @@ export function CreateInvoiceDialog({
                                 <div className="mb-1 grid grid-cols-12 gap-2 px-1">
                                     <span className="col-span-5 text-caption font-medium text-neutral-500">Description</span>
                                     <span className="col-span-2 text-caption font-medium text-neutral-500 text-right">Qty</span>
-                                    <span className="col-span-2 text-caption font-medium text-neutral-500 text-right">Price</span>
-                                    <span className="col-span-3 text-caption font-medium text-neutral-500 text-right">Amount</span>
+                                    <span className="col-span-3 text-caption font-medium text-neutral-500 text-right">Price</span>
+                                    <span className="col-span-2 text-caption font-medium text-neutral-500 text-right">Amount</span>
                                 </div>
 
                                 <div className="space-y-2">
@@ -337,12 +337,14 @@ export function CreateInvoiceDialog({
                                                         <FormItem className="col-span-2 space-y-0.5">
                                                             <FormControl>
                                                                 <MyInput
-                                                                    inputType="number"
+                                                                    inputType="text"
                                                                     inputPlaceholder="1"
                                                                     input={String(f.value)}
                                                                     onChangeFunction={f.onChange}
-                                                                    className="w-full text-right"
-                                                                    {...f}
+                                                                    className="w-full max-w-full text-right"
+                                                                    ref={f.ref}
+                                                                    name={f.name}
+                                                                    onBlur={f.onBlur}
                                                                 />
                                                             </FormControl>
                                                             <FormMessage className="text-caption" />
@@ -355,15 +357,17 @@ export function CreateInvoiceDialog({
                                                     control={form.control}
                                                     name={`line_items.${index}.unit_price`}
                                                     render={({ field: f }) => (
-                                                        <FormItem className="col-span-2 space-y-0.5">
+                                                        <FormItem className="col-span-3 space-y-0.5">
                                                             <FormControl>
                                                                 <MyInput
-                                                                    inputType="number"
+                                                                    inputType="text"
                                                                     inputPlaceholder="0"
                                                                     input={String(f.value)}
                                                                     onChangeFunction={f.onChange}
-                                                                    className="w-full text-right"
-                                                                    {...f}
+                                                                    className="w-full max-w-full text-right"
+                                                                    ref={f.ref}
+                                                                    name={f.name}
+                                                                    onBlur={f.onBlur}
                                                                 />
                                                             </FormControl>
                                                             <FormMessage className="text-caption" />
@@ -372,7 +376,7 @@ export function CreateInvoiceDialog({
                                                 />
 
                                                 {/* Line total + delete */}
-                                                <div className="col-span-3 flex items-center justify-end gap-1.5 pt-1.5">
+                                                <div className="col-span-2 flex items-center justify-end gap-1.5 pt-1.5">
                                                     <span className="text-body font-semibold text-neutral-800 tabular-nums">
                                                         {fmt(lineTotal, currency)}
                                                     </span>

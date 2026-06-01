@@ -1,14 +1,31 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { toast } from 'sonner';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchPaymentLogs, getPaymentLogsQueryKey } from '@/services/payment-logs';
-import { fetchUserInvoices, getInvoiceDownloadUrl } from '@/services/invoice-service';
+import { fetchUserInvoices, getInvoiceDownloadUrl, markInvoicePaidManually } from '@/services/invoice-service';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import type { InvoiceDTO } from '@/services/invoice-service';
 import { PaymentLogsTable } from '@/routes/manage-payments/-components/PaymentLogsTable';
 import type { BatchForSession, PaymentLogsResponse } from '@/types/payment-logs';
-import { FileText, Wallet, Plus, DownloadSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { FileText, Wallet, Plus, DownloadSimple, CaretLeft, CaretRight, ClipboardText, CurrencyDollar, DotsThreeVertical, Check } from '@phosphor-icons/react';
+// Check is used in MarkPaidDialog confirm button
 import { MyButton } from '@/components/design-system/button';
+import { MyDialog } from '@/components/design-system/dialog';
+import { MyInput } from '@/components/design-system/input';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
 import { CreateInvoiceDialog } from './create-invoice-dialog';
 
@@ -76,9 +93,139 @@ function getStatusBadge(status: string) {
     );
 }
 
-/** Invoice list with client-side pagination */
-const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
+// ─── Mark Paid Dialog ────────────────────────────────────────────────────────
+
+const markPaidSchema = z.object({
+    transaction_id: z.string().optional(),
+    notes: z.string().optional(),
+});
+type MarkPaidValues = z.infer<typeof markPaidSchema>;
+
+function MarkPaidDialog({
+    invoice,
+    open,
+    onOpenChange,
+    onSuccess,
+}: {
+    invoice: InvoiceDTO;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onSuccess: () => void;
+}) {
+    const form = useForm<MarkPaidValues>({
+        resolver: zodResolver(markPaidSchema),
+        defaultValues: { transaction_id: '', notes: '' },
+    });
+
+    const handleClose = () => {
+        form.reset();
+        onOpenChange(false);
+    };
+
+    const handleSubmit = async (values: MarkPaidValues) => {
+        await markInvoicePaidManually(invoice.id, {
+            transaction_id: values.transaction_id || undefined,
+            notes: values.notes || undefined,
+        });
+        toast.success(`Invoice ${invoice.invoice_number} marked as paid`);
+        onSuccess();
+        handleClose();
+    };
+
+    return (
+        <MyDialog
+            open={open}
+            onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(true); }}
+            heading={`Mark as Paid — ${invoice.invoice_number}`}
+            dialogWidth="max-w-sm"
+            content={
+                <Form {...form}>
+                    <form className="flex flex-col gap-4 px-6 py-5">
+                        <p className="text-body text-neutral-600">
+                            Record an offline / cash payment of{' '}
+                            <span className="font-semibold text-neutral-800">
+                                {formatCurrency(invoice.total_amount, invoice.currency)}
+                            </span>{' '}
+                            for this invoice.
+                        </p>
+
+                        <FormField
+                            control={form.control}
+                            name="transaction_id"
+                            render={({ field: f }) => (
+                                <FormItem>
+                                    <FormLabel className="text-caption text-neutral-600">
+                                        Transaction / Reference ID <span className="text-neutral-400">(optional)</span>
+                                    </FormLabel>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="text"
+                                            inputPlaceholder="e.g. UTR123456789"
+                                            input={f.value ?? ''}
+                                            onChangeFunction={f.onChange}
+                                            {...f}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="notes"
+                            render={({ field: f }) => (
+                                <FormItem>
+                                    <FormLabel className="text-caption text-neutral-600">
+                                        Notes <span className="text-neutral-400">(optional)</span>
+                                    </FormLabel>
+                                    <FormControl>
+                                        <MyInput
+                                            inputType="text"
+                                            inputPlaceholder="e.g. Cash collected at counter"
+                                            input={f.value ?? ''}
+                                            onChangeFunction={f.onChange}
+                                            {...f}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-4">
+                            <MyButton buttonType="secondary" scale="medium" onClick={handleClose}>
+                                Cancel
+                            </MyButton>
+                            <MyButton
+                                buttonType="primary"
+                                scale="medium"
+                                onAsyncClick={form.handleSubmit(handleSubmit)}
+                                loadingText="Saving…"
+                            >
+                                <Check className="mr-1.5 size-4" />
+                                Confirm Payment
+                            </MyButton>
+                        </div>
+                    </form>
+                </Form>
+            }
+        />
+    );
+}
+
+// ─── Invoice list with client-side pagination ─────────────────────────────────
+
+const InvoicesList = ({
+    invoices,
+    onRefresh,
+}: {
+    invoices: InvoiceDTO[];
+    onRefresh: () => void;
+}) => {
     const [page, setPage] = useState(0);
+    const [markPaidInvoice, setMarkPaidInvoice] = useState<InvoiceDTO | null>(null);
+
     const totalPages = Math.ceil(invoices.length / INVOICES_PER_PAGE);
     const paged = invoices.slice(page * INVOICES_PER_PAGE, (page + 1) * INVOICES_PER_PAGE);
 
@@ -90,95 +237,142 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
         }
     };
 
+    const handleCopyLink = async (invoice: InvoiceDTO) => {
+        const link = invoice.payment_link ?? `${BASE_URL_LEARNER_DASHBOARD}/pay/invoice/${invoice.id}`;
+        try {
+            await navigator.clipboard.writeText(link);
+            toast.success('Payment link copied');
+        } catch {
+            toast.error('Could not copy link');
+        }
+    };
+
     if (invoices.length === 0) {
         return (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-                <FileText className="mx-auto mb-2 size-8 text-gray-400" />
-                <p className="text-sm text-gray-500">No invoices found.</p>
+            <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center">
+                <FileText className="mx-auto mb-2 size-8 text-neutral-400" />
+                <p className="text-body text-neutral-500">No invoices found.</p>
             </div>
         );
     }
 
     return (
-        // overflow-x-auto so the trailing Status + Action columns are reachable
-        // by horizontal scroll on narrow side-panels. The earlier overflow-hidden
-        // clipped them — the Download button was rendered but never visible.
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Invoice #</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Due Date</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Amount</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-                        <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Action</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                    {paged.map((inv) => (
-                        <tr key={inv.id} className="transition-colors hover:bg-gray-50">
-                            <td
-                                className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900"
-                                title={inv.invoice_number || inv.id}
-                            >
-                                {/* Synthetic invoice numbers carry a status prefix + full SFP UUID
-                                    (e.g. "PARTIAL-1f2f1396-…"). Showing the full string pushes
-                                    the Action column off-screen in narrow side-panels. Truncate
-                                    visually but expose the full id via title= for forensics. */}
-                                {shortInvoiceLabel(inv.invoice_number, inv.id)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-600">
-                                {/* Prefer due_date so each row matches its installment's
-                                    deadline. Falls back to invoice_date for legacy /
-                                    non-CPO real Invoice rows that may not carry one. */}
-                                {formatDate(inv.due_date || inv.invoice_date)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900">
-                                {formatCurrency(inv.total_amount, inv.currency)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5">
-                                {getStatusBadge(inv.status)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                                {(inv.pdf_url || inv.pdf_file_id) && (
-                                    <button
-                                        onClick={() => handleDownload(inv)}
-                                        className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-                                        title="Download Invoice PDF"
-                                    >
-                                        <DownloadSimple className="size-3.5" />
-                                        Download
-                                    </button>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-            {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-3 py-2">
-                    <span className="text-xs text-gray-500">
-                        {page * INVOICES_PER_PAGE + 1}–{Math.min((page + 1) * INVOICES_PER_PAGE, invoices.length)} of {invoices.length}
-                    </span>
-                    <div className="flex gap-1">
-                        <button
-                            onClick={() => setPage((p) => Math.max(0, p - 1))}
-                            disabled={page === 0}
-                            className="rounded p-1 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
-                        >
-                            <CaretLeft className="size-4" />
-                        </button>
-                        <button
-                            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                            disabled={page >= totalPages - 1}
-                            className="rounded p-1 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
-                        >
-                            <CaretRight className="size-4" />
-                        </button>
-                    </div>
-                </div>
+        <>
+            {markPaidInvoice && (
+                <MarkPaidDialog
+                    invoice={markPaidInvoice}
+                    open={Boolean(markPaidInvoice)}
+                    onOpenChange={(o) => { if (!o) setMarkPaidInvoice(null); }}
+                    onSuccess={onRefresh}
+                />
             )}
-        </div>
+
+            <div className="overflow-x-auto rounded-lg border border-neutral-200">
+                <table className="min-w-full divide-y divide-neutral-200">
+                    <thead className="bg-neutral-50">
+                        <tr>
+                            <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Invoice #</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Due</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Amount</th>
+                            <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-neutral-500">Status</th>
+                            <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-neutral-500">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-100 bg-white">
+                        {paged.map((inv) => {
+                            const isPending = inv.status === 'PENDING_PAYMENT';
+                            const hasPdf = Boolean(inv.pdf_url || inv.pdf_file_id);
+                            return (
+                                <tr key={inv.id} className="transition-colors hover:bg-neutral-50">
+                                    <td
+                                        className="whitespace-nowrap px-3 py-2.5 text-body font-medium text-neutral-900"
+                                        title={inv.invoice_number || inv.id}
+                                    >
+                                        {shortInvoiceLabel(inv.invoice_number, inv.id)}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2.5 text-body text-neutral-600">
+                                        {formatDate(inv.due_date || inv.invoice_date)}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2.5 text-body font-medium text-neutral-900">
+                                        {formatCurrency(inv.total_amount, inv.currency)}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2.5">
+                                        {getStatusBadge(inv.status)}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                                        {(isPending || hasPdf) && <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button
+                                                    className="inline-flex size-7 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 shadow-sm transition-colors hover:bg-neutral-50 hover:text-neutral-700"
+                                                    title="Actions"
+                                                >
+                                                    <DotsThreeVertical className="size-4" weight="bold" />
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="min-w-40">
+                                                {isPending && (
+                                                    <DropdownMenuItem
+                                                        className="cursor-pointer gap-2"
+                                                        onSelect={() => handleCopyLink(inv)}
+                                                    >
+                                                        <ClipboardText className="size-4 text-neutral-500" />
+                                                        Copy Link
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {isPending && (
+                                                    <DropdownMenuItem
+                                                        className="cursor-pointer gap-2 text-warning-700 focus:text-warning-700"
+                                                        onSelect={() => setMarkPaidInvoice(inv)}
+                                                    >
+                                                        <CurrencyDollar className="size-4" />
+                                                        Mark as Paid
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {isPending && hasPdf && (
+                                                    <DropdownMenuSeparator />
+                                                )}
+                                                {hasPdf && (
+                                                    <DropdownMenuItem
+                                                        className="cursor-pointer gap-2"
+                                                        onSelect={() => handleDownload(inv)}
+                                                    >
+                                                        <DownloadSimple className="size-4 text-neutral-500" />
+                                                        Download PDF
+                                                    </DropdownMenuItem>
+                                                )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50 px-3 py-2">
+                        <span className="text-caption text-neutral-500">
+                            {page * INVOICES_PER_PAGE + 1}–{Math.min((page + 1) * INVOICES_PER_PAGE, invoices.length)} of {invoices.length}
+                        </span>
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                                disabled={page === 0}
+                                className="rounded p-1 text-neutral-500 hover:bg-neutral-200 disabled:opacity-40"
+                            >
+                                <CaretLeft className="size-4" />
+                            </button>
+                            <button
+                                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                                disabled={page >= totalPages - 1}
+                                className="rounded p-1 text-neutral-500 hover:bg-neutral-200 disabled:opacity-40"
+                            >
+                                <CaretRight className="size-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </>
     );
 };
 
@@ -305,7 +499,14 @@ export const StudentPaymentHistory = () => {
                         <span className="ml-2 text-sm text-gray-500">Loading invoices...</span>
                     </div>
                 ) : (
-                    <InvoicesList invoices={invoicesData || []} />
+                    <InvoicesList
+                        invoices={invoicesData || []}
+                        onRefresh={() =>
+                            queryClient.invalidateQueries({
+                                queryKey: ['user-invoices', selectedStudent?.user_id],
+                            })
+                        }
+                    />
                 )}
             </div>
 

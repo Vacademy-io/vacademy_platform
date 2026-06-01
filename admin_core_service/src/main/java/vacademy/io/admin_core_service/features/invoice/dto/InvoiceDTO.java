@@ -34,6 +34,7 @@ public class InvoiceDTO {
     private String status;
     private String pdfFileId; // File ID reference to media service
     private String pdfUrl; // Computed URL (for convenience, retrieved from file ID)
+    private String paymentLink; // Shareable payment URL for PENDING_PAYMENT invoices
     private Boolean taxIncluded;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

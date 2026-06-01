@@ -3024,6 +3024,74 @@ public class InvoiceService {
         }
     }
 
+    public InvoiceDTO markInvoicePaidManually(String invoiceId,
+            ManualInvoicePaymentRequestDTO request,
+            CustomUserDetails userDetails) {
+
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+
+        if (INVOICE_STATUS_PAID.equals(invoice.getStatus())) {
+            return mapToDTO(invoice);
+        }
+
+        String txRef = StringUtils.hasText(request.getTransactionId())
+                ? request.getTransactionId()
+                : "MANUAL-" + System.currentTimeMillis();
+
+        String paymentLogId = createAdminInvoicePaymentLog(
+                invoice.getUserId(),
+                invoice.getTotalAmount().doubleValue(),
+                "MANUAL",
+                invoice.getInstituteId(),
+                invoice.getCurrency()
+        );
+
+        PaymentLog paymentLog = paymentLogRepository.findById(paymentLogId)
+                .orElseThrow(() -> new VacademyException("PaymentLog not created: " + paymentLogId));
+        paymentLog.setStatus("SUCCESS");
+        paymentLog.setPaymentStatus("PAID");
+        paymentLog.setDate(new Date());
+
+        try {
+            Map<String, Object> specificData = new HashMap<>();
+            specificData.put("transactionRef", txRef);
+            specificData.put("paymentType", "MANUAL_INVOICE");
+            specificData.put("recordedByUserId", userDetails != null ? userDetails.getUserId() : "SYSTEM");
+            if (StringUtils.hasText(request.getNotes())) {
+                specificData.put("notes", request.getNotes());
+            }
+            paymentLog.setPaymentSpecificData(new ObjectMapper().writeValueAsString(specificData));
+        } catch (Exception e) {
+            log.error("Error building paymentSpecificData for manual invoice payment: {}", e.getMessage());
+        }
+        paymentLogRepository.save(paymentLog);
+
+        InvoicePaymentLogMapping mapping = new InvoicePaymentLogMapping();
+        mapping.setInvoice(invoice);
+        mapping.setPaymentLog(paymentLog);
+        invoicePaymentLogMappingRepository.save(mapping);
+
+        invoice.setStatus(INVOICE_STATUS_PAID);
+        invoiceRepository.saveAndFlush(invoice);
+        log.info("Invoice {} marked PAID manually by {}", invoice.getInvoiceNumber(),
+                userDetails != null ? userDetails.getUserId() : "SYSTEM");
+
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()));
+            if (!users.isEmpty()) {
+                byte[] pdfBytes = invoice.getPdfFileId() != null
+                        ? fetchPdfBytesFromS3(invoice.getPdfFileId())
+                        : null;
+                sendInvoiceEmail(invoice, users.get(0), invoice.getInstituteId(), pdfBytes);
+            }
+        } catch (Exception e) {
+            log.error("Failed to send paid invoice email for invoice {}: {}", invoice.getId(), e.getMessage(), e);
+        }
+
+        return mapToDTO(invoice);
+    }
+
     private String createAdminInvoicePaymentLog(String userId, double amount, String vendor, String vendorId,
             String currency) {
         PaymentLog log = new PaymentLog();
@@ -3112,6 +3180,15 @@ public class InvoiceService {
         return base.replaceAll("/$", "") + invoicePayPath + "/" + invoiceId;
     }
 
+    private String computePaymentLink(Invoice invoice) {
+        if (!StringUtils.hasText(invoice.getInstituteId())) return null;
+        Institute institute = instituteRepository.findById(invoice.getInstituteId()).orElse(null);
+        if (institute != null) return buildPaymentLink(institute, invoice.getId());
+        String base = StringUtils.hasText(learnerPortalUrl) ? learnerPortalUrl : "https://learner.vacademy.io";
+        if (!base.startsWith("http")) base = "https://" + base;
+        return base.replaceAll("/$", "") + invoicePayPath + "/" + invoice.getId();
+    }
+
     /**
      * Map Invoice entity to DTO
      */
@@ -3168,11 +3245,8 @@ public class InvoiceService {
                 .currency(invoice.getCurrency())
                 .status(invoice.getStatus())
                 .pdfFileId(invoice.getPdfFileId())
-                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFilePublicUrlById(invoice.getPdfFileId()) : null) // Pre-signed URL (1-day expiry)
-                                                                                                                     // URL
-                                                                                                                     // from
-                                                                                                                     // file
-                                                                                                                     // ID
+                .pdfUrl(invoice.getPdfFileId() != null ? mediaService.getFilePublicUrlById(invoice.getPdfFileId()) : null)
+                .paymentLink(INVOICE_STATUS_PENDING_PAYMENT.equals(invoice.getStatus()) ? computePaymentLink(invoice) : null)
                 .taxIncluded(invoice.getTaxIncluded())
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())

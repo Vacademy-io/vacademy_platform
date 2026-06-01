@@ -183,6 +183,10 @@ function InstituteAdminSubOrgPage() {
                         <div className="rounded-lg border border-neutral-200 bg-white p-4">
                             <InviteLinkSection subOrgId={selectedSubOrg.id} />
                         </div>
+                        {/* AddUserToSubOrgSection is now mounted INSIDE the panel's
+                            Admin Payment tab (panel knows its own tab state). Previously
+                            it sat at the deep-page level which made the form visible on
+                            every tab — wrong context for Courses/Learners/Invoices/Team. */}
                         <SubOrgAnalyticsPanel
                             subOrgId={selectedSubOrg.id}
                             subOrgName={selectedSubOrg.name}

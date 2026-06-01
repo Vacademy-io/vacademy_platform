@@ -320,7 +320,10 @@ export function CreateInvoiceDialog({
                                                                     inputPlaceholder="e.g. Course Fee"
                                                                     input={f.value}
                                                                     onChangeFunction={f.onChange}
-                                                                    className="w-full"
+                                                                    // sm:w-full overrides the design-system input's default sm:w-60
+                                                                    // (240px hard width). Without it every input snaps to 240px
+                                                                    // regardless of its grid cell, blowing the dialog layout.
+                                                                    className="w-full sm:w-full"
                                                                     {...f}
                                                                 />
                                                             </FormControl>
@@ -341,7 +344,7 @@ export function CreateInvoiceDialog({
                                                                     inputPlaceholder="1"
                                                                     input={String(f.value)}
                                                                     onChangeFunction={f.onChange}
-                                                                    className="w-full text-right"
+                                                                    className="w-full sm:w-full text-right"
                                                                     {...f}
                                                                 />
                                                             </FormControl>
@@ -362,7 +365,7 @@ export function CreateInvoiceDialog({
                                                                     inputPlaceholder="0"
                                                                     input={String(f.value)}
                                                                     onChangeFunction={f.onChange}
-                                                                    className="w-full text-right"
+                                                                    className="w-full sm:w-full text-right"
                                                                     {...f}
                                                                 />
                                                             </FormControl>
@@ -507,7 +510,11 @@ export function CreateInvoiceDialog({
                 else onOpenChange(true);
             }}
             heading={`Create Invoice — ${userName}`}
-            dialogWidth="max-w-xl"
+            // max-w-xl (576px) was too narrow for the 12-col line-item grid — the
+            // price input + currency prefix overflowed the col-span-2 cell, forcing
+            // a horizontal scrollbar. max-w-3xl gives the Description column more
+            // room while keeping the dialog small enough on standard laptops.
+            dialogWidth="max-w-3xl"
             content={dialogContent}
         />
     );

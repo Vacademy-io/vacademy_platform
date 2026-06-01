@@ -295,7 +295,7 @@ export function SubOrgDetailModal({ open, onOpenChange, org }: SubOrgDetailModal
     );
 }
 
-function AddUserToSubOrgSection({
+export function AddUserToSubOrgSection({
     subOrgId,
     instituteId,
     scopedInvites,
@@ -317,8 +317,7 @@ function AddUserToSubOrgSection({
 
     // Default the admin-payment selection to whatever was picked at sub-org creation
     // (the org-level invite carries the CPO id). Falls back to FREE when the sub-org
-    // was created without a CPO. Only seeds once when the form is first opened — admin
-    // can still flip it manually afterwards.
+    // was created without a CPO. Admin can flip it manually afterwards.
     const subOrgDefaultCpoId = useMemo<string | null>(() => {
         for (const inv of scopedInvites as any[]) {
             if (inv?.payment_type === 'CPO' && inv?.complex_payment_option_id) {
@@ -327,14 +326,17 @@ function AddUserToSubOrgSection({
         }
         return null;
     }, [scopedInvites]);
-    const [hasSeededPaymentOption, setHasSeededPaymentOption] = useState(false);
+    // Seed once the CPO id actually shows up in the scoped-invites response. The
+    // previous one-shot guard marked the form "seeded" before the query had loaded,
+    // so the dropdown stayed on "FREE" even when the sub-org was CPO-backed — and
+    // the installment editor (gated on selectedPaymentOptionId !== 'FREE') never
+    // rendered. Re-seed only if the user hasn't manually touched the dropdown.
     useEffect(() => {
-        if (!showForm || hasSeededPaymentOption) return;
-        if (subOrgDefaultCpoId) {
-            setSelectedPaymentOptionId(subOrgDefaultCpoId);
-        }
-        setHasSeededPaymentOption(true);
-    }, [showForm, subOrgDefaultCpoId, hasSeededPaymentOption]);
+        if (!showForm) return;
+        if (!subOrgDefaultCpoId) return; // data not loaded yet OR sub-org isn't CPO
+        if (selectedPaymentOptionId !== 'FREE') return; // user already picked something
+        setSelectedPaymentOptionId(subOrgDefaultCpoId);
+    }, [showForm, subOrgDefaultCpoId, selectedPaymentOptionId]);
     // Per-installment edits keyed by aft_installment_id.
     type InstallmentEdit = {
         amount?: string;
@@ -480,7 +482,12 @@ function AddUserToSubOrgSection({
         setOfflineDate('');
         setGenerateInvoice(false);
         setSelectedPaymentOptionId('FREE');
-        setHasSeededPaymentOption(false);
+        // hasSeededPaymentOption was removed when the auto-seed race fix landed; the
+        // new effect (in this file above) re-seeds whenever subOrgDefaultCpoId becomes
+        // available AND the current selection is still 'FREE', so no manual reset is
+        // needed here. Leaving the stale setter call would throw inside the mutation's
+        // onSuccess (the form HAS been added on the backend, but the UI surfaces the
+        // generic "Failed to add user" toast).
         setInstallmentEdits({});
         setCpoDiscountValue('');
         setCpoDiscountType('PERCENTAGE');

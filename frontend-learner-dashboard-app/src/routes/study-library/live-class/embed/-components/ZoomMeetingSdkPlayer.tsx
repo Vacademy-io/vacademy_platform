@@ -155,6 +155,17 @@ export default function ZoomMeetingSdkPlayer({
     useEffect(() => {
         if (!data) return;
         if (startedRef.current) return; // StrictMode / re-render guard
+        // The Zoom SDK calls meetingNumber.toString() unguarded, so a missing meeting number
+        // (the meeting was never provisioned → provider_meeting_id is null and the signature
+        // response omits it) crashes with an opaque "reading 'toString'" TypeError. Surface a
+        // clear message instead of booting the SDK with bad params.
+        if (!data.meetingNumber || !data.signature || !data.sdkKey) {
+            setErrorMsg(
+                "This live class is not ready to join yet — it may still be getting set up. Please refresh in a moment, or contact your instructor if it continues."
+            );
+            setPhase("error");
+            return;
+        }
         startedRef.current = true;
         let cancelled = false;
         const resolvedLeaveUrl = leaveUrl || window.location.origin;

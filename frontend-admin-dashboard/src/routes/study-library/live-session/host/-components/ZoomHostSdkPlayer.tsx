@@ -163,6 +163,17 @@ export default function ZoomHostSdkPlayer({
         if (!data) return;
         // StrictMode / re-render guard — Client View init+join must run once.
         if (startedRef.current) return;
+        // The Zoom SDK calls meetingNumber.toString() unguarded, so a missing meeting number
+        // (the meeting was never provisioned → provider_meeting_id is null and the signature
+        // response omits it) crashes with an opaque "reading 'toString'" TypeError. Surface a
+        // clear message instead of booting the SDK with bad params.
+        if (!data.meetingNumber || !data.signature || !data.sdkKey) {
+            setErrorMsg(
+                'This Zoom meeting is not ready to host yet — it may still be getting set up on Zoom. Refresh in a moment, or re-check the Zoom account if it persists.'
+            );
+            setPhase('error');
+            return;
+        }
         startedRef.current = true;
         let cancelled = false;
         const resolvedLeaveUrl = leaveUrl || window.location.origin;

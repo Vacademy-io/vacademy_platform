@@ -120,17 +120,16 @@ const AssessmentStartModal = () => {
   };
 
   return (
-    <div className="flex flex-col items-center pt-4">
+    <div className="flex flex-col items-center">
       {examHasStarted ? (
-        <>
-          <div className="test-container">{getContent()}</div>
-        </>
+        <div className="test-container">{getContent()}</div>
       ) : (
         <MyButton
           onClick={() => setIsOpen(true)}
           buttonType="primary"
           scale="large"
           layoutVariant="default"
+          className="w-full max-w-sm"
         >
           Start Assessment
         </MyButton>

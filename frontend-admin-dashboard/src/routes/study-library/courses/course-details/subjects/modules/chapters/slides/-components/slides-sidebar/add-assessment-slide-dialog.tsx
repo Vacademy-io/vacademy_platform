@@ -9,7 +9,7 @@ import { DialogFooter } from '@/components/ui/dialog';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_ASSESSMENT_LISTS } from '@/constants/urls';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { getInstituteId } from '@/constants/helper';
+import { getInstituteId, convertToLocalDateTime } from '@/constants/helper';
 import {
     useSlidesMutations,
     type AssessmentSlidePayload,
@@ -99,9 +99,9 @@ const AssessmentSlideRow = ({
                     <span>{row.duration} min</span>
                 ) : null}
                 {row.evaluation_type ? <span>{row.evaluation_type}</span> : null}
-                {row.bound_end_time && new Date(row.bound_end_time).getFullYear() !== 9999 ? (
+                {row.bound_end_time && new Date(`${row.bound_end_time.replace(" ", "T")}Z`).getFullYear() !== 9999 ? (
                     <span>
-                        Ends {new Date(row.bound_end_time).toLocaleDateString()}
+                        Ends {convertToLocalDateTime(row.bound_end_time)}
                     </span>
                 ) : null}
             </div>

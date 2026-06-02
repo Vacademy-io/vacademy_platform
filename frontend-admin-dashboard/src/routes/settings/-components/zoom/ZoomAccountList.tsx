@@ -124,8 +124,12 @@ export function ZoomAccountList({ accounts, onChanged, onEdit }: Props) {
                                 )}
                             </div>
                             <div className="mt-0.5 text-xs text-neutral-500">
-                                Account&nbsp;{a.zoomAccountIdMasked} · S2S&nbsp;{a.s2sClientIdMasked} ·
-                                SDK&nbsp;{a.sdkClientKeyMasked}
+                                Account&nbsp;{a.zoomAccountIdMasked} · S2S&nbsp;{a.s2sClientIdMasked} ·{' '}
+                                {a.sdkClientKeyMasked ? (
+                                    <>SDK&nbsp;{a.sdkClientKeyMasked}</>
+                                ) : (
+                                    <>SDK&nbsp;Platform</>
+                                )}
                                 {a.lastVerifiedAt && (
                                     <> · last verified {formatDate(a.lastVerifiedAt)}</>
                                 )}

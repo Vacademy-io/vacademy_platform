@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.zoom.ZoomAccount;
@@ -40,14 +41,27 @@ public class ZoomSdkSignatureService {
     private final ObjectMapper objectMapper;
 
     /**
+     * Optional platform-owned Meeting SDK app. When an account carries no SDK credentials
+     * of its own, signatures fall back to these. Platform-owned signing is host-only /
+     * same-account safe — per-institute SDK credentials remain the default for learner
+     * joins, because Zoom requires the SDK app to share the meeting's own account for
+     * anonymous cross-account joins (see docs/zoomintegration/zoom-onboarding-design.md).
+     */
+    @Value("${zoom.sdk.client-id:}")
+    private String platformSdkKey;
+
+    @Value("${zoom.sdk.client-secret:}")
+    private String platformSdkSecret;
+
+    /**
      * @param account       the Zoom account the meeting belongs to
      * @param meetingNumber the numeric Zoom meeting id (as a string)
      * @param role          0 = participant (learner), 1 = host/co-host
      * @return a signed JWT string suitable for ZoomMtg/embedded client.join()
      */
     public String buildSignature(ZoomAccount account, String meetingNumber, int role) {
-        String sdkKey = account.getSdkClientKey();
-        String sdkSecret = encryption.decrypt(account.getSdkClientSecretEnc());
+        String sdkKey = resolveSdkKey(account);
+        String sdkSecret = resolveSdkSecret(account);
 
         long iat = Instant.now().getEpochSecond() - 30; // small skew allowance
         long exp = iat + VALIDITY_SECONDS;
@@ -75,11 +89,37 @@ public class ZoomSdkSignatureService {
 
     /** The SDK key (Meeting SDK Client Key) the frontend passes alongside the signature. */
     public String getSdkKey(ZoomAccount account) {
-        return account.getSdkClientKey();
+        return resolveSdkKey(account);
     }
 
     public long getValiditySeconds() {
         return VALIDITY_SECONDS;
+    }
+
+    /** Per-account SDK key wins; fall back to the platform-owned SDK app when the account has none. */
+    private String resolveSdkKey(ZoomAccount account) {
+        String accountKey = account.getSdkClientKey();
+        if (accountKey != null && !accountKey.isBlank()) {
+            return accountKey;
+        }
+        if (platformSdkKey != null && !platformSdkKey.isBlank()) {
+            return platformSdkKey;
+        }
+        throw new VacademyException(
+                "No Meeting SDK key configured for this Zoom account or platform");
+    }
+
+    /** Per-account SDK secret wins; fall back to the platform-owned SDK app when the account has none. */
+    private String resolveSdkSecret(ZoomAccount account) {
+        String accountSecretEnc = account.getSdkClientSecretEnc();
+        if (accountSecretEnc != null && !accountSecretEnc.isBlank()) {
+            return encryption.decrypt(accountSecretEnc);
+        }
+        if (platformSdkSecret != null && !platformSdkSecret.isBlank()) {
+            return platformSdkSecret;
+        }
+        throw new VacademyException(
+                "No Meeting SDK secret configured for this Zoom account or platform");
     }
 
     private static String base64Url(byte[] bytes) {

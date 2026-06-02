@@ -34,6 +34,7 @@ public class ZoomAccessTokenService {
     private final CacheManager cacheManager;
     private final TokenEncryptionService encryption;
     private final WebClient.Builder webClientBuilder;
+    private final ZoomOAuthService zoomOAuthService;
 
     /**
      * Returns a valid bearer access token for the given Zoom account. Hits the cache
@@ -50,7 +51,12 @@ public class ZoomAccessTokenService {
             }
         }
 
-        String token = fetchFromZoom(account);
+        // OAUTH accounts ("Connect with Zoom") mint tokens from the rotating refresh token;
+        // S2S accounts use the account_credentials grant. Everything downstream (meeting
+        // create, ZAK, recordings) is unchanged — it all flows through this one method.
+        String token = "OAUTH".equalsIgnoreCase(account.getAuthType())
+                ? zoomOAuthService.refreshAndGet(account)
+                : fetchFromZoom(account);
         if (cache != null) {
             cache.put(account.getId(), token);
         }

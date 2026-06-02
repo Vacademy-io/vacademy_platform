@@ -100,7 +100,9 @@ public class ApplicationSecurityConfig {
             // BBB server pool management (server-to-server from community_service, no JWT)
             "/admin-core-service/bbb/pool/**",
             // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
-            "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**"
+            "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
+            // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)
+            "/admin-core-service/live-sessions/provider/zoom/oauth/callback"
 
     };
     @Autowired

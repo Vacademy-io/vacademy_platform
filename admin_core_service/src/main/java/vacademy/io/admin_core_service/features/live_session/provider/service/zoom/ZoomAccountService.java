@@ -58,7 +58,9 @@ public class ZoomAccountService {
     @Transactional
     public ZoomAccountSummary create(String instituteId, ZoomAccountRequest req) {
         requireSecret(req.getS2sClientSecret(), "s2sClientSecret");
-        requireSecret(req.getSdkClientSecret(), "sdkClientSecret");
+        // SDK credentials are optional: an account may rely on a platform-owned Meeting
+        // SDK app (zoom.sdk.client-id/secret) for signing. Per-institute SDK creds stay
+        // the default for learner-facing institutes (see ZoomSdkSignatureService).
 
         store.findByInstituteAndZoomAccountId(instituteId, req.getZoomAccountId())
                 .ifPresent(a -> {
@@ -73,7 +75,8 @@ public class ZoomAccountService {
                 .s2sClientId(req.getS2sClientId())
                 .s2sClientSecretEnc(encryption.encrypt(req.getS2sClientSecret()))
                 .sdkClientKey(req.getSdkClientKey())
-                .sdkClientSecretEnc(encryption.encrypt(req.getSdkClientSecret()))
+                .sdkClientSecretEnc(isBlank(req.getSdkClientSecret())
+                        ? null : encryption.encrypt(req.getSdkClientSecret()))
                 .webhookVerificationTokenEnc(isBlank(req.getWebhookVerificationToken())
                         ? null : encryption.encrypt(req.getWebhookVerificationToken()))
                 .status(STATUS_ACTIVE)

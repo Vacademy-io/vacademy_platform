@@ -8,19 +8,30 @@ import {
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
-    Mail,
-    AlertCircle,
-    ChevronDown,
-    ChevronUp,
-    ArrowUpRight,
-    ArrowDownLeft,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Bell, Envelope, WhatsappLogo, ChatCircle } from '@phosphor-icons/react';
+    ChatsCircle,
+    Envelope,
+    WhatsappLogo,
+    BellRinging,
+    ChatTeardrop,
+    ArrowUp,
+    ArrowDown,
+    CaretDown,
+    CaretUp,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { IndividualSendDialog } from './individual-send-dialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import {
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileHero,
+    ProfileActionBar,
+    ProfileTimeline,
+    type ProfileTimelineItem,
+} from '../profile-ui';
 
 // ─── HTML helpers ──────────────────────────────────────────────────────────
 // The communication-timeline service often returns the raw email HTML in
@@ -90,51 +101,77 @@ const extractEmailSubject = (rawTitle: string | undefined, body?: string): strin
 };
 
 // ─── Channel Config ─────────────────────────────────────────────────────────
+// Colors use design-system semantic tokens: info for email, success for WhatsApp,
+// primary for push notifications, warning for SMS.
 
 const CHANNEL_CONFIG: Record<
     string,
-    { icon: React.ElementType; color: string; bg: string; border: string; label: string }
+    { icon: PhosphorIcon; pillClass: string; iconClass: string; label: string }
 > = {
     EMAIL: {
         icon: Envelope,
-        color: 'text-blue-600',
-        bg: 'bg-blue-50',
-        border: 'border-blue-200',
+        pillClass: 'bg-info-50 text-info-700 ring-1 ring-info-200',
+        iconClass: 'text-info-600',
         label: 'Email',
     },
     WHATSAPP: {
         icon: WhatsappLogo,
-        color: 'text-green-600',
-        bg: 'bg-green-50',
-        border: 'border-green-200',
+        pillClass: 'bg-success-50 text-success-700 ring-1 ring-success-200',
+        iconClass: 'text-success-600',
         label: 'WhatsApp',
     },
     PUSH: {
-        icon: Bell,
-        color: 'text-purple-600',
-        bg: 'bg-purple-50',
-        border: 'border-purple-200',
+        icon: BellRinging,
+        pillClass: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200',
+        iconClass: 'text-primary-600',
         label: 'Push',
     },
     SMS: {
-        icon: ChatCircle,
-        color: 'text-orange-600',
-        bg: 'bg-orange-50',
-        border: 'border-orange-200',
+        icon: ChatTeardrop,
+        pillClass: 'bg-warning-50 text-warning-700 ring-1 ring-warning-200',
+        iconClass: 'text-warning-600',
         label: 'SMS',
     },
 };
 
-const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-    PENDING: { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', label: 'Pending' },
-    SENT: { color: 'bg-blue-100 text-blue-800 border-blue-200', label: 'Sent' },
-    DELIVERED: { color: 'bg-green-100 text-green-800 border-green-200', label: 'Delivered' },
-    READ: { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', label: 'Read' },
-    CLICKED: { color: 'bg-purple-100 text-purple-800 border-purple-200', label: 'Clicked' },
-    FAILED: { color: 'bg-red-100 text-red-800 border-red-200', label: 'Failed' },
-    BOUNCED: { color: 'bg-red-100 text-red-800 border-red-200', label: 'Bounced' },
-    COMPLAINT: { color: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Complaint' },
-    RECEIVED: { color: 'bg-teal-100 text-teal-800 border-teal-200', label: 'Received' },
+// Status pill classes use semantic tokens only (no raw colors).
+const STATUS_CONFIG: Record<string, { pillClass: string; label: string }> = {
+    PENDING: {
+        pillClass: 'bg-warning-50 text-warning-700 ring-1 ring-warning-200',
+        label: 'Pending',
+    },
+    SENT: {
+        pillClass: 'bg-info-50 text-info-700 ring-1 ring-info-200',
+        label: 'Sent',
+    },
+    DELIVERED: {
+        pillClass: 'bg-success-50 text-success-700 ring-1 ring-success-200',
+        label: 'Delivered',
+    },
+    READ: {
+        pillClass: 'bg-success-50 text-success-700 ring-1 ring-success-200',
+        label: 'Read',
+    },
+    CLICKED: {
+        pillClass: 'bg-primary-50 text-primary-700 ring-1 ring-primary-200',
+        label: 'Clicked',
+    },
+    FAILED: {
+        pillClass: 'bg-danger-50 text-danger-700 ring-1 ring-danger-200',
+        label: 'Failed',
+    },
+    BOUNCED: {
+        pillClass: 'bg-danger-50 text-danger-700 ring-1 ring-danger-200',
+        label: 'Bounced',
+    },
+    COMPLAINT: {
+        pillClass: 'bg-warning-50 text-warning-700 ring-1 ring-warning-200',
+        label: 'Complaint',
+    },
+    RECEIVED: {
+        pillClass: 'bg-info-50 text-info-700 ring-1 ring-info-200',
+        label: 'Received',
+    },
 };
 
 const FILTER_OPTIONS = [
@@ -161,14 +198,18 @@ function StatusMiniTimeline({ events, status }: { events: StatusEvent[]; status:
                 return (
                     <div key={step} className="flex items-center gap-1">
                         <div
-                            className={`size-2 rounded-full transition-colors ${
-                                active ? 'bg-green-500' : 'bg-neutral-200'
-                            }`}
+                            className={cn(
+                                'size-2 rounded-full transition-colors',
+                                active ? 'bg-success-500' : 'bg-neutral-200'
+                            )}
                             title={step}
                         />
                         {i < flow.length - 1 && (
                             <div
-                                className={`h-px w-3 ${active ? 'bg-green-300' : 'bg-neutral-200'}`}
+                                className={cn(
+                                    'h-px w-3',
+                                    active ? 'bg-success-300' : 'bg-neutral-200'
+                                )}
                             />
                         )}
                     </div>
@@ -192,22 +233,136 @@ function DateSeparator({ date }: { date: Date }) {
     );
 }
 
-// ─── Timeline Item ──────────────────────────────────────────────────────────
+// ─── Status Pill ─────────────────────────────────────────────────────────────
 
-function TimelineItem({ item }: { item: CommunicationItem }) {
+function StatusPill({ statusKey }: { statusKey: string }) {
+    const cfg = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG.PENDING!;
+    return (
+        <span
+            className={cn(
+                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                cfg.pillClass
+            )}
+        >
+            {cfg.label}
+        </span>
+    );
+}
+
+// ─── Expanded Detail Body ───────────────────────────────────────────────────
+// Rendered as the `body` slot of a ProfileTimelineItem when the item is
+// expanded.  Click propagation is stopped so expanding text-selection inside
+// the email HTML doesn't collapse the item.
+
+function ExpandedDetail({
+    item,
+    onCollapse,
+}: {
+    item: CommunicationItem;
+    onCollapse: () => void;
+}) {
+    return (
+        <div
+            className="mt-2 space-y-3 border-t border-neutral-100 pt-3"
+            onClick={(e) => e.stopPropagation()}
+        >
+            {/* Full body */}
+            {item.fullBody && (
+                <div className="rounded-md border border-neutral-100 bg-neutral-50 p-2.5">
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        Message
+                    </p>
+                    {item.channel === 'EMAIL' ? (
+                        // Render the email's own HTML inside a white container so
+                        // its inline styles don't mix with the timeline card background.
+                        <div
+                            className="max-h-80 overflow-y-auto rounded border border-neutral-200 bg-white p-2 text-xs text-neutral-800"
+                            dangerouslySetInnerHTML={{ __html: item.fullBody }}
+                        />
+                    ) : (
+                        <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
+                            {item.fullBody}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* Template name */}
+            {item.templateName && (
+                <div className="flex items-center gap-2 text-xs">
+                    <span className="font-medium text-neutral-500">Template:</span>
+                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-neutral-700">
+                        {item.templateName}
+                    </span>
+                </div>
+            )}
+
+            {/* Sender / Recipient / Source */}
+            <div className="space-y-1 text-xs">
+                {item.senderInfo && (
+                    <div className="flex gap-2">
+                        <span className="font-medium text-neutral-500">From:</span>
+                        <span className="text-neutral-700">{item.senderInfo}</span>
+                    </div>
+                )}
+                {item.recipientInfo && (
+                    <div className="flex gap-2">
+                        <span className="font-medium text-neutral-500">To:</span>
+                        <span className="text-neutral-700">{item.recipientInfo}</span>
+                    </div>
+                )}
+                {item.source && (
+                    <div className="flex gap-2">
+                        <span className="font-medium text-neutral-500">Source:</span>
+                        <span className="text-neutral-700">{item.source}</span>
+                    </div>
+                )}
+            </div>
+
+            {/* Status delivery timeline */}
+            {item.statusTimeline && item.statusTimeline.length > 0 && (
+                <div>
+                    <p className="mb-1.5 text-xs font-medium text-neutral-500">Delivery Timeline</p>
+                    <div className="space-y-1.5">
+                        {item.statusTimeline.map((event, i) => (
+                            <div
+                                key={`${event.status}-${event.timestamp}-${i}`}
+                                className="flex items-center gap-2 text-xs"
+                            >
+                                <div className="size-1.5 rounded-full bg-neutral-300" />
+                                <StatusPill statusKey={event.status} />
+                                <span className="text-neutral-500">
+                                    {format(new Date(event.timestamp), 'MMM d, h:mm a')}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <button
+                type="button"
+                onClick={onCollapse}
+                className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+            >
+                <CaretUp className="size-3" />
+                Collapse
+            </button>
+        </div>
+    );
+}
+
+// ─── Communication Timeline Item (card body for ProfileTimeline) ─────────────
+// This component is rendered inside the `body` slot of each ProfileTimelineItem.
+// It provides the expand/collapse interaction with preview text and delivery
+// status dots — all behaviour the spec requires to be preserved.
+
+function CommItemBody({ item }: { item: CommunicationItem }) {
     const [expanded, setExpanded] = useState(false);
     const channel = CHANNEL_CONFIG[item.channel] ?? CHANNEL_CONFIG.EMAIL!;
-    const statusCfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.PENDING!;
     const isInbound = item.direction === 'INBOUND';
-    const ChannelIcon = channel!.icon as React.ComponentType<{ className?: string; weight?: string }>;
 
-    // For email rows, the backend often returns raw HTML in `title` and
-    // `bodyPreview`. Derive a readable subject and one-line preview before
-    // rendering so the timeline doesn't show DOCTYPE/markup junk.
     const isEmail = item.channel === 'EMAIL';
-    const displayTitle = isEmail
-        ? extractEmailSubject(item.title, item.fullBody || item.bodyPreview)
-        : item.title || '(no subject)';
     const rawPreview = item.bodyPreview || (isEmail ? item.fullBody : '') || '';
     const displayPreview = looksLikeHtml(rawPreview)
         ? htmlToPreviewText(rawPreview, 160)
@@ -215,181 +370,84 @@ function TimelineItem({ item }: { item: CommunicationItem }) {
 
     return (
         <div
-            className={`group relative flex gap-3 ${isInbound ? 'flex-row' : 'flex-row-reverse'}`}
+            className="cursor-pointer select-none rounded-md border border-neutral-100 bg-neutral-50 p-2.5 transition-shadow hover:shadow-sm"
+            onClick={() => setExpanded((v) => !v)}
         >
-            {/* Timeline spine icon */}
-            <div className="flex flex-col items-center">
-                <div
-                    className={`flex size-8 shrink-0 items-center justify-center rounded-full ${channel!.bg} ${channel!.border} border`}
-                >
-                    <ChannelIcon className={`size-4 ${channel!.color}`} weight="bold" />
-                </div>
-                <div className="w-px flex-1 bg-neutral-200" />
-            </div>
-
-            {/* Message card */}
-            <div
-                className={`mb-3 min-w-0 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white p-3 shadow-sm transition-all duration-200 hover:shadow-md ${
-                    isInbound ? 'border-l-2 border-l-green-400' : 'border-r-2 border-r-blue-400'
-                }`}
-                onClick={() => setExpanded(!expanded)}
-            >
-                {/* Header row */}
-                <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex items-center gap-1.5">
-                            {isInbound ? (
-                                <ArrowDownLeft className="size-3 shrink-0 text-green-500" />
-                            ) : (
-                                <ArrowUpRight className="size-3 shrink-0 text-blue-500" />
-                            )}
-                            <span className="text-[10px] font-medium uppercase text-neutral-400">
-                                {isInbound ? 'Received' : 'Sent'} via {channel!.label}
-                            </span>
-                        </div>
-                        <h4
-                            className="truncate text-sm font-semibold text-neutral-900"
-                            title={displayTitle}
-                        >
-                            {displayTitle}
-                        </h4>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                        <Badge
-                            variant="outline"
-                            className={`text-[10px] font-medium ${statusCfg!.color}`}
-                        >
-                            {statusCfg!.label}
-                        </Badge>
-                        {expanded ? (
-                            <ChevronUp className="size-3.5 text-neutral-400" />
-                        ) : (
-                            <ChevronDown className="size-3.5 text-neutral-400" />
-                        )}
-                    </div>
-                </div>
-
-                {/* Body preview (plain text — full HTML renders only when expanded) */}
-                {!expanded && displayPreview && (
-                    <p className="mt-1 line-clamp-2 text-xs text-neutral-600">
-                        {displayPreview}
-                    </p>
-                )}
-
-                {/* Timestamp + mini timeline */}
-                <div className="mt-2 flex items-center justify-between">
-                    <span className="text-[10px] text-neutral-500">
-                        {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+            {/* Direction label row */}
+            <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1">
+                    {isInbound ? (
+                        <ArrowDown className="size-3 shrink-0 text-success-500" />
+                    ) : (
+                        <ArrowUp className="size-3 shrink-0 text-info-500" />
+                    )}
+                    <span className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                        {isInbound ? 'Received' : 'Sent'} via {channel.label}
                     </span>
-                    {item.channel === 'EMAIL' && !isInbound && (
-                        <StatusMiniTimeline
-                            events={item.statusTimeline || []}
-                            status={item.status}
-                        />
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <StatusPill statusKey={item.status} />
+                    {expanded ? (
+                        <CaretUp className="size-3 text-neutral-400" />
+                    ) : (
+                        <CaretDown className="size-3 text-neutral-400" />
                     )}
                 </div>
+            </div>
 
-                {/* Expanded details */}
-                {expanded && (
-                    <div
-                        className="mt-3 space-y-3 border-t border-neutral-100 pt-3"
-                        // Don't collapse the row when the user clicks inside the
-                        // expanded body (e.g. selecting text in the email).
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Full body */}
-                        {item.fullBody && (
-                            <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2.5">
-                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                                    Message
-                                </p>
-                                {item.channel === 'EMAIL' ? (
-                                    // Render the email's own HTML inside a white
-                                    // container so its inline styles don't mix with
-                                    // the timeline card background.
-                                    <div
-                                        className="max-h-80 overflow-y-auto rounded border border-neutral-200 bg-white p-2 text-xs text-neutral-800"
-                                        dangerouslySetInnerHTML={{ __html: item.fullBody }}
-                                    />
-                                ) : (
-                                    <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
-                                        {item.fullBody}
-                                    </p>
-                                )}
-                            </div>
-                        )}
+            {/* Body preview */}
+            {!expanded && displayPreview && (
+                <p className="line-clamp-2 text-xs text-neutral-600">{displayPreview}</p>
+            )}
 
-                        {/* Template name */}
-                        {item.templateName && (
-                            <div className="flex items-center gap-2 text-xs">
-                                <span className="font-medium text-neutral-500">Template:</span>
-                                <span className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-neutral-700">
-                                    {item.templateName}
-                                </span>
-                            </div>
-                        )}
-
-                        {/* Sender / Recipient */}
-                        <div className="space-y-1 text-xs">
-                            {item.senderInfo && (
-                                <div className="flex gap-2">
-                                    <span className="font-medium text-neutral-500">From:</span>
-                                    <span className="text-neutral-700">{item.senderInfo}</span>
-                                </div>
-                            )}
-                            {item.recipientInfo && (
-                                <div className="flex gap-2">
-                                    <span className="font-medium text-neutral-500">To:</span>
-                                    <span className="text-neutral-700">{item.recipientInfo}</span>
-                                </div>
-                            )}
-                            {item.source && (
-                                <div className="flex gap-2">
-                                    <span className="font-medium text-neutral-500">Source:</span>
-                                    <span className="text-neutral-700">{item.source}</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Status timeline */}
-                        {item.statusTimeline && item.statusTimeline.length > 0 && (
-                            <div>
-                                <p className="mb-1.5 text-xs font-medium text-neutral-500">
-                                    Delivery Timeline
-                                </p>
-                                <div className="space-y-1.5">
-                                    {item.statusTimeline.map((event, i) => {
-                                        const evtCfg =
-                                            STATUS_CONFIG[event.status] ?? STATUS_CONFIG.PENDING!;
-                                        return (
-                                            <div
-                                                key={`${event.status}-${event.timestamp}-${i}`}
-                                                className="flex items-center gap-2 text-xs"
-                                            >
-                                                <div className="size-1.5 rounded-full bg-neutral-400" />
-                                                <Badge
-                                                    variant="outline"
-                                                    className={`text-[10px] ${evtCfg!.color}`}
-                                                >
-                                                    {evtCfg!.label}
-                                                </Badge>
-                                                <span className="text-neutral-500">
-                                                    {format(
-                                                        new Date(event.timestamp),
-                                                        'MMM d, h:mm a'
-                                                    )}
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+            {/* Timestamp + mini delivery dots */}
+            <div className="mt-1.5 flex items-center justify-between">
+                <span className="text-xs text-neutral-400">
+                    {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
+                </span>
+                {item.channel === 'EMAIL' && !isInbound && (
+                    <StatusMiniTimeline events={item.statusTimeline || []} status={item.status} />
                 )}
             </div>
+
+            {/* Expanded details */}
+            {expanded && (
+                <ExpandedDetail item={item} onCollapse={() => setExpanded(false)} />
+            )}
         </div>
     );
+}
+
+// ─── Map a CommunicationItem → ProfileTimelineItem ───────────────────────────
+
+function toTimelineItem(item: CommunicationItem): ProfileTimelineItem {
+    const channel = CHANNEL_CONFIG[item.channel] ?? CHANNEL_CONFIG.EMAIL!;
+    const isEmail = item.channel === 'EMAIL';
+    const displayTitle = isEmail
+        ? extractEmailSubject(item.title, item.fullBody || item.bodyPreview)
+        : item.title || '(no subject)';
+
+    // Tone: direction-based — outbound=primary, inbound=success, failed/bounced=danger
+    const failedStatuses = new Set(['FAILED', 'BOUNCED', 'COMPLAINT']);
+    const tone =
+        failedStatuses.has(item.status)
+            ? 'danger'
+            : item.direction === 'INBOUND'
+              ? 'success'
+              : 'primary';
+
+    return {
+        id: item.id,
+        icon: channel.icon,
+        tone,
+        title: (
+            <span className="truncate font-medium text-neutral-800" title={displayTitle}>
+                {displayTitle}
+            </span>
+        ),
+        meta: formatDistanceToNow(new Date(item.timestamp), { addSuffix: true }),
+        body: <CommItemBody item={item} />,
+    };
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -426,67 +484,38 @@ export const StudentCommunicationTimeline = () => {
         staleTime: 30000,
     });
 
-    // ─── Empty / Loading / Error states ─────────────────────────────────────
+    // ─── Guard states ────────────────────────────────────────────────────────
 
     if (!hasContact) {
         return (
-            <div className="flex flex-col items-center justify-center py-12">
-                <div className="mb-3 rounded-full bg-neutral-100 p-4">
-                    <Mail className="size-8 text-neutral-400" />
-                </div>
-                <p className="text-sm font-medium text-neutral-600">No student selected</p>
-                <p className="mt-1 text-xs text-neutral-500">
-                    Select a student to view their communications
-                </p>
-            </div>
+            <ProfileEmpty
+                icon={Envelope}
+                title="No contact details"
+                hint="Select a student with an email or phone number to view their communications."
+            />
         );
     }
 
     if (isLoading) {
-        return (
-            <div className="space-y-4">
-                <div className="mb-4 flex gap-2">
-                    {[1, 2, 3, 4].map((i) => (
-                        <Skeleton key={i} className="h-7 w-16 rounded-full" />
-                    ))}
-                </div>
-                {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex gap-3">
-                        <Skeleton className="size-8 shrink-0 rounded-full" />
-                        <div className="flex-1 space-y-2 rounded-lg border p-3">
-                            <Skeleton className="h-3 w-1/3" />
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-3 w-1/2" />
-                        </div>
-                    </div>
-                ))}
-            </div>
-        );
+        return <ProfileSkeleton blocks={3} />;
     }
 
     if (error) {
         return (
-            <div className="flex flex-col items-center justify-center py-12">
-                <div className="mb-4 rounded-full bg-red-100 p-4">
-                    <AlertCircle className="size-8 text-red-500" />
-                </div>
-                <p className="mb-2 text-sm font-medium text-red-600">
-                    Failed to load communications
-                </p>
-                <button
-                    onClick={() => refetch()}
-                    className="rounded-lg bg-red-600 px-4 py-2 text-xs font-medium text-white transition-colors duration-200 hover:bg-red-700"
-                >
-                    Try Again
-                </button>
-            </div>
+            <ProfileError
+                title="Failed to load communications"
+                hint="Something went wrong while fetching messages. Please try again."
+                onRetry={() => void refetch()}
+            />
         );
     }
 
     const communications = timelineData?.content || [];
 
     // Group by date for separators
-    const groupedItems: Array<{ type: 'date'; date: Date } | { type: 'item'; item: CommunicationItem }> = [];
+    const groupedItems: Array<
+        { type: 'date'; date: Date } | { type: 'item'; item: CommunicationItem }
+    > = [];
     let lastDate: string | null = null;
 
     for (const item of communications) {
@@ -499,7 +528,7 @@ export const StudentCommunicationTimeline = () => {
         groupedItems.push({ type: 'item', item });
     }
 
-    // Count by channel for stats
+    // Count by channel for filter chip badges
     const channelCounts = communications.reduce(
         (acc, item) => {
             acc[item.channel] = (acc[item.channel] || 0) + 1;
@@ -508,65 +537,74 @@ export const StudentCommunicationTimeline = () => {
         {} as Record<string, number>
     );
 
-    return (
-        <div className="space-y-4">
-            {/* Send Notification Bar */}
-            <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-neutral-50/30 p-3 transition-all duration-200 hover:border-primary-200/50 hover:shadow-md">
-                <div className="mb-2 flex items-center gap-2.5">
-                    <div className="rounded-md bg-gradient-to-br from-blue-50 to-blue-100 p-1.5">
-                        <Bell className="size-4 text-blue-600" />
-                    </div>
-                    <div className="flex-1">
-                        <h4 className="text-xs font-medium text-neutral-700">Send Notification</h4>
-                        <p className="text-[10px] text-neutral-500">Email or WhatsApp message</p>
-                    </div>
-                </div>
-                <div className="flex gap-2">
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        disable={!selectedStudent?.email}
-                        onClick={() => {
-                            if (selectedStudent) setSendDialog('EMAIL');
-                        }}
-                        className="group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-blue-200 bg-white text-xs text-blue-700 transition-all duration-200 hover:scale-100 hover:border-blue-300 hover:bg-blue-50"
-                        style={{ pointerEvents: 'auto', zIndex: 10 }}
-                    >
-                        <Envelope className="size-3 transition-transform duration-200 group-hover:scale-110" />
-                        Email
-                    </MyButton>
-                    <MyButton
-                        type="button"
-                        buttonType="secondary"
-                        scale="small"
-                        disable={!selectedStudent?.mobile_number}
-                        onClick={() => {
-                            if (selectedStudent) setSendDialog('WHATSAPP');
-                        }}
-                        className="group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-green-200 bg-white text-xs text-green-700 transition-all duration-200 hover:scale-100 hover:border-green-300 hover:bg-green-50"
-                        style={{ pointerEvents: 'auto', zIndex: 10 }}
-                    >
-                        <WhatsappLogo className="size-3 transition-transform duration-200 group-hover:scale-110" />
-                        WhatsApp
-                    </MyButton>
-                </div>
-            </div>
+    // Hero subtitle: relative time of most recent message
+    const mostRecent = communications[0];
+    const heroSubtitle = mostRecent
+        ? `Last interaction ${formatDistanceToNow(new Date(mostRecent.timestamp), { addSuffix: true })}`
+        : 'No interactions yet';
 
-            {/* Channel Filter Chips */}
-            <div className="flex items-center gap-2">
+    const totalCount = timelineData?.totalElements ?? communications.length;
+
+    // ─── Send action bar (lives in the hero's action slot) ──────────────────
+    const sendBar = (
+        <ProfileActionBar>
+            <MyButton
+                type="button"
+                buttonType="secondary"
+                scale="small"
+                disable={!selectedStudent?.email}
+                onClick={() => {
+                    if (selectedStudent) setSendDialog('EMAIL');
+                }}
+                className="flex items-center gap-1.5"
+            >
+                <Envelope className="size-3.5" />
+                Email
+            </MyButton>
+            <MyButton
+                type="button"
+                buttonType="secondary"
+                scale="small"
+                disable={!selectedStudent?.mobile_number}
+                onClick={() => {
+                    if (selectedStudent) setSendDialog('WHATSAPP');
+                }}
+                className="flex items-center gap-1.5"
+            >
+                <WhatsappLogo className="size-3.5" />
+                WhatsApp
+            </MyButton>
+        </ProfileActionBar>
+    );
+
+    return (
+        <div className="flex flex-col gap-4">
+            {/* ── Hero ────────────────────────────────────────────────────── */}
+            <ProfileHero
+                eyebrow="COMMUNICATIONS"
+                title={`${totalCount} interaction${totalCount !== 1 ? 's' : ''}`}
+                subtitle={heroSubtitle}
+                icon={ChatsCircle}
+                tone="primary"
+                action={sendBar}
+            />
+
+            {/* ── Channel filter chips ─────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center gap-2">
                 {FILTER_OPTIONS.map((opt) => (
                     <button
                         key={opt.key}
+                        type="button"
                         onClick={() => {
                             setChannelFilter(opt.key);
                             setPage(0);
                         }}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+                        className={cn(
+                            'rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                             channelFilter === opt.key
-                                ? 'bg-primary-500 text-white shadow-sm'
+                                ? 'bg-primary-500 text-white'
                                 : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                        }`}
+                        )}
                     >
                         {opt.label}
                         {opt.key !== 'ALL' && channelCounts[opt.key] ? (
@@ -574,73 +612,119 @@ export const StudentCommunicationTimeline = () => {
                         ) : null}
                     </button>
                 ))}
+                {timelineData?.totalElements != null && (
+                    <span className="ml-auto text-xs text-neutral-400">
+                        {timelineData.totalElements} total
+                    </span>
+                )}
             </div>
 
-            {/* Stats Summary */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <div className="h-1 w-8 rounded-full bg-gradient-to-r from-blue-500 to-blue-400" />
-                    <h3 className="text-base font-semibold text-neutral-800">Communications</h3>
-                </div>
-                <Badge
-                    variant="outline"
-                    className="border-blue-200 bg-blue-50 text-xs font-medium text-blue-700"
-                >
-                    {timelineData?.totalElements || 0} total
-                </Badge>
-            </div>
-
-            {/* Timeline */}
+            {/* ── Timeline or empty state ──────────────────────────────────── */}
             {communications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                    <div className="mb-4 rounded-full bg-neutral-100 p-6">
-                        <Mail className="size-12 text-neutral-400" />
-                    </div>
-                    <p className="mb-1 text-sm font-medium text-neutral-600">
-                        No communications found
-                    </p>
-                    <p className="text-center text-xs text-neutral-500">
-                        {channelFilter !== 'ALL'
+                <ProfileEmpty
+                    icon={ChatsCircle}
+                    title="No communications found"
+                    hint={
+                        channelFilter !== 'ALL'
                             ? `No ${channelFilter.toLowerCase()} messages yet. Try selecting "All" to see other channels.`
-                            : "No messages have been sent to or received from this student yet."}
-                    </p>
-                </div>
+                            : 'No messages have been sent to or received from this student yet.'
+                    }
+                    action={
+                        channelFilter === 'ALL' ? (
+                            <MyButton
+                                type="button"
+                                buttonType="primary"
+                                scale="small"
+                                onClick={() => {
+                                    if (selectedStudent) setSendDialog('EMAIL');
+                                }}
+                                className="flex items-center gap-1.5"
+                            >
+                                <Envelope className="size-3.5" />
+                                Send first message
+                            </MyButton>
+                        ) : undefined
+                    }
+                />
             ) : (
-                <div className="relative">
-                    {groupedItems.map((entry) => {
-                        if (entry.type === 'date') {
-                            return <DateSeparator key={`date-${entry.date.toISOString()}`} date={entry.date} />;
+                /* Render date separators interleaved with ProfileTimeline groups.
+                   We collect consecutive items between separators and pass each
+                   batch to a ProfileTimeline so the vertical spine line is
+                   contained within each date group. */
+                <div className="flex flex-col gap-2">
+                    {(() => {
+                        const sections: Array<
+                            | { type: 'date'; date: Date; key: string }
+                            | { type: 'group'; items: ProfileTimelineItem[]; key: string }
+                        > = [];
+                        let currentGroup: ProfileTimelineItem[] = [];
+
+                        for (const entry of groupedItems) {
+                            if (entry.type === 'date') {
+                                if (currentGroup.length > 0) {
+                                    sections.push({
+                                        type: 'group',
+                                        items: currentGroup,
+                                        key: `group-before-${entry.date.toISOString()}`,
+                                    });
+                                    currentGroup = [];
+                                }
+                                sections.push({
+                                    type: 'date',
+                                    date: entry.date,
+                                    key: `date-${entry.date.toISOString()}`,
+                                });
+                            } else {
+                                currentGroup.push(toTimelineItem(entry.item));
+                            }
                         }
-                        return <TimelineItem key={entry.item.id} item={entry.item} />;
-                    })}
+                        if (currentGroup.length > 0) {
+                            sections.push({
+                                type: 'group',
+                                items: currentGroup,
+                                key: `group-final`,
+                            });
+                        }
+
+                        return sections.map((s) =>
+                            s.type === 'date' ? (
+                                <DateSeparator key={s.key} date={s.date} />
+                            ) : (
+                                <ProfileTimeline key={s.key} items={s.items} />
+                            )
+                        );
+                    })()}
                 </div>
             )}
 
-            {/* Pagination */}
+            {/* ── Pagination ───────────────────────────────────────────────── */}
             {timelineData && timelineData.totalPages > 1 && (
                 <div className="flex items-center justify-center gap-3 border-t border-neutral-200 pt-4">
-                    <button
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        disable={page === 0}
                         onClick={() => setPage(Math.max(0, page - 1))}
-                        disabled={page === 0}
-                        className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-xs font-medium text-neutral-700 transition-all duration-200 hover:border-neutral-400 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         Previous
-                    </button>
-                    <div className="flex items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2">
-                        <span className="text-xs font-medium text-neutral-600">
-                            Page {page + 1} of {timelineData.totalPages}
-                        </span>
-                    </div>
-                    <button
+                    </MyButton>
+                    <span className="text-xs text-neutral-500">
+                        Page {page + 1} of {timelineData.totalPages}
+                    </span>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        disable={page >= timelineData.totalPages - 1}
                         onClick={() => setPage(Math.min(timelineData.totalPages - 1, page + 1))}
-                        disabled={page >= timelineData.totalPages - 1}
-                        className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-xs font-medium text-neutral-700 transition-all duration-200 hover:border-neutral-400 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         Next
-                    </button>
+                    </MyButton>
                 </div>
             )}
 
+            {/* ── Send dialog (existing — behavior unchanged) ───────────────── */}
             {sendDialog && (
                 <IndividualSendDialog
                     open={!!sendDialog}

@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { initiateStudentAnalysis } from '@/services/student-analysis';
 import { toast } from 'sonner';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -69,33 +69,31 @@ export const InitiateReportDialog = ({ onSuccess }: InitiateReportDialogProps) =
             onOpenChange={setOpen}
             trigger={<MyButton>New Report</MyButton>}
             heading={`Generate ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Report`}
-            dialogWidth="sm:max-w-md"
+            dialogWidth="max-w-sm"
             content={
                 <div className="flex flex-col gap-4">
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-neutral-500">
                         Select a date range to analyze performance.
                     </p>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-4">
-                            <Label htmlFor="start-date" className="text-left sm:text-right">
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="start-date" className="text-xs font-medium text-neutral-600">
                                 Start Date
                             </Label>
                             <Input
                                 id="start-date"
                                 type="date"
-                                className="col-span-1 sm:col-span-3"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                             />
                         </div>
-                        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-4">
-                            <Label htmlFor="end-date" className="text-left sm:text-right">
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="end-date" className="text-xs font-medium text-neutral-600">
                                 End Date
                             </Label>
                             <Input
                                 id="end-date"
                                 type="date"
-                                className="col-span-1 sm:col-span-3"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                             />

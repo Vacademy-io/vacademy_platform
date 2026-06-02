@@ -19,8 +19,7 @@ import { useStudentSidebar } from '@/routes/manage-students/students-list/-conte
 import { useGetStudentDetails } from '@/services/get-student-details';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { DropdownValueType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
-import { Menu, Transition } from '@headlessui/react';
-import { Pencil, Upload, Trash2 } from 'lucide-react';
+import { PencilSimple, Upload, Trash } from '@phosphor-icons/react';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import {
@@ -282,99 +281,75 @@ export const EditStudentDetails = () => {
     return selectedStudent ? (
         <MyDialog
             trigger={
-                <div className="flex w-full justify-center">
-                    <MyButton buttonType="secondary" scale="medium">
-                        ✏️ Edit Details
-                    </MyButton>
-                </div>
+                <MyButton buttonType="secondary" scale="medium">
+                    <PencilSimple className="size-4" />
+                    Edit Details
+                </MyButton>
             }
             footer={submitButton}
             heading={`Edit ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Details`}
             open={openDialog}
             onOpenChange={handleDialogChange}
-            dialogWidth="w-[35vw]"
+            dialogWidth="max-w-2xl"
         >
             <FormProvider {...form}>
                 <form
                     ref={formRef}
                     onSubmit={form.handleSubmit(onSubmit)}
-                    className="flex max-h-[80vh] w-full flex-col items-center gap-4"
+                    className="flex w-full flex-col gap-6"
                 >
-                    <div className="flex flex-col items-center">
+                    {/* Profile photo — compact avatar + actions */}
+                    <div className="flex w-full items-center gap-4 rounded-lg border border-border bg-card p-4">
                         {isUploading ? (
                             <DashboardLoader />
                         ) : (
-                            <div className="relative">
+                            <div className="shrink-0">
                                 {faceUrl ? (
                                     <img
                                         src={faceUrl}
                                         alt="Profile"
-                                        className="size-[300px] rounded-full object-cover"
+                                        className="size-24 rounded-full object-cover"
                                     />
                                 ) : (
-                                    <div className="flex size-[320px] items-center justify-center rounded-full bg-neutral-100">
+                                    <div className="flex size-24 items-center justify-center rounded-full bg-muted">
                                         <EnrollFormUploadImage />
-                                    </div>
-                                )}
-
-                                {faceUrl && (
-                                    <div className="absolute bottom-3 right-3 z-10">
-                                        <Menu as="div" className="relative inline-block text-left">
-                                            <Menu.Button className="rounded-full bg-white p-1 shadow hover:bg-neutral-100">
-                                                <Pencil className="size-5 text-neutral-700" />
-                                            </Menu.Button>
-                                            <Transition
-                                                enter="transition ease-out duration-100"
-                                                enterFrom="transform opacity-0 scale-95"
-                                                enterTo="transform opacity-100 scale-100"
-                                                leave="transition ease-in duration-75"
-                                                leaveFrom="transform opacity-100 scale-100"
-                                                leaveTo="transform opacity-0 scale-95"
-                                            >
-                                                <Menu.Items className="absolute bottom-10 right-0 z-20 w-40 origin-bottom-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black/5 focus:outline-none">
-                                                    <div className="p-1">
-                                                        <Menu.Item>
-                                                            {({ active }) => (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        fileInputRef.current?.click()
-                                                                    }
-                                                                    className={`${
-                                                                        active
-                                                                            ? 'bg-neutral-100'
-                                                                            : ''
-                                                                    } group flex w-full items-center gap-2 rounded-md p-2 text-sm`}
-                                                                >
-                                                                    <Upload className="size-4" />
-                                                                    Upload New
-                                                                </button>
-                                                            )}
-                                                        </Menu.Item>
-                                                        <Menu.Item>
-                                                            {({ active }) => (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handleRemoveImage}
-                                                                    className={`${
-                                                                        active
-                                                                            ? 'bg-neutral-100'
-                                                                            : ''
-                                                                    } group flex w-full items-center gap-2 rounded-md p-2 text-sm text-red-600`}
-                                                                >
-                                                                    <Trash2 className="size-4" />
-                                                                    Remove Image
-                                                                </button>
-                                                            )}
-                                                        </Menu.Item>
-                                                    </div>
-                                                </Menu.Items>
-                                            </Transition>
-                                        </Menu>
                                     </div>
                                 )}
                             </div>
                         )}
+
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                            <span className="text-subtitle font-semibold text-card-foreground">
+                                Profile photo
+                            </span>
+                            <span className="text-caption text-muted-foreground">
+                                Square image, at least 200×200. Max 5 MB.
+                            </span>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disable={isUploading}
+                                >
+                                    <Upload className="size-4" />
+                                    {faceUrl ? 'Replace' : 'Upload'}
+                                </MyButton>
+                                {faceUrl && (
+                                    <MyButton
+                                        type="button"
+                                        buttonType="text"
+                                        scale="small"
+                                        onClick={handleRemoveImage}
+                                        disable={isUploading}
+                                    >
+                                        <Trash className="size-4" />
+                                        Remove
+                                    </MyButton>
+                                )}
+                            </div>
+                        </div>
 
                         <FileUploadComponent
                             fileInputRef={fileInputRef}
@@ -383,89 +358,83 @@ export const EditStudentDetails = () => {
                             name="face_file_id"
                             acceptedFileTypes="image/*"
                         />
-
-                        {!faceUrl && (
-                            <div className="mt-2">
-                                <MyButton
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disable={isUploading}
-                                    buttonType="secondary"
-                                    layoutVariant="default"
-                                    scale="large"
-                                    type="button"
-                                >
-                                    Upload Image
-                                </MyButton>
-                            </div>
-                        )}
                     </div>
-                    {/* Form Fields */}
-                    <FormField
-                        control={form.control}
-                        name="full_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Full Name"
-                                        className="w-full"
-                                        required={true}
-                                        label="Full Name"
-                                        error={form.formState.errors.full_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Email"
-                                        className="w-full"
-                                        required={true}
-                                        label="Email"
-                                        error={form.formState.errors.email?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="contact_number"
-                        render={() => (
-                            <FormItem className="w-full">
-                                <FormControl>
-                                    <div className="flex flex-col gap-1">
-                                        <PhoneInputField
-                                            label="Mobile Number"
-                                            placeholder="123 456 7890"
-                                            name="contact_number"
-                                            control={form.control}
+
+                    {/* Personal info ─────────────────────────────────────────────── */}
+                    <section className="flex w-full flex-col gap-4">
+                        <h3 className="text-subtitle font-semibold text-card-foreground">
+                            Personal info
+                        </h3>
+                        <FormField
+                            control={form.control}
+                            name="full_name"
+                            render={({ field }) => (
+                                <FormItem className="w-full">
+                                    <FormControl className="w-full">
+                                        <MyInput
+                                            input={field.value}
+                                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                                            inputType="text"
+                                            inputPlaceholder="Full Name"
+                                            className="w-full"
                                             required={true}
+                                            label="Full Name"
+                                            error={form.formState.errors.full_name?.message}
                                         />
-                                        <p className="text-subtitle text-danger-600">
-                                            {form.formState.errors.contact_number?.message}
-                                        </p>
-                                    </div>
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="gender"
-                        render={({ field }) => {
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
+                            <FormField
+                                control={form.control}
+                                name="email"
+                                render={({ field }) => (
+                                    <FormItem className="w-full">
+                                        <FormControl className="w-full">
+                                            <MyInput
+                                                input={field.value}
+                                                onChangeFunction={(e) =>
+                                                    field.onChange(e.target.value)
+                                                }
+                                                inputType="text"
+                                                inputPlaceholder="Email"
+                                                className="w-full"
+                                                required={true}
+                                                label="Email"
+                                                error={form.formState.errors.email?.message}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="contact_number"
+                                render={() => (
+                                    <FormItem className="w-full">
+                                        <FormControl>
+                                            <div className="flex flex-col gap-1">
+                                                <PhoneInputField
+                                                    label="Mobile Number"
+                                                    placeholder="123 456 7890"
+                                                    name="contact_number"
+                                                    control={form.control}
+                                                    required={true}
+                                                />
+                                                <p className="text-caption text-danger-600">
+                                                    {form.formState.errors.contact_number?.message}
+                                                </p>
+                                            </div>
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                        <FormField
+                            control={form.control}
+                            name="gender"
+                            render={({ field }) => {
                             const selectedGender = field.value
                                 ? genderList.find(
                                       (g) =>
@@ -508,214 +477,256 @@ export const EditStudentDetails = () => {
                                 </FormItem>
                             );
                         }}
-                    />{' '}
-                    <FormField
-                        control={form.control}
-                        name="address_line"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Address Line"
-                                        className="w-full"
-                                        label="Address Line"
-                                        error={form.formState.errors.address_line?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="city"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="City"
-                                        className="w-full"
-                                        label="City"
-                                        error={form.formState.errors.city?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="state"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="State"
-                                        className="w-full"
-                                        label="State"
-                                        error={form.formState.errors.state?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="pin_code"
-                        render={({ field: { onChange, value, ...field } }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        inputType="number"
-                                        label="Pincode"
-                                        inputPlaceholder="Eg.425562"
-                                        input={value}
-                                        onChangeFunction={onChange}
-                                        size="large"
-                                        className="w-full"
-                                        {...field}
-                                        error={form.formState.errors.pin_code?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="institute_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Institute Name"
-                                        className="w-full"
-                                        label="Institute Name"
-                                        error={form.formState.errors.institute_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="fathers_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Father/Male Gardian Name"
-                                        className="w-full"
-                                        label="Father/Male Gardian Name"
-                                        error={form.formState.errors.fathers_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="mothers_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Mother/Female Gardian Name"
-                                        className="w-full"
-                                        label="Mother/Female Gardian Name"
-                                        error={form.formState.errors.mothers_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="father_mobile_number"
-                        render={() => (
-                            <FormItem className="w-full">
-                                <FormControl>
-                                    <PhoneInputField
-                                        label="Father/Male Guardian Mobile Number"
-                                        placeholder="123 456 7890"
-                                        name="father_mobile_number"
-                                        control={form.control}
-                                        required={false}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="father_email"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="email"
-                                        inputPlaceholder="Father/Male Guardian Email"
-                                        className="w-full"
-                                        label="Father/Male Guardian Email"
-                                        error={form.formState.errors.father_email?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="mother_mobile_number"
-                        render={() => (
-                            <FormItem className="w-full">
-                                <FormControl>
-                                    <PhoneInputField
-                                        label="Mother/Female Guardian Mobile Number"
-                                        placeholder="123 456 7890"
-                                        name="mother_mobile_number"
-                                        control={form.control}
-                                        required={false}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="mother_email"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="email"
-                                        inputPlaceholder="Mother/Female Guardian Email"
-                                        className="w-full"
-                                        label="Mother/Female Guardian Email"
-                                        error={form.formState.errors.mother_email?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
+                        />
+                    </section>
+
+                    {/* Address ───────────────────────────────────────────────────── */}
+                    <section className="flex w-full flex-col gap-4">
+                        <h3 className="text-subtitle font-semibold text-card-foreground">
+                            Address
+                        </h3>
+                        <FormField
+                            control={form.control}
+                            name="address_line"
+                            render={({ field }) => (
+                                <FormItem className="w-full">
+                                    <FormControl className="w-full">
+                                        <MyInput
+                                            input={field.value}
+                                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                                            inputType="text"
+                                            inputPlaceholder="Address Line"
+                                            className="w-full"
+                                            label="Address Line"
+                                            error={form.formState.errors.address_line?.message}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-3">
+                            <FormField
+                                control={form.control}
+                                name="city"
+                                render={({ field }) => (
+                                    <FormItem className="w-full">
+                                        <FormControl className="w-full">
+                                            <MyInput
+                                                input={field.value}
+                                                onChangeFunction={(e) =>
+                                                    field.onChange(e.target.value)
+                                                }
+                                                inputType="text"
+                                                inputPlaceholder="City"
+                                                className="w-full"
+                                                label="City"
+                                                error={form.formState.errors.city?.message}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="state"
+                                render={({ field }) => (
+                                    <FormItem className="w-full">
+                                        <FormControl className="w-full">
+                                            <MyInput
+                                                input={field.value}
+                                                onChangeFunction={(e) =>
+                                                    field.onChange(e.target.value)
+                                                }
+                                                inputType="text"
+                                                inputPlaceholder="State"
+                                                className="w-full"
+                                                label="State"
+                                                error={form.formState.errors.state?.message}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="pin_code"
+                                render={({ field: { onChange, value, ...field } }) => (
+                                    <FormItem className="w-full">
+                                        <FormControl className="w-full">
+                                            <MyInput
+                                                inputType="number"
+                                                label="Pincode"
+                                                inputPlaceholder="Eg. 425562"
+                                                input={value}
+                                                onChangeFunction={onChange}
+                                                size="large"
+                                                className="w-full"
+                                                {...field}
+                                                error={form.formState.errors.pin_code?.message}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                    </section>
+
+                    {/* Institute ─────────────────────────────────────────────────── */}
+                    <section className="flex w-full flex-col gap-4">
+                        <h3 className="text-subtitle font-semibold text-card-foreground">
+                            Institute
+                        </h3>
+                        <FormField
+                            control={form.control}
+                            name="institute_name"
+                            render={({ field }) => (
+                                <FormItem className="w-full">
+                                    <FormControl className="w-full">
+                                        <MyInput
+                                            input={field.value}
+                                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                                            inputType="text"
+                                            inputPlaceholder="Institute Name"
+                                            className="w-full"
+                                            label="Institute Name"
+                                            error={form.formState.errors.institute_name?.message}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    </section>
+                    {/* Father / Male Guardian ─────────────────────────────────── */}
+                    <section className="flex w-full flex-col gap-4">
+                        <h3 className="text-subtitle font-semibold text-card-foreground">
+                            Father / Male Guardian
+                        </h3>
+                        <FormField
+                            control={form.control}
+                            name="fathers_name"
+                            render={({ field }) => (
+                                <FormItem className="w-full">
+                                    <FormControl className="w-full">
+                                        <MyInput
+                                            input={field.value}
+                                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                                            inputType="text"
+                                            inputPlaceholder="Father/Male Guardian Name"
+                                            className="w-full"
+                                            label="Father/Male Guardian Name"
+                                            error={form.formState.errors.fathers_name?.message}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
+                            <FormField
+                                control={form.control}
+                                name="father_mobile_number"
+                                render={() => (
+                                    <FormItem className="w-full">
+                                        <FormControl>
+                                            <PhoneInputField
+                                                label="Mobile Number"
+                                                placeholder="123 456 7890"
+                                                name="father_mobile_number"
+                                                control={form.control}
+                                                required={false}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="father_email"
+                                render={({ field }) => (
+                                    <FormItem className="w-full">
+                                        <FormControl className="w-full">
+                                            <MyInput
+                                                input={field.value}
+                                                onChangeFunction={(e) =>
+                                                    field.onChange(e.target.value)
+                                                }
+                                                inputType="email"
+                                                inputPlaceholder="Email"
+                                                className="w-full"
+                                                label="Email"
+                                                error={form.formState.errors.father_email?.message}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                    </section>
+
+                    {/* Mother / Female Guardian ─────────────────────────────────── */}
+                    <section className="flex w-full flex-col gap-4">
+                        <h3 className="text-subtitle font-semibold text-card-foreground">
+                            Mother / Female Guardian
+                        </h3>
+                        <FormField
+                            control={form.control}
+                            name="mothers_name"
+                            render={({ field }) => (
+                                <FormItem className="w-full">
+                                    <FormControl className="w-full">
+                                        <MyInput
+                                            input={field.value}
+                                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                                            inputType="text"
+                                            inputPlaceholder="Mother/Female Guardian Name"
+                                            className="w-full"
+                                            label="Mother/Female Guardian Name"
+                                            error={form.formState.errors.mothers_name?.message}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <div className="grid w-full grid-cols-1 gap-4 md:grid-cols-2">
+                            <FormField
+                                control={form.control}
+                                name="mother_mobile_number"
+                                render={() => (
+                                    <FormItem className="w-full">
+                                        <FormControl>
+                                            <PhoneInputField
+                                                label="Mobile Number"
+                                                placeholder="123 456 7890"
+                                                name="mother_mobile_number"
+                                                control={form.control}
+                                                required={false}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="mother_email"
+                                render={({ field }) => (
+                                    <FormItem className="w-full">
+                                        <FormControl className="w-full">
+                                            <MyInput
+                                                input={field.value}
+                                                onChangeFunction={(e) =>
+                                                    field.onChange(e.target.value)
+                                                }
+                                                inputType="email"
+                                                inputPlaceholder="Email"
+                                                className="w-full"
+                                                label="Email"
+                                                error={form.formState.errors.mother_email?.message}
+                                            />
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+                    </section>
                     {/* Custom Fields Section */}
                     {(customFieldsData.fieldGroups.length > 0 ||
                         customFieldsData.individualFields.length > 0) && (

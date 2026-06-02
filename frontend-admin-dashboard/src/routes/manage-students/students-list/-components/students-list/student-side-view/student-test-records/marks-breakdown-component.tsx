@@ -34,32 +34,40 @@ const chartConfig = {
     },
 } satisfies ChartConfig;
 
+// Recharts fill values use CSS variables so hex is not needed in JSX class strings.
+const MARKS_CHART_FILLS = {
+    correct: 'var(--color-correct)',       // --chart-1 (green tint)
+    partiallyCorrect: 'var(--color-partiallyCorrect)', // --chart-2 (amber tint)
+    wrongResponse: 'var(--color-wrongResponse)',        // --chart-3 (red tint)
+    skipped: 'var(--color-skipped)',       // --chart-4 (neutral)
+} as const;
+
 export function MarksBreakdownComponent({ marksData }: { marksData: MarksResponseDataInterface }) {
     const chartData = [
         {
             responseType: 'correct',
             value: marksData.correct,
-            fill: '#97D4B4',
+            fill: MARKS_CHART_FILLS.correct,
         },
         {
             responseType: 'partiallyCorrect',
             value: marksData.partiallyCorrect,
-            fill: '#FFDD82',
+            fill: MARKS_CHART_FILLS.partiallyCorrect,
         },
         {
             responseType: 'wrongResponse',
             value: marksData.wrongResponse,
-            fill: '#F49898',
+            fill: MARKS_CHART_FILLS.wrongResponse,
         },
         {
             responseType: 'skipped',
             value: marksData.skipped,
-            fill: '#EEE',
+            fill: MARKS_CHART_FILLS.skipped,
         },
     ];
     return (
-        <ChartContainer config={chartConfig} className="mx-auto aspect-square h-[180px]">
-            <Suspense fallback={<div className="h-full w-full animate-pulse bg-gray-100 rounded-full opacity-20" />}>
+        <ChartContainer config={chartConfig} className="mx-auto aspect-square size-44">
+            <Suspense fallback={<div className="h-full w-full animate-pulse rounded-full bg-neutral-100 opacity-20" />}>
                 <PieChart>
                     <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                     <Pie

@@ -147,8 +147,11 @@ public class EmailConfigurationService {
                             ? fromName
                             : formatEmailTypeName(emailType);
 
-                    // Build EmailConfigDTO
+                    // Build EmailConfigDTO. `id` is set to the email type so the
+                    // frontend has a stable handle for update/delete; type is the
+                    // primary key inside EMAIL_SETTING.data.
                     EmailConfigDTO dto = EmailConfigDTO.builder()
+                            .id(emailType)
                             .email(fromEmail)
                             .name(displayName)
                             .type(emailType)
@@ -241,9 +244,17 @@ public class EmailConfigurationService {
                 throw new IllegalArgumentException("Email type '" + emailConfig.getType() + "' already exists. Use PUT to update.");
             }
             
-            // Create new email configuration node
+            // Create new email configuration node. The `from` field encodes the
+            // display name as "Name <email>" when a name is provided, so it
+            // appears in the recipient's inbox; otherwise we store the bare
+            // email so no auto-derived fallback ever leaks into outbound mail.
             ObjectNode newConfigNode = objectMapper.createObjectNode();
-            newConfigNode.put(NotificationConstants.FROM, emailConfig.getEmail());
+            String addEmail = emailConfig.getEmail().trim();
+            String addName = emailConfig.getName() != null ? emailConfig.getName().trim() : "";
+            String fromValue = addName.isEmpty()
+                    ? addEmail
+                    : (addName + " <" + addEmail + ">");
+            newConfigNode.put(NotificationConstants.FROM, fromValue);
             newConfigNode.put(NotificationConstants.HOST, "smtp.gmail.com");
             newConfigNode.put(NotificationConstants.PORT, 587);
             newConfigNode.put(NotificationConstants.USERNAME, "SMTP_USERNAME");
@@ -323,6 +334,7 @@ public class EmailConfigurationService {
         List<EmailConfigDTO> configs = new ArrayList<>();
 
         configs.add(EmailConfigDTO.builder()
+            .id("UTILITY_EMAIL")
             .email(senderEmail)
             .name("Vacademy Support")
             .type("UTILITY_EMAIL")
@@ -331,5 +343,200 @@ public class EmailConfigurationService {
             .build());
 
         return configs;
+    }
+
+    /**
+     * Update an existing email configuration. `emailType` is the primary key and
+     * is immutable — only the from-address and display name can change. Returns
+     * null if the type does not exist for the institute.
+     */
+    public EmailConfigDTO updateEmailConfiguration(
+            String instituteId,
+            String emailType,
+            EmailConfigDTO emailConfig,
+            String authToken
+    ) {
+        try {
+            if (emailType == null || emailType.isBlank()) {
+                throw new IllegalArgumentException("Email type is required");
+            }
+            if (emailConfig.getEmail() == null || emailConfig.getEmail().isBlank()) {
+                throw new IllegalArgumentException("Email address is required");
+            }
+
+            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null) {
+                throw new IllegalArgumentException("Institute not found: " + instituteId);
+            }
+
+            String currentSettings = institute.getSetting();
+            if (currentSettings == null || currentSettings.trim().isEmpty()) {
+                return null;
+            }
+
+            JsonNode settingsNode = objectMapper.readTree(currentSettings);
+            if (!(settingsNode instanceof ObjectNode rootNode)) {
+                return null;
+            }
+
+            JsonNode emailDataNode = rootNode
+                    .path(NotificationConstants.SETTING)
+                    .path(NotificationConstants.EMAIL_SETTING)
+                    .path(NotificationConstants.DATA);
+            if (!(emailDataNode instanceof ObjectNode emailData) || !emailData.has(emailType)) {
+                return null;
+            }
+
+            ObjectNode existingConfigNode = (ObjectNode) emailData.get(emailType);
+
+            // Read the previous from-address (raw) so we can detect an email change
+            // and keep the email_address_mapping table in sync.
+            String previousFromRaw = existingConfigNode.path(NotificationConstants.FROM).asText("");
+            String previousEmail = previousFromRaw;
+            boolean previouslyHadStoredName =
+                    previousFromRaw.contains("<") && previousFromRaw.contains(">");
+            if (previouslyHadStoredName) {
+                int ltIdx = previousFromRaw.indexOf('<');
+                int gtIdx = previousFromRaw.indexOf('>');
+                previousEmail = previousFromRaw.substring(ltIdx + 1, gtIdx).trim();
+            }
+
+            // Format the new `from` string. Match the parser's expectation:
+            // "Display Name <email@domain.com>" when the user has chosen a name,
+            // otherwise just the bare email.
+            //
+            // Safety net for pre-existing rows: if the row was previously stored
+            // as a bare email (no display name persisted), the GET response
+            // returned an auto-derived fallback name (e.g. "Utility Email").
+            // If the incoming `name` is unchanged from that fallback — i.e. the
+            // user edited something else (like a typo in the email address) and
+            // didn't touch the name field — we must NOT promote that fallback
+            // to a stored display name, because emails would suddenly start
+            // going out with "Utility Email" / "Marketing Email" as the
+            // sender label. Treat it as no name set instead.
+            String newEmail = emailConfig.getEmail().trim();
+            String newName = emailConfig.getName() != null ? emailConfig.getName().trim() : "";
+            String autoFallbackName = formatEmailTypeName(emailType);
+            boolean incomingMatchesAutoFallback = newName.equalsIgnoreCase(autoFallbackName);
+            boolean treatAsNoName =
+                    newName.isEmpty()
+                            || (!previouslyHadStoredName && incomingMatchesAutoFallback);
+
+            String newFrom = treatAsNoName ? newEmail : (newName + " <" + newEmail + ">");
+            existingConfigNode.put(NotificationConstants.FROM, newFrom);
+
+            String updatedSettings = objectMapper.writeValueAsString(rootNode);
+            boolean persisted = instituteInternalService.updateInstituteSettings(
+                    instituteId, updatedSettings, authToken);
+            if (!persisted) {
+                log.warn("Failed to persist updated email configuration for institute: {}, type: {}",
+                        instituteId, emailType);
+                log.info("Manual update required. Updated settings JSON:\n{}", updatedSettings);
+            } else {
+                log.info("Updated email configuration: type={}, institute={}", emailType, instituteId);
+            }
+
+            // Keep email_address_mapping in sync.
+            try {
+                if (!previousEmail.isBlank()
+                        && !previousEmail.equalsIgnoreCase(newEmail)) {
+                    // Old address is no longer this institute's `emailType` sender —
+                    // soft-delete the mapping so inbound routing doesn't keep using it.
+                    emailAddressMappingRepository.deactivateByInstituteIdAndEmailAddress(
+                            instituteId, previousEmail);
+                }
+                emailAddressMappingRepository.upsert(
+                        UUID.randomUUID().toString(),
+                        newEmail.toLowerCase().trim(),
+                        instituteId,
+                        emailType);
+            } catch (Exception e) {
+                log.warn("Failed to sync email_address_mapping on update (institute={}, type={}): {}",
+                        instituteId, emailType, e.getMessage());
+            }
+
+            // Return the canonical, post-update view. Mirror what a follow-up
+            // GET would parse: the fallback when no real name is stored, the
+            // user's chosen name otherwise.
+            String returnedName = treatAsNoName ? autoFallbackName : newName;
+            return EmailConfigDTO.builder()
+                    .id(emailType)
+                    .email(newEmail)
+                    .name(returnedName)
+                    .type(emailType)
+                    .description("Email configuration for " + autoFallbackName)
+                    .displayText(returnedName + " (" + newEmail + ")")
+                    .build();
+        } catch (IllegalArgumentException e) {
+            // Surface bad input as-is so the controller can map it to a 4xx.
+            throw e;
+        } catch (Exception e) {
+            log.error("Error updating email configuration (institute={}, type={})",
+                    instituteId, emailType, e);
+            throw new RuntimeException("Failed to update email configuration: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Delete an email configuration by type. Returns false if the type is not
+     * present for the institute (treated as a 404 by the controller).
+     */
+    public boolean deleteEmailConfiguration(String instituteId, String emailType, String authToken) {
+        try {
+            if (emailType == null || emailType.isBlank()) {
+                throw new IllegalArgumentException("Email type is required");
+            }
+
+            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null) {
+                throw new IllegalArgumentException("Institute not found: " + instituteId);
+            }
+
+            String currentSettings = institute.getSetting();
+            if (currentSettings == null || currentSettings.trim().isEmpty()) {
+                return false;
+            }
+
+            JsonNode settingsNode = objectMapper.readTree(currentSettings);
+            if (!(settingsNode instanceof ObjectNode rootNode)) {
+                return false;
+            }
+
+            JsonNode emailDataNode = rootNode
+                    .path(NotificationConstants.SETTING)
+                    .path(NotificationConstants.EMAIL_SETTING)
+                    .path(NotificationConstants.DATA);
+            if (!(emailDataNode instanceof ObjectNode emailData) || !emailData.has(emailType)) {
+                return false;
+            }
+
+            emailData.remove(emailType);
+
+            String updatedSettings = objectMapper.writeValueAsString(rootNode);
+            boolean persisted = instituteInternalService.updateInstituteSettings(
+                    instituteId, updatedSettings, authToken);
+            if (!persisted) {
+                log.warn("Failed to persist deleted email configuration for institute: {}, type: {}",
+                        instituteId, emailType);
+                return false;
+            }
+
+            try {
+                emailAddressMappingRepository.deactivateByInstituteIdAndEmailType(
+                        instituteId, emailType);
+            } catch (Exception e) {
+                log.warn("Failed to deactivate email_address_mapping on delete (institute={}, type={}): {}",
+                        instituteId, emailType, e.getMessage());
+            }
+
+            log.info("Deleted email configuration: type={}, institute={}", emailType, instituteId);
+            return true;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error deleting email configuration (institute={}, type={})",
+                    instituteId, emailType, e);
+            throw new RuntimeException("Failed to delete email configuration: " + e.getMessage(), e);
+        }
     }
 }

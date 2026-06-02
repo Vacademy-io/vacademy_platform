@@ -88,6 +88,8 @@ public class GetSessionByIdService {
                 item.setTimezone(schedule.getTimezone());
                 item.setDailyAttendance(schedule.getDailyAttendance());
                 item.setProviderRecordingsJson(schedule.getProviderRecordingsJson());
+                item.setLinkType(schedule.getLinkType());
+                item.setProviderHostUrl(schedule.getProviderHostUrl());
                 addedSchedules.add(item);
             }
         }

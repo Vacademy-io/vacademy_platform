@@ -35,7 +35,12 @@ import { AddCustomFieldDialog as SharedAddCustomFieldDialog } from '@/components
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { FieldErrors } from 'react-hook-form';
 import { transformFormToDTOStep2 } from '../../-constants/helper';
-import { createLiveSessionStep2, createProviderMeeting } from '../-services/utils';
+import {
+    createLiveSessionStep2,
+    createProviderMeeting,
+    createProviderMeetingsForSession,
+    checkProviderAvailabilityForSession,
+} from '../-services/utils';
 import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useNavigate } from '@tanstack/react-router';
@@ -592,6 +597,89 @@ export default function ScheduleStep2() {
                     }
                 } catch (err) {
                     console.error('Error fetching session details to create Zoho meeting:', err);
+                }
+            }
+
+            // Handle Zoom meeting creation — only when an account was selected in
+            // step 1 (integration enabled). Without an account the admin pasted a
+            // defaultLink instead, so there's nothing to create. Mirrors the Zoho
+            // block above; skipped in bulk for the same reason.
+            if (
+                !isBulkFlow &&
+                step1Data?.sessionPlatform === StreamingPlatform.ZOOM &&
+                (step1Data as any)?.zoomAccountId &&
+                instituteDetails?.id
+            ) {
+                try {
+                    const s = step1Data as any;
+                    const altHostsRaw = (s?.zoomAlternativeHosts ?? '').trim();
+                    const zoomConfig = {
+                        // Entry / security
+                        waitingRoom: s?.zoomWaitingRoom ?? true,
+                        joinBeforeHost: s?.zoomJoinBeforeHost ?? false,
+                        meetingAuthentication: s?.zoomMeetingAuthentication ?? false,
+                        approvalType: Number(s?.zoomApprovalType ?? 2),
+                        alternativeHosts: altHostsRaw
+                            ? altHostsRaw
+                                  .split(',')
+                                  .map((e: string) => e.trim())
+                                  .filter(Boolean)
+                            : undefined,
+                        // Audio / Video
+                        muteUponEntry: s?.zoomMuteUponEntry ?? true,
+                        hostVideo: s?.zoomHostVideo ?? false,
+                        participantVideo: s?.zoomParticipantVideo ?? false,
+                        audio: s?.zoomAudio ?? 'both',
+                        // In-meeting
+                        autoRecording: s?.zoomAutoRecording ?? 'cloud',
+                        breakoutRoom: s?.zoomBreakoutRoom ?? false,
+                        focusMode: s?.zoomFocusMode ?? false,
+                        allowMultipleDevices: s?.zoomAllowMultipleDevices ?? false,
+                        watermark: s?.zoomWatermark ?? false,
+                    };
+
+                    // One server-side call provisions a Zoom meeting for EVERY schedule of
+                    // the session (recurring => one meeting per occurrence). The backend
+                    // loops the rows idempotently and derives each occurrence's start time
+                    // + duration from its own row, so we no longer fan out N fragile calls
+                    // from the browser.
+                    // Advisory double-booking check: warn (don't block) if the chosen
+                    // Zoom account already has meetings overlapping any occurrence.
+                    try {
+                        const availability = await checkProviderAvailabilityForSession(
+                            sessionId,
+                            s.zoomAccountId
+                        );
+                        if (availability?.available === false) {
+                            const count = availability.conflicts?.length ?? 0;
+                            toast.warning(
+                                `Heads up: this Zoom account already has ${count} overlapping meeting${
+                                    count === 1 ? '' : 's'
+                                } at the selected time. Creating anyway.`
+                            );
+                        }
+                    } catch {
+                        // advisory only — never block meeting creation
+                    }
+
+                    const fallbackDuration =
+                        Number(step1Data.durationHours) * 60 + Number(step1Data.durationMinutes);
+                    await createProviderMeetingsForSession({
+                        instituteId: instituteDetails.id,
+                        sessionId: sessionId,
+                        topic: step1Data.title || 'Live Class',
+                        agenda: step1Data.description || 'Live Subject Class',
+                        durationMinutes: fallbackDuration > 0 ? fallbackDuration : 30,
+                        timezone: step1Data.timeZone || 'Asia/Kolkata',
+                        provider: 'ZOOM_MEETING',
+                        // Vendor-neutral fields (preferred); legacy zoom* sent too for transition.
+                        providerConfig: zoomConfig,
+                        providerAccountId: s.zoomAccountId,
+                        zoomAccountId: s.zoomAccountId,
+                        zoomConfig,
+                    });
+                } catch (err) {
+                    console.error('Error creating Zoom meetings for session:', err);
                 }
             }
 

@@ -101,9 +101,10 @@ export function RecordSubOrgPaymentDialog({
                 <DialogHeader>
                     <DialogTitle>Record offline payment</DialogTitle>
                     <DialogDescription>
-                        {contextLabel
-                            ? `${contextLabel} — FIFO-allocated against pending installments.`
-                            : 'FIFO-allocated against pending installments.'}
+                        {contextLabel ? `${contextLabel}. ` : ''}
+                        Enter any amount — it is bucket-filled (oldest-first) across the
+                        pending installments. Excess is recorded as overpayment on the
+                        payment log; partials carry into the next installment.
                     </DialogDescription>
                 </DialogHeader>
 

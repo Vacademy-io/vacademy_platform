@@ -12,6 +12,7 @@ import {
     ADMIN_MARK_ATTENDANCE,
     GET_SCHEDULE_RECORDINGS,
     SYNC_RECORDINGS_FROM_BBB,
+    SYNC_RECORDINGS_TO_S3,
     RECORDING_TRANSCRIBE,
     RECORDING_CREATE_ASSESSMENT,
     RECORDING_STUDY_NOTES,
@@ -169,6 +170,12 @@ export interface MeetingRecording {
     providerMeetingId?: string;
     fileId?: string;
     type?: string;
+    /** Zoom cloud-recording passcode shown as a fallback when the embedded ?pwd= is rejected. */
+    passcode?: string;
+    /** Where the recording lives: 'ZOOM_CLOUD' (provider, expires) or 'S3' (mirrored, permanent). */
+    recordingStorage?: string;
+    /** ISO-8601 provider auto-delete time (Zoom ~30 days). Drives the "expires in N days" badge. */
+    expiresAt?: string;
     /** Set by the YouTube upload worker once the recording has been published. */
     youtubeVideoId?: string;
     youtubeVideoUrl?: string;
@@ -573,6 +580,23 @@ export const syncRecordingsFromBbb = async (
 ): Promise<RecordingSyncResult> => {
     const response = await authenticatedAxiosInstance.post<RecordingSyncResult>(
         SYNC_RECORDINGS_FROM_BBB,
+        null,
+        { params: { scheduleId, instituteId } }
+    );
+    return response.data;
+};
+
+/**
+ * "Save to library" for Zoom recordings — mirrors not-yet-mirrored cloud recordings
+ * of a schedule to Vacademy S3 so they survive Zoom's ~30-day auto-delete.
+ * Idempotent; returns the updated recordings (with fileId/S3 set) + count mirrored.
+ */
+export const syncRecordingsToS3 = async (
+    scheduleId: string,
+    instituteId: string
+): Promise<RecordingSyncResult> => {
+    const response = await authenticatedAxiosInstance.post<RecordingSyncResult>(
+        SYNC_RECORDINGS_TO_S3,
         null,
         { params: { scheduleId, instituteId } }
     );

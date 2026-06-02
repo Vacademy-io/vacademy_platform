@@ -51,6 +51,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.context.annotation.Lazy;
 
 @Service
 @Transactional
@@ -75,6 +76,10 @@ public class PaymentLogService {
     @Autowired
     private vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
 
+    // @Lazy breaks the InvoiceService <-> PaymentLogService bean cycle (both field-inject
+    // each other). Injecting a lazy proxy here lets Spring construct both without the
+    // prohibited circular reference; the real bean resolves on first method call.
+    @Lazy
     @Autowired
     private InvoiceService invoiceService;
 

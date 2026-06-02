@@ -138,6 +138,37 @@ public class InvoiceController {
     }
 
     /**
+     * Record an offline / manual payment against a PENDING_PAYMENT admin invoice.
+     * Creates a MANUAL PaymentLog (no UserPlan), links it to the invoice, flips
+     * status to PAID, and sends a best-effort confirmation email.
+     *
+     * <p>Body: {@code {"transaction_id": "...", "notes": "..."}} (both optional).
+     */
+    @PostMapping("/{invoiceId}/mark-paid-manual")
+    public ResponseEntity<InvoiceDTO> markInvoicePaidManually(
+            @PathVariable String invoiceId,
+            @RequestBody(required = false) vacademy.io.admin_core_service.features.invoice.dto.ManualInvoicePaymentRequestDTO request,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
+        return ResponseEntity.ok(invoiceService.markInvoicePaidManually(invoiceId, request, userDetails));
+    }
+
+    /**
+     * Re-send the payment-due reminder for a PENDING_PAYMENT admin invoice. Fires
+     * the same in-app system alert + email the creation flow uses, but with a
+     * "Reminder:" prefix so the learner can distinguish a follow-up from the
+     * original bill. Both channels are best-effort; the response reports which
+     * succeeded so the FE can toast precisely.
+     *
+     * <p>{@code POST /v1/invoices/{invoiceId}/send-reminder}
+     */
+    @PostMapping("/{invoiceId}/send-reminder")
+    public ResponseEntity<java.util.Map<String, Object>> sendInvoiceReminder(
+            @PathVariable String invoiceId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
+        return ResponseEntity.ok(invoiceService.sendInvoiceReminder(invoiceId, userDetails));
+    }
+
+    /**
      * Test endpoint: Manually trigger invoice generation for a payment log
      * This will group related payment logs (same vendor_id or time window) into one invoice
      * Useful for testing invoice generation without going through full payment flow

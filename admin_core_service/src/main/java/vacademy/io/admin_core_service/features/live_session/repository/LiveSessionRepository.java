@@ -19,7 +19,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getBackgroundScoreFileId();
         String getSessionStreamingServiceType();
         String getScheduleId();
-        java.sql.Date getMeetingDate();
+        java.util.Date getMeetingDate();
         java.sql.Time getStartTime();
         java.sql.Time getLastEntryTime();
         String getRecurrenceType();
@@ -34,6 +34,11 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getDefaultClassLink();
         String getDefaultClassName();
         String getLinkType();
+        // Zoom (and any future provider) meeting id. Lets the learner UI decide
+        // "join early" eligibility — once the meeting has been provisioned the
+        // learner can join any time before the session window closes, even
+        // ahead of the scheduled start.
+        String getProviderMeetingId();
     }
 
     public interface ScheduledSessionProjection {
@@ -41,7 +46,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         String getSessionId();
         String getTitle();
         String getSubject();
-        java.sql.Date getMeetingDate();
+        // See LiveSessionListProjection#getMeetingDate for why LocalDate.
+        java.time.LocalDate getMeetingDate();
         java.sql.Time getStartTime();
         java.sql.Time getLastEntryTime();
         String getCustomMeetingLink();
@@ -318,7 +324,8 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
             s.learner_button_config AS learnerButtonConfig,
             ss.default_class_link AS defaultClassLink,
             ss.default_class_name AS defaultClassName,
-            COALESCE(ss.link_type, s.link_type) AS linkType
+            COALESCE(ss.link_type, s.link_type) AS linkType,
+            ss.provider_meeting_id AS providerMeetingId
         FROM session_schedules ss
         JOIN live_session s ON ss.session_id = s.id
         JOIN live_session_participants lsp ON lsp.session_id = s.id
@@ -354,4 +361,25 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
 
     @Query("SELECT s FROM LiveSession s WHERE s.instituteId = :instituteId")
     List<LiveSession> findByInstituteId(@Param("instituteId") String instituteId);
+
+    /**
+     * LIVE Zoom sessions that have stored provisioning config but still hold a
+     * schedule with no provider meeting — i.e. up-front async provisioning was
+     * interrupted. Bounded to schedules created before {@code staleBefore} (so the
+     * in-flight async run isn't double-provisioned) and on/after {@code earliestDate}
+     * (don't scan ancient sessions). Drives the provisioning retry job.
+     */
+    @Query(value = """
+        SELECT DISTINCT ls.* FROM live_session ls
+        JOIN session_schedules ss ON ss.session_id = ls.id
+        WHERE ls.status = 'LIVE'
+          AND ls.zoom_account_id IS NOT NULL
+          AND ss.status <> 'DELETED'
+          AND (ss.provider_meeting_id IS NULL OR ss.provider_meeting_id = '')
+          AND ss.created_at < :staleBefore
+          AND ss.meeting_date >= :earliestDate
+        """, nativeQuery = true)
+    List<LiveSession> findZoomSessionsNeedingProvisionRetry(
+            @Param("staleBefore") java.util.Date staleBefore,
+            @Param("earliestDate") java.sql.Date earliestDate);
 }

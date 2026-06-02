@@ -5,7 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 
-import java.sql.Date;
+import java.util.Date;
 import java.sql.Time;
 
 @Data
@@ -33,4 +33,5 @@ public class LiveSessionListProjectionImpl implements LiveSessionRepository.Live
     private String defaultClassLink;
     private String defaultClassName;
     private String linkType;
+    private String providerMeetingId;
 }

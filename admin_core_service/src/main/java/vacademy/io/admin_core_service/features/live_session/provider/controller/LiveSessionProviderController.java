@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.entity.Live
 import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
 import vacademy.io.admin_core_service.features.live_session.provider.service.BbbServerRouter;
 import vacademy.io.admin_core_service.features.live_session.provider.service.LiveSessionProviderService;
+import vacademy.io.admin_core_service.features.live_session.provider.service.ProviderMeetingBatchService;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -52,6 +53,8 @@ public class LiveSessionProviderController {
     private final vacademy.io.common.media.service.FileService fileService;
     private final vacademy.io.common.auth.repository.UserRepository userRepository;
     private final vacademy.io.admin_core_service.features.youtube.service.YoutubeUploadJobService youtubeUploadJobService;
+    private final ProviderMeetingBatchService providerMeetingBatchService;
+    private final vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -141,6 +144,36 @@ public class LiveSessionProviderController {
     }
 
     /**
+     * POST /admin-core-service/live-sessions/provider/meeting/create-for-session
+     *
+     * Provisions a provider meeting for EVERY schedule row of a session in one call,
+     * server-side and in the background — replacing the admin browser looping a
+     * create call per occurrence. Used for recurring sessions (one meeting per
+     * occurrence). Idempotent: rows that already have a meeting are skipped, so this
+     * can be re-called safely to fill gaps. Returns 202 with the count still pending.
+     *
+     * Body: same {@link ProviderMeetingCreateRequestDTO} as /meeting/create but
+     * {@code scheduleId} is ignored — every not-yet-provisioned schedule of
+     * {@code sessionId} is processed, each occurrence's start time + duration derived
+     * from its own row.
+     */
+    @PostMapping("/meeting/create-for-session")
+    public ResponseEntity<Map<String, Object>> createMeetingsForSession(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestBody ProviderMeetingCreateRequestDTO request) {
+        // Authorize against the SESSION's real institute (not the client-supplied
+        // instituteId) so a caller can't provision billable meetings on another tenant.
+        instituteAccessValidator.validateUserAccess(user, resolveSessionInstituteId(request.getSessionId()));
+        int pending = providerMeetingBatchService.countPending(request.getSessionId());
+        providerMeetingBatchService.rememberProvisioningConfig(request);
+        providerMeetingBatchService.createMeetingsForSessionAsync(request);
+        return ResponseEntity.accepted().body(Map.of(
+                "status", "PROCESSING",
+                "sessionId", request.getSessionId() != null ? request.getSessionId() : "",
+                "pendingCount", pending));
+    }
+
+    /**
      * GET /admin-core/live-session/provider/meeting/recordings
      * ?scheduleId=xxx&instituteId=yyy
      */
@@ -163,6 +196,25 @@ public class LiveSessionProviderController {
             @RequestParam String scheduleId,
             @RequestParam String instituteId) {
         return ResponseEntity.ok(providerService.syncRecordingsFromBbb(scheduleId, instituteId));
+    }
+
+    /**
+     * POST /admin-core-service/live-sessions/provider/meeting/recordings/sync-to-s3
+     * ?scheduleId=xxx&instituteId=yyy
+     *
+     * Admin "Sync to S3" for Zoom recordings: mirrors not-yet-mirrored cloud
+     * recordings to Vacademy storage so they survive Zoom's ~30-day auto-delete.
+     * Idempotent. Returns the updated recording list + count mirrored.
+     */
+    @PostMapping("/meeting/recordings/sync-to-s3")
+    public ResponseEntity<RecordingSyncResultDTO> syncRecordingsToS3(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String scheduleId,
+            @RequestParam String instituteId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
+        instituteAccessValidator.validateUserAccess(user, resolveInstituteId(schedule));
+        return ResponseEntity.ok(providerService.syncRecordingsToS3(scheduleId, instituteId));
     }
 
     /**
@@ -223,6 +275,24 @@ public class LiveSessionProviderController {
                 startTime, durationMinutes, instituteId, vendorUserId));
     }
 
+    /**
+     * GET /admin-core-service/live-sessions/provider/meeting/availability-for-session
+     * ?sessionId=&providerAccountId=
+     *
+     * Double-booking check for a whole (recurring) session: returns other meetings
+     * already booked on the same provider account that overlap ANY of the session's
+     * occurrences. Advisory — the wizard surfaces a warning; it does not block.
+     */
+    @GetMapping("/meeting/availability-for-session")
+    public ResponseEntity<UserScheduleAvailabilityDTO> checkAvailabilityForSession(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String sessionId,
+            @RequestParam String providerAccountId) {
+        instituteAccessValidator.validateUserAccess(user, resolveSessionInstituteId(sessionId));
+        return ResponseEntity.ok(
+                providerService.checkAvailabilityForSession(sessionId, providerAccountId));
+    }
+
     // -----------------------------------------------------------------------
     // BBB Join — generates per-user join URL, auto-creates room if needed
     // -----------------------------------------------------------------------
@@ -243,6 +313,13 @@ public class LiveSessionProviderController {
             @RequestParam(defaultValue = "VIEWER") String role,
             @RequestParam(defaultValue = "false") boolean recreate,
             @RequestAttribute("user") CustomUserDetails user) {
+
+        // NOTE: BBB join intentionally keeps its original (pre-Zoom) behaviour —
+        // client-supplied role, no enrolment gate — to avoid regressing the live
+        // BBB feature for institutes not using Zoom. The server-derived-role +
+        // enrolment guard (LiveSessionJoinAuthorizer) is applied to the Zoom
+        // SDK-join endpoints only. Hardening the BBB path is tracked separately
+        // and must be validated against real BBB usage first.
 
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
@@ -904,6 +981,16 @@ public class LiveSessionProviderController {
             return null;
         }
         return liveSessionRepository.findById(schedule.getSessionId())
+                .map(s -> s.getInstituteId())
+                .orElse(null);
+    }
+
+    /** Resolves the owning institute for a live_session id (for cross-tenant authz). */
+    private String resolveSessionInstituteId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        return liveSessionRepository.findById(sessionId)
                 .map(s -> s.getInstituteId())
                 .orElse(null);
     }

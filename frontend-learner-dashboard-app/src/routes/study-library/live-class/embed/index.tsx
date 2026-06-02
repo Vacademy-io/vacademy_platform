@@ -9,6 +9,8 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import ZoomEmbedPlayer from "./-components/ZoomEmbedPlayer";
+import ZoomMeetingSdkPlayer from "./-components/ZoomMeetingSdkPlayer";
+import ZoomNativeLauncher from "./-components/ZoomNativeLauncher";
 import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
@@ -174,9 +176,16 @@ function EmbedComponent() {
     }
   }, [sessionDetails, setNavHeading, sessionId]);
 
-  // Check if class has ended (Only for real sessions)
+  // Check if class has ended (Only for real sessions). Skip entirely for
+  // Zoom — Zoom decides its own lifecycle (waiting-for-host, in-progress,
+  // ended) and the SDK surfaces a real error if the meeting truly ended.
+  // Our scheduled last_entry_time is a soft deadline only; treating it as
+  // hard here was causing "class has ended" toasts on perfectly live meetings.
   useEffect(() => {
     if (!sessionId || !fetchedSessionDetails || !serverTimeData) return;
+
+    const lt = (fetchedSessionDetails.linkType ?? "").toLowerCase();
+    if (lt === "zoom" || lt === "zoom_meeting") return;
 
     const serverTimestamp = getServerTime(serverTimeData);
     const now = new Date(serverTimestamp);
@@ -276,6 +285,26 @@ function EmbedComponent() {
           <DashboardLoader />
         </div>
       );
+    }
+
+    // Handle integration-created Zoom meetings — embedded inside the portal on
+    // desktop web via the Meeting SDK (loaded from Zoom's CDN, NOT the npm
+    // package — see ZoomMeetingSdkPlayer for why). On Capacitor we deep-link
+    // into the Zoom app with a web-client fallback because the Web SDK doesn't
+    // run inside mobile WebViews. A pasted Zoom link (no providerMeetingId) or
+    // a recording falls through to the iframe player below.
+    if (
+      (linkType === LinkType.ZOOM || linkType === "zoom") &&
+      sessionDetails?.providerMeetingId &&
+      sessionId
+    ) {
+      if (!Capacitor.isNativePlatform()) {
+        return <ZoomMeetingSdkPlayer
+          scheduleId={sessionId}
+          leaveUrl={`${window.location.origin}/study-library/live-class`}
+        />;
+      }
+      return <ZoomNativeLauncher scheduleId={sessionId} />;
     }
 
     if (!sessionDetails?.defaultMeetLink) return null;
@@ -518,6 +547,48 @@ function EmbedComponent() {
           />
         </div>
       </LayoutContainer>
+    );
+  }
+
+  // Fullscreen layout for the in-portal Zoom embed — bypass the dashboard
+  // sidebar / header so the learner can focus on the meeting itself, matching
+  // the admin "Start as Host" experience. Same pattern as
+  // frontend-admin-dashboard/.../live-session/host/$scheduleId.tsx.
+  const learnerLinkType =
+    sessionDetails?.linkType || (videoUrl ? LinkType.YOUTUBE : undefined);
+  const isZoomFullscreen =
+    (learnerLinkType === LinkType.ZOOM || learnerLinkType === "zoom") &&
+    sessionDetails?.providerMeetingId &&
+    sessionId &&
+    !Capacitor.isNativePlatform();
+
+  if (isZoomFullscreen) {
+    return (
+      <div className="fixed inset-0 flex h-screen w-screen flex-col bg-black">
+        <Helmet>
+          <title>{sessionDetails.title}</title>
+        </Helmet>
+        <div className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 bg-black/60 px-3 backdrop-blur">
+          <button
+            onClick={() => navigate({ to: "/study-library/live-class" })}
+            className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-neutral-800 shadow-sm transition hover:bg-white"
+          >
+            ← Back
+          </button>
+          <span className="truncate text-xs font-medium text-white/80">
+            {sessionDetails.title}
+          </span>
+          <span className="ml-auto rounded bg-red-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Live
+          </span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <ZoomMeetingSdkPlayer
+          scheduleId={sessionId}
+          leaveUrl={`${window.location.origin}/study-library/live-class`}
+        />
+        </div>
+      </div>
     );
   }
 

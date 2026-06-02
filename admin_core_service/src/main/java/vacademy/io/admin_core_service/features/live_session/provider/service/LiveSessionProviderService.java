@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.live_session.provider.manager.Bbb
 import vacademy.io.admin_core_service.features.live_session.provider.repository.LiveSessionProviderConfigRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.provider.support.ScheduleConflicts;
 import vacademy.io.admin_core_service.features.media_service.service.MediaService;
 import vacademy.io.common.media.dto.FileDetailsDTO;
 import vacademy.io.common.exceptions.VacademyException;
@@ -35,6 +36,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +63,7 @@ public class LiveSessionProviderService {
     private final MediaService mediaService;
     private final WebClient.Builder webClientBuilder;
     private final BbbServerRouter bbbServerRouter;
+    private final vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomRecordingS3Service zoomRecordingS3Service;
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
 
@@ -239,7 +242,13 @@ public class LiveSessionProviderService {
                 .hostEmail(request.getHostEmail())
                 .sessionId(request.getSessionId())
                 .scheduleId(request.getScheduleId())
+                // Vendor-neutral fields (preferred); legacy per-vendor fields kept
+                // for one transition release.
+                .providerConfig(request.resolveProviderConfig())
+                .providerAccountId(request.resolveProviderAccountId())
                 .bbbConfig(request.getBbbConfig())
+                .zoomAccountId(request.getZoomAccountId())
+                .zoomConfig(request.getZoomConfig())
                 .build();
 
         CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
@@ -260,6 +269,20 @@ public class LiveSessionProviderService {
                 if (response.getRawResponse() != null
                         && response.getRawResponse().containsKey("bbbServerId")) {
                     schedule.setBbbServerId((String) response.getRawResponse().get("bbbServerId"));
+                }
+
+                // Pin the meeting to the provider-account row it was created under so
+                // join/recording/attendance ops resolve the right credentials later.
+                // Generic across providers — providers signal this by putting
+                // "providerAccountId" into the response's rawResponse map.
+                if (response.getRawResponse() != null
+                        && response.getRawResponse().containsKey("providerAccountId")) {
+                    schedule.setProviderAccountId((String) response.getRawResponse().get("providerAccountId"));
+                    // Persist the plain passcode so the embedded SDK can join seamlessly.
+                    Object passcode = response.getRawResponse().get("passcode");
+                    if (passcode != null) {
+                        schedule.setProviderPasscode(passcode.toString());
+                    }
                 }
 
                 scheduleRepository.save(schedule);
@@ -290,6 +313,19 @@ public class LiveSessionProviderService {
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
         return enrichUrls(parseExistingRecordings(schedule));
+    }
+
+    /**
+     * Admin-triggered "Sync to S3": mirrors every not-yet-mirrored Zoom cloud
+     * recording of a schedule to Vacademy storage so it survives Zoom's auto-delete.
+     * Idempotent (already-mirrored recordings are skipped). Returns the updated
+     * recording list with the count newly mirrored.
+     */
+    public RecordingSyncResultDTO syncRecordingsToS3(String scheduleId, String instituteId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        int mirrored = zoomRecordingS3Service.mirrorToS3(schedule, false, 0);
+        return RecordingSyncResultDTO.ok(getRecordings(scheduleId, instituteId), mirrored);
     }
 
     // -----------------------------------------------------------------------
@@ -624,12 +660,21 @@ public class LiveSessionProviderService {
         }
     }
 
-    /** Enriches recordings that have a fileId but missing URL. */
+    /**
+     * Enriches recordings for display. Keeps any recording that either has an S3
+     * fileId (BBB) or already carries a provider playback/download URL (Zoom cloud);
+     * drops only empty entries. For fileId-backed recordings missing a URL, resolves
+     * the S3 public URL.
+     */
     private List<MeetingRecordingDTO> enrichUrls(List<MeetingRecordingDTO> recordings) {
         return recordings.stream()
-                .filter(r -> r.getFileId() != null && !r.getFileId().isBlank())
+                .filter(r -> (r.getFileId() != null && !r.getFileId().isBlank())
+                        || (r.getPlaybackUrl() != null && !r.getPlaybackUrl().isBlank())
+                        || (r.getDownloadUrl() != null && !r.getDownloadUrl().isBlank()))
                 .map(r -> {
-                    if (r.getDownloadUrl() == null || r.getDownloadUrl().isBlank()) {
+                    boolean hasUrl = (r.getDownloadUrl() != null && !r.getDownloadUrl().isBlank())
+                            || (r.getPlaybackUrl() != null && !r.getPlaybackUrl().isBlank());
+                    if (!hasUrl && r.getFileId() != null && !r.getFileId().isBlank()) {
                         try {
                             String url = mediaService.getFilePublicUrlByIdWithoutExpiry(r.getFileId());
                             r.setDownloadUrl(url);
@@ -727,6 +772,43 @@ public class LiveSessionProviderService {
         String providerName = configs.get(0).getProvider();
         return providerFactory.getStrategy(providerName)
                 .checkUserAvailability(requestedStartTimeIso, durationMinutes, instituteId, vendorUserId);
+    }
+
+    /**
+     * Double-booking check across a whole (recurring) session: for every schedule
+     * row, finds OTHER sessions' meetings booked on the same provider account that
+     * overlap that occurrence's slot. Runs against the persisted rows (their own
+     * meeting_date + start/last-entry time) so it needs no timezone parsing and
+     * covers every occurrence. Advisory — the caller decides whether to warn or
+     * block; conflicts are de-duplicated by the conflicting schedule id.
+     */
+    public UserScheduleAvailabilityDTO checkAvailabilityForSession(String sessionId, String providerAccountId) {
+        List<UserScheduleAvailabilityDTO.ConflictingSessionDTO> conflicts = new ArrayList<>();
+        if (sessionId == null || sessionId.isBlank() || providerAccountId == null || providerAccountId.isBlank()) {
+            return UserScheduleAvailabilityDTO.builder().available(true).conflicts(conflicts).build();
+        }
+        Set<String> seen = new HashSet<>();
+        for (SessionSchedule row : scheduleRepository.findBySessionId(sessionId)) {
+            if ("DELETED".equalsIgnoreCase(row.getStatus())
+                    || row.getMeetingDate() == null || row.getStartTime() == null || row.getLastEntryTime() == null) {
+                continue;
+            }
+            java.sql.Date meetingDate = (row.getMeetingDate() instanceof java.sql.Date sqlDate)
+                    ? sqlDate
+                    : new java.sql.Date(row.getMeetingDate().getTime());
+            List<Object[]> rows = scheduleRepository.findOverlappingSchedulesByProviderAccount(
+                    providerAccountId, meetingDate, row.getStartTime(), row.getLastEntryTime(), null, sessionId);
+            for (UserScheduleAvailabilityDTO.ConflictingSessionDTO conflict
+                    : ScheduleConflicts.map(rows, ScheduleConflicts.DEFAULT_ZONE)) {
+                if (conflict.getMeetingKey() == null || seen.add(conflict.getMeetingKey())) {
+                    conflicts.add(conflict);
+                }
+            }
+        }
+        return UserScheduleAvailabilityDTO.builder()
+                .available(conflicts.isEmpty())
+                .conflicts(conflicts)
+                .build();
     }
 
     // -----------------------------------------------------------------------

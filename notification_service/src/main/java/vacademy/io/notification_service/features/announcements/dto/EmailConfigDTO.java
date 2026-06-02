@@ -15,7 +15,15 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class EmailConfigDTO {
-    
+
+    /**
+     * Stable handle for the row from the client's perspective. Backed by `type`
+     * (the JSON key inside institute.setting.EMAIL_SETTING.data), since `type`
+     * is the natural primary key for an email configuration and is immutable
+     * once created.
+     */
+    private String id;
+
     private String email;
     private String name;
     private String type; // marketing, transactional, notifications

@@ -63,17 +63,24 @@ export async function createEmailConfiguration(
     }
 }
 
+/**
+ * The backend keys email configurations by `type` (the JSON key inside
+ * institute.setting.EMAIL_SETTING.data). The `id` field returned in
+ * `EmailConfiguration` is set server-side to mirror `type` for client
+ * convenience, but the canonical path segment is the type itself — and type
+ * is immutable once a configuration is created.
+ */
 export async function updateEmailConfiguration(
-    id: string,
+    emailType: string,
     config: UpdateEmailConfigurationRequest
 ): Promise<EmailConfiguration> {
     const instituteId = getInstituteId();
     if (!instituteId) {
         throw new Error('Institute ID not found');
     }
-    
-    const url = `${BASE_URL}/notification-service/v1/announcements/email-configurations/${instituteId}/${id}`;
-    
+
+    const url = `${BASE_URL}/notification-service/v1/announcements/email-configurations/${instituteId}/${encodeURIComponent(emailType)}`;
+
     try {
         const response = await authenticatedAxiosInstance.put<EmailConfiguration>(url, config);
         return response.data;
@@ -83,14 +90,14 @@ export async function updateEmailConfiguration(
     }
 }
 
-export async function deleteEmailConfiguration(id: string): Promise<void> {
+export async function deleteEmailConfiguration(emailType: string): Promise<void> {
     const instituteId = getInstituteId();
     if (!instituteId) {
         throw new Error('Institute ID not found');
     }
-    
-    const url = `${BASE_URL}/notification-service/v1/announcements/email-configurations/${instituteId}/${id}`;
-    
+
+    const url = `${BASE_URL}/notification-service/v1/announcements/email-configurations/${instituteId}/${encodeURIComponent(emailType)}`;
+
     try {
         await authenticatedAxiosInstance.delete(url);
     } catch (error) {

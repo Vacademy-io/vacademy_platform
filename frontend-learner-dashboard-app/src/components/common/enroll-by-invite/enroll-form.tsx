@@ -2444,7 +2444,11 @@ const EnrollByInvite = ({
             amount={
               paymentType === "CPO"
                 ? cpoPayAmount
-                : getSelectedPaymentPrice(enrollmentData.selectedPayment)
+                : Math.max(
+                    0,
+                    getSelectedPaymentPrice(enrollmentData.selectedPayment) -
+                      (appliedCouponCode ? couponDiscount : 0),
+                  )
             }
             currency={
               paymentType === "CPO"
@@ -2567,10 +2571,15 @@ const EnrollByInvite = ({
           institute_settings_json: string;
         };
 
-        await Preferences.set({
-          key: "InstituteDetails",
-          value: JSON.stringify(mappedDetails),
-        });
+        // Merge-write so we don't clobber fields owned by other writers
+        // (use-domain-routing, useSidebar). Lazy-imported so the change is
+        // local to this file and doesn't reorganize the top-of-file imports.
+        const { upsertInstituteDetails } = await import(
+          "@/services/institute-settings-cache"
+        );
+        await upsertInstituteDetails(
+          mappedDetails as unknown as Record<string, unknown>,
+        );
 
         // Store learner branding subset used by applyTabBranding
         const learnerKey = `LEARNER_${instituteId}`;

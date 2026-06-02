@@ -2,6 +2,7 @@ import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL } from "@/constants/urls";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
+import { upsertInstituteDetails } from "@/services/institute-settings-cache";
 
 export interface InstituteDetails {
   institute_name: string;
@@ -125,13 +126,13 @@ export const fetchAndStoreInstituteDetails = async (
       }
     }
 
-    // Store institute details in Capacitor Preferences
-    await Preferences.set({
-      key: "InstituteDetails",
-      value: JSON.stringify(instituteDetails), // Convert object to string before storing
-    });
+    // Merge-write so subsequent partial writers (use-domain-routing,
+    // sidebar, branding hooks) don't clobber fields owned by this
+    // authoritative writer.
+    await upsertInstituteDetails(instituteDetails as unknown as Record<string, unknown>);
 
-    // Also store in localStorage
+    // Also store in localStorage as a flat overwrite — localStorage doesn't
+    // have a separate clobber problem (it's not written by other paths).
     try {
       localStorage.setItem("InstituteDetails", JSON.stringify(instituteDetails));
     } catch (error) {
@@ -170,10 +171,9 @@ export const fetchAndStoreInstituteDetails = async (
       institute_theme_code: "#000000" // design-lint-ignore: theme default color
     };
 
-    await Preferences.set({
-      key: "InstituteDetails",
-      value: JSON.stringify(fallbackInstituteDetails),
-    });
+    await upsertInstituteDetails(
+      fallbackInstituteDetails as unknown as Record<string, unknown>,
+    );
 
     // Also store in localStorage
     try {

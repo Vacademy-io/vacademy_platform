@@ -119,6 +119,12 @@ export const GET_LAST_7_DAYS_PROGRESS = `${BASE_URL}/admin-core-service/learner-
 // Live session — Zoho Meeting integration
 export const ZOHO_PARTICIPANT_JOIN_LINK = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/participant-join-link`;
 
+// Live session — Zoom Meeting SDK signature (embedded join)
+export const ZOOM_SDK_SIGNATURE_ENDPOINT = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/zoom-sdk-signature`;
+
+// Live session — Zoom native join payload (deep link + web fallback for Capacitor)
+export const ZOOM_JOIN_PAYLOAD_ENDPOINT = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/zoom-join-payload`;
+
 // Live session
 export const LIVE_SESSION_REQUEST_OTP = `${BASE_URL}/notification-service/v1/send-email-otp`;
 export const LIVE_SESSION_VERIFY_OTP = `${BASE_URL}/notification-service/v1/verify-email-otp`;

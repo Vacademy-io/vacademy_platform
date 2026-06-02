@@ -98,7 +98,9 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-sessions/provider/meeting/recording/init-upload",
             "/admin-core-service/live-sessions/provider/meeting/recording/complete",
             // BBB server pool management (server-to-server from community_service, no JWT)
-            "/admin-core-service/bbb/pool/**"
+            "/admin-core-service/bbb/pool/**",
+            // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
+            "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**"
 
     };
     @Autowired

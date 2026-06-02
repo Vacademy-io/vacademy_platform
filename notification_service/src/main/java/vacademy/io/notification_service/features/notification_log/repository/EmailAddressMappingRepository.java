@@ -37,4 +37,34 @@ public interface EmailAddressMappingRepository extends JpaRepository<EmailAddres
             @Param("instituteId") String instituteId,
             @Param("emailType") String emailType
     );
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE email_address_mapping
+            SET is_active = false,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE institute_id = :instituteId
+              AND email_type = :emailType
+              AND is_active = true
+            """, nativeQuery = true)
+    int deactivateByInstituteIdAndEmailType(
+            @Param("instituteId") String instituteId,
+            @Param("emailType") String emailType
+    );
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE email_address_mapping
+            SET is_active = false,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE institute_id = :instituteId
+              AND LOWER(email_address) = LOWER(:emailAddress)
+              AND is_active = true
+            """, nativeQuery = true)
+    int deactivateByInstituteIdAndEmailAddress(
+            @Param("instituteId") String instituteId,
+            @Param("emailAddress") String emailAddress
+    );
 }

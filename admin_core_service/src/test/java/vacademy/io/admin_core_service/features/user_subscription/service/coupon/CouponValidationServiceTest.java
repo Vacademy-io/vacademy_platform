@@ -243,7 +243,11 @@ class CouponValidationServiceTest {
         @DisplayName("redeemStartDate in the future → COUPON_NOT_STARTED")
         void notYetActive() {
             CouponCode coupon = activeInstituteCoupon();
-            coupon.setRedeemStartDate(new Date(System.currentTimeMillis() + 3_600_000)); // 1h from now
+            // 2 days out — the validator normalizes the supplied start date to
+            // local start-of-day (see startOfDay() in CouponValidationService),
+            // so "1 hour in the future" would normalize back to today's
+            // midnight (in the past) and the check would not fire.
+            coupon.setRedeemStartDate(new Date(System.currentTimeMillis() + 2L * 86_400_000));
             stubCouponFound(coupon);
 
             CouponValidateResponseDTO resp = service.validate(baseRequest());

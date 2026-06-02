@@ -29,6 +29,50 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
 
     boolean existsBySessionIdAndSourceTypeAndSourceId(String sessionId, String sourceType, String sourceId);
 
+    /**
+     * True if the user is a participant of the session — either directly added as a
+     * USER participant, or as a member of a BATCH participant via an ACTIVE
+     * student_session_institute_group_mapping. Mirrors the participant predicate in
+     * {@link #findAttendanceForUser}; used by the join authorizer to gate
+     * SDK-signature / join-link issuance to enrolled learners only.
+     */
+    @Query(value = """
+        SELECT EXISTS (
+            SELECT 1 FROM live_session_participants lsp
+            WHERE lsp.session_id = :sessionId
+              AND (
+                  (lsp.source_type = 'USER' AND lsp.source_id = :userId)
+                  OR (lsp.source_type = 'BATCH' AND EXISTS (
+                      SELECT 1 FROM student_session_institute_group_mapping m
+                      WHERE m.user_id = :userId
+                        AND m.package_session_id = lsp.source_id
+                        AND m.status = 'ACTIVE'
+                  ))
+              )
+        )
+        """, nativeQuery = true)
+    boolean isUserParticipantOfSession(@Param("sessionId") String sessionId, @Param("userId") String userId);
+
+    /**
+     * Resolves a Zoom/provider participant email to the user_id of an enrolled
+     * participant of the session (USER source, or BATCH member via an ACTIVE
+     * mapping). Used by attendance polling to attribute a provider attendee to a
+     * Vacademy user; empty when the email matches no enrolled participant (guest).
+     */
+    @Query(value = """
+        SELECT s.user_id
+        FROM live_session_participants lsp
+        LEFT JOIN student_session_institute_group_mapping m
+            ON m.package_session_id = lsp.source_id AND lsp.source_type = 'BATCH' AND m.status = 'ACTIVE'
+        JOIN student s
+            ON ((lsp.source_type = 'USER' AND s.user_id = lsp.source_id)
+                OR (lsp.source_type = 'BATCH' AND s.user_id = m.user_id))
+        WHERE lsp.session_id = :sessionId
+          AND LOWER(s.email) = LOWER(:email)
+        LIMIT 1
+        """, nativeQuery = true)
+    List<String> findEnrolledUserIdByEmail(@Param("sessionId") String sessionId, @Param("email") String email);
+
         @Query(value = """
         WITH all_participants AS (
             -- Query for BATCH source type participants

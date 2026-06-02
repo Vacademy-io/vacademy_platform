@@ -118,6 +118,12 @@ public class CacheConfiguration {
                                 "liveAndUpcomingSessions",
                                 caffeineCache2mBuilder().build());
 
+                // Zoom S2S OAuth access tokens (50 minutes TTL — Zoom tokens live for 1h).
+                // Keyed by zoom account UUID; value is the bearer token string.
+                CaffeineCache zoomAccessToken = new CaffeineCache(
+                                "zoomAccessToken",
+                                caffeineCacheZoomTokenBuilder().build());
+
                 // Learner Dashboard cache (2 minutes TTL)
                 CaffeineCache learnerDashboard = new CaffeineCache(
                                 "learnerDashboard",
@@ -161,6 +167,7 @@ public class CacheConfiguration {
                                 timeRangeLogs,
                                 userDetails,
                                 liveAndUpcomingSessions,
+                                zoomAccessToken,
                                 learnerDashboard,
                                 superAdminInstituteList,
                                 superAdminInstituteDetail,
@@ -227,6 +234,18 @@ public class CacheConfiguration {
                 return Caffeine.newBuilder()
                                 .maximumSize(10000) // Support up to 10k active users in memory
                                 .expireAfterWrite(5, TimeUnit.MINUTES)
+                                .recordStats();
+        }
+
+        /**
+         * Zoom S2S OAuth access token cache. TTL is 50 minutes because Zoom-issued
+         * tokens are valid for 60 minutes — refreshing 10 minutes early avoids edge-case
+         * 401s from clock skew or in-flight requests.
+         */
+        private Caffeine<Object, Object> caffeineCacheZoomTokenBuilder() {
+                return Caffeine.newBuilder()
+                                .maximumSize(500) // ~500 distinct zoom accounts cached in memory
+                                .expireAfterWrite(50, TimeUnit.MINUTES)
                                 .recordStats();
         }
 }

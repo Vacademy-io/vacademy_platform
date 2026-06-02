@@ -58,12 +58,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}      # GITHUB_TOKEN has packages:write via permissions above
 
-      - name: Assemble build context (mirrors render_worker/build.sh)
+      - name: Assemble build context
         working-directory: ./ai_service
         run: bash render_worker/build.sh --context-only
-        # build.sh needs a tiny tweak: support --context-only that skips `docker build`
-        # and leaves the .build/ dir for the buildx step below. We will add that flag
-        # in a follow-up commit; until then, the next step assembles the context inline.
 
       - name: Build + push image
         uses: docker/build-push-action@v6

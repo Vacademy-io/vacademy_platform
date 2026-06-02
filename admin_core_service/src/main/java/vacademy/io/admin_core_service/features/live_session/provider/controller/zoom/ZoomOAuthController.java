@@ -19,6 +19,8 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Set;
@@ -88,7 +90,14 @@ public class ZoomOAuthController {
             return redirect("zoom_connected=1");
         } catch (Exception e) {
             log.error("zoom.oauth.callback.fail state={} reason={}", state, e.getMessage());
-            return redirect("zoom_error=connect_failed");
+            // Surface the real reason in the redirect so it's visible in the browser URL
+            // (admin-only flow; the message carries no secrets). Truncated to keep the URL sane.
+            String reason = e.getMessage() == null ? "connect_failed" : e.getMessage();
+            if (reason.length() > 200) {
+                reason = reason.substring(0, 200);
+            }
+            return redirect("zoom_error=connect_failed&zoom_reason="
+                    + URLEncoder.encode(reason, StandardCharsets.UTF_8));
         }
     }
 

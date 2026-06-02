@@ -79,6 +79,13 @@ public class ZoomAccessTokenService {
                     .bodyToMono(JsonNode.class)
                     .block();
             return resp != null && resp.hasNonNull("token") ? resp.get("token").asText() : null;
+        } catch (WebClientResponseException e) {
+            // Surface Zoom's body so a missing ZAK scope is visible — e.g. a 400 with
+            // "does not contain scopes:[user_zak:read]" means the app needs that scope to
+            // mint the host's ZAK (host/role=1 can't start the meeting without it).
+            log.warn("zoom.zak.fetch.fail accountId={} status={} body={}", account.getId(),
+                    e.getStatusCode().value(), e.getResponseBodyAsString());
+            return null;
         } catch (Exception e) {
             log.warn("zoom.zak.fetch.fail accountId={} reason={}", account.getId(),
                     e.getClass().getSimpleName());

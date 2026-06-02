@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.zoom.ZoomAccount;
 import vacademy.io.common.exceptions.VacademyException;
@@ -154,9 +155,17 @@ public class ZoomOAuthService {
                     .retrieve()
                     .bodyToMono(JsonNode.class)
                     .block();
+        } catch (WebClientResponseException e) {
+            // Surface Zoom's body so the actual cause shows up — e.g. a 400 with
+            // {"code":4711,"message":"...does not contain scopes:[user:read]"} means the app
+            // is missing the user:read scope (re-consent after granting it).
+            String body = e.getResponseBodyAsString();
+            log.warn("zoom.oauth.me.fail status={} body={}", e.getStatusCode().value(), body);
+            throw new VacademyException("Could not read the connected Zoom user profile — /users/me "
+                    + e.getStatusCode().value() + ": " + body);
         } catch (Exception e) {
             log.warn("zoom.oauth.me.fail reason={}", e.getMessage());
-            return null;
+            throw new VacademyException("Could not read the connected Zoom user profile: " + e.getMessage());
         }
     }
 

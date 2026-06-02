@@ -34,10 +34,12 @@ public class ZoomOAuthService {
     private final TokenEncryptionService encryption;
     private final WebClient.Builder webClientBuilder;
 
-    @Value("${zoom.oauth.client-id:}")
+    // The General app's own credentials — shared by OAuth (this service) and SDK signing
+    // (ZoomSdkSignatureService falls back to the same zoom.app.* values).
+    @Value("${zoom.app.client-id:}")
     private String clientId;
 
-    @Value("${zoom.oauth.client-secret:}")
+    @Value("${zoom.app.client-secret:}")
     private String clientSecret;
 
     @Value("${zoom.oauth.redirect.uri:}")

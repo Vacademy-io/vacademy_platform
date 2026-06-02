@@ -40,18 +40,22 @@ public class ZoomSdkSignatureService {
     private final TokenEncryptionService encryption;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Optional platform-owned Meeting SDK app. When an account carries no SDK credentials
-     * of its own, signatures fall back to these. Platform-owned signing is host-only /
-     * same-account safe — per-institute SDK credentials remain the default for learner
-     * joins, because Zoom requires the SDK app to share the meeting's own account for
-     * anonymous cross-account joins (see docs/zoomintegration/zoom-onboarding-design.md).
-     */
+    // SDK signing credentials, resolved in order: per-account SDK creds → zoom.sdk.* override
+    // → zoom.app.* (the General app's own id/secret, also used for OAuth). For a single Zoom
+    // "General app" the SDK key/secret ARE the OAuth client id/secret, so you only set
+    // zoom.app.* — set zoom.sdk.* only to point SDK signing at a DIFFERENT app. Platform-owned
+    // signing is host-only / same-account safe (see docs/zoomintegration/zoom-onboarding-design.md).
     @Value("${zoom.sdk.client-id:}")
     private String platformSdkKey;
 
     @Value("${zoom.sdk.client-secret:}")
     private String platformSdkSecret;
+
+    @Value("${zoom.app.client-id:}")
+    private String appClientId;
+
+    @Value("${zoom.app.client-secret:}")
+    private String appClientSecret;
 
     /**
      * @param account       the Zoom account the meeting belongs to
@@ -105,6 +109,9 @@ public class ZoomSdkSignatureService {
         if (platformSdkKey != null && !platformSdkKey.isBlank()) {
             return platformSdkKey;
         }
+        if (appClientId != null && !appClientId.isBlank()) {
+            return appClientId;
+        }
         throw new VacademyException(
                 "No Meeting SDK key configured for this Zoom account or platform");
     }
@@ -117,6 +124,9 @@ public class ZoomSdkSignatureService {
         }
         if (platformSdkSecret != null && !platformSdkSecret.isBlank()) {
             return platformSdkSecret;
+        }
+        if (appClientSecret != null && !appClientSecret.isBlank()) {
+            return appClientSecret;
         }
         throw new VacademyException(
                 "No Meeting SDK secret configured for this Zoom account or platform");

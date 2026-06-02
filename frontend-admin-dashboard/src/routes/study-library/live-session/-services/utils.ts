@@ -13,6 +13,8 @@ import {
     GET_SCHEDULE_RECORDINGS,
     SYNC_RECORDINGS_FROM_BBB,
     SYNC_RECORDINGS_TO_S3,
+    ZOOM_PROVISION_STATUS,
+    ZOOM_PROVISION_NOW,
     RECORDING_TRANSCRIBE,
     RECORDING_CREATE_ASSESSMENT,
     RECORDING_STUDY_NOTES,
@@ -599,6 +601,35 @@ export const syncRecordingsToS3 = async (
         SYNC_RECORDINGS_TO_S3,
         null,
         { params: { scheduleId, instituteId } }
+    );
+    return response.data;
+};
+
+export interface ZoomProvisionStatus {
+    sessionId: string;
+    total: number;
+    pending: number;
+    provisioned: number;
+    created?: number;
+}
+
+/** How many of a Zoom session's occurrences have a meeting provisioned yet. */
+export const getZoomProvisionStatus = async (
+    sessionId: string
+): Promise<ZoomProvisionStatus> => {
+    const response = await authenticatedAxiosInstance.get<ZoomProvisionStatus>(
+        ZOOM_PROVISION_STATUS,
+        { params: { sessionId } }
+    );
+    return response.data;
+};
+
+/** Admin "Provision now": synchronously (re)create meetings for any pending occurrence. */
+export const provisionZoomNow = async (sessionId: string): Promise<ZoomProvisionStatus> => {
+    const response = await authenticatedAxiosInstance.post<ZoomProvisionStatus>(
+        ZOOM_PROVISION_NOW,
+        null,
+        { params: { sessionId } }
     );
     return response.data;
 };

@@ -5,7 +5,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
-import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, syncRecordingsToS3, processRecording, getTranscriptionStatus } from '../-services/utils';
+import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, syncRecordingsToS3, processRecording, getTranscriptionStatus, getZoomProvisionStatus, provisionZoomNow, type ZoomProvisionStatus } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
@@ -22,6 +22,7 @@ import {
     UsersThree as UsersRound,
     Link as Link2,
     MonitorPlay,
+    WarningCircle,
     MapPin,
     PencilSimple as Edit,
     ArrowLeft,
@@ -192,6 +193,48 @@ function ViewLiveSession() {
         || sessionData?.schedule?.link_type === 'BBB_MEETING';
     const isZoomSession = sessionData?.schedule?.link_type === StreamingPlatform.ZOOM
         || sessionData?.schedule?.link_type === 'zoom';
+
+    // Zoom provisioning status — surfaces the otherwise-silent async provisioning
+    // failures so the admin can re-create the meeting in one click.
+    const [zoomProvision, setZoomProvision] = useState<ZoomProvisionStatus | null>(null);
+    const [provisioningZoom, setProvisioningZoom] = useState(false);
+
+    const loadZoomProvision = useCallback(async () => {
+        if (!isZoomSession || !sessionId) return;
+        try {
+            setZoomProvision(await getZoomProvisionStatus(sessionId));
+        } catch {
+            /* status is advisory — ignore fetch errors */
+        }
+    }, [isZoomSession, sessionId]);
+
+    useEffect(() => {
+        loadZoomProvision();
+    }, [loadZoomProvision]);
+
+    const handleProvisionZoomNow = async () => {
+        setProvisioningZoom(true);
+        try {
+            const res = await provisionZoomNow(sessionId);
+            setZoomProvision(res);
+            if (res.pending === 0) {
+                toast.success('Zoom meeting provisioned.');
+            } else {
+                toast.error(
+                    `Still ${res.pending} not set up — check the Zoom account is connected (Settings → Live Session → Test Connection).`
+                );
+            }
+            try {
+                setSessionData(await getSessionBySessionId(sessionId));
+            } catch {
+                /* refresh is best-effort */
+            }
+        } catch {
+            toast.error('Could not provision the Zoom meeting. Check the Zoom account credentials.');
+        } finally {
+            setProvisioningZoom(false);
+        }
+    };
 
     /**
      * For Zoom: navigate to the in-app host embed route which mounts the Zoom
@@ -806,6 +849,32 @@ function ViewLiveSession() {
                                                     </div>
                                                 ))}
                                             </div>
+                                        )}
+
+                                        {isZoomSession && zoomProvision && zoomProvision.total > 0 && (
+                                            zoomProvision.pending > 0 ? (
+                                                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+                                                    <div className="flex items-center gap-2 text-xs text-warning-700">
+                                                        <WarningCircle className="size-4 shrink-0" weight="fill" />
+                                                        <span>
+                                                            {zoomProvision.pending} of {zoomProvision.total} Zoom meeting
+                                                            {zoomProvision.total === 1 ? '' : 's'} not set up yet.
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        onClick={handleProvisionZoomNow}
+                                                        disabled={provisioningZoom}
+                                                        className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                                                    >
+                                                        {provisioningZoom ? 'Provisioning…' : 'Provision now'}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 text-xs text-success-600">
+                                                    <CheckCircle2 className="size-4 shrink-0" weight="fill" />
+                                                    Zoom meeting ready
+                                                </div>
+                                            )
                                         )}
 
                                         {isZoomSession && !isRecurring && groupedSchedules.length > 0 && (

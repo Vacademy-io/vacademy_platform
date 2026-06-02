@@ -62,8 +62,11 @@ public class ZoomSdkController {
                         "Schedule not found: " + scheduleId));
 
         if (schedule.getProviderMeetingId() == null || schedule.getProviderMeetingId().isBlank()) {
-            throw new VacademyException(HttpStatus.BAD_REQUEST,
-                    "No Zoom meeting has been created for this session yet");
+            // 409 (not 400): the session is valid, the Zoom meeting just isn't provisioned
+            // yet (still creating, or a prior attempt failed and the retry job will recreate
+            // it). The frontend treats this as a transient "not ready, try again" state.
+            throw new VacademyException(HttpStatus.CONFLICT,
+                    "This Zoom meeting is still being set up. Please try again in a moment.");
         }
         if (schedule.getProviderAccountId() == null || schedule.getProviderAccountId().isBlank()) {
             throw new VacademyException(HttpStatus.BAD_REQUEST,
@@ -125,8 +128,11 @@ public class ZoomSdkController {
                         "Schedule not found: " + scheduleId));
 
         if (schedule.getProviderMeetingId() == null || schedule.getProviderMeetingId().isBlank()) {
-            throw new VacademyException(HttpStatus.BAD_REQUEST,
-                    "No Zoom meeting has been created for this session yet");
+            // 409 (not 400): the session is valid, the Zoom meeting just isn't provisioned
+            // yet (still creating, or a prior attempt failed and the retry job will recreate
+            // it). The frontend treats this as a transient "not ready, try again" state.
+            throw new VacademyException(HttpStatus.CONFLICT,
+                    "This Zoom meeting is still being set up. Please try again in a moment.");
         }
 
         String meetingNumber = schedule.getProviderMeetingId();

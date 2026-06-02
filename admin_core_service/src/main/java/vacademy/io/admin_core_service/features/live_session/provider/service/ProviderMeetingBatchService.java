@@ -118,6 +118,30 @@ public class ProviderMeetingBatchService {
         return (int) loadPending(sessionId).count();
     }
 
+    /** Count of non-deleted schedules on the session (provisioned + pending). */
+    public int countTotal(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return 0;
+        }
+        return (int) scheduleRepository.findBySessionId(sessionId).stream()
+                .filter(s -> !"DELETED".equalsIgnoreCase(s.getStatus()))
+                .count();
+    }
+
+    /**
+     * Admin "Provision now": synchronously (re)provision every still-pending occurrence of
+     * the session from its stored config. Runs inline (no {@code @Async}) so the result is
+     * immediate and any failure surfaces to the caller. Returns the number created this call.
+     */
+    public int reprovisionSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return 0;
+        }
+        return liveSessionRepository.findById(sessionId)
+                .map(this::reprovisionFromStoredConfig)
+                .orElse(0);
+    }
+
     /** Fire-and-forget wrapper so the HTTP request returns immediately for long series. */
     @Async
     public void createMeetingsForSessionAsync(ProviderMeetingCreateRequestDTO request) {

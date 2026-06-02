@@ -33,10 +33,10 @@ public class ZoomAccountRequest {
     /** Required on create; optional on update (null = keep existing). */
     private String s2sClientSecret;
 
-    @NotBlank
+    /** Optional — leave blank to use the platform-owned Meeting SDK app (host-only / same-account). */
     private String sdkClientKey;
 
-    /** Required on create; optional on update. */
+    /** Optional — required only when supplying a per-institute SDK app; null = keep existing on update. */
     private String sdkClientSecret;
 
     /** Optional — only set when admin has configured webhook subscription in Zoom Marketplace. */

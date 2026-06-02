@@ -152,9 +152,35 @@ export default function ZoomMeetingSdkPlayer({
         retry: 1,
     });
 
+    // Surface the signature-fetch error (409 = meeting still being provisioned on Zoom)
+    // as a clear message rather than a blank spinner / generic failure.
+    useEffect(() => {
+        if (!error) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data
+            ?.message;
+        setErrorMsg(
+            status === 409
+                ? serverMsg ?? "This live class is still being set up. Please refresh in a moment."
+                : "We couldn't load this live class. Please refresh, or contact your instructor."
+        );
+        setPhase("error");
+    }, [error]);
+
     useEffect(() => {
         if (!data) return;
         if (startedRef.current) return; // StrictMode / re-render guard
+        // The Zoom SDK calls meetingNumber.toString() unguarded, so a missing meeting number
+        // (the meeting was never provisioned → provider_meeting_id is null and the signature
+        // response omits it) crashes with an opaque "reading 'toString'" TypeError. Surface a
+        // clear message instead of booting the SDK with bad params.
+        if (!data.meetingNumber || !data.signature || !data.sdkKey) {
+            setErrorMsg(
+                "This live class is not ready to join yet — it may still be getting set up. Please refresh in a moment, or contact your instructor if it continues."
+            );
+            setPhase("error");
+            return;
+        }
         startedRef.current = true;
         let cancelled = false;
         const resolvedLeaveUrl = leaveUrl || window.location.origin;

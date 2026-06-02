@@ -50,8 +50,9 @@ const createSchema = z.object({
     zoomAccountId: z.string().trim().min(1, 'Required'),
     s2sClientId: z.string().trim().min(1, 'Required'),
     s2sClientSecret: z.string().trim().min(1, 'Required'),
-    sdkClientKey: z.string().trim().min(1, 'Required'),
-    sdkClientSecret: z.string().trim().min(1, 'Required'),
+    // SDK credentials are optional — leave blank to use the platform-owned Meeting SDK app.
+    sdkClientKey: z.string().trim().optional(),
+    sdkClientSecret: z.string().trim().optional(),
     webhookVerificationToken: z.string().trim().optional(),
     setAsDefault: z.boolean().optional(),
 });
@@ -173,8 +174,9 @@ export function AddZoomAccountDialog({ open, onOpenChange, mode, account, onSave
                         {mode === 'create' ? 'Add Zoom account' : 'Edit Zoom account'}
                     </DialogTitle>
                     <DialogDescription>
-                        Paste the credentials from a Server-to-Server OAuth app AND a Meeting SDK app
-                        in your Zoom Marketplace. Both must live in the same Zoom account.{' '}
+                        Paste your Server-to-Server OAuth app credentials from the Zoom Marketplace.
+                        A per-account Meeting SDK app is optional (see below). Apps must live in the
+                        same Zoom account.{' '}
                         {mode === 'edit' && (
                             <span className="text-amber-600">
                                 Leave secret fields blank to keep the existing values.
@@ -222,11 +224,17 @@ export function AddZoomAccountDialog({ open, onOpenChange, mode, account, onSave
                         />
                     </Section>
 
-                    <Section title="Meeting SDK credentials">
+                    <Section title="Meeting SDK credentials (optional)">
+                        <p className="text-xs text-neutral-500">
+                            Leave blank to use a platform-provided shared Meeting SDK app. For
+                            anonymous learner joins, the Meeting SDK app must belong to this same Zoom
+                            account — add your own SDK app here unless your platform has a shared one
+                            configured.
+                        </p>
                         <Field
                             label="SDK Client Key"
                             id="sdkClientKey"
-                            placeholder={mode === 'edit' && account ? account.sdkClientKeyMasked : ''}
+                            placeholder={mode === 'edit' && account ? (account.sdkClientKeyMasked ?? '') : ''}
                             error={errors.sdkClientKey?.message}
                             {...register('sdkClientKey')}
                         />
@@ -394,12 +402,13 @@ function sanitize(values: FormValues, mode: Mode) {
         sdkClientKey: trimmed(values.sdkClientKey),
         setAsDefault: Boolean(values.setAsDefault),
     };
-    // For secrets: omit when blank on edit (preserves existing encrypted value),
-    // include on create where zod already enforces non-blank.
+    // S2S secret: required on create; omit when blank on edit (preserves existing value).
     const s2s = trimmed(values.s2sClientSecret);
     if (s2s || mode === 'create') payload.s2sClientSecret = s2s ?? '';
+    // SDK secret is optional (platform-owned SDK fallback) — include only when provided, so a
+    // blank value leaves the account without per-institute SDK creds (and keeps existing on edit).
     const sdk = trimmed(values.sdkClientSecret);
-    if (sdk || mode === 'create') payload.sdkClientSecret = sdk ?? '';
+    if (sdk) payload.sdkClientSecret = sdk;
     // Webhook token: explicit "" means "clear it" on edit; undefined leaves alone.
     if (values.webhookVerificationToken !== undefined) {
         payload.webhookVerificationToken = trimmed(values.webhookVerificationToken) ?? '';

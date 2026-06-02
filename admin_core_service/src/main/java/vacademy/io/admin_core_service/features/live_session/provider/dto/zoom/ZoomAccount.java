@@ -36,6 +36,20 @@ public class ZoomAccount {
     private String sdkClientSecretEnc;
     private String webhookVerificationTokenEnc;
 
+    // ── Auth model ───────────────────────────────────────────────────────────
+    // "S2S"  → pasted Server-to-Server credentials (s2sClientId/Secret + zoomAccountId).
+    // "OAUTH" → connected via "Connect with Zoom" (authorization-code). The SDK key/secret
+    //           come from the platform app (zoom.sdk.*), and access tokens are derived from
+    //           the rotating refresh token below.
+    @Builder.Default
+    private String authType = "S2S";
+
+    /** OAuth refresh token (AES-GCM encrypted). Rotates on every refresh — persist the latest. */
+    private String oauthRefreshTokenEnc;
+
+    /** The authorizing Zoom user's id (host for meetings created via OAuth; me-only for user-managed apps). */
+    private String zoomUserId;
+
     @Builder.Default
     private String status = "ACTIVE";
 

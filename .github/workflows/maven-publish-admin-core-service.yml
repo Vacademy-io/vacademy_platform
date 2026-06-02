@@ -141,7 +141,11 @@ jobs:
             AI_SERVICE_INTERNAL_TOKEN=${{ secrets.INTERNAL_SERVICE_TOKEN }} \
             YOUTUBE_OAUTH_CLIENT_ID=${{ secrets.ORG_YOUTUBE_OAUTH_CLIENT_ID }} \
             YOUTUBE_OAUTH_CLIENT_SECRET=${{ secrets.ORG_YOUTUBE_OAUTH_CLIENT_SECRET }} \
-            YOUTUBE_OAUTH_REDIRECT_URI=${{ secrets.ORG_YOUTUBE_OAUTH_REDIRECT_URI }}
+            YOUTUBE_OAUTH_REDIRECT_URI=${{ secrets.ORG_YOUTUBE_OAUTH_REDIRECT_URI }} \
+            ZOOM_APP_CLIENT_ID=${{ secrets.ZOOM_APP_CLIENT_ID }} \
+            ZOOM_APP_CLIENT_SECRET=${{ secrets.ZOOM_APP_CLIENT_SECRET }} \
+            ZOOM_OAUTH_REDIRECT_URI=${{ secrets.ZOOM_OAUTH_REDIRECT_URI }} \
+            ZOOM_OAUTH_FRONTEND_CALLBACK_URL=${{ secrets.ZOOM_OAUTH_FRONTEND_CALLBACK_URL }}
 
       - name: Restart deployment
         if: github.event_name == 'push'

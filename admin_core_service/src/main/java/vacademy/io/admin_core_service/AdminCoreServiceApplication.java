@@ -8,8 +8,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import vacademy.io.common.auth.config.SharedConfigurationReference;
 
-import java.util.TimeZone;
-
 @SpringBootApplication
 @Import(SharedConfigurationReference.class)
 @EnableWebSecurity

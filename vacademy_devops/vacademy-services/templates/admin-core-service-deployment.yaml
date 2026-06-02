@@ -46,32 +46,38 @@ spec:
             limits:
               cpu: "1000m"
               memory: "3Gi"
-          livenessProbe:
-            httpGet:
-              path: /admin-core-service/actuator/health
-              port: {{ .Values.services.admin_core_service.port }}
-              scheme: HTTP
-            initialDelaySeconds: 180
-            periodSeconds: 30
-            timeoutSeconds: 15
-            failureThreshold: 5
-            successThreshold: 1
+          # startupProbe gates startup: it polls until the app first answers OK,
+          # then liveness/readiness take over. With initialDelaySeconds=30 we
+          # detect a ready pod ~150s earlier per pod vs the old 180-300s wait,
+          # while failureThreshold=60 × periodSeconds=30 = 30 min grace covers
+          # even very slow Spring Boot starts. liveness/readiness initialDelay=0
+          # is safe because k8s won't run them until startupProbe succeeds.
           startupProbe:
             httpGet:
               path: /admin-core-service/actuator/health
               port: {{ .Values.services.admin_core_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 180
+            initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 15
-            failureThreshold: 30
+            failureThreshold: 60
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /admin-core-service/actuator/health
+              port: {{ .Values.services.admin_core_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
             successThreshold: 1
           readinessProbe:
             httpGet:
               path: /admin-core-service/actuator/health
               port: {{ .Values.services.admin_core_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 180
+            initialDelaySeconds: 0
             periodSeconds: 30
             timeoutSeconds: 15
             failureThreshold: 5

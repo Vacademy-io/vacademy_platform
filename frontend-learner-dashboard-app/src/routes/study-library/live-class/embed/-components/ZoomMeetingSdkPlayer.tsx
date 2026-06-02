@@ -201,14 +201,18 @@ export default function ZoomMeetingSdkPlayer({
                     leaveUrl: resolvedLeaveUrl,
                     patchJsMedia: true,
                     success: () => {
-                        ZoomMtg.join({
+                        // Omit optional keys whose value is absent. The Zoom SDK does
+                        // `"userEmail" in config ? config.userEmail.toString() : ""` — `in` is true
+                        // even for `userEmail: undefined`, so it then calls undefined.toString() and
+                        // crashes ("reading 'toString'"). A learner without an email hit this. Only
+                        // attach userEmail / zak when they actually have a value.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const joinConfig: Record<string, any> = {
                             sdkKey: data.sdkKey,
                             signature: data.signature,
                             meetingNumber: data.meetingNumber,
-                            passWord: data.passcode,
+                            passWord: data.passcode ?? "",
                             userName: data.userName,
-                            userEmail: data.userEmail,
-                            zak: data.zakToken ?? undefined,
                             success: () => {
                                 if (!cancelled) setPhase("joined");
                             },
@@ -220,7 +224,10 @@ export default function ZoomMeetingSdkPlayer({
                                     setPhase("error");
                                 }
                             },
-                        });
+                        };
+                        if (data.userEmail) joinConfig.userEmail = data.userEmail;
+                        if (data.zakToken) joinConfig.zak = data.zakToken;
+                        ZoomMtg.join(joinConfig);
                     },
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     error: (err: any) => {

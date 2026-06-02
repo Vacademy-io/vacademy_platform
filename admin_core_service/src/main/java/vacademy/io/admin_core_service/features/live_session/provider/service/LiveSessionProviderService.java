@@ -233,6 +233,25 @@ public class LiveSessionProviderService {
         String providerName = resolveProviderName(request);
         LiveSessionProviderStrategy strategy = providerFactory.getStrategy(providerName);
 
+        // Idempotency guard: lock the schedule row and skip the provider call if a meeting
+        // already exists. A retry, a concurrent batch run, or a double-click would otherwise
+        // create a DUPLICATE Zoom/BBB meeting (the loadPending filter alone is read-then-act,
+        // i.e. racy). The lock is held until commit, so a racing caller blocks then observes
+        // the persisted id and returns it without hitting the provider again.
+        if (request.getScheduleId() != null) {
+            SessionSchedule existing = scheduleRepository.findByIdForUpdate(request.getScheduleId())
+                    .orElse(null);
+            if (existing != null && existing.getProviderMeetingId() != null
+                    && !existing.getProviderMeetingId().isBlank()) {
+                return CreateMeetingResponseDTO.builder()
+                        .providerMeetingId(existing.getProviderMeetingId())
+                        .joinUrl(existing.getCustomMeetingLink())
+                        .hostUrl(existing.getProviderHostUrl())
+                        .justCreated(false)
+                        .build();
+            }
+        }
+
         CreateMeetingRequestDTO meetingRequest = CreateMeetingRequestDTO.builder()
                 .topic(request.getTopic())
                 .agenda(request.getAgenda())

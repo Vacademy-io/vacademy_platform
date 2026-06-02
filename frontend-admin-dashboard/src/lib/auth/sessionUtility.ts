@@ -278,6 +278,20 @@ const removeCookiesAndLogout = (): void => {
     // Also remove any legacy cookies that were set on the shared parent domain
     Cookies.remove(TokenKey.accessToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
     Cookies.remove(TokenKey.refreshToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
+
+    // Clear sub-org faculty cache too. Without this, the next account to log in on
+    // the same browser inherits the previous user's `selected_suborg_id` +
+    // `faculty_access_data` from localStorage — which makes the sidebar's
+    // getEffectiveInstituteName / getEffectiveInstituteLogoFileId render the wrong
+    // sub-org's branding (logo + "Powered by ..." line) until a hard refresh.
+    // Inlined as raw removeItem calls instead of importing clearFacultyAccessData
+    // to avoid a sessionUtility ↔ facultyAccessUtils circular import.
+    try {
+        localStorage.removeItem('faculty_access_data');
+        localStorage.removeItem('selected_suborg_id');
+    } catch (_err) {
+        /* best-effort — Safari private mode etc. */
+    }
 };
 
 // Debug function to check token status

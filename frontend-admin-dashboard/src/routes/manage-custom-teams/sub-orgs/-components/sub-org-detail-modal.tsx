@@ -354,7 +354,10 @@ export function AddUserToSubOrgSection({
     const [offlineCurrency, setOfflineCurrency] = useState<string>('INR');
     const [offlineReference, setOfflineReference] = useState<string>('');
     const [offlineDate, setOfflineDate] = useState<string>(''); // yyyy-mm-dd
-    const [generateInvoice, setGenerateInvoice] = useState<boolean>(false);
+    // Default ON — admin recording an offline payment almost always wants the
+    // invoice as a paper trail. Was previously `false`, which silently dropped
+    // the invoice unless the admin explicitly ticked the box (easy to miss).
+    const [generateInvoice, setGenerateInvoice] = useState<boolean>(true);
 
     // Fetch the institute's CPO list so the admin can pick a per-learner CPO.
     const { data: cpoListResponse } = useQuery({
@@ -480,7 +483,9 @@ export function AddUserToSubOrgSection({
         setOfflineCurrency('INR');
         setOfflineReference('');
         setOfflineDate('');
-        setGenerateInvoice(false);
+        // Match the useState initial default — ON, so admins don't lose their invoice
+        // paper trail on the next Add User submit.
+        setGenerateInvoice(true);
         setSelectedPaymentOptionId('FREE');
         // hasSeededPaymentOption was removed when the auto-seed race fix landed; the
         // new effect (in this file above) re-seeds whenever subOrgDefaultCpoId becomes

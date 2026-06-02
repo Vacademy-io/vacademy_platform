@@ -35,7 +35,8 @@ Branch: `feat/zoomIntegration` (2 commits ahead of `main`)
 
 ### Database
 
-- `V304__Add_zoom_columns_to_session_schedules.sql` — adds `provider_account_id` and `provider_passcode` to `session_schedules`. Provider-account pinning reuses these generic columns (no Zoom-specific table).
+- `V316__Add_zoom_columns_to_session_schedules.sql` — adds `provider_account_id` and `provider_passcode` to `session_schedules`. Provider-account pinning reuses these generic columns (no Zoom-specific table). (Renumbered from V304 → V316 to land above main's current max so it applies in order.)
+- `V317__Add_zoom_provisioning_config_to_live_session.sql` — adds `zoom_account_id` + `zoom_config_json` to `live_session` (provisioning-retry recovery).
 - Zoom account credentials are stored as rows on the existing `institute_live_session_provider_mapping` table (created by V125) with `provider = ZOOM_MEETING` and secret-bearing fields AES-encrypted inside `config_json`. No new table.
 
 ### Backend (`admin_core_service/.../features/live_session/provider/`)
@@ -178,7 +179,7 @@ The TO_CHAR-based date-string changes added during Zoom testing for the live/upc
 
 **Backend Zoom roots:**
 - `admin_core_service/src/main/java/.../features/live_session/provider/{controller,dto,entity,manager,repository,scheduler,service}/zoom/`
-- `admin_core_service/src/main/resources/db/migration/V304__Add_zoom_columns_to_session_schedules.sql`
+- `admin_core_service/src/main/resources/db/migration/V316__Add_zoom_columns_to_session_schedules.sql` (+ `V317__Add_zoom_provisioning_config_to_live_session.sql`)
 - `common_service/src/main/java/.../meeting/dto/MeetingRecordingDTO.java` (added `passcode`)
 
 **Admin frontend:**

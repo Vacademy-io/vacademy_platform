@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
@@ -49,6 +50,7 @@ public class LiveSessionJoinAuthorizer {
     private final SessionScheduleRepository scheduleRepository;
     private final LiveSessionRepository liveSessionRepository;
     private final LiveSessionParticipantRepository participantRepository;
+    private final InstituteAccessValidator instituteAccessValidator;
 
     /**
      * @param scheduleId          the schedule the caller wants to join
@@ -78,7 +80,7 @@ public class LiveSessionJoinAuthorizer {
         }
 
         boolean isCreator = Objects.equals(user.getUserId(), session.getCreatedByUserId());
-        if (isCreator || hasHostAuthority(user)) {
+        if (isCreator || isStaffOfInstitute(user, instituteId)) {
             return new JoinAuthorization(JoinRole.HOST, instituteId);
         }
 
@@ -90,6 +92,29 @@ public class LiveSessionJoinAuthorizer {
         }
 
         return new JoinAuthorization(JoinRole.PARTICIPANT, instituteId);
+    }
+
+    /**
+     * HOST-by-authority: the caller holds an admin/teacher authority AND that
+     * authority is for THIS session's institute. Authorities are minted per the
+     * institute the caller authenticated against (clientId header), so we verify
+     * institute membership via {@link InstituteAccessValidator} — without this an
+     * admin of institute A could host institute B's meeting. The creator path
+     * (handled separately) is institute-agnostic and unforgeable.
+     */
+    private boolean isStaffOfInstitute(CustomUserDetails user, String instituteId) {
+        if (!hasHostAuthority(user)) {
+            return false;
+        }
+        try {
+            instituteAccessValidator.validateUserAccess(user, instituteId);
+            return true;
+        } catch (Exception e) {
+            // Has an admin/teacher authority, but not in this session's institute.
+            log.warn("live.join.host_denied instituteId={} userId={} reason=not_staff_of_institute",
+                    instituteId, user.getUserId());
+            return false;
+        }
     }
 
     private boolean hasHostAuthority(CustomUserDetails user) {

@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.live_session.provider.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -9,6 +11,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedu
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.common.meeting.enums.MeetingProvider;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -17,6 +20,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -50,6 +54,61 @@ public class ProviderMeetingBatchService {
     private final LiveSessionProviderService providerService;
     private final SessionScheduleRepository scheduleRepository;
     private final LiveSessionRepository liveSessionRepository;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Persists the Zoom account + meeting settings chosen for a session so the
+     * provisioning retry job can re-create meetings for any occurrence whose
+     * up-front async provisioning was interrupted, without re-asking the UI.
+     * Only stores when there's actually a provider account (Zoom flow).
+     */
+    public void rememberProvisioningConfig(ProviderMeetingCreateRequestDTO request) {
+        if (request == null || request.getSessionId() == null
+                || request.resolveProviderAccountId() == null) {
+            return;
+        }
+        liveSessionRepository.findById(request.getSessionId()).ifPresent(session -> {
+            try {
+                session.setZoomAccountId(request.resolveProviderAccountId());
+                Map<String, Object> cfg = request.resolveProviderConfig();
+                session.setZoomConfigJson(cfg != null ? objectMapper.writeValueAsString(cfg) : null);
+                liveSessionRepository.save(session);
+            } catch (Exception e) {
+                log.warn("provider.batch.remember_config_failed sessionId={}: {}",
+                        request.getSessionId(), e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Rebuilds a create request from a session's stored Zoom config and provisions
+     * its still-pending occurrences. Used by the retry scheduler; idempotent via
+     * {@link #createMeetingsForSession}. Returns the number created.
+     */
+    public int reprovisionFromStoredConfig(LiveSession session) {
+        if (session == null || session.getZoomAccountId() == null || session.getZoomAccountId().isBlank()) {
+            return 0;
+        }
+        Map<String, Object> cfg = null;
+        if (session.getZoomConfigJson() != null && !session.getZoomConfigJson().isBlank()) {
+            try {
+                cfg = objectMapper.readValue(session.getZoomConfigJson(),
+                        new TypeReference<Map<String, Object>>() {});
+            } catch (Exception e) {
+                log.warn("provider.batch.reprovision parse config failed sessionId={}: {}",
+                        session.getId(), e.getMessage());
+            }
+        }
+        ProviderMeetingCreateRequestDTO request = ProviderMeetingCreateRequestDTO.builder()
+                .instituteId(session.getInstituteId())
+                .sessionId(session.getId())
+                .provider(MeetingProvider.ZOOM_MEETING.name())
+                .topic(session.getTitle())
+                .providerAccountId(session.getZoomAccountId())
+                .providerConfig(cfg)
+                .build();
+        return createMeetingsForSession(request);
+    }
 
     /** Count of schedules that still need a meeting (for an immediate response to the caller). */
     public int countPending(String sessionId) {

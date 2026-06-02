@@ -4,37 +4,54 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { ZOOM_SDK_SIGNATURE_ENDPOINT } from '@/constants/urls';
 
 /**
- * Embeds a Zoom meeting as host using the Web Meeting SDK (Component View),
- * loaded from Zoom's CDN — same pattern as the learner player. Loading via
- * the CDN (instead of the npm package) isolates the SDK's React tree from
- * our app's React tree, which matters here because the SDK installs
- * window-level event handlers (visibilitychange/focus/blur) that interfere
- * with TanStack Router's SPA navigation. With the CDN-loaded SDK using its
- * own bundled React 18, those handlers can be intercepted cleanly before
- * the SDK init code runs.
+ * Hosts a Zoom meeting using the Web Meeting SDK **Client View** (the full-page
+ * Zoom client), loaded from Zoom's CDN.
  *
- * Joins with role=1 + ZAK token so the host starts the meeting directly
- * inside the embed (not bounced to Zoom's hosted start_url page).
+ * Why Client View (not the embedded Component View): Client View renders the
+ * complete Zoom UI into a fixed full-viewport `#zmmtg-root` — native gallery /
+ * speaker toggle, a real fullscreen button, the full toolbar, and a clean Leave
+ * flow. That is the "full screen + seamless" meeting experience. The previous
+ * Component View build painted a fixed 400×225 canvas with a hand-positioned
+ * popper, which is why the meeting looked tiny and off-centre.
+ *
+ * Why the CDN (vs the npm package): the SDK ships its own React 18 + ReactDOM +
+ * Redux as separate scripts. Loading them as ordered <script> tags puts the SDK's
+ * React on window.* without colliding with the host app's ESM React. Order
+ * matters — vendor globals must exist before the SDK bundle runs.
+ *
+ * The host joins with role=1 + ZAK (when the server grants it) so the meeting
+ * starts directly here instead of bouncing to Zoom's hosted start page.
+ *
+ * NOTE: this path can only be fully validated against a live Zoom meeting.
  */
 
-// Pin the SDK version. Both admin and learner load 3.13.2 from the same CDN
-// so the in-meeting UI behaviour is identical end-to-end.
+// Pinned to the version both apps already load successfully from the CDN.
 const ZOOM_SDK_VERSION = '3.13.2';
-const ZOOM_REACT_SCRIPT = `https://source.zoom.us/${ZOOM_SDK_VERSION}/lib/vendor/react.min.js`;
-const ZOOM_REACT_DOM_SCRIPT = `https://source.zoom.us/${ZOOM_SDK_VERSION}/lib/vendor/react-dom.min.js`;
-const ZOOM_SDK_SCRIPT = `https://source.zoom.us/${ZOOM_SDK_VERSION}/zoom-meeting-embedded-${ZOOM_SDK_VERSION}.min.js`;
-const ZOOM_SDK_CSS = `https://source.zoom.us/${ZOOM_SDK_VERSION}/css/bootstrap.css`;
+const ZOOM_LIB_BASE = `https://source.zoom.us/${ZOOM_SDK_VERSION}/lib`;
+const ZOOM_CSS = [
+    `https://source.zoom.us/${ZOOM_SDK_VERSION}/css/bootstrap.css`,
+    `https://source.zoom.us/${ZOOM_SDK_VERSION}/css/react-select.css`,
+];
+// Client View needs react + react-dom + redux + redux-thunk vendor globals,
+// then the main client bundle (note: NOT the "-embedded" Component View bundle).
+const ZOOM_VENDOR_SCRIPTS: Array<[string, string]> = [
+    [`${ZOOM_LIB_BASE}/vendor/react.min.js`, `react-${ZOOM_SDK_VERSION}`],
+    [`${ZOOM_LIB_BASE}/vendor/react-dom.min.js`, `react-dom-${ZOOM_SDK_VERSION}`],
+    [`${ZOOM_LIB_BASE}/vendor/redux.min.js`, `redux-${ZOOM_SDK_VERSION}`],
+    [`${ZOOM_LIB_BASE}/vendor/redux-thunk.min.js`, `redux-thunk-${ZOOM_SDK_VERSION}`],
+];
+const ZOOM_MAIN_SCRIPT = `https://source.zoom.us/${ZOOM_SDK_VERSION}/zoom-meeting-${ZOOM_SDK_VERSION}.min.js`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ZoomMtgEmbeddedGlobal = any;
+type ZoomMtgGlobal = any;
 
 declare global {
     interface Window {
-        ZoomMtgEmbedded?: ZoomMtgEmbeddedGlobal;
+        ZoomMtg?: ZoomMtgGlobal;
     }
 }
 
-/** Idempotent <script src> insertion with order-preserving load. */
+/** Idempotent, order-preserving <script src> insertion. */
 function loadScriptOnce(src: string, key: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const existing = document.querySelector<HTMLScriptElement>(`script[data-zoom-cdn="${key}"]`);
@@ -57,35 +74,53 @@ function loadScriptOnce(src: string, key: string): Promise<void> {
     });
 }
 
-let sdkLoadPromise: Promise<ZoomMtgEmbeddedGlobal> | null = null;
+let sdkLoadPromise: Promise<ZoomMtgGlobal> | null = null;
 
-function loadZoomSdkFromCdn(): Promise<ZoomMtgEmbeddedGlobal> {
-    if (window.ZoomMtgEmbedded) return Promise.resolve(window.ZoomMtgEmbedded);
+/** Loads Zoom Client View (CSS + vendor globals + main bundle) once per page. */
+function loadZoomClientViewFromCdn(): Promise<ZoomMtgGlobal> {
+    if (window.ZoomMtg) return Promise.resolve(window.ZoomMtg);
     if (sdkLoadPromise) return sdkLoadPromise;
     sdkLoadPromise = (async () => {
-        if (!document.querySelector(`link[data-zoom-sdk-css="${ZOOM_SDK_VERSION}"]`)) {
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = ZOOM_SDK_CSS;
-            link.setAttribute('data-zoom-sdk-css', ZOOM_SDK_VERSION);
-            document.head.appendChild(link);
+        for (const href of ZOOM_CSS) {
+            if (!document.querySelector(`link[data-zoom-css="${href}"]`)) {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = href;
+                link.setAttribute('data-zoom-css', href);
+                document.head.appendChild(link);
+            }
         }
         try {
-            await loadScriptOnce(ZOOM_REACT_SCRIPT, `react-${ZOOM_SDK_VERSION}`);
-            await loadScriptOnce(ZOOM_REACT_DOM_SCRIPT, `react-dom-${ZOOM_SDK_VERSION}`);
-            await loadScriptOnce(ZOOM_SDK_SCRIPT, `sdk-${ZOOM_SDK_VERSION}`);
+            for (const [src, key] of ZOOM_VENDOR_SCRIPTS) {
+                await loadScriptOnce(src, key);
+            }
+            await loadScriptOnce(ZOOM_MAIN_SCRIPT, `zoommtg-${ZOOM_SDK_VERSION}`);
         } catch (e) {
-            sdkLoadPromise = null;
+            sdkLoadPromise = null; // allow retry on next mount
             throw e;
         }
-        if (!window.ZoomMtgEmbedded) {
+        if (!window.ZoomMtg) {
             sdkLoadPromise = null;
-            throw new Error('Zoom SDK loaded but window.ZoomMtgEmbedded is missing');
+            throw new Error('Zoom Client View loaded but window.ZoomMtg is missing');
         }
-        return window.ZoomMtgEmbedded;
+        return window.ZoomMtg;
     })();
     return sdkLoadPromise;
 }
+
+/** Ensures the singleton #zmmtg-root exists OUTSIDE React's tree (Zoom injects its
+ *  own DOM here; letting React reconcile it would conflict). Returns it, shown. */
+function ensureZmmtgRoot(): HTMLElement {
+    let root = document.getElementById('zmmtg-root');
+    if (!root) {
+        root = document.createElement('div');
+        root.id = 'zmmtg-root';
+        document.body.appendChild(root);
+    }
+    root.style.display = 'block';
+    return root;
+}
+
 interface ZoomSdkSignature {
     signature: string;
     sdkKey: string;
@@ -100,14 +135,15 @@ interface ZoomSdkSignature {
 
 type Phase = 'loading' | 'joining' | 'joined' | 'error';
 
-export default function ZoomHostSdkPlayer({ scheduleId }: { scheduleId: string }) {
-    const containerRef = useRef<HTMLDivElement>(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const clientRef = useRef<any>(null);
-    // Captured at init so the unmount cleanup can call destroyClient without
-    // re-awaiting the dynamic import.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sdkRef = useRef<any>(null);
+export default function ZoomHostSdkPlayer({
+    scheduleId,
+    leaveUrl,
+}: {
+    scheduleId: string;
+    /** Where Zoom's "Leave" sends the browser. Defaults to the app origin. */
+    leaveUrl?: string;
+}) {
+    const startedRef = useRef(false);
     const [phase, setPhase] = useState<Phase>('loading');
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -124,203 +160,105 @@ export default function ZoomHostSdkPlayer({ scheduleId }: { scheduleId: string }
     });
 
     useEffect(() => {
-        if (!data || !containerRef.current) return;
-        // Guard against React StrictMode double-mount (and any future
-        // re-fires of this effect) — the SDK throws "Duplicated join
-        // operation" if join() is called twice. clientRef persists
-        // across re-renders so we use its presence as a "already
-        // initialized" signal.
-        if (clientRef.current) return;
+        if (!data) return;
+        // StrictMode / re-render guard — Client View init+join must run once.
+        if (startedRef.current) return;
+        startedRef.current = true;
         let cancelled = false;
-
-        (window as unknown as { __zoomMeetingActive?: boolean }).__zoomMeetingActive = true;
-
-        // The Zoom SDK invokes window.location.reload() in some teardown
-        // paths. Override it with a no-op for the duration of the meeting
-        // so SDK reconnect logic doesn't kick us out on tab switch.
-        // Restored on cleanup. (This is the same pattern that keeps the
-        // learner stable on tab switches — admin without it reloads.)
-        const originalReload = window.location.reload;
-        try {
-            Object.defineProperty(window.location, 'reload', {
-                configurable: true,
-                value: function suppressedReload() {
-                    // eslint-disable-next-line no-console
-                    console.warn('[Zoom Host] Suppressed SDK location.reload() during active meeting');
-                },
-            });
-        } catch {
-            /* some browsers lock location.reload — best-effort */
-        }
+        const resolvedLeaveUrl = leaveUrl || window.location.origin;
 
         (async () => {
             try {
                 setPhase('joining');
-                const ZoomMtgEmbedded = await loadZoomSdkFromCdn();
-                sdkRef.current = ZoomMtgEmbedded;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const client: any = ZoomMtgEmbedded.createClient();
-                clientRef.current = client;
+                const ZoomMtg = await loadZoomClientViewFromCdn();
+                if (cancelled) return;
 
-                // Compact viewSizes (400×225) — small enough that even
-                // if the SDK's anchorPosition computation has an offset
-                // bias we can't predict, the popper stays centered-ish
-                // and fits inside the viewport at 100% browser zoom.
-                // The user explicitly OK'd a small player so long as
-                // admin can teach and learner can learn. Empirically
-                // the popper renders ~200px wider than viewSizes (chrome:
-                // top toolbar + participant strip + bottom toolbar +
-                // padding), so total popper width ≈ 600.
-                const POPPER_W = 400;
-                const POPPER_H = 225;
-                const POPPER_TOTAL_W = 600;
-                const centerLeft = Math.max(0, Math.floor((window.innerWidth - POPPER_TOTAL_W) / 2));
-                await client.init({
-                    zoomAppRoot: containerRef.current as HTMLElement,
-                    language: 'en-US',
+                ZoomMtg.setZoomJSLib(ZOOM_LIB_BASE, '/av');
+                ZoomMtg.preLoadWasm();
+                // 3.x exposes prepareWebSDK; older builds used prepareJssdk.
+                if (typeof ZoomMtg.prepareWebSDK === 'function') ZoomMtg.prepareWebSDK();
+                else if (typeof ZoomMtg.prepareJssdk === 'function') ZoomMtg.prepareJssdk();
+                ensureZmmtgRoot();
+
+                ZoomMtg.init({
+                    leaveUrl: resolvedLeaveUrl,
                     patchJsMedia: true,
-                    leaveOnPageUnload: false,
-                    customize: {
-                        video: {
-                            defaultViewType: 'speaker',
-                            isResizable: false,
-                            popper: {
-                                disableDraggable: true,
-                                anchorPosition: { top: 60, left: centerLeft },
+                    success: () => {
+                        ZoomMtg.join({
+                            sdkKey: data.sdkKey,
+                            signature: data.signature,
+                            meetingNumber: data.meetingNumber,
+                            passWord: data.passcode,
+                            userName: data.userName,
+                            userEmail: data.userEmail,
+                            // ZAK (present only when the server grants HOST) starts the meeting.
+                            zak: data.zakToken ?? undefined,
+                            success: () => {
+                                if (!cancelled) setPhase('joined');
                             },
-                            viewSizes: {
-                                default: { width: POPPER_W, height: POPPER_H },
-                                ribbon: { width: POPPER_W, height: POPPER_H },
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            error: (err: any) => {
+                                console.error('[Zoom Host ClientView] join failed:', err);
+                                if (!cancelled) {
+                                    setErrorMsg(`Could not start the Zoom meeting (${err?.errorCode ?? 'join error'}).`);
+                                    setPhase('error');
+                                }
                             },
-                        },
+                        });
+                    },
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    error: (err: any) => {
+                        console.error('[Zoom Host ClientView] init failed:', err);
+                        if (!cancelled) {
+                            setErrorMsg(`Could not initialise the Zoom meeting (${err?.errorCode ?? 'init error'}).`);
+                            setPhase('error');
+                        }
                     },
                 });
-
-                await client.join({
-                    signature: data.signature,
-                    sdkKey: data.sdkKey,
-                    meetingNumber: data.meetingNumber,
-                    password: data.passcode,
-                    userName: data.userName,
-                    userEmail: data.userEmail,
-                    // ZAK is what flips this from "join as user" to "start as host".
-                    zak: data.zakToken ?? undefined,
-                });
-
-                if (cancelled) {
-                    try {
-                        await client.leaveMeeting();
-                    } catch {
-                        /* ignore */
-                    }
-                    return;
-                }
-                setPhase('joined');
-                // Apply identical viewSizes via updateVideoOptions to lock
-                // the size against the SDK's auto-resize on view changes.
-                // Per Zoom DevRel: updateVideoOptions accepts viewSizes and
-                // induces a re-render at the requested size. This is the
-                // only public way to prevent ribbon view from stretching.
-                const lockSize = () => {
-                    if (typeof client.updateVideoOptions === 'function') {
-                        try {
-                            client.updateVideoOptions({
-                                viewSizes: {
-                                    default: { width: POPPER_W, height: POPPER_H },
-                                    ribbon: { width: POPPER_W, height: POPPER_H },
-                                },
-                            });
-                        } catch { /* ignore */ }
-                    }
-                };
-                lockSize();
             } catch (err: unknown) {
                 if (cancelled) return;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const code = (err as any)?.errorCode ?? (err as any)?.reason ?? 'UNKNOWN';
-                console.error('[Zoom Host SDK] join failed:', err);
-                setErrorMsg(`Could not start the Zoom meeting (${code}).`);
+                console.error('[Zoom Host ClientView] load failed:', err);
+                setErrorMsg('Could not load the Zoom meeting. Check your connection and try again.');
                 setPhase('error');
             }
         })();
 
         return () => {
             cancelled = true;
-            // Don't null clientRef/sdkRef on cleanup — those refs are the
-            // duplicate-join guard. Resetting them lets React StrictMode's
-            // remount call init() + join() again, which the SDK rejects
-            // with "Duplicated join operation". The actual SDK teardown
-            // happens when the page truly unloads (real navigation).
-            // Restore real reload for the rest of the app.
+            // Clean teardown — leave the meeting and hide Zoom's root so the SPA
+            // is usable after navigating away. No window.location.reload hacks.
             try {
-                Object.defineProperty(window.location, 'reload', {
-                    configurable: true,
-                    value: originalReload,
-                });
+                window.ZoomMtg?.leaveMeeting?.({});
             } catch {
                 /* ignore */
             }
-            (window as unknown as { __zoomMeetingActive?: boolean }).__zoomMeetingActive = false;
+            const root = document.getElementById('zmmtg-root');
+            if (root) root.style.display = 'none';
+            startedRef.current = false;
         };
-    }, [data]);
+    }, [data, leaveUrl]);
 
-    // Force speaker view. Retry clicking for ~10s with multiple fallback
-    // selectors (tab IDs vary between host/participant). Bounded — stops
-    // after 40 attempts.
-    useEffect(() => {
-        if (phase !== 'joined') return;
-        let attempts = 0;
-        const MAX_ATTEMPTS = 40;
-        const findSpeakerTab = (): HTMLElement | null =>
-            document.getElementById('suspension-view-tab-thumbnail-speaker') ||
-            document.querySelector<HTMLElement>('[aria-label="thumbnail-speaker"]') ||
-            document.querySelector<HTMLElement>('button[role="tab"][title="Speaker"]');
-        const interval = window.setInterval(() => {
-            attempts += 1;
-            const tab = findSpeakerTab();
-            if (tab && tab.getAttribute('aria-selected') !== 'true') {
-                tab.click();
-            }
-            if (attempts >= MAX_ATTEMPTS) window.clearInterval(interval);
-        }, 250);
-        return () => window.clearInterval(interval);
-    }, [phase]);
-
+    // Client View renders full-screen into #zmmtg-root (outside this tree). We only
+    // render the pre-join loading / error overlay; once joined, Zoom's UI covers it.
     if (error || phase === 'error') {
         return (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-center">
-                <p className="text-red-600">
-                    {errorMsg ?? 'Failed to start the Zoom meeting.'}
-                </p>
-                <p className="text-sm text-neutral-500">
-                    Please refresh the page or try again.
-                </p>
+                <p className="text-red-600">{errorMsg ?? 'Failed to start the Zoom meeting.'}</p>
+                <p className="text-sm text-neutral-500">Please refresh the page or try again.</p>
             </div>
         );
     }
 
+    if (phase === 'joined') return null;
+
     return (
-        <div className="relative h-full w-full bg-black">
-            {/* Reset Zoom's forced min-width on html/body and hide the
-                orphan #zmmtg-root the SDK leaves behind. Without these,
-                the body gets a min-width that pushes the popper off
-                center. From the only publicly-known working integration
-                (Khawaja Mushood's React+Vite walkthrough). */}
-            <style>{`
-                #zmmtg-root { display: none !important; }
-                html, body { min-width: 0 !important; }
-            `}</style>
-            <div ref={containerRef} className="absolute inset-0" />
-            {phase !== 'joined' && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                    <div className="flex flex-col items-center gap-3 text-white">
-                        <div className="size-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        <span className="text-sm">
-                            {phase === 'loading' ? 'Preparing meeting…' : 'Starting meeting as host…'}
-                        </span>
-                    </div>
-                </div>
-            )}
+        <div className="flex h-full w-full items-center justify-center bg-black">
+            <div className="flex flex-col items-center gap-3 text-white">
+                <div className="size-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span className="text-sm">
+                    {phase === 'loading' ? 'Preparing meeting…' : 'Starting meeting as host…'}
+                </span>
+            </div>
         </div>
     );
 }

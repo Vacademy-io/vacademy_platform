@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from '@phosphor-icons/react';
 import ZoomHostSdkPlayer from './-components/ZoomHostSdkPlayer';
 
 export const Route = createFileRoute('/study-library/live-session/host/$scheduleId')({
@@ -30,6 +30,12 @@ function HostLiveSession() {
         }
     };
 
+    // Where Zoom's own "Leave" button sends the browser (Client View navigates
+    // here on leave — a full load back into the session view / list).
+    const leaveUrl = `${window.location.origin}${
+        sessionId ? `/study-library/live-session/view/${sessionId}` : '/study-library/live-session'
+    }`;
+
     return (
         // No z-index on the outer container: Zoom's Component View renders
         // dropdowns (More menu → Participants, Chat, etc.) as portals on
@@ -51,7 +57,7 @@ function HostLiveSession() {
                 </span>
             </div>
             <div className="min-h-0 flex-1">
-                <ZoomHostSdkPlayer scheduleId={scheduleId} />
+                <ZoomHostSdkPlayer scheduleId={scheduleId} leaveUrl={leaveUrl} />
             </div>
         </div>
     );

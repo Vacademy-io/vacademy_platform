@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionParticipantRepository;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
@@ -41,6 +43,7 @@ class LiveSessionJoinAuthorizerTest {
     @Mock private SessionScheduleRepository scheduleRepository;
     @Mock private LiveSessionRepository liveSessionRepository;
     @Mock private LiveSessionParticipantRepository participantRepository;
+    @Mock private InstituteAccessValidator instituteAccessValidator;
 
     @InjectMocks private LiveSessionJoinAuthorizer authorizer;
 
@@ -71,10 +74,36 @@ class LiveSessionJoinAuthorizerTest {
     }
 
     @Test
-    void adminAuthorityIsHost() {
+    void adminOfThisInstituteIsHost() {
         givenSession(CREATOR_ID, "private");
-        JoinAuthorization auth = authorizer.authorize(SCHEDULE_ID, user("admin-9", "INSTITUTE_ADMIN"), null);
+        // validateUserAccess is a void no-op here → caller is an admin OF this institute.
+        JoinAuthorization auth = authorizer.authorize(SCHEDULE_ID, user("admin-9", "ADMIN"), null);
         assertEquals(JoinRole.HOST, auth.role());
+    }
+
+    @Test
+    void crossInstituteAdminIsNotHost() {
+        // Admin authority, but NOT of this session's institute → validateUserAccess throws.
+        givenSession(CREATOR_ID, "private");
+        doThrow(new VacademyException("Access denied: user does not belong to institute"))
+                .when(instituteAccessValidator).validateUserAccess(any(), any());
+        when(participantRepository.isUserParticipantOfSession(SESSION_ID, "admin-of-B")).thenReturn(false);
+
+        // Not creator, admin-but-wrong-institute, not enrolled → rejected (definitely not HOST).
+        VacademyException ex = assertThrows(VacademyException.class,
+                () -> authorizer.authorize(SCHEDULE_ID, user("admin-of-B", "ADMIN"), null));
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatus());
+    }
+
+    @Test
+    void crossInstituteAdminEnrolledIsParticipantNotHost() {
+        givenSession(CREATOR_ID, "private");
+        doThrow(new VacademyException("Access denied"))
+                .when(instituteAccessValidator).validateUserAccess(any(), any());
+        when(participantRepository.isUserParticipantOfSession(SESSION_ID, "admin-of-B")).thenReturn(true);
+
+        JoinAuthorization auth = authorizer.authorize(SCHEDULE_ID, user("admin-of-B", "ADMIN"), null);
+        assertEquals(JoinRole.PARTICIPANT, auth.role()); // downgraded — no cross-institute ZAK
     }
 
     @Test

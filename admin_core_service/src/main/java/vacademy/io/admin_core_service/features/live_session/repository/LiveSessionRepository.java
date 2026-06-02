@@ -361,4 +361,25 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
 
     @Query("SELECT s FROM LiveSession s WHERE s.instituteId = :instituteId")
     List<LiveSession> findByInstituteId(@Param("instituteId") String instituteId);
+
+    /**
+     * LIVE Zoom sessions that have stored provisioning config but still hold a
+     * schedule with no provider meeting — i.e. up-front async provisioning was
+     * interrupted. Bounded to schedules created before {@code staleBefore} (so the
+     * in-flight async run isn't double-provisioned) and on/after {@code earliestDate}
+     * (don't scan ancient sessions). Drives the provisioning retry job.
+     */
+    @Query(value = """
+        SELECT DISTINCT ls.* FROM live_session ls
+        JOIN session_schedules ss ON ss.session_id = ls.id
+        WHERE ls.status = 'LIVE'
+          AND ls.zoom_account_id IS NOT NULL
+          AND ss.status <> 'DELETED'
+          AND (ss.provider_meeting_id IS NULL OR ss.provider_meeting_id = '')
+          AND ss.created_at < :staleBefore
+          AND ss.meeting_date >= :earliestDate
+        """, nativeQuery = true)
+    List<LiveSession> findZoomSessionsNeedingProvisionRetry(
+            @Param("staleBefore") java.util.Date staleBefore,
+            @Param("earliestDate") java.sql.Date earliestDate);
 }

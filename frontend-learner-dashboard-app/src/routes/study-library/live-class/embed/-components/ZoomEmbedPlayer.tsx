@@ -30,11 +30,6 @@ const ZoomEmbedPlayer: React.FC<ZoomEmbedPlayerProps> = ({
         title="Zoom Recording"
       />
 
-      {/* View count placeholder */}
-      <span className="absolute top-3 right-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
-        <span className="mr-1 text-red-400">●</span>1,234 watching
-      </span>
-
       {/* Retention note — recording lives on Zoom Cloud and will expire */}
       {showExpiry && (
         <span className="absolute bottom-3 left-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">

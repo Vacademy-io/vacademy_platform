@@ -12,8 +12,6 @@ import vacademy.io.admin_core_service.features.live_session.provider.dto.Provide
 import vacademy.io.admin_core_service.features.live_session.provider.dto.RecordingSyncResultDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.entity.LiveSessionProviderConfig;
 import vacademy.io.admin_core_service.features.live_session.provider.manager.BbbMeetingManager;
-import vacademy.io.admin_core_service.features.live_session.provider.security.JoinAuthorization;
-import vacademy.io.admin_core_service.features.live_session.provider.security.LiveSessionJoinAuthorizer;
 import vacademy.io.admin_core_service.features.live_session.provider.service.BbbServerRouter;
 import vacademy.io.admin_core_service.features.live_session.provider.service.LiveSessionProviderService;
 import vacademy.io.admin_core_service.features.live_session.provider.service.ProviderMeetingBatchService;
@@ -55,8 +53,8 @@ public class LiveSessionProviderController {
     private final vacademy.io.common.media.service.FileService fileService;
     private final vacademy.io.common.auth.repository.UserRepository userRepository;
     private final vacademy.io.admin_core_service.features.youtube.service.YoutubeUploadJobService youtubeUploadJobService;
-    private final LiveSessionJoinAuthorizer joinAuthorizer;
     private final ProviderMeetingBatchService providerMeetingBatchService;
+    private final vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -161,8 +159,13 @@ public class LiveSessionProviderController {
      */
     @PostMapping("/meeting/create-for-session")
     public ResponseEntity<Map<String, Object>> createMeetingsForSession(
+            @RequestAttribute("user") CustomUserDetails user,
             @RequestBody ProviderMeetingCreateRequestDTO request) {
+        // Authorize against the SESSION's real institute (not the client-supplied
+        // instituteId) so a caller can't provision billable meetings on another tenant.
+        instituteAccessValidator.validateUserAccess(user, resolveSessionInstituteId(request.getSessionId()));
         int pending = providerMeetingBatchService.countPending(request.getSessionId());
+        providerMeetingBatchService.rememberProvisioningConfig(request);
         providerMeetingBatchService.createMeetingsForSessionAsync(request);
         return ResponseEntity.accepted().body(Map.of(
                 "status", "PROCESSING",
@@ -205,8 +208,12 @@ public class LiveSessionProviderController {
      */
     @PostMapping("/meeting/recordings/sync-to-s3")
     public ResponseEntity<RecordingSyncResultDTO> syncRecordingsToS3(
+            @RequestAttribute("user") CustomUserDetails user,
             @RequestParam String scheduleId,
             @RequestParam String instituteId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
+        instituteAccessValidator.validateUserAccess(user, resolveInstituteId(schedule));
         return ResponseEntity.ok(providerService.syncRecordingsToS3(scheduleId, instituteId));
     }
 
@@ -278,8 +285,10 @@ public class LiveSessionProviderController {
      */
     @GetMapping("/meeting/availability-for-session")
     public ResponseEntity<UserScheduleAvailabilityDTO> checkAvailabilityForSession(
+            @RequestAttribute("user") CustomUserDetails user,
             @RequestParam String sessionId,
             @RequestParam String providerAccountId) {
+        instituteAccessValidator.validateUserAccess(user, resolveSessionInstituteId(sessionId));
         return ResponseEntity.ok(
                 providerService.checkAvailabilityForSession(sessionId, providerAccountId));
     }
@@ -301,15 +310,16 @@ public class LiveSessionProviderController {
     @GetMapping("/meeting/join")
     public ResponseEntity<Map<String, String>> joinBbbMeeting(
             @RequestParam String scheduleId,
+            @RequestParam(defaultValue = "VIEWER") String role,
             @RequestParam(defaultValue = "false") boolean recreate,
             @RequestAttribute("user") CustomUserDetails user) {
 
-        // Role is derived server-side (creator/admin => MODERATOR, enrolled learner
-        // => VIEWER); the previous client-supplied `role` param is ignored so a
-        // learner can no longer self-promote to moderator. Non-enrolled users are
-        // rejected before any meeting is created.
-        JoinAuthorization auth = joinAuthorizer.authorize(scheduleId, user, null);
-        String role = auth.role().toBbbRole();
+        // NOTE: BBB join intentionally keeps its original (pre-Zoom) behaviour —
+        // client-supplied role, no enrolment gate — to avoid regressing the live
+        // BBB feature for institutes not using Zoom. The server-derived-role +
+        // enrolment guard (LiveSessionJoinAuthorizer) is applied to the Zoom
+        // SDK-join endpoints only. Hardening the BBB path is tracked separately
+        // and must be validated against real BBB usage first.
 
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
@@ -971,6 +981,16 @@ public class LiveSessionProviderController {
             return null;
         }
         return liveSessionRepository.findById(schedule.getSessionId())
+                .map(s -> s.getInstituteId())
+                .orElse(null);
+    }
+
+    /** Resolves the owning institute for a live_session id (for cross-tenant authz). */
+    private String resolveSessionInstituteId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        return liveSessionRepository.findById(sessionId)
                 .map(s -> s.getInstituteId())
                 .orElse(null);
     }

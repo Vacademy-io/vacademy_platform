@@ -299,7 +299,10 @@ function EmbedComponent() {
       sessionId
     ) {
       if (!Capacitor.isNativePlatform()) {
-        return <ZoomMeetingSdkPlayer scheduleId={sessionId} />;
+        return <ZoomMeetingSdkPlayer
+          scheduleId={sessionId}
+          leaveUrl={`${window.location.origin}/study-library/live-class`}
+        />;
       }
       return <ZoomNativeLauncher scheduleId={sessionId} />;
     }
@@ -580,7 +583,10 @@ function EmbedComponent() {
           </span>
         </div>
         <div className="min-h-0 flex-1">
-          <ZoomMeetingSdkPlayer scheduleId={sessionId} />
+          <ZoomMeetingSdkPlayer
+          scheduleId={sessionId}
+          leaveUrl={`${window.location.origin}/study-library/live-class`}
+        />
         </div>
       </div>
     );

@@ -122,16 +122,21 @@ public class ZoomOAuthService {
 
     // ── HTTP helpers ──────────────────────────────────────────────────────────
 
-    /** Zoom's OAuth token endpoint takes grant params as query string (same as the S2S path). */
-    private JsonNode postToken(String queryParams) {
+    /**
+     * Send the grant params as the form BODY (standard OAuth token request). Do NOT put them in
+     * the URI query string — WebClient's .uri(String) re-encodes it, double-encoding the
+     * already-encoded redirect_uri (https%3A%2F%2F → https%253A%252F%252F) and Zoom 400s.
+     */
+    private JsonNode postToken(String formBody) {
         String basic = Base64.getEncoder().encodeToString(
                 (clientId + ":" + clientSecret).getBytes(StandardCharsets.UTF_8));
         try {
             return webClientBuilder.build()
                     .post()
-                    .uri(ZoomEndpoints.OAUTH_TOKEN_URL + "?" + queryParams)
+                    .uri(ZoomEndpoints.OAUTH_TOKEN_URL)
                     .header("Authorization", "Basic " + basic)
                     .header("Content-Type", "application/x-www-form-urlencoded")
+                    .bodyValue(formBody)
                     .retrieve()
                     .bodyToMono(JsonNode.class)
                     .block();

@@ -189,6 +189,21 @@ export default function ZoomHostSdkPlayer({
             setPhase('error');
             return;
         }
+        // Starting a meeting AS HOST (role 1) requires a ZAK. Without it the Zoom
+        // Client View SDK crashes internally on meetingNumber.toString() (its
+        // host-start path dereferences an undefined value) rather than calling the
+        // error callback. The ZAK is null when the connected Zoom account's OAuth
+        // token lacks the ZAK scope (classic: user_zak:read, granular: user:read:zak).
+        // Surface that as an actionable message instead of booting the SDK to crash.
+        if (data.role === 1 && !data.zakToken) {
+            setErrorMsg(
+                'Cannot start this meeting as host: Zoom did not issue a host start-token (ZAK). ' +
+                    'Reconnect Zoom in Settings → Live Session — remove the app in your Zoom account first so the ' +
+                    'consent screen reappears, then approve the ZAK scope (user_zak:read / user:read:zak).'
+            );
+            setPhase('error');
+            return;
+        }
         startedRef.current = true;
         let cancelled = false;
         const resolvedLeaveUrl = leaveUrl || window.location.origin;

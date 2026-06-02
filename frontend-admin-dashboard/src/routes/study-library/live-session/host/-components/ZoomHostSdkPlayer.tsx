@@ -159,6 +159,21 @@ export default function ZoomHostSdkPlayer({
         retry: 1,
     });
 
+    // Surface the signature-fetch error (409 = meeting still being provisioned on Zoom)
+    // as a clear message rather than a blank spinner / generic failure.
+    useEffect(() => {
+        if (!error) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data
+            ?.message;
+        setErrorMsg(
+            status === 409
+                ? serverMsg ?? 'This Zoom meeting is still being set up. Try again in a moment, or use "Provision now" on the session page.'
+                : 'Could not load the Zoom meeting. Check your connection and try again.'
+        );
+        setPhase('error');
+    }, [error]);
+
     useEffect(() => {
         if (!data) return;
         // StrictMode / re-render guard — Client View init+join must run once.

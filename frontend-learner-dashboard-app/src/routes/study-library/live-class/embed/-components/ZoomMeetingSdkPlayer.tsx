@@ -152,6 +152,21 @@ export default function ZoomMeetingSdkPlayer({
         retry: 1,
     });
 
+    // Surface the signature-fetch error (409 = meeting still being provisioned on Zoom)
+    // as a clear message rather than a blank spinner / generic failure.
+    useEffect(() => {
+        if (!error) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data
+            ?.message;
+        setErrorMsg(
+            status === 409
+                ? serverMsg ?? "This live class is still being set up. Please refresh in a moment."
+                : "We couldn't load this live class. Please refresh, or contact your instructor."
+        );
+        setPhase("error");
+    }, [error]);
+
     useEffect(() => {
         if (!data) return;
         if (startedRef.current) return; // StrictMode / re-render guard

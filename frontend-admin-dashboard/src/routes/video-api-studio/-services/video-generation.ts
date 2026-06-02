@@ -1297,7 +1297,7 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     voice_id: undefined,
     captions_enabled: true,
     html_quality: 'advanced',
-    target_audience: 'Class 5 (Ages 10-11)',
+    target_audience: 'General/Adult',
     target_duration: '2-3 minutes',
     model: '',
     quality_tier: 'ultra',

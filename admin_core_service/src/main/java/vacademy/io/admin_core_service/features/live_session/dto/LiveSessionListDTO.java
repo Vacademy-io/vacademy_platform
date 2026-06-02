@@ -22,10 +22,7 @@ public class LiveSessionListDTO {
     private String backgroundScoreFileId;
     private String sessionStreamingServiceType;
     private String scheduleId;
-    // meeting_date is a DATE column read as java.sql.Date (midnight in the JVM zone, which is
-    // forced to IST). Serialize in Asia/Kolkata so the calendar date is preserved — formatting
-    // the IST-midnight instant in UTC would print the previous day (off-by-one).
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "Asia/Kolkata")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "UTC")
     private Date meetingDate;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm:ss", timezone = "UTC")
     private Time startTime;

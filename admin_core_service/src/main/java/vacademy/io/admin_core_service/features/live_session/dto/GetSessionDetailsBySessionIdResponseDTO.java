@@ -51,9 +51,7 @@ public class GetSessionDetailsBySessionIdResponseDTO {
 
     private String recurrenceType;
     private String recurrenceKey;
-    // DATE column built at midnight in the IST-forced JVM zone — serialize in Asia/Kolkata
-    // (UTC would print the previous day; see LiveSessionListDTO.meetingDate).
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "Asia/Kolkata")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "UTC")
     private Date meetingDate;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm:ss", timezone = "UTC")
     private Time scheduleStartTime;

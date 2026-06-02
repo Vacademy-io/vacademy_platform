@@ -1,132 +1,91 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────
-# Deploy render worker to production server
+# Deploy render worker to the k3s cluster — thin wrapper around
+# the GitHub Actions workflow .github/workflows/docker-publish-render-worker.yml
+#
+# The actual build + push + rollout happens on a GitHub-hosted runner. This
+# script just triggers it (and tails it so you can see live logs).
+#
+# Why a GH Action instead of a local script:
+#   - There is no longer a dedicated build host (157.90.162.154 was removed).
+#   - GH runners are linux/amd64 with docker preinstalled (fast, free).
+#   - Audit trail of every deploy in Actions UI.
+#   - No PATs / secrets sitting on engineers' laptops.
 #
 # Usage:
 #   cd vacademy_platform/ai_service && bash render_worker/deploy.sh
 #
+# Prereqs (one-time):
+#   - `gh` CLI installed and authenticated (`gh auth status` should be green)
+#   - You must be on a branch that is pushed to origin so workflow_dispatch can
+#     find it; or just deploy from main (recommended for production).
+#
 # What it does:
-#   1. Copies updated code to the server via rsync
-#   2. Runs build.sh on the server (Docker build)
-#   3. Stops old container, starts new one
+#   1. Confirms you have `gh` and you're authenticated.
+#   2. Triggers .github/workflows/docker-publish-render-worker.yml on the
+#      current branch (or main if you pass --main).
+#   3. Watches the latest run until it succeeds or fails.
+#
+# To trigger without watching:
+#   gh workflow run docker-publish-render-worker.yml --ref main
+#
+# To roll back (any laptop with kubectl access to k3s):
+#   kubectl -n default rollout undo deployment/render-worker         # one step back
+#   kubectl -n default set image deployment/render-worker \
+#     render-worker=ghcr.io/vacademy-io/render-worker:<OLD_TAG>      # specific tag
+#   kubectl -n default rollout history deployment/render-worker     # see prior tags
 # ──────────────────────────────────────────────────────────────
 set -euo pipefail
 
-# ── Config ──
-RENDER_SERVER="root@157.90.162.154"
-REMOTE_DIR="/opt/vacademy/ai_service"
-CONTAINER_NAME="vacademy-render"
-IMAGE_NAME="vacademy-render:latest"
+WORKFLOW_FILE="docker-publish-render-worker.yml"
+USE_MAIN=0
 
-# ── Paths (relative to ai_service/) ──
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-AI_SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
-
-echo "════════════════════════════════════════════"
-echo "  Deploying Render Worker"
-echo "  Server: $RENDER_SERVER"
-echo "════════════════════════════════════════════"
-
-# ── Step 1: Sync code to server ──
-echo ""
-echo "▶ [1/3] Syncing code to $RENDER_SERVER:$REMOTE_DIR ..."
-
-# Ensure remote directory exists
-ssh "$RENDER_SERVER" "mkdir -p $REMOTE_DIR/render_worker $REMOTE_DIR/app/ai-video-gen-main"
-
-# Sync render worker files
-rsync -avz --progress \
-    "$SCRIPT_DIR/main.py" \
-    "$SCRIPT_DIR/worker.py" \
-    "$SCRIPT_DIR/transcribe_worker.py" \
-    "$SCRIPT_DIR/screenshot_worker.py" \
-    "$SCRIPT_DIR/audio_ops.py" \
-    "$SCRIPT_DIR/requirements.txt" \
-    "$SCRIPT_DIR/Dockerfile" \
-    "$SCRIPT_DIR/build.sh" \
-    "$RENDER_SERVER:$REMOTE_DIR/render_worker/"
-
-# Sync generate_video.py and config files. render_harness.py is shared
-# between the renderer and the screenshot endpoint — see build.sh comment.
-# dispatcher_install_js.py holds the ~850-line shadow-DOM dispatcher JS
-# extracted from generate_video.py; both /jobs (production) and the
-# /shot/preview-mp4 single-shot path import it for byte-identical behavior.
-rsync -avz --progress \
-    "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" \
-    "$AI_SERVICE_DIR/app/ai-video-gen-main/render_harness.py" \
-    "$AI_SERVICE_DIR/app/ai-video-gen-main/dispatcher_install_js.py" \
-    "$AI_SERVICE_DIR/app/ai-video-gen-main/shot_preprocess.py" \
-    "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/"
-
-# Sync extractor package (video indexing pipeline)
-if [ -d "$SCRIPT_DIR/extractor" ]; then
-    rsync -avz --progress --delete \
-        "$SCRIPT_DIR/extractor/" \
-        "$RENDER_SERVER:$REMOTE_DIR/render_worker/extractor/"
-fi
-
-# Sync optional config/assets (ignore if missing)
-for f in video_options.json captions_settings.json branding.json; do
-    if [ -f "$AI_SERVICE_DIR/app/ai-video-gen-main/$f" ]; then
-        rsync -avz "$AI_SERVICE_DIR/app/ai-video-gen-main/$f" \
-            "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/"
-    fi
+for arg in "$@"; do
+    case "$arg" in
+        --main) USE_MAIN=1 ;;
+        -h|--help)
+            sed -n '1,40p' "$0"
+            exit 0
+            ;;
+        *) echo "unknown flag: $arg" >&2; exit 2 ;;
+    esac
 done
 
-# Sync assets directory if it exists
-if [ -d "$AI_SERVICE_DIR/app/ai-video-gen-main/assets" ]; then
-    rsync -avz --progress \
-        "$AI_SERVICE_DIR/app/ai-video-gen-main/assets/" \
-        "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/assets/"
+if ! command -v gh >/dev/null 2>&1; then
+    echo "✗ gh CLI not installed. Install: brew install gh   (or visit https://cli.github.com/)"
+    exit 1
 fi
 
-echo "✓ Code synced"
+if ! gh auth status >/dev/null 2>&1; then
+    echo "✗ gh not authenticated. Run: gh auth login"
+    exit 1
+fi
 
-# ── Step 2: Build Docker image on server ──
-echo ""
-echo "▶ [2/3] Building Docker image on server ..."
+if [ "$USE_MAIN" = "1" ]; then
+    REF="main"
+else
+    REF="$(git rev-parse --abbrev-ref HEAD)"
+fi
 
-ssh "$RENDER_SERVER" "cd $REMOTE_DIR && bash render_worker/build.sh"
+echo "════════════════════════════════════════════════════════════"
+echo "  Triggering: $WORKFLOW_FILE"
+echo "  Ref:        $REF"
+echo "════════════════════════════════════════════════════════════"
 
-echo "✓ Docker image built"
+gh workflow run "$WORKFLOW_FILE" --ref "$REF"
 
-# ── Step 3: Restart container ──
-echo ""
-echo "▶ [3/3] Restarting container ..."
-
-ssh "$RENDER_SERVER" bash -s <<'REMOTE_SCRIPT'
-set -e
-
-CONTAINER_NAME="vacademy-render"
-IMAGE_NAME="vacademy-render:latest"
-
-# Stop and remove old container (ignore errors if not running)
-docker stop "$CONTAINER_NAME" 2>/dev/null || true
-docker rm "$CONTAINER_NAME" 2>/dev/null || true
-
-# Start new container
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    --restart unless-stopped \
-    -p 8090:8090 \
-    -e AWS_ACCESS_KEY_ID='' \
-    -e AWS_SECRET_ACCESS_KEY='+' \
-    -e AWS_REGION='ap-south-1' \
-    -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
-    -e RENDER_KEY='vsahcraedyeamsyh' \
-    -e MAX_CONCURRENT_JOBS='2' \
-    -e OPENROUTER_API_KEY='' \
-    "$IMAGE_NAME"
-
-echo ""
-echo "Container started. Checking health..."
+# Brief pause for the run to be registered, then attach to it.
 sleep 3
-docker ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-REMOTE_SCRIPT
+RUN_ID="$(gh run list --workflow="$WORKFLOW_FILE" --limit=1 --json databaseId -q '.[0].databaseId')"
 
 echo ""
-echo "════════════════════════════════════════════"
-echo "  ✓ Deploy complete!"
-echo "  Container: $CONTAINER_NAME"
-echo "  Health:    http://157.90.162.154:8090/health"
-echo "════════════════════════════════════════════"
+echo "▶ Watching run $RUN_ID — Ctrl-C to detach (the run keeps going)."
+echo ""
+
+gh run watch "$RUN_ID" --exit-status
+
+echo ""
+echo "════════════════════════════════════════════════════════════"
+echo "  ✓ Deploy complete. See Actions UI for full logs:"
+echo "    https://github.com/Vacademy-io/vacademy_platform/actions/runs/$RUN_ID"
+echo "════════════════════════════════════════════════════════════"

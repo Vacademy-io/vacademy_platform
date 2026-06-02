@@ -36,7 +36,16 @@ function buildPreviewPayload(
 ): VideoCostPreviewRequest {
     return {
         quality_tier: options.quality_tier,
-        model: options.model || undefined,
+        // The model the estimate (and the "Model" row) should reflect is what
+        // the user actually picked. Per-stage overrides live in
+        // `model_overrides.default` (the "Default model" dropdown) — the legacy
+        // top-level `options.model` is undefined in vimMode and unused there.
+        // Without this, the estimator gets no model and falls back to the
+        // ai_model_defaults default (google/gemini-2.5-pro), so the confirm
+        // modal showed gemini-2.5-pro even after the user chose e.g. Claude.
+        // The actual run already honors `model_overrides` (buildRequest forwards
+        // it); this only aligns the pre-run preview with that reality.
+        model: options.model_overrides?.default || options.model || undefined,
         target_duration: options.target_duration,
         target_audience: options.target_audience,
         orientation: options.orientation || 'landscape',

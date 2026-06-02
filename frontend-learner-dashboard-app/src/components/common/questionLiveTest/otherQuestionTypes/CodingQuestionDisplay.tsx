@@ -237,25 +237,48 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
 
     const handleEditorMount = useCallback(
         (editor: unknown) => {
-            // Block paste at the Monaco level + count attempts.
-            // The editor object is a monaco.editor.IStandaloneCodeEditor.
             const ed = editor as {
                 onDidPaste?: (cb: () => void) => void;
                 getDomNode?: () => HTMLElement | null;
+                addCommand?: (keybinding: number, handler: () => void) => void;
             };
+
+            // Count paste attempts via Monaco's own paste event.
             ed.onDidPaste?.(() => {
                 incrementPaste(questionId);
             });
+
             const dom = ed.getDomNode?.();
             if (dom) {
-                const blocker = (e: ClipboardEvent) => {
+                // Block paste + drop (count attempt then cancel).
+                const pasteBlocker = (e: ClipboardEvent) => {
                     e.preventDefault();
                     e.stopPropagation();
                     incrementPaste(questionId);
                 };
-                dom.addEventListener("paste", blocker, { capture: true });
-                dom.addEventListener("drop", blocker, { capture: true });
+                dom.addEventListener("paste", pasteBlocker, { capture: true });
+                dom.addEventListener("drop", pasteBlocker, { capture: true });
+
+                // Block copy/cut at the DOM level so text cannot be exfiltrated.
+                const copyBlocker = (e: ClipboardEvent) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                };
+                dom.addEventListener("copy", copyBlocker, { capture: true });
+                dom.addEventListener("cut", copyBlocker, { capture: true });
             }
+
+            // Override Monaco's built-in Ctrl/Cmd+C and Ctrl/Cmd+X keyboard commands.
+            // KeyMod and KeyCode constants: Ctrl=2048, Meta=256, C=33, X=52.
+            const CtrlC = 2048 | 33;
+            const MetaC = 256 | 33;
+            const CtrlX = 2048 | 52;
+            const MetaX = 256 | 52;
+            const noop = () => { /* copy/cut disabled */ };
+            ed.addCommand?.(CtrlC, noop);
+            ed.addCommand?.(MetaC, noop);
+            ed.addCommand?.(CtrlX, noop);
+            ed.addCommand?.(MetaX, noop);
         },
         [incrementPaste, questionId]
     );
@@ -333,6 +356,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                             fontSize: 13,
                             scrollBeyondLastLine: false,
                             automaticLayout: true,
+                            contextmenu: false,
                         }}
                     />
                 </div>

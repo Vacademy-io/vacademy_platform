@@ -2,8 +2,21 @@
 # Build the render worker Docker image.
 # Run from the ai_service directory:
 #   cd ai_service && bash render_worker/build.sh
+#
+# Flags:
+#   --context-only   Assemble .build/ but do NOT run `docker build`. Used by the
+#                    GH Actions workflow which builds via docker/build-push-action
+#                    (handles caching + push in one step).
 
 set -e
+
+CONTEXT_ONLY=0
+for arg in "$@"; do
+    case "$arg" in
+        --context-only) CONTEXT_ONLY=1 ;;
+        *) echo "unknown flag: $arg" >&2; exit 2 ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AI_SERVICE_DIR="$(dirname "$SCRIPT_DIR")"
@@ -60,6 +73,11 @@ if [ -d "$SCRIPT_DIR/pdf_ocr" ]; then
     cp -r "$SCRIPT_DIR/pdf_ocr" "$BUILD_DIR/pdf_ocr/"
 fi
 
+if [ "$CONTEXT_ONLY" = "1" ]; then
+    echo "==> --context-only set; leaving build context at $BUILD_DIR and exiting."
+    exit 0
+fi
+
 echo "==> Building Docker image..."
 cd "$BUILD_DIR"
 docker build -t vacademy-render:latest .
@@ -67,10 +85,4 @@ docker build -t vacademy-render:latest .
 echo "==> Cleaning up build context..."
 rm -rf "$BUILD_DIR"
 
-echo "==> Done! Run with:"
-echo "    docker run -d -p 8090:8090 \\"
-echo "      -e AWS_ACCESS_KEY_ID=xxx \\"
-echo "      -e AWS_SECRET_ACCESS_KEY=xxx \\"
-echo "      -e AWS_S3_PUBLIC_BUCKET=vacademy-media-storage-public \\"
-echo "      -e RENDER_KEY=your-secret-key \\"
-echo "      vacademy-render:latest"
+echo "==> Done! Image is now in the k3s registry pipeline via render_worker/deploy.sh."

@@ -265,6 +265,7 @@ export function QuestionDisplay() {
             }
             return (
               <CodingQuestionDisplay
+                key={currentQuestion.question_id}
                 questionId={currentQuestion.question_id}
                 attemptId={assessment?.attempt_id}
                 config={codingConfig}

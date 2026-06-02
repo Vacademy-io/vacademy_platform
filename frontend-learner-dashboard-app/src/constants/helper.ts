@@ -8,7 +8,12 @@ import { TokenKey } from "./auth/tokens";
 export function convertToLocalDateTime(utcDate: string): string {
   if (!utcDate) return "";
 
-  const date = new Date(utcDate);
+  // Backend stores timestamps in UTC but omits the trailing 'Z'.
+  // Without "Z", browsers parse the string as *local* time, silently
+  // skipping the UTC→local conversion. Force UTC interpretation first.
+  const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(utcDate);
+  const normalized = hasTimezone ? utcDate : `${utcDate.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
 
   const options: Intl.DateTimeFormatOptions = {
     day: "numeric",
@@ -18,15 +23,12 @@ export function convertToLocalDateTime(utcDate: string): string {
     minute: "2-digit",
     second: "2-digit",
     hour12: true,
-
   };
 
   const formatted = new Intl.DateTimeFormat("en-GB", options).format(date);
-  const finalString = formatted
+  return formatted
     .replace(",", "")
     .replace(/\s(am|pm)/i, (match) => match.toUpperCase());
-
-  return finalString;
 }
 
 export function extractDateTime(utcDate: string) {

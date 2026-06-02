@@ -479,7 +479,14 @@ public class InvoiceService {
         Double taxRateValue = invoiceSettings.get("taxRate") != null
                 ? ((Number) invoiceSettings.get("taxRate")).doubleValue()
                 : 0.0;
-        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue);
+        // INVOICE_SETTING.taxRate is stored as a percentage (e.g. 18 for 18%) — same
+        // convention createAdminInvoices uses. Convert to a fraction for the math
+        // below (`1 + taxRate` divisors etc.). Skipping the /100 made the divisor
+        // explode (e.g. 1 + 18 = 19) and the resulting subtotal/tax split nonsensical,
+        // which is why the Add User → offline payment → generate-invoice path didn't
+        // render visible tax.
+        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue)
+                .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
         // Per-package-type tax components (INVOICE_SETTING.country). When any components
@@ -855,7 +862,11 @@ public class InvoiceService {
         Double taxRateValue = invoiceSettings.get("taxRate") != null
                 ? ((Number) invoiceSettings.get("taxRate")).doubleValue()
                 : 0.0;
-        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue);
+        // INVOICE_SETTING.taxRate is stored as a percentage (e.g. 18). Convert to a
+        // fraction so the `1 + taxRate` divisor below resolves to e.g. 1.18 (not 19).
+        // Mirrors the conversion in createAdminInvoices / buildInvoiceDataFromMultiplePaymentLogs.
+        BigDecimal taxRate = BigDecimal.valueOf(taxRateValue)
+                .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
         String taxLabel = (String) invoiceSettings.getOrDefault("taxLabel", "Tax");
 
         // Use payment amount from payment log
@@ -3233,6 +3244,25 @@ public class InvoiceService {
                         .amount(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                         .build())
                 .collect(Collectors.toList());
+
+        // Mirror buildInvoiceDataFromMultiplePaymentLogs — append a TAX row when the
+        // institute's INVOICE_SETTING.taxRate yields a positive tax amount so the
+        // template's line-items table actually shows tax (instead of users wondering
+        // why their 18% GST is invisible). Skipped when taxIncluded=true because the
+        // line-item prices already carry the tax.
+        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0
+                && !Boolean.TRUE.equals(taxIncluded)) {
+            String taxLineDescription = (StringUtils.hasText(taxLabel) ? taxLabel : "Tax")
+                    + " @ " + taxRate.multiply(BigDecimal.valueOf(100))
+                    .setScale(0, RoundingMode.HALF_UP) + "%";
+            lineItemData.add(InvoiceLineItemData.builder()
+                    .itemType("TAX")
+                    .description(taxLineDescription)
+                    .quantity(1)
+                    .unitPrice(taxAmount)
+                    .amount(taxAmount)
+                    .build());
+        }
 
         InvoiceData invoiceData = InvoiceData.builder()
                 .user(user)

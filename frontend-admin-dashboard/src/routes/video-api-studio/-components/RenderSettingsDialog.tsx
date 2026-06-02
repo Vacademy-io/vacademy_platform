@@ -250,13 +250,18 @@ export function RenderSettingsDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent
+                className={cn(
+                    'flex flex-col sm:max-w-md',
+                    'max-h-[90vh]' // design-lint-ignore: cap to viewport so the body scrolls on short screens
+                )}
+            >
                 <DialogHeader>
                     <DialogTitle>Render Settings</DialogTitle>
                     <DialogDescription>Configure video output before rendering.</DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-5 py-2">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto py-2">
                     {/* Resolution */}
                     <div className="space-y-2">
                         <Label className="text-xs font-medium">Resolution</Label>

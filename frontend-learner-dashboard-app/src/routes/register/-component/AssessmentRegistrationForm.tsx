@@ -61,6 +61,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
 import AssessmentRegistrationCompleted from "./AssessmentRegistrationCompleted";
+import PostRegistrationOTPVerify from "./PostRegistrationOTPVerify";
 import { useNavigate } from "@tanstack/react-router";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import { useInstituteDetails } from "../live-class/-hooks/useInstituteDetails";
@@ -173,6 +174,7 @@ const AssessmentRegistrationForm = () => {
   const navigate = useNavigate();
   const [userHasAttemptCount, setUserHasAttemptCount] = useState(false);
   const [isAlreadyLoggedIn, setIsAlreadyLoggedIn] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
   // NOTE: the name is misleading — `true` means the email was NOT found (a new
   // registrant); `false` means the email already EXISTS (set in
   // CheckEmailStatusAlertDialog when an OTP is sent). onSubmit no longer relies
@@ -383,8 +385,9 @@ const AssessmentRegistrationForm = () => {
         custom_field_request_list,
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("You have been registered successfully!");
+      setRegisteredEmail(variables.participantsDto.email);
     },
     onError: showRegistrationError,
   });
@@ -428,6 +431,7 @@ const AssessmentRegistrationForm = () => {
         form.getValues(),
       );
       toast.success("You have been registered successfully!");
+      setRegisteredEmail(response.email);
     },
     onError: showRegistrationError,
   });
@@ -581,17 +585,30 @@ const AssessmentRegistrationForm = () => {
       />
     );
 
-  if (
-    (handleRegisterParticipant.status === "success" ||
-      handleGetUserIdMutation.status === "success" ||
-      isAlreadyLoggedIn) &&
-    case2Status
-  )
+  // Returning user who re-authenticated via OTP: already logged in, go straight to assessment.
+  if (isAlreadyLoggedIn && case2Status)
     return (
       <AssessmentRegistrationCompleted
         assessmentId={data.assessment_public_dto.assessment_id}
         assessmentName={data.assessment_public_dto.assessment_name}
         timeLeft={timeLeft}
+      />
+    );
+
+  // New registration (or re-registration while not logged in): verify email via OTP
+  // so the learner can jump directly into the assessment without a separate login redirect.
+  if (
+    (handleRegisterParticipant.status === "success" ||
+      handleGetUserIdMutation.status === "success") &&
+    case2Status &&
+    registeredEmail
+  )
+    return (
+      <PostRegistrationOTPVerify
+        email={registeredEmail}
+        assessmentId={data.assessment_public_dto.assessment_id}
+        assessmentName={data.assessment_public_dto.assessment_name}
+        instituteId={data.institute_id}
       />
     );
 
@@ -816,22 +833,40 @@ const AssessmentRegistrationForm = () => {
                   <Timer size={14} weight="bold" />
                   Registration closes in
                 </div>
-                {(timeLeftForRegistrationCase2.hours > 0 ||
+                {(timeLeftForRegistrationCase2.days > 0 ||
+                  timeLeftForRegistrationCase2.hours > 0 ||
                   timeLeftForRegistrationCase2.minutes > 0 ||
                   timeLeftForRegistrationCase2.seconds > 0) ? (
-                  <span className="text-2xl sm:text-3xl font-bold tabular-nums text-primary-600">
-                    {String(timeLeftForRegistrationCase2.hours).padStart(2, "0")}
-                    :
-                    {String(timeLeftForRegistrationCase2.minutes).padStart(
-                      2,
-                      "0",
+                  <div className="flex items-end gap-2 tabular-nums text-primary-600">
+                    {timeLeftForRegistrationCase2.days > 0 && (
+                      <div className="flex flex-col items-center">
+                        <span className="text-2xl sm:text-3xl font-bold leading-none">
+                          {timeLeftForRegistrationCase2.days}
+                        </span>
+                        <span className="text-xs font-medium uppercase tracking-wider text-primary-400 mt-0.5">day{timeLeftForRegistrationCase2.days !== 1 ? "s" : ""}</span>
+                      </div>
                     )}
-                    :
-                    {String(timeLeftForRegistrationCase2.seconds).padStart(
-                      2,
-                      "0",
-                    )}
-                  </span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-2xl sm:text-3xl font-bold leading-none">
+                        {String(timeLeftForRegistrationCase2.hours).padStart(2, "0")}
+                      </span>
+                      <span className="text-xs font-medium uppercase tracking-wider text-primary-400 mt-0.5">hr</span>
+                    </div>
+                    <span className="text-2xl sm:text-3xl font-bold leading-none pb-4">:</span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-2xl sm:text-3xl font-bold leading-none">
+                        {String(timeLeftForRegistrationCase2.minutes).padStart(2, "0")}
+                      </span>
+                      <span className="text-xs font-medium uppercase tracking-wider text-primary-400 mt-0.5">min</span>
+                    </div>
+                    <span className="text-2xl sm:text-3xl font-bold leading-none pb-4">:</span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-2xl sm:text-3xl font-bold leading-none">
+                        {String(timeLeftForRegistrationCase2.seconds).padStart(2, "0")}
+                      </span>
+                      <span className="text-xs font-medium uppercase tracking-wider text-primary-400 mt-0.5">sec</span>
+                    </div>
+                  </div>
                 ) : (
                   <span className="text-sm font-medium text-neutral-500">
                     Closing soon

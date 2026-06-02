@@ -30,18 +30,19 @@ export const calculateTimeDifference = (
 };
 
 export const calculateTimeLeft = (serverTime: number, startDate: string) => {
-  if (!startDate) return { hours: 0, minutes: 0, seconds: 0 };
+  if (!startDate) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
   const startTime = parseBackendDate(startDate);
-  if (isNaN(startTime)) return { hours: 0, minutes: 0, seconds: 0 };
+  if (isNaN(startTime)) return { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
   const difference: number = startTime - serverTime;
 
   if (difference <= 0) {
-    return { hours: 0, minutes: 0, seconds: 0 }; // Assessment already started
+    return { days: 0, hours: 0, minutes: 0, seconds: 0 };
   }
 
   return {
-    hours: Math.floor(difference / (1000 * 60 * 60)),
+    days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
     minutes: Math.floor((difference / (1000 * 60)) % 60),
     seconds: Math.floor((difference / 1000) % 60),
   };

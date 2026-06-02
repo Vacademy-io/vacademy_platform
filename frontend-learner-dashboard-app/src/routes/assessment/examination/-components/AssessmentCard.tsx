@@ -26,7 +26,6 @@ import {
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
 import { useState } from "react";
-import dayjs from "dayjs";
 import { restartAssessment } from "../-utils.ts/useFetchRestartAssessment";
 import {
   storeAssessmentInfo,
@@ -43,6 +42,25 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+
+// Backend date strings (assessment list API) have no timezone marker but are
+// stored in UTC. Appending "Z" makes Date() interpret them as UTC so the
+// browser's Intl engine converts to the user's local timezone on display.
+function formatAssessmentDate(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const hasZone = /Z$|[+-]\d{2}:?\d{2}$/i.test(raw);
+  const iso = hasZone ? raw : `${raw.replace(" ", "T")}Z`;
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return raw; // fallback: show raw string
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date).replace(",", ","); // keeps "DD/MM/YYYY, HH:MM am/pm"
+}
 
 interface AssessmentProps {
   assessmentInfo: Assessment;
@@ -139,12 +157,12 @@ export const AssessmentCard = ({
 
     if (isEndedOrNull) {
       const maxAttempts =
-        assessmentInfo.user_attempts !== 0
+        assessmentInfo.user_attempts !== null && assessmentInfo.user_attempts !== 0
           ? assessmentInfo.user_attempts
           : (assessmentInfo.assessment_attempts ?? 1);
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
 
-      if ((maxAttempts ?? 1) > usedAttempts) {
+      if (maxAttempts > usedAttempts) {
         // Await the write so InstructionID_and_AboutID is persisted before the
         // InstructionPage mounts and reads it — otherwise the first load reads
         // a null key and crashes (works only after a refresh).
@@ -216,12 +234,21 @@ export const AssessmentCard = ({
       assessmentInfo.recent_attempt_status === null;
     if (isEndedOrNull) {
       const maxAttempts =
-        assessmentInfo.user_attempts !== 0
+        assessmentInfo.user_attempts !== null && assessmentInfo.user_attempts !== 0
           ? assessmentInfo.user_attempts
           : (assessmentInfo.assessment_attempts ?? 1);
       const usedAttempts = assessmentInfo.created_attempts ?? 0;
+      console.log('[AssessmentCard] attempts debug:', {
+        name: assessmentInfo.name,
+        user_attempts: assessmentInfo.user_attempts,
+        assessment_attempts: assessmentInfo.assessment_attempts,
+        created_attempts: assessmentInfo.created_attempts,
+        recent_attempt_status: assessmentInfo.recent_attempt_status,
+        maxAttempts,
+        usedAttempts,
+      });
 
-      if ((maxAttempts ?? 1) > usedAttempts) {
+      if (maxAttempts > usedAttempts) {
         return "Join Assessment";
       } else {
         return "Ended";
@@ -281,9 +308,7 @@ export const AssessmentCard = ({
                   icon={<CalendarDots className="w-4 h-4 text-blue-600" />}
                   bgClass="bg-blue-50"
                   label="Starts"
-                  value={dayjs(assessmentInfo.bound_start_time).format(
-                    "DD/MM/YYYY, hh:mm A",
-                  )}
+                  value={formatAssessmentDate(assessmentInfo.bound_start_time)}
                 />
               )}
 
@@ -295,11 +320,9 @@ export const AssessmentCard = ({
                   assessmentInfo.play_mode === "MOCK" ? "Valid Till" : "Ends"
                 }
                 value={
-                  dayjs(assessmentInfo.bound_end_time).year() === 9999
+                  new Date(`${(assessmentInfo.bound_end_time ?? "").replace(" ", "T")}Z`).getFullYear() === 9999
                     ? "No Expiry"
-                    : dayjs(assessmentInfo.bound_end_time).format(
-                        "DD/MM/YYYY, hh:mm A",
-                      )
+                    : formatAssessmentDate(assessmentInfo.bound_end_time)
                 }
               />
 
@@ -329,12 +352,7 @@ export const AssessmentCard = ({
                 icon={<ArrowClockwise className="w-4 h-4 text-green-600" />}
                 bgClass="bg-green-50"
                 label="Attempts"
-                value={`${assessmentInfo.created_attempts ?? 0} / ${
-                  assessmentInfo.user_attempts !== 0 &&
-                  assessmentInfo.user_attempts !== null
-                    ? assessmentInfo.user_attempts
-                    : (assessmentInfo.assessment_attempts ?? 0)
-                }`}
+                value={`${assessmentInfo.created_attempts ?? 0} / ${assessmentInfo.assessment_attempts ?? 0}`}
               />
             </div>
           )}

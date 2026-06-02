@@ -154,6 +154,7 @@ export const handlePostStep1Data = async (
         default_reattempt_count:
             type === 'MOCK' || type === 'PRACTICE' ? 100000 : data.reattemptCount,
         switch_sections: data.switchSections,
+        // NO_AUTO_RELEASE = auto-graded but held until admin releases — still AUTO evaluation.
         evaluation_type: data.resultType === 'MANUAL' ? 'MANUAL' : 'AUTO',
         submission_type: data.submissionType,
         result_type: data.resultType,

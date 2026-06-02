@@ -1,7 +1,7 @@
 import { MyButton } from '@/components/design-system/button';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
-import { Info, CalendarRange, Settings2, Eye, ArrowLeftRight } from 'lucide-react';
+import { Info, CalendarBlank, Gear, Eye, ArrowsLeftRight } from '@phosphor-icons/react';
 import { StepContentProps } from '@/types/assessments/step-content-props';
 import { zodResolver } from '@hookform/resolvers/zod';
 import React, { useEffect, useState } from 'react';
@@ -11,6 +11,7 @@ import { useFilterDataForAssesment } from '../../../../../assessment-list/-utils
 import { FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
 import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { timeLimit } from '@/constants/dummy-data';
@@ -838,7 +839,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                             key: 'boundation_end_date',
                         })) && (
                         <SectionCard
-                            icon={CalendarRange}
+                            icon={CalendarBlank}
                             title="Live Date Range"
                             description="When participants can start and must finish the assessment."
                         >
@@ -925,7 +926,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                     )}
 
                     <SectionCard
-                        icon={Settings2}
+                        icon={Gear}
                         title="Attempt Settings"
                         description="Control how participants take this assessment."
                     >
@@ -940,7 +941,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                             inputType="number"
                                             inputPlaceholder="Reattempt Count"
                                             input={field.value}
-                                            labelStyle="text-[12px]"
+                                            labelStyle="text-xs"
                                             onChangeFunction={field.onChange}
                                             error={form.formState.errors?.reattemptCount?.message}
                                             required={true}
@@ -960,40 +961,71 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                         />
                     )}
                     <div className="flex flex-col gap-6" id="evaluation-type">
-                        <div>
-                            <SelectField
-                                label="Result & Evaluation Type"
-                                name="resultType"
-                                options={[
-                                    {
-                                        value: 'AUTO_AFTER_SUBMISSION',
-                                        label: 'Auto - Result After Submission',
-                                        _id: 0,
-                                    },
-                                    {
-                                        value: 'AUTO_AFTER_ASSESSMENT_END',
-                                        label: 'Auto - Results After Exam Ends',
-                                        _id: 1,
-                                    },
-                                    {
-                                        value: 'MANUAL',
-                                        label: 'Manual',
-                                        _id: 2,
-                                    },
-                                ]}
-                                control={form.control}
-                                className="w-64 font-thin"
-                                required
-                            />
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                {watch('resultType') === 'AUTO_AFTER_SUBMISSION'
-                                    ? 'System grades automatically. Results visible right after student submits.'
-                                    : watch('resultType') === 'AUTO_AFTER_ASSESSMENT_END'
-                                      ? 'System grades automatically. Results visible only after the assessment end time.'
-                                      : watch('resultType') === 'MANUAL'
-                                        ? 'Teacher grades by hand. Results hidden until admin releases them.'
-                                        : 'Choose how this assessment is evaluated and when results are shown.'}
+                        <div className="flex flex-col gap-3">
+                            <p className="text-sm font-medium">
+                                Result &amp; Evaluation Type
+                                <span className="ml-0.5 text-danger-500">*</span>
                             </p>
+                            <FormField
+                                control={form.control}
+                                name="resultType"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <RadioGroup
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                                className="flex flex-col gap-3"
+                                            >
+                                                {[
+                                                    {
+                                                        value: 'AUTO_AFTER_SUBMISSION',
+                                                        label: 'Auto — Release after submission',
+                                                        help: 'System grades automatically. Results are visible to the learner immediately after they submit.',
+                                                    },
+                                                    {
+                                                        value: 'AUTO_AFTER_ASSESSMENT_END',
+                                                        label: 'Auto — Release after exam ends',
+                                                        help: 'System grades automatically. Results become visible only after the assessment end time passes.',
+                                                    },
+                                                    {
+                                                        value: 'NO_AUTO_RELEASE',
+                                                        label: 'Auto — Release manually',
+                                                        help: 'System grades automatically. Results stay hidden until you click "Release Result" in the submissions tab.',
+                                                    },
+                                                    {
+                                                        value: 'MANUAL',
+                                                        label: 'Manual evaluation & release',
+                                                        help: 'Teacher grades each submission by hand. Results stay hidden until you manually evaluate and release them.',
+                                                    },
+                                                ].map((option) => (
+                                                    <label
+                                                        key={option.value}
+                                                        className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition-colors ${
+                                                            field.value === option.value
+                                                                ? 'border-primary-400 bg-primary-50'
+                                                                : 'border-neutral-200 bg-white hover:border-primary-200 hover:bg-primary-50/40'
+                                                        }`}
+                                                    >
+                                                        <RadioGroupItem
+                                                            value={option.value}
+                                                            className="mt-0.5 shrink-0"
+                                                        />
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <span className="text-sm font-medium text-neutral-800">
+                                                                {option.label}
+                                                            </span>
+                                                            <span className="text-xs text-neutral-500">
+                                                                {option.help}
+                                                            </span>
+                                                        </div>
+                                                    </label>
+                                                ))}
+                                            </RadioGroup>
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
                         </div>
                         {watch('resultType') === 'MANUAL' &&
                             getStepKey({
@@ -1107,7 +1139,7 @@ const Step1BasicInfo: React.FC<StepContentProps> = ({
                                     <FormItem className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-primary-200 hover:bg-primary-50/20 space-y-0">
                                         <div className="flex items-start gap-3">
                                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
-                                                <ArrowLeftRight className="h-4 w-4" />
+                                                <ArrowsLeftRight className="h-4 w-4" />
                                             </div>
                                             <div className="flex flex-col">
                                                 <FormLabel className="text-sm font-semibold text-slate-900">

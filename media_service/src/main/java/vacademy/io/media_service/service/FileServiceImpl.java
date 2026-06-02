@@ -31,6 +31,8 @@ import vacademy.io.media_service.repository.UserToFileRepository;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -373,7 +375,9 @@ public class FileServiceImpl implements FileService {
                     .replace("<", "_")
                     .replace(">", "_")
                     .replace("|", "_")
-                    .replace("%20", "_");
+                    .replace("%20", "_")
+                    .replace("%", "_")
+                    .replace("#", "_");
         }
         return fileName;
 
@@ -414,8 +418,31 @@ public class FileServiceImpl implements FileService {
 
         String objectKey = fileMetadata.get().getKey().trim();
 
-        // Directly return the public URL without expiry (for public APIs)
-        return "https://" + bucketName + ".s3.amazonaws.com/" + objectKey;
+        // Percent-encode the key so special characters in the file name (e.g. '%')
+        // don't break the URL. An unencoded '%' makes S3 reject the request with
+        // "400 Invalid URI: isHexDigit". Path separators ('/') are preserved.
+        return "https://" + bucketName + ".s3.amazonaws.com/" + encodeS3Key(objectKey);
+    }
+
+    /**
+     * Percent-encodes an S3 object key for safe use in a URL path while keeping
+     * the '/' separators intact. URLEncoder targets form encoding, so spaces come
+     * back as '+'; we convert those to '%20' for a valid path segment.
+     */
+    private String encodeS3Key(String objectKey) {
+        if (!StringUtils.hasText(objectKey)) {
+            return objectKey;
+        }
+        String[] segments = objectKey.split("/", -1);
+        StringBuilder encoded = new StringBuilder();
+        for (int i = 0; i < segments.length; i++) {
+            if (i > 0) {
+                encoded.append("/");
+            }
+            encoded.append(URLEncoder.encode(segments[i], StandardCharsets.UTF_8)
+                    .replace("+", "%20"));
+        }
+        return encoded.toString();
     }
 
     public void copyFileToPublicBucket(String objectKey) {

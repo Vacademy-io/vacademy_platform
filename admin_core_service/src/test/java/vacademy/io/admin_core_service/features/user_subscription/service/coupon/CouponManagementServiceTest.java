@@ -124,7 +124,7 @@ class CouponManagementServiceTest {
         @Test
         @DisplayName("Rejects when (institute, code) already exists")
         void rejectsDuplicateCode() {
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.of(new CouponCode()));
 
             VacademyException ex = assertThrows(VacademyException.class,
@@ -136,7 +136,7 @@ class CouponManagementServiceTest {
         @Test
         @DisplayName("TOCTOU race: passes uniqueness check, DB constraint fires → clean error")
         void tocouRace() {
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.empty());
             when(couponCodeRepository.saveAndFlush(any(CouponCode.class)))
                     .thenThrow(new DataIntegrityViolationException("uq_coupon_code_institute_code"));
@@ -152,7 +152,7 @@ class CouponManagementServiceTest {
         void rejectsPercentageOverHundred() {
             CouponCreateRequestDTO req = validCreateRequest();
             req.getAppliedDiscount().setDiscountPoint(150.0);
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.empty());
 
             VacademyException ex = assertThrows(VacademyException.class,
@@ -165,7 +165,7 @@ class CouponManagementServiceTest {
         void rejectsPercentageWithoutCap() {
             CouponCreateRequestDTO req = validCreateRequest();
             req.getAppliedDiscount().setMaxDiscountPoint(null);
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.empty());
 
             VacademyException ex = assertThrows(VacademyException.class,
@@ -178,7 +178,7 @@ class CouponManagementServiceTest {
         void rejectsInvalidDiscountType() {
             CouponCreateRequestDTO req = validCreateRequest();
             req.getAppliedDiscount().setDiscountType("WEIRD");
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.empty());
 
             assertThrows(VacademyException.class, () -> service.create(INSTITUTE_ID, req));
@@ -190,7 +190,7 @@ class CouponManagementServiceTest {
             CouponCreateRequestDTO req = validCreateRequest();
             req.setRedeemStartDate(new Date(System.currentTimeMillis() + 86_400_000));
             req.setRedeemEndDate(new Date(System.currentTimeMillis() - 86_400_000));
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.empty());
 
             VacademyException ex = assertThrows(VacademyException.class,
@@ -201,7 +201,7 @@ class CouponManagementServiceTest {
         @Test
         @DisplayName("Successful create persists coupon + discount + scope rows")
         void createPersistsHierarchy() {
-            when(couponCodeRepository.findByInstituteIdAndCode(INSTITUTE_ID, "SAVE20"))
+            when(couponCodeRepository.findByInstituteIdAndCodeAndStatusNot(INSTITUTE_ID, "SAVE20", "DELETED"))
                     .thenReturn(Optional.empty());
             stubSaveAndFlushEcho();
 

@@ -34,6 +34,14 @@ public class InvoiceDTO {
     private String status;
     private String pdfFileId; // File ID reference to media service
     private String pdfUrl; // Computed URL (for convenience, retrieved from file ID)
+    /**
+     * Learner-facing payment link for PENDING_PAYMENT admin invoices (the page on
+     * the learner portal where they can pay via gateway). Null for non-pending
+     * statuses + synthetic SFP-derived rows. Same value the create response
+     * exposes — surfaced on the list so the Copy Link button on the Invoices
+     * section can copy without a separate fetch.
+     */
+    private String paymentLink;
     private Boolean taxIncluded;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -43,7 +43,7 @@ import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 
 // Local sub-org helpers — kept inline so the rest of the dashboard's package-service
-// calls don't accidentally pick up the same lookup logic. Use BASE_URL for production.
+// calls don't accidentally pick up the same lookup logic.
 const fetchBatchesSummaryLocal = async (instituteId: string, statuses: string[]) => {
     const params = new URLSearchParams();
     statuses.forEach((s) => params.append('statuses', s));
@@ -124,6 +124,9 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     // members on /manage-suborg-teams. Persisted on settingJson.ALLOWED_TEAM_ROLES.
     // Empty = no restriction. Editable later via the sub-org detail modal.
     const [selectedTeamRoles, setSelectedTeamRoles] = useState<string[]>([]);
+    // Permissions stamped on the sub-org admin's FSPSSM rows. Persisted on
+    // settingJson.ADMIN_PERMISSIONS. Empty = backend falls back to "FULL".
+    const [selectedAdminPermissions, setSelectedAdminPermissions] = useState<string[]>(['FULL']);
     const [showNewRoleInput, setShowNewRoleInput] = useState(false);
     const [newRoleName, setNewRoleName] = useState('');
 
@@ -293,6 +296,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         setLogoPreview(null);
         setSelectedAuthRoles([]);
         setSelectedTeamRoles([]);
+        setSelectedAdminPermissions(['FULL']);
         setShowNewRoleInput(false);
         setNewRoleName('');
         step1Form.reset();
@@ -383,6 +387,8 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             vendor_id: isGatewayBacked ? data.vendorId : undefined,
             auth_roles: selectedAuthRoles.length > 0 ? selectedAuthRoles : undefined,
             allowed_team_roles: selectedTeamRoles.length > 0 ? selectedTeamRoles : undefined,
+            admin_permissions:
+                selectedAdminPermissions.length > 0 ? selectedAdminPermissions : undefined,
             complex_payment_option_id:
                 data.paymentType === 'CPO' ? data.complexPaymentOptionId : undefined,
         };
@@ -888,6 +894,40 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                                 No roles found
                                             </span>
                                         )}
+                                    </div>
+                                </div>
+
+                                {/* Admin permissions — stamped on the sub-org admin's FSPSSM
+                                    rows. "FULL" grants every feature; "CREATE_COURSE" allows
+                                    course creation when FULL is not selected. Empty falls
+                                    back to "FULL" server-side. Editable later. */}
+                                <div className="space-y-2 sm:col-span-2">
+                                    <div>
+                                        <Label>Admin permissions</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            What the sub-org admin can do. Leave empty to
+                                            grant FULL access (default).
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 rounded-md border p-2">
+                                        {(['FULL', 'CREATE_COURSE'] as const).map((perm) => (
+                                            <label
+                                                key={perm}
+                                                className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-muted"
+                                            >
+                                                <Checkbox
+                                                    checked={selectedAdminPermissions.includes(perm)}
+                                                    onCheckedChange={(checked) => {
+                                                        setSelectedAdminPermissions((prev) =>
+                                                            checked
+                                                                ? Array.from(new Set([...prev, perm]))
+                                                                : prev.filter((p) => p !== perm)
+                                                        );
+                                                    }}
+                                                />
+                                                {perm}
+                                            </label>
+                                        ))}
                                     </div>
                                 </div>
 

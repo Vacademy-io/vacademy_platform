@@ -6,7 +6,6 @@ import { useAICenter } from '@/routes/ai-center/-contexts/useAICenterContext';
 import {
     handleEvaluateLecture,
     handleQueryGetListIndividualTopics,
-    handleStartProcessUploadedAudioFile,
 } from '@/routes/ai-center/-services/ai-center-service';
 import AITasksList from '@/routes/ai-center/-components/AITasksList';
 import { getRandomTaskName } from '@/routes/ai-center/-utils/helper';
@@ -124,18 +123,14 @@ const EvaluateLectureAI = () => {
                 resetFile();
                 return;
             }
-            setPhase('processing');
-            const response = await handleStartProcessUploadedAudioFile(fileId);
-            if (response?.pdf_id) {
-                setPhase('generating');
-                evaluateMutation.mutate({
-                    pdfId: response.pdf_id,
-                    taskName: getRandomTaskName(),
-                });
-            } else {
-                setErrorMessage("We couldn't process this recording. Try again?");
-                resetFile();
-            }
+            // Single-step (migrated): hand the uploaded audio fileId to ai_service,
+            // which transcribes it in-house and generates the feedback. No separate
+            // transcription-submit step.
+            setPhase('generating');
+            evaluateMutation.mutate({
+                pdfId: fileId,
+                taskName: getRandomTaskName(),
+            });
         } catch (err) {
             console.error(err);
             setErrorMessage('Something went wrong reading your recording. Try again?');

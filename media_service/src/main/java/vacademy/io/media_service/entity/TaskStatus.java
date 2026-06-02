@@ -1,6 +1,5 @@
 package vacademy.io.media_service.entity;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -8,9 +7,6 @@ import jakarta.persistence.Table;
 import lombok.Data;
 import org.hibernate.annotations.UuidGenerator;
 import vacademy.io.common.media.dto.FileDetailsDTO;
-import vacademy.io.media_service.dto.chat_with_pdf.ChatResultJsonDto;
-import vacademy.io.media_service.dto.chat_with_pdf.ChatWithPdfResponse;
-import vacademy.io.media_service.dto.lecture.LectureFeedbackDto;
 import vacademy.io.media_service.dto.task_status.TaskStatusDto;
 
 import java.util.Date;
@@ -75,20 +71,5 @@ public class TaskStatus {
                 .parentId(this.parentId)
                 .fileDetail(fileDetailsDTO)
                 .updatedAt(this.updatedAt).build();
-    }
-
-    public ChatWithPdfResponse getPdfChatResponse() throws Exception {
-        ObjectMapper objectMapper = new ObjectMapper();
-        ChatResultJsonDto resultJsonDto = objectMapper.readValue(this.resultJson, ChatResultJsonDto.class);
-        return ChatWithPdfResponse.builder()
-                .id(this.id)
-                .response(resultJsonDto.getResponse())
-                .question(resultJsonDto.getUser())
-                .createdAt(this.createdAt).build();
-    }
-
-    public LectureFeedbackDto getLectureFeedbackDto() throws Exception {
-        ObjectMapper objectMapper = new ObjectMapper();
-        return objectMapper.readValue(this.resultJson, LectureFeedbackDto.class);
     }
 }

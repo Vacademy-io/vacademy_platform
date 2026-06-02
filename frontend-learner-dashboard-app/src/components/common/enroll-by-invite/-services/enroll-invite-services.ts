@@ -6,6 +6,10 @@ import {
   PEYMENT_LOG_STATUS_URL,
   ENROLLMENT_FORM_SUBMIT,
   ENROLLMENT_POLICY_URL,
+  CPO_OPEN_DUES_URL,
+  CPO_OPEN_PAY_INSTALLMENTS_URL,
+  CPO_OPEN_SCHEDULE_URL,
+  CPO_ENROLL_WITHOUT_PAYMENT_URL,
 } from "@/constants/urls";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import axios from "axios";
@@ -103,6 +107,20 @@ interface EnrollLearnerForPaymentProps {
     referral_code: string;
     referral_option_id: string;
   } | null;
+  /**
+   * Discount coupon code the learner entered at checkout. BE re-validates via
+   * CouponValidationService + atomically decrements usage_limit at UserPlan
+   * creation (see backend V308 / V309). Null/blank = no coupon.
+   */
+  couponCode?: string | null;
+  /**
+   * Discount value (in plan currency) computed by the validate endpoint. We
+   * subtract this from the selected plan's price to derive the amount the
+   * gateway actually charges. The BE separately re-validates and decrements,
+   * so the FE-supplied number is only used for the gateway charge — not for
+   * the BE-recorded discount. Default 0 = full price.
+   */
+  couponDiscount?: number;
   returnUrl?: string;
   // Eway-specific payment data
   ewayPaymentData?: {
@@ -126,6 +144,15 @@ interface EnrollLearnerForPaymentProps {
   isUsingInstituteCustomFields?: boolean;
   // Optional User ID from form-submit step
   userId?: string;
+  // Optional billing contact details captured when the invite enabled the
+  // "Collect Billing Contact Details" toggle and the learner ticked "Add a
+  // separate billing contact" on the registration step.
+  billingContact?: {
+    hasSeparate: boolean;
+    name: string;
+    email: string;
+    role: string;
+  };
 }
 
 /**
@@ -159,7 +186,7 @@ const getPhoneField = (registrationData: RegistrationDataType): string => {
  * Tries to find a single full_name field first, then combines first_name + last_name
  * Uses keyword matching instead of hardcoded keys
  */
-const getFullNameField = (registrationData: RegistrationDataType): string => {
+export const getFullNameField = (registrationData: RegistrationDataType): string => {
   // First, try to find a single full name field (e.g., "full_name", "Full Name")
   const fullNameEntry = Object.entries(registrationData).find(([key]) => {
     const lowerKey = key.toLowerCase();
@@ -383,6 +410,9 @@ export const handleEnrollLearnerForPayment = async ({
   paymentVendor = "STRIPE",
   isUsingInstituteCustomFields = false,
   userId,
+  couponCode,
+  couponDiscount = 0,
+  billingContact,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, full name, and password using helper functions
   const email = getEmailField(registrationData);
@@ -475,9 +505,23 @@ export const handleEnrollLearnerForPayment = async ({
       payment_option_id: payment_option_id,
       enroll_invite_id: enrollInviteId,
       refer_request: referRequest,
+      // Backend re-validates this and runs the atomic decrement inside the
+      // UserPlan-creation transaction. Null = no coupon applied.
+      coupon_code: couponCode || null,
       payment_initiation_request: {
         vendor: paymentVendor,
-        amount: enrollmentData.selectedPayment.amount,
+        // Mirror the pricing-display fallback chain (actual_price → amount → 0)
+        // — some SelectedPayment construction paths only populate one field.
+        // Then subtract the validated coupon discount so the gateway charges
+        // what the learner agreed to pay. Floored at 0 to prevent negatives.
+        amount: Math.max(
+          0,
+          (typeof enrollmentData.selectedPayment.actual_price === "number"
+            ? enrollmentData.selectedPayment.actual_price
+            : typeof enrollmentData.selectedPayment.amount === "number"
+            ? enrollmentData.selectedPayment.amount
+            : 0) - (couponCode ? couponDiscount : 0)
+        ),
         currency:
           paymentVendor === "EWAY"
             ? "aud"
@@ -503,6 +547,16 @@ export const handleEnrollLearnerForPayment = async ({
           value: field.value,
         })),
     },
+    ...(billingContact?.hasSeparate &&
+    (billingContact.name || billingContact.email || billingContact.role)
+      ? {
+          learner_extra_details: {
+            billing_contact_name: billingContact.name || null,
+            billing_contact_email: billingContact.email || null,
+            billing_contact_role: billingContact.role || null,
+          },
+        }
+      : {}),
   };
 
   const response = await axios({
@@ -577,4 +631,397 @@ export const handleGetPublicInstituteDetails = ({
     staleTime: 60 * 60 * 1000,
     enabled: !!instituteId,
   };
+};
+
+// ─── CPO (Complex Payment Option) open enrollment helpers ────────────────────
+
+export interface CpoInstallmentDue {
+  id: string;
+  user_id: string;
+  user_plan_id: string;
+  cpo_id: string;
+  cpo_name: string;
+  fee_type_name: string;
+  fee_type_code: string;
+  fee_type_description: string;
+  amount_expected: number;
+  adjustment_amount: number;
+  adjustment_reason: string;
+  adjustment_type: string;
+  adjustment_status: string;
+  amount_paid: number;
+  due_date: string | null;
+  status: string;
+  amount_due: number;
+  is_overdue: boolean;
+  days_overdue: number | null;
+}
+
+/**
+ * Enroll the learner via CPO invite WITHOUT initiating payment.
+ * Creates the user + UserPlan + StudentFeePayment rows, returns userId + userPlanId.
+ * Called as the first step in the CPO flow before showing the installment selection UI.
+ */
+export const enrollCpoWithoutPayment = async ({
+  registrationData,
+  instituteId,
+  enrollInviteId,
+  paymentOptionId,
+  packageSessionIds,
+  allowLearnersToCreateCourses,
+  isUsingInstituteCustomFields = false,
+}: {
+  registrationData: RegistrationDataType;
+  instituteId: string;
+  enrollInviteId: string;
+  paymentOptionId: string;
+  packageSessionIds: string[];
+  allowLearnersToCreateCourses: boolean;
+  isUsingInstituteCustomFields?: boolean;
+}): Promise<{ userId: string; userPlanId: string; userEmail: string; userPassword: string }> => {
+  const email = getEmailField(registrationData);
+  const phoneNumber = getPhoneField(registrationData);
+  const fullName = getFullNameField(registrationData);
+  const password = getPasswordField(registrationData);
+  const keysToExclude = isUsingInstituteCustomFields ? [] : getKeysToExclude(registrationData);
+
+  const payload = {
+    user: {
+      email,
+      full_name: fullName,
+      address_line: "",
+      city: "",
+      region: "",
+      pin_code: "",
+      mobile_number: phoneNumber,
+      date_of_birth: "",
+      gender: "",
+      password: password || "",
+      profile_pic_file_id: "",
+      roles: allowLearnersToCreateCourses ? ["STUDENT", "TEACHER"] : ["STUDENT"],
+      root_user: true,
+    },
+    institute_id: instituteId,
+    subject_id: "",
+    vendor_id: "STRIPE",
+    learner_package_session_enroll: {
+      package_session_ids: packageSessionIds,
+      plan_id: null,
+      payment_option_id: paymentOptionId,
+      enroll_invite_id: enrollInviteId,
+      refer_request: null,
+      // No payment_initiation_request → backend creates UserPlan (ACTIVE) + SFP rows without charging
+      custom_field_values: Object.entries(registrationData)
+        .filter(([key]) => !keysToExclude.includes(key))
+        .map(([, field]) => ({
+          custom_field_id: field.id,
+          source_type: null,
+          source_id: null,
+          type: "ENROLL_INVITE",
+          type_id: enrollInviteId,
+          value: field.value,
+        })),
+    },
+  };
+
+  const response = await axios({ method: "POST", url: CPO_ENROLL_WITHOUT_PAYMENT_URL, data: payload });
+  const data = response?.data;
+  return {
+    userId: data?.user?.id || "",
+    userPlanId: data?.user_plan_id || "",
+    userEmail: data?.user?.email || email,
+    userPassword: data?.user?.password || password,
+  };
+};
+
+/**
+ * Enroll a CPO learner WITH payment in a single call (same endpoint as regular enrollment).
+ * Backend creates User + UserPlan + SFP rows + initiates gateway payment atomically.
+ * Use this instead of the two-step enroll-then-pay dance.
+ */
+export const enrollCpoLearnerForPaymentViaInvite = async ({
+  registrationData,
+  cpoAmount,
+  currency,
+  instituteId,
+  enrollInviteId,
+  paymentOptionId,
+  packageSessionIds,
+  allowLearnersToCreateCourses,
+  razorpayPaymentData,
+  paymentVendor = "RAZORPAY",
+  isUsingInstituteCustomFields = false,
+}: {
+  registrationData: RegistrationDataType;
+  cpoAmount: number;
+  currency: string;
+  instituteId: string;
+  enrollInviteId: string;
+  paymentOptionId: string;
+  packageSessionIds: string[];
+  allowLearnersToCreateCourses: boolean;
+  razorpayPaymentData?: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string } | null;
+  paymentVendor?: "RAZORPAY" | "STRIPE" | "EWAY" | "CASHFREE";
+  isUsingInstituteCustomFields?: boolean;
+}) => {
+  const email = getEmailField(registrationData);
+  const phoneNumber = getPhoneField(registrationData);
+  const fullName = getFullNameField(registrationData);
+  const password = getPasswordField(registrationData);
+  const keysToExclude = isUsingInstituteCustomFields ? [] : getKeysToExclude(registrationData);
+
+  const razorpay_request =
+    paymentVendor === "RAZORPAY"
+      ? razorpayPaymentData
+        ? { customer_id: null, contact: phoneNumber, email, razorpay_payment_id: razorpayPaymentData.razorpay_payment_id, razorpay_order_id: razorpayPaymentData.razorpay_order_id, razorpay_signature: razorpayPaymentData.razorpay_signature }
+        : { customer_id: null, contact: phoneNumber, email }
+      : {};
+
+  const payload = {
+    user: {
+      email, full_name: fullName, address_line: "", city: "", region: "", pin_code: "",
+      mobile_number: phoneNumber, date_of_birth: "", gender: "",
+      password: password || "", profile_pic_file_id: "",
+      roles: allowLearnersToCreateCourses ? ["STUDENT", "TEACHER"] : ["STUDENT"],
+      root_user: true,
+    },
+    institute_id: instituteId,
+    subject_id: "",
+    vendor_id: paymentVendor,
+    learner_package_session_enroll: {
+      package_session_ids: packageSessionIds,
+      plan_id: null,
+      payment_option_id: paymentOptionId,
+      enroll_invite_id: enrollInviteId,
+      refer_request: null,
+      payment_initiation_request: {
+        vendor: paymentVendor,
+        amount: cpoAmount,
+        currency,
+        description: "",
+        charge_automatically: true,
+        institute_id: instituteId,
+        stripe_request: {},
+        razorpay_request,
+        cashfree_request: {},
+        pay_pal_request: {},
+        eway_request: {},
+        include_pending_items: true,
+      },
+      custom_field_values: Object.entries(registrationData)
+        .filter(([key]) => !keysToExclude.includes(key))
+        .map(([, field]) => ({
+          custom_field_id: field.id,
+          source_type: null,
+          source_id: null,
+          type: "ENROLL_INVITE",
+          type_id: enrollInviteId,
+          value: field.value,
+        })),
+    },
+  };
+
+  const response = await axios({ method: "POST", url: ENROLL_USER_INVITE_PAYMENT_URL, data: payload });
+  return response?.data;
+};
+
+/** Fetch CPO installment dues for a user plan (open, no JWT required). */
+export const fetchCpoDues = async ({
+  userId,
+  userPlanId,
+}: {
+  userId: string;
+  userPlanId: string;
+}): Promise<CpoInstallmentDue[]> => {
+  const response = await axios({
+    method: "GET",
+    url: CPO_OPEN_DUES_URL,
+    params: { userId, userPlanId },
+  });
+  return response?.data || [];
+};
+
+export interface CpoPayInstallmentsRequest {
+  userId: string;
+  userPlanId: string;
+  instituteId: string;
+  studentFeePaymentIds: string[];
+  customAmount?: number;
+  paymentVendor?: "STRIPE" | "EWAY" | "RAZORPAY" | "CASHFREE";
+  currency?: string;
+  email?: string;
+  name?: string;
+  // gateway-specific
+  paymentMethodId?: string;
+  razorpayPaymentData?: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string };
+  ewayPaymentData?: { encryptedNumber: string; encryptedCVN: string; cardData: { name: string; expiryMonth: string; expiryYear: string } };
+}
+
+/** Pay selected CPO installments via gateway (open, no JWT required). */
+export const payCpoInstallments = async (req: CpoPayInstallmentsRequest) => {
+  const vendor = req.paymentVendor || "STRIPE";
+
+  const stripe_request = vendor === "STRIPE" ? { payment_method_id: req.paymentMethodId, card_last4: null, customer_id: null, return_url: "" } : {};
+  const razorpay_request = vendor === "RAZORPAY"
+    ? req.razorpayPaymentData
+      ? { customer_id: null, email: req.email, razorpay_payment_id: req.razorpayPaymentData.razorpay_payment_id, razorpay_order_id: req.razorpayPaymentData.razorpay_order_id, razorpay_signature: req.razorpayPaymentData.razorpay_signature }
+      : { customer_id: null, email: req.email }
+    : {};
+  const eway_request = vendor === "EWAY" && req.ewayPaymentData
+    ? { customer_id: null, card_name: req.ewayPaymentData.cardData.name, expiry_month: req.ewayPaymentData.cardData.expiryMonth, expiry_year: req.ewayPaymentData.cardData.expiryYear, card_number: req.ewayPaymentData.encryptedNumber, cvn: req.ewayPaymentData.encryptedCVN, country_code: "au" }
+    : {};
+
+  const payload = {
+    user_id: req.userId,
+    user_plan_id: req.userPlanId,
+    institute_id: req.instituteId,
+    name: req.name || "",
+    student_fee_payment_ids: req.studentFeePaymentIds,
+    ...(req.customAmount !== undefined ? { custom_amount: req.customAmount } : {}),
+    payment_initiation_request: {
+      vendor,
+      currency: req.currency || "INR",
+      description: "",
+      charge_automatically: true,
+      institute_id: req.instituteId,
+      email: req.email || "",
+      stripe_request,
+      razorpay_request,
+      eway_request,
+      cashfree_request: vendor === "CASHFREE" ? { return_url: "" } : {},
+      pay_pal_request: {},
+      include_pending_items: true,
+    },
+  };
+
+  const response = await axios({ method: "POST", url: CPO_OPEN_PAY_INSTALLMENTS_URL, data: payload });
+  return response?.data;
+};
+
+// ─── ComplexPaymentOptionDTO (CPO template schedule) ─────────────────────────
+
+export interface AftInstallmentDTO {
+  id: string;
+  installment_number: number | null;
+  amount: number;
+  start_date: string | null;
+  end_date: string | null;
+  due_date: string | null;
+  status: string | null;
+}
+
+export interface AssignedFeeValueDTO {
+  id: string;
+  amount: number;
+  original_amount: number | null;
+  discount_type: string | null;
+  discount_value: number | null;
+  no_of_installments: number | null;
+  has_installment: boolean;
+  is_refundable: boolean | null;
+  has_penalty: boolean | null;
+  penalty_percentage: number | null;
+  status: string | null;
+  installments: AftInstallmentDTO[];
+}
+
+export interface FeeTypeDTO {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  status: string | null;
+  assigned_fee_value: AssignedFeeValueDTO | null;
+}
+
+export interface ComplexPaymentOptionDTO {
+  id: string;
+  name: string;
+  institute_id: string;
+  default_payment_option_id: string | null;
+  status: string | null;
+  fee_types: FeeTypeDTO[];
+}
+
+/**
+ * Fetch the full CPO installment schedule for a PaymentOption (open, no JWT).
+ * Used to show the installment template to the learner BEFORE enrollment.
+ */
+export const fetchCpoSchedule = async (paymentOptionId: string): Promise<ComplexPaymentOptionDTO> => {
+  const response = await axios({
+    method: "GET",
+    url: CPO_OPEN_SCHEDULE_URL,
+    params: { paymentOptionId },
+  });
+  return response?.data;
+};
+
+/**
+ * Map a ComplexPaymentOptionDTO (template) to CpoInstallmentDue[] for display.
+ * The IDs will be template installment IDs (not SFP IDs).
+ */
+export const mapCpoScheduleToDues = (cpo: ComplexPaymentOptionDTO): CpoInstallmentDue[] => {
+  const today = new Date();
+  const dues: CpoInstallmentDue[] = [];
+  for (const feeType of cpo.fee_types ?? []) {
+    const afv = feeType.assigned_fee_value;
+    if (!afv) continue;
+    const installments = afv.installments ?? [];
+    if (installments.length === 0) {
+      // Single lump-sum payment — represent as one installment
+      const amount = afv.amount ?? 0;
+      dues.push({
+        id: afv.id,
+        user_id: '',
+        user_plan_id: '',
+        cpo_id: cpo.id,
+        cpo_name: cpo.name,
+        fee_type_name: feeType.name,
+        fee_type_code: feeType.code || '',
+        fee_type_description: feeType.description || '',
+        amount_expected: amount,
+        adjustment_amount: 0,
+        adjustment_reason: '',
+        adjustment_type: '',
+        adjustment_status: '',
+        amount_paid: 0,
+        due_date: null,
+        status: 'PENDING',
+        amount_due: amount,
+        is_overdue: false,
+        days_overdue: null,
+      });
+    } else {
+      for (const inst of installments) {
+        const amount = inst.amount ?? 0;
+        const dueDate = inst.due_date ? new Date(inst.due_date) : null;
+        const isOverdue = dueDate != null && dueDate < today;
+        const daysOverdue = isOverdue && dueDate
+          ? Math.floor((today.getTime() - dueDate.getTime()) / 86_400_000)
+          : null;
+        dues.push({
+          id: inst.id,
+          user_id: '',
+          user_plan_id: '',
+          cpo_id: cpo.id,
+          cpo_name: cpo.name,
+          fee_type_name: feeType.name,
+          fee_type_code: feeType.code || '',
+          fee_type_description: feeType.description || '',
+          amount_expected: amount,
+          adjustment_amount: 0,
+          adjustment_reason: '',
+          adjustment_type: '',
+          adjustment_status: '',
+          amount_paid: 0,
+          due_date: inst.due_date,
+          status: inst.status || 'PENDING',
+          amount_due: amount,
+          is_overdue: isOverdue,
+          days_overdue: daysOverdue,
+        });
+      }
+    }
+  }
+  return dues;
 };

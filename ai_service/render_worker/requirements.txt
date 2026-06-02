@@ -15,7 +15,12 @@ soundfile>=0.12.1
 scenedetect>=0.6.1
 rapidocr-onnxruntime>=1.3.0
 opencv-python-headless>=4.8.0
-numpy>=1.24.0
+# Cap below 2.0: mediapipe==0.10.14 and paddlepaddle 2.6.x ship C-extensions
+# compiled against the numpy 1.x ABI (paddle gained numpy-2 support only in
+# 3.0). With an unbounded pin the image pulled numpy 2.x and every job crashed
+# at import time with "numpy.core.multiarray failed to import". Keep <2 until
+# both mediapipe and paddlepaddle are bumped to numpy-2-compatible releases.
+numpy>=1.24.0,<2
 scipy>=1.11.0
 openai>=1.0.0
 protobuf>=3.20,<5
@@ -23,3 +28,11 @@ protobuf>=3.20,<5
 # -- Image indexing pipeline --
 Pillow>=10.0.0
 rembg>=2.0.50
+
+# -- PDF copy-check OCR (handwritten answer sheets) --
+# Pin tightly: 2.8 changed PaddleOCR's call signature (paddle.predict(...))
+# and result shape; the layout_ocr parser expects the 2.7 contract. Bump
+# version + parser together when we want a newer release.
+paddleocr>=2.7.0,<2.8.0
+paddlepaddle>=2.6.0,<2.7.0
+pymupdf>=1.24.0

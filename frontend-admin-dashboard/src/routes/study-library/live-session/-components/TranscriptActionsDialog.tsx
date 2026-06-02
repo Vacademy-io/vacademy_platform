@@ -26,7 +26,8 @@ import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { formatDistanceToNow } from 'date-fns';
 import { GENERATE_TRANSCRIPT_NOTES_URL } from '@/constants/urls';
-import { saveStudyNotes } from '../-services/utils';
+import { saveStudyNotes, type AssessmentArtifact } from '../-services/utils';
+import { PastPapersSection } from './PastPapersSection';
 
 /**
  * Single entrypoint dialog opened from the "Show Transcript" button on a
@@ -66,6 +67,14 @@ interface Props {
     onSavedNotesChange?: (markdown: string, generatedAt: string) => void;
     /** Fires when the teacher clicks the Create Assessment card. */
     onCreateAssessment: () => void;
+    /**
+     * Fires when the teacher clicks "View / Export PDF" on a row in the
+     * Past papers list. The parent should open
+     * CreateAssessmentFromRecordingModal with this artifact as
+     * `initialArtifact` so the modal jumps straight to the preview pane
+     * with the stored questions loaded — no LLM call.
+     */
+    onOpenArtifact?: (artifact: AssessmentArtifact) => void;
 }
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
@@ -151,25 +160,181 @@ const downloadBlob = (filename: string, content: string, mime: string) => {
  * (the rest of the notes still render fine). Re-hosting images on our S3
  * is the right long-term fix; not blocking the v1 ship for it.
  */
+/**
+ * Pick a page-break Y inside [targetCutY - searchHeight .. targetCutY]
+ * that lands in the largest whitespace zone — so the cut falls in the gap
+ * *above* a heading (between the previous paragraph and the heading),
+ * keeping the heading attached to the content that follows it.
+ *
+ * The naive "whitest single row" approach we used before would happily
+ * cut in the tight 8px gap *below* a heading (its mb-2 margin),
+ * stranding the heading at the bottom of one page and its body text on
+ * the next. By measuring zones (consecutive near-white rows) and
+ * preferring the tallest one, the cut naturally lands in the more
+ * generous mb-6/mb-8 gap that precedes section headings.
+ */
+const findSafePageBreak = (
+    source: HTMLCanvasElement,
+    startY: number,
+    targetCutY: number,
+): number => {
+    const searchHeight = Math.min(320, Math.floor((targetCutY - startY) * 0.35));
+    const minCut = targetCutY - searchHeight;
+    // Refuse to shrink a page below ~65% of normal — better to cut through
+    // a line than ship a half-empty page.
+    if (minCut <= startY + 100) return targetCutY;
+    const ctx = source.getContext('2d');
+    if (!ctx) return targetCutY;
+    const width = source.width;
+
+    const isWhite = (y: number): boolean => {
+        const { data } = ctx.getImageData(0, y, width, 1);
+        let whitePx = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i]! >= 240 && data[i + 1]! >= 240 && data[i + 2]! >= 240) {
+                whitePx += 1;
+            }
+        }
+        return whitePx / width > 0.985;
+    };
+
+    // Walk the search window collecting whitespace zones. Sample every 2
+    // rows; a real gap between content blocks spans at least 8-12px so
+    // we won't miss any.
+    const zones: Array<{ top: number; bottom: number }> = [];
+    let zoneBottom = -1;
+    for (let y = targetCutY; y >= minCut; y -= 2) {
+        if (isWhite(y)) {
+            if (zoneBottom === -1) zoneBottom = y;
+        } else if (zoneBottom !== -1) {
+            zones.push({ top: y + 2, bottom: zoneBottom });
+            zoneBottom = -1;
+        }
+    }
+    if (zoneBottom !== -1) {
+        zones.push({ top: minCut, bottom: zoneBottom });
+    }
+
+    if (zones.length === 0) return targetCutY;
+
+    // Tallest zone wins — most likely the gap before a heading or
+    // between a heading and its preceding section. Cut at its bottom so
+    // any heading sitting just below the gap travels with its content
+    // to the next page.
+    const tallest = zones.reduce((best, z) =>
+        z.bottom - z.top > best.bottom - best.top ? z : best
+    );
+    // Require the tallest zone to be at least 8px — otherwise just use
+    // the natural cut.
+    if (tallest.bottom - tallest.top < 8) return targetCutY;
+    return tallest.bottom;
+};
+
 const renderNodeToPdf = async (node: HTMLElement, filename: string) => {
     const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
         import('jspdf'),
         import('html2canvas'),
     ]);
 
+    // html2canvas clones the DOM into an internal iframe before capture,
+    // so CSS mutations on the live DOM (className, inline style, even
+    // setProperty) don't reliably reach the clone. On top of that,
+    // html2canvas treats <img> as a replaced element and reads its
+    // naturalWidth/naturalHeight for sizing, sidestepping CSS entirely —
+    // which is why every max-width approach silently fails for wide
+    // diagrams.
+    //
+    // Bulletproof fix: read each live <img>'s natural dimensions now,
+    // then in onclone (which runs on the actual rendered clone) replace
+    // every cloned <img> with a <canvas> we pre-paint at the clamped
+    // target size. html2canvas renders <canvas> elements as-is, so no
+    // further scaling decisions are involved.
+    const PRINT_IMG_MAX_W = 540; // px — fits inside A4 reading area with margin
+    const PRINT_IMG_MAX_H = 360; // px — leaves room for surrounding text
+    const liveImgs = Array.from(node.querySelectorAll<HTMLImageElement>('img'));
+    type ImgTarget = { src: string; w: number; h: number };
+    const targets: ImgTarget[] = liveImgs.map((img) => {
+        const naturalW = img.naturalWidth || 600;
+        const naturalH = img.naturalHeight || 400;
+        const aspect = naturalW / naturalH || 1.5;
+        let w = naturalW;
+        let h = naturalH;
+        if (w > PRINT_IMG_MAX_W) {
+            w = PRINT_IMG_MAX_W;
+            h = w / aspect;
+        }
+        if (h > PRINT_IMG_MAX_H) {
+            h = PRINT_IMG_MAX_H;
+            w = h * aspect;
+        }
+        return { src: img.src, w: Math.round(w), h: Math.round(h) };
+    });
+
     const canvas = await html2canvas(node, {
         scale: 2, // 2× for crisp output on retina; standard practice for PDF capture
         useCORS: true,
         backgroundColor: 'white',
         logging: false,
+        onclone: (_doc, clonedRoot) => {
+            const clonedImgs = Array.from(
+                clonedRoot.querySelectorAll<HTMLImageElement>('img')
+            );
+            clonedImgs.forEach((clonedImg) => {
+                const live = liveImgs.find((l) => l.src === clonedImg.src);
+                const target = targets.find((t) => t.src === clonedImg.src);
+                if (!live || !target || !live.complete) return;
+
+                // Pre-paint the image into a canvas at the target size.
+                // Canvases pass through html2canvas untouched, bypassing
+                // its image-scaling logic entirely.
+                const replacement = clonedImg.ownerDocument.createElement(
+                    'canvas'
+                ) as HTMLCanvasElement;
+                replacement.width = target.w * 2; // 2× internal for retina
+                replacement.height = target.h * 2;
+                replacement.style.width = `${target.w}px`;
+                replacement.style.height = `${target.h}px`;
+                replacement.style.display = 'block';
+                replacement.style.margin = '24px auto';
+                replacement.style.borderRadius = '12px';
+
+                const ctx = replacement.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, replacement.width, replacement.height);
+                    ctx.imageSmoothingEnabled = true;
+                    ctx.imageSmoothingQuality = 'high';
+                    try {
+                        ctx.drawImage(
+                            live,
+                            0,
+                            0,
+                            replacement.width,
+                            replacement.height
+                        );
+                    } catch {
+                        // CORS taint or load race — leave the original
+                        // img in place; the on-screen <img> is fine,
+                        // the PDF just may not include this one image.
+                        return;
+                    }
+                }
+                clonedImg.replaceWith(replacement);
+            });
+        },
     });
 
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 32; // points — comfortable reading margin
-    const usableWidth = pageWidth - margin * 2;
-    const usableHeight = pageHeight - margin * 2;
+    // Asymmetric margins — extra padding at the bottom so even when the
+    // slicer can't find a perfect break, the last line of each page
+    // never sits flush against the page edge.
+    const marginX = 32;
+    const marginTop = 32;
+    const marginBottom = 56;
+    const usableWidth = pageWidth - marginX * 2;
+    const usableHeight = pageHeight - marginTop - marginBottom;
 
     // Scale the captured canvas width down to the page's usable width;
     // the page count is determined by how many vertical slices fit.
@@ -181,8 +346,19 @@ const renderNodeToPdf = async (node: HTMLElement, filename: string) => {
     let yOffsetPx = 0;
     let pageNumber = 0;
     while (yOffsetPx < renderHeightPx) {
-        // Build a per-page canvas via a temporary 2d context.
-        const sliceHeightPx = Math.min(pageSliceHeightPx, renderHeightPx - yOffsetPx);
+        // Target the natural page boundary, then nudge backwards to the
+        // nearest near-white row so the cut lands between paragraphs / on
+        // image padding — never through a text baseline.
+        const naturalEnd = Math.min(
+            yOffsetPx + pageSliceHeightPx,
+            renderHeightPx
+        );
+        const cutY =
+            naturalEnd < renderHeightPx
+                ? findSafePageBreak(canvas, yOffsetPx, naturalEnd)
+                : naturalEnd;
+        const sliceHeightPx = cutY - yOffsetPx;
+
         const sliceCanvas = document.createElement('canvas');
         sliceCanvas.width = renderWidthPx;
         sliceCanvas.height = sliceHeightPx;
@@ -201,13 +377,13 @@ const renderNodeToPdf = async (node: HTMLElement, filename: string) => {
         pdf.addImage(
             sliceCanvas.toDataURL('image/jpeg', 0.92),
             'JPEG',
-            margin,
-            margin,
+            marginX,
+            marginTop,
             usableWidth,
             sliceHeightPt,
         );
 
-        yOffsetPx += sliceHeightPx;
+        yOffsetPx = cutY;
         pageNumber += 1;
     }
 
@@ -235,12 +411,13 @@ function NotesImage({ alt, src, ...rest }: React.ImgHTMLAttributes<HTMLImageElem
             crossOrigin="anonymous"
             loading="lazy"
             onError={() => setErrored(true)}
-            // `max-h-96` caps vertical size; `max-w-full` + `h-auto` keeps
-            // wide diagrams from overflowing the print container. Without
-            // max-w-full the image renders at its natural width, the dialog
-            // visually clips it, but html2canvas captures the overflow —
-            // producing a stretched/cut-off image in the downloaded PDF.
-            className="mx-auto my-6 block h-auto max-h-96 max-w-full rounded-xl border border-neutral-200 object-contain shadow-md"
+            // Tight pixel caps so the captured PDF never gets an
+            // overflowing diagram — `max-w-2xl` (672px) keeps wide banner
+            // images within the A4 reading area after html2canvas captures
+            // and jsPDF scales, while `max-h-96` (384px) keeps a single
+            // image from spanning more than ~half a page. `object-contain`
+            // letterboxes the image to fit both caps without stretching.
+            className="mx-auto my-6 block h-auto max-h-96 w-full max-w-2xl rounded-xl border border-neutral-200 object-contain shadow-md"
             {...rest}
         />
     );
@@ -378,6 +555,7 @@ export function TranscriptActionsDialog({
     savedNotesGeneratedAt,
     onSavedNotesChange,
     onCreateAssessment,
+    onOpenArtifact,
 }: Props) {
     const [source, setSource] = useState<TextState>({ state: 'idle', text: '' });
     const [english, setEnglish] = useState<TextState>({ state: 'idle', text: '' });
@@ -676,6 +854,44 @@ export function TranscriptActionsDialog({
                             disabled={!transcriptReady}
                         />
                     </div>
+                )}
+
+                {/* Past papers — list of previously generated assessments
+                    for THIS same recording so the teacher can re-export
+                    PDFs or re-publish without spending another LLM call.
+                    Placed below the action cards (and collapsed by default
+                    inside its own header click target) so a recording with
+                    a long history doesn't push the primary actions out of
+                    view. Hidden once notes generation has started so the
+                    dialog stays focused on the active flow. */}
+                {notes.state === 'idle' && onOpenArtifact && (
+                    <PastPapersSection
+                        scheduleId={scheduleId}
+                        recordingId={recordingId}
+                        onOpenArtifact={(artifact) => {
+                            onOpenChange(false);
+                            onOpenArtifact(artifact);
+                        }}
+                        savedNotesMarkdown={savedNotesMarkdown}
+                        savedNotesGeneratedAt={savedNotesGeneratedAt}
+                        onOpenNotes={
+                            savedNotesMarkdown
+                                ? () => {
+                                      // Re-enter the cached notes view in
+                                      // place — the markdown is already in
+                                      // the parent props so we just flip
+                                      // local notes state to 'loaded'.
+                                      setNotes({
+                                          state: 'loaded',
+                                          markdown: savedNotesMarkdown,
+                                      });
+                                      setNotesGeneratedAt(
+                                          savedNotesGeneratedAt
+                                      );
+                                  }
+                                : undefined
+                        }
+                    />
                 )}
 
                 {/* Loading state */}

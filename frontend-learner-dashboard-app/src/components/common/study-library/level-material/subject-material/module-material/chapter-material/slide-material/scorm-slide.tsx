@@ -331,16 +331,22 @@ const ScormSlideComponent = ({
     }
 
     return (
+        // iOS WKWebView collapses iframes with height:100% to their intrinsic
+        // content height. Position the iframe absolutely so it fills the parent
+        // box on iOS the same way it does on Chrome/Android.
         <div
-            className="relative w-full"
-            style={{ height: 'calc(100vh - 120px)', minHeight: '600px' }}
+            className="relative h-full w-full"
+            style={{
+                minHeight: 'calc(100vh - 120px)',
+                WebkitOverflowScrolling: 'touch',
+            }}
         >
             <iframe
                 ref={iframeRef}
                 src={launchUrl}
-                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                className="absolute inset-0 block h-full w-full border-0"
                 title={slide.title || 'SCORM Content'}
-                allow="fullscreen"
+                allow="fullscreen; autoplay; encrypted-media; clipboard-read; clipboard-write"
                 onLoad={() => {
                     console.log('[SCORM] iframe loaded, sending init data');
                     // Send saved tracking data to the wrapper for resume

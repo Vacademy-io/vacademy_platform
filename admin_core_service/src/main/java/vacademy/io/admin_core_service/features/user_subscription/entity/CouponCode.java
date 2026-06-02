@@ -34,8 +34,8 @@ public class CouponCode {
     @UuidGenerator
     private String id;
 
-    @Column(name = "code", unique = true, nullable = false)
-    private String code; // Actual coupon code shown to users
+    @Column(name = "code", nullable = false)
+    private String code; // Actual coupon code shown to users. Uniqueness is composite (institute_id, code) — see V309.
 
     @Column(name = "status") // e.g., ACTIVE, EXPIRED, REDEEMED
     private String status;
@@ -45,6 +45,9 @@ public class CouponCode {
 
     @Column(name = "source_id") // ID of the source entity (e.g., campaign, admin ID)
     private String sourceId;
+
+    @Column(name = "institute_id")
+    private String instituteId;
 
     @Column(name = "is_email_restricted") // If true, applicable only to listed email IDs
     private boolean isEmailRestricted;

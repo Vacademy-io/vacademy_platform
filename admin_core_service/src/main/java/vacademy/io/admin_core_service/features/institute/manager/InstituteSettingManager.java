@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.institute.manager;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -39,6 +40,9 @@ public class InstituteSettingManager {
     @Autowired
     private InstituteCustomFiledService instituteCustomFiledService;
 
+    // Cache-evict the public openInstituteDetails snapshot so naming changes
+    // are visible to the learner-side terminology on next page load.
+    @CacheEvict(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<String> createNewNamingSetting(CustomUserDetails userDetails, String instituteId,
             NameSettingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -49,6 +53,7 @@ public class InstituteSettingManager {
         return ResponseEntity.ok("Done");
     }
 
+    @CacheEvict(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<String> updateNamingSetting(CustomUserDetails userDetails, String instituteId,
             NameSettingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -60,6 +65,7 @@ public class InstituteSettingManager {
     }
 
     // Generic methods for any setting type
+    @CacheEvict(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<String> createNewGenericSetting(CustomUserDetails userDetails, String instituteId,
             String settingKey, GenericSettingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -70,6 +76,9 @@ public class InstituteSettingManager {
         return ResponseEntity.ok("Done");
     }
 
+    // Same rationale as saveGenericSetting — bust the openInstituteDetails
+    // cache so learner-facing reads pick up the change immediately.
+    @CacheEvict(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<String> updateGenericSetting(CustomUserDetails userDetails, String instituteId,
             String settingKey, GenericSettingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -81,6 +90,11 @@ public class InstituteSettingManager {
     }
 
     // Upsert method - creates if doesn't exist, updates if exists
+    // CacheEvict — the public /details-non-batches/{instituteId} endpoint is
+    // @Cacheable on "openInstituteDetails". Without this eviction, learner
+    // surfaces (coupon-enabled toggle, drip conditions, branding, etc.) keep
+    // reading the pre-toggle institute snapshot until cache TTL or restart.
+    @CacheEvict(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<String> saveGenericSetting(CustomUserDetails userDetails, String instituteId,
             String settingKey, GenericSettingRequest request) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);
@@ -154,6 +168,7 @@ public class InstituteSettingManager {
         return ResponseEntity.ok(rawJson != null ? rawJson : "{}");
     }
 
+    @CacheEvict(value = "openInstituteDetails", key = "#instituteId")
     public ResponseEntity<String> updateCustomFieldSetting(CustomUserDetails userDetails, String instituteId,
             CustomFieldSettingRequest request, String isPresent) {
         Optional<Institute> institute = instituteRepository.findById(instituteId);

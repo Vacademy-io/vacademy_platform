@@ -8,6 +8,60 @@ import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Bell, Settings } from 'lucide-react';
+import { Info, Trash } from '@phosphor-icons/react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+
+// Friendly purposes for an email address. Each option maps to the storage `type`
+// key used inside institute.setting.EMAIL_SETTING.data on the backend. The
+// dropdown shows the friendly label; the backend persists the code.
+//
+// `UTILITY_EMAIL` is the system-wide fallback used when no type matches, so it
+// stays as the default for new addresses.
+const EMAIL_PURPOSES = [
+    {
+        code: 'UTILITY_EMAIL',
+        label: 'System notifications & updates',
+        hint: 'Account alerts, password resets, reminders',
+    },
+    {
+        code: 'INFO_EMAIL',
+        label: 'Announcements & general info',
+        hint: 'News, newsletters, broadcast updates',
+    },
+    {
+        code: 'TRANSACTIONAL_EMAIL',
+        label: 'Receipts & confirmations',
+        hint: 'Payment receipts, enrollment confirmations',
+    },
+    {
+        code: 'MARKETING_EMAIL',
+        label: 'Marketing & promotions',
+        hint: 'Campaigns, offers, promotional content',
+    },
+    {
+        code: 'SUPPORT_EMAIL',
+        label: 'Support & help',
+        hint: 'Replies to learners or staff who need help',
+    },
+] as const;
+
+const CUSTOM_PURPOSE_OPTION = '__custom__';
+
+function purposeLabelFor(code: string): string {
+    const match = EMAIL_PURPOSES.find((p) => p.code === code);
+    if (match) return match.label;
+    // Custom / unknown type — turn UTILITY_EMAIL into "Utility email" for display.
+    return code
+        .toLowerCase()
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 import type {
     NotificationSettings,
     NotificationSettingsResponse,
@@ -645,7 +699,12 @@ export default function NotificationSettings({ isTab = false }: Props) {
             {/* Email Settings */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
-                    <CardTitle className="text-base">Email Settings</CardTitle>
+                    <CardTitle className="text-base">Email Addresses</CardTitle>
+                    <div className="text-xs text-muted-foreground mt-1">
+                        These are the email addresses your institute uses to send messages
+                        to learners and staff. Each address has a purpose — for example, one
+                        for marketing campaigns, another for support replies.
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <EmailListEditor
@@ -656,20 +715,29 @@ export default function NotificationSettings({ isTab = false }: Props) {
                             try {
                                 const newConfig = await createEmailConfiguration(config);
                                 setEmailConfigurations(prev => [...prev, newConfig]);
-                                toast.success('Email configuration added successfully');
+                                // Detailed verification toast is shown by the editor.
                             } catch (error) {
-                                toast.error('Failed to add email configuration');
+                                toast.error("Couldn't add this email address. Please try again.");
                             }
                         }}
-                        onUpdate={async (id, config) => {
+                        onUpdate={async (emailType, config) => {
                             try {
-                                const updatedConfig = await updateEmailConfiguration(id, config);
-                                setEmailConfigurations(prev => 
-                                    prev.map(c => c.id === id ? updatedConfig : c)
+                                const updatedConfig = await updateEmailConfiguration(emailType, config);
+                                setEmailConfigurations(prev =>
+                                    prev.map(c => c.type === emailType ? updatedConfig : c)
                                 );
-                                toast.success('Email configuration updated successfully');
+                                toast.success('Saved. New emails sent from this address will use the updated details.');
                             } catch (error) {
-                                toast.error('Failed to update email configuration');
+                                toast.error("Couldn't save your changes. Please try again.");
+                            }
+                        }}
+                        onDelete={async (emailType) => {
+                            try {
+                                await deleteEmailConfiguration(emailType);
+                                setEmailConfigurations(prev => prev.filter(c => c.type !== emailType));
+                                toast.success('Email address removed.');
+                            } catch (error) {
+                                toast.error("Couldn't remove this email address. Please try again.");
                             }
                         }}
                     />
@@ -747,30 +815,50 @@ function TagEditor({ value, onChange }: { value: string[]; onChange: (tags: stri
     );
 }
 
-function EmailListEditor({ 
+function EmailListEditor({
     emailConfigurations,
     loading,
     error,
     onAdd,
-    onUpdate
-}: { 
+    onUpdate,
+    onDelete,
+}: {
     emailConfigurations: EmailConfiguration[];
     loading: boolean;
     error: string | null;
     onAdd: (config: CreateEmailConfigurationRequest) => Promise<void>;
     onUpdate: (id: string, config: Partial<CreateEmailConfigurationRequest>) => Promise<void>;
+    onDelete: (id: string) => Promise<void>;
 }) {
     const [newEmail, setNewEmail] = useState('');
     const [newName, setNewName] = useState('');
-    const [newType, setNewType] = useState('');
+    const [newPurposeCode, setNewPurposeCode] = useState<string>(EMAIL_PURPOSES[0].code);
+    const [newCustomPurpose, setNewCustomPurpose] = useState('');
     const [newDescription, setNewDescription] = useState('');
 
+    const resolvedNewPurposeCode =
+        newPurposeCode === CUSTOM_PURPOSE_OPTION
+            ? newCustomPurpose.trim().toUpperCase().replace(/\s+/g, '_')
+            : newPurposeCode;
+
+    const canSubmit =
+        newEmail.trim().length > 0 &&
+        newName.trim().length > 0 &&
+        resolvedNewPurposeCode.length > 0;
+
     const addEmail = async () => {
-        if (!newEmail.trim() || !newName.trim() || !newType.trim()) return;
-        
-        const emailExists = emailConfigurations.some(e => e.email === newEmail.trim());
+        if (!canSubmit) return;
+
+        const emailExists = emailConfigurations.some(
+            (e) => e.email.toLowerCase() === newEmail.trim().toLowerCase()
+        );
         if (emailExists) {
-            toast.error('Email already exists');
+            toast.error('This email address is already added.');
+            return;
+        }
+        const typeExists = emailConfigurations.some((e) => e.type === resolvedNewPurposeCode);
+        if (typeExists) {
+            toast.error('You already have an address for this purpose. Edit the existing one or pick a different purpose.');
             return;
         }
 
@@ -778,147 +866,316 @@ function EmailListEditor({
             await onAdd({
                 email: newEmail.trim(),
                 name: newName.trim(),
-                type: newType.trim(),
-                description: newDescription.trim() || undefined
+                type: resolvedNewPurposeCode,
+                description: newDescription.trim() || undefined,
             });
-            
-            // Show verification popup after successful addition
-            toast.success('Email configuration added successfully', {
-                description: 'If the domain or email is not verified with our system, kindly contact admin for verification.',
-                duration: 8000, // Show for 8 seconds to give time to read
+
+            toast.success('Email address added.', {
+                description:
+                    "Before this address can send emails, our team needs to verify it. Please contact support to get it verified — emails sent before verification won't reach recipients.",
+                duration: 10000,
             });
-            
+
             setNewEmail('');
             setNewName('');
-            setNewType('');
+            setNewPurposeCode(EMAIL_PURPOSES[0].code);
+            setNewCustomPurpose('');
             setNewDescription('');
         } catch (error) {
-            // Error handling is done in the parent component
+            // Error toast is raised by the parent
         }
     };
 
-    const updateEmail = async (id: string, field: 'email' | 'name' | 'type' | 'description', value: string) => {
-        try {
-            await onUpdate(id, { [field]: value });
-        } catch (error) {
-            // Error handling is done in the parent component
-        }
-    };
-
+    const verificationNotice = (
+        <Alert className="border-amber-300 bg-amber-50 text-amber-900">
+            <Info className="size-4 text-amber-700" />
+            <AlertDescription className="text-xs leading-relaxed">
+                Before any address here can send emails, <strong>our team needs to verify
+                it with the email service</strong>. Until that's done, messages from a new
+                address won't reach recipients. If you've just added or changed an address,
+                please <strong>contact support</strong> so we can verify it for you.
+            </AlertDescription>
+        </Alert>
+    );
 
     if (loading) {
         return (
-            <div className="text-sm text-muted-foreground text-center py-4">
-                Loading email configurations...
+            <div className="space-y-4">
+                {verificationNotice}
+                <div className="text-sm text-muted-foreground text-center py-4">
+                    Loading your email addresses…
+                </div>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="text-sm text-red-600 text-center py-4">
-                {error}
+            <div className="space-y-4">
+                {verificationNotice}
+                <div className="text-sm text-red-600 text-center py-4">
+                    {error}
+                </div>
             </div>
         );
     }
 
+    const selectedPurposeHint =
+        newPurposeCode !== CUSTOM_PURPOSE_OPTION
+            ? EMAIL_PURPOSES.find((p) => p.code === newPurposeCode)?.hint
+            : 'A custom purpose for emails that don\'t fit the categories above.';
+
     return (
         <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">
-                Manage email addresses with their types for notifications
-            </div>
-            
+            {verificationNotice}
+
             {/* Add new email form */}
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-                <div>
-                    <Label htmlFor="new-email">Email Address</Label>
-                    <Input
-                        id="new-email"
-                        type="email"
-                        placeholder="Enter email address"
-                        value={newEmail}
-                        onChange={(e) => setNewEmail(e.target.value)}
-                    />
+            <div className="rounded-md border border-dashed border-gray-300 p-4 space-y-3">
+                <div className="text-sm font-medium">Add a new email address</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                        <Label htmlFor="new-email">Email address</Label>
+                        <Input
+                            id="new-email"
+                            type="email"
+                            placeholder="e.g., support@yourschool.com"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="new-name">Display name</Label>
+                        <Input
+                            id="new-name"
+                            placeholder='e.g., "Acme Academy Support"'
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                            Shown to recipients next to the email address.
+                        </div>
+                    </div>
+                    <div>
+                        <Label htmlFor="new-purpose">What is this email for?</Label>
+                        <Select value={newPurposeCode} onValueChange={setNewPurposeCode}>
+                            <SelectTrigger id="new-purpose">
+                                <SelectValue placeholder="Choose a purpose" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {EMAIL_PURPOSES.map((p) => (
+                                    <SelectItem key={p.code} value={p.code}>
+                                        {p.label}
+                                    </SelectItem>
+                                ))}
+                                <SelectItem value={CUSTOM_PURPOSE_OPTION}>
+                                    Other (custom purpose)…
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {newPurposeCode === CUSTOM_PURPOSE_OPTION ? (
+                            <div className="mt-2 space-y-1">
+                                <Input
+                                    placeholder='e.g., "Newsletter" or "Alumni"'
+                                    value={newCustomPurpose}
+                                    onChange={(e) => setNewCustomPurpose(e.target.value)}
+                                />
+                                <div className="text-xs text-muted-foreground">
+                                    Use a short name. We'll save it as{' '}
+                                    <span className="font-mono">
+                                        {resolvedNewPurposeCode || 'YOUR_PURPOSE'}
+                                    </span>{' '}
+                                    internally.
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-xs text-muted-foreground mt-1">
+                                {selectedPurposeHint}
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <Label htmlFor="new-description">Notes (optional)</Label>
+                        <Input
+                            id="new-description"
+                            placeholder="For your team's reference"
+                            value={newDescription}
+                            onChange={(e) => setNewDescription(e.target.value)}
+                        />
+                    </div>
                 </div>
-                <div>
-                    <Label htmlFor="new-name">Name</Label>
-                    <Input
-                        id="new-name"
-                        placeholder="Enter name"
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                    />
+                <div className="flex justify-end">
+                    <Button
+                        type="button"
+                        onClick={addEmail}
+                        disabled={!canSubmit}
+                    >
+                        Add email address
+                    </Button>
                 </div>
-                <div>
-                    <Label htmlFor="new-type">Type</Label>
-                    <Input
-                        id="new-type"
-                        placeholder="Enter email type (e.g., admin, support, info)"
-                        value={newType}
-                        onChange={(e) => setNewType(e.target.value)}
-                    />
-                </div>
-                <div>
-                    <Label htmlFor="new-description">Description</Label>
-                    <Input
-                        id="new-description"
-                        placeholder="Enter description (optional)"
-                        value={newDescription}
-                        onChange={(e) => setNewDescription(e.target.value)}
-                    />
-                </div>
-            </div>
-            <div className="flex justify-end">
-                <Button 
-                    type="button" 
-                    onClick={addEmail}
-                    disabled={!newEmail.trim() || !newName.trim() || !newType.trim()}
-                >
-                    Add Email Configuration
-                </Button>
             </div>
 
             {/* Email list */}
             <div className="space-y-2">
+                <div className="text-sm font-medium">
+                    Your email addresses ({emailConfigurations.length})
+                </div>
                 {emailConfigurations.length === 0 ? (
-                    <div className="text-sm text-muted-foreground text-center py-4">
-                        No email configurations added yet
+                    <div className="text-sm text-muted-foreground text-center py-6 border border-dashed rounded-md">
+                        You haven't added any email addresses yet. Use the form above to add one.
                     </div>
                 ) : (
                     emailConfigurations.map((config) => (
-                        <div key={config.id} className="grid grid-cols-1 md:grid-cols-4 gap-2 p-3 border rounded-md">
-                            <div>
-                                <Label className="text-xs">Email</Label>
-                                <Input
-                                    value={config.email}
-                                    onChange={(e) => updateEmail(config.id, 'email', e.target.value)}
-                                    className="font-mono text-sm"
-                                />
-                            </div>
-                            <div>
-                                <Label className="text-xs">Name</Label>
-                                <Input
-                                    value={config.name}
-                                    onChange={(e) => updateEmail(config.id, 'name', e.target.value)}
-                                />
-                            </div>
-                            <div>
-                                <Label className="text-xs">Type</Label>
-                                <Input
-                                    value={config.type}
-                                    onChange={(e) => updateEmail(config.id, 'type', e.target.value)}
-                                />
-                            </div>
-                            <div>
-                                <Label className="text-xs">Description</Label>
-                                <Input
-                                    value={config.description || ''}
-                                    onChange={(e) => updateEmail(config.id, 'description', e.target.value)}
-                                />
-                            </div>
-                        </div>
+                        <EmailConfigurationRow
+                            key={config.type}
+                            config={config}
+                            onUpdate={onUpdate}
+                            onDelete={onDelete}
+                        />
                     ))
                 )}
+            </div>
+        </div>
+    );
+}
+
+function EmailConfigurationRow({
+    config,
+    onUpdate,
+    onDelete,
+}: {
+    config: EmailConfiguration;
+    onUpdate: (emailType: string, config: Partial<CreateEmailConfigurationRequest>) => Promise<void>;
+    onDelete: (emailType: string) => Promise<void>;
+}) {
+    const [email, setEmail] = useState(config.email);
+    const [name, setName] = useState(config.name);
+    const [description, setDescription] = useState(config.description || '');
+    const [saving, setSaving] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
+    useEffect(() => {
+        setEmail(config.email);
+        setName(config.name);
+        setDescription(config.description || '');
+    }, [config.email, config.name, config.type, config.description]);
+
+    const isDirty =
+        email !== config.email ||
+        name !== config.name ||
+        description !== (config.description || '');
+
+    const canSave =
+        isDirty &&
+        email.trim().length > 0 &&
+        name.trim().length > 0 &&
+        !saving;
+
+    const handleUpdate = async () => {
+        if (!canSave) return;
+        setSaving(true);
+        try {
+            await onUpdate(config.type, {
+                email: email.trim(),
+                name: name.trim(),
+                description: description.trim() || undefined,
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleReset = () => {
+        setEmail(config.email);
+        setName(config.name);
+        setDescription(config.description || '');
+    };
+
+    const handleDelete = async () => {
+        const ok = confirm(
+            `Remove "${config.email}"?\n\n` +
+                `It will no longer be used for ${purposeLabelFor(config.type).toLowerCase()}.\n` +
+                `You can add it back later if needed.`
+        );
+        if (!ok) return;
+        setDeleting(true);
+        try {
+            await onDelete(config.type);
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    return (
+        <div className="space-y-3 p-3 border rounded-md">
+            <div className="flex items-start justify-between gap-3">
+                <Badge variant="secondary" className="font-normal">
+                    {purposeLabelFor(config.type)}
+                </Badge>
+                <span
+                    className="text-xs text-muted-foreground"
+                    title="The purpose can't be changed after the address is added. To use a different purpose, remove this address and add a new one."
+                >
+                    Purpose can't be changed
+                </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div>
+                    <Label className="text-xs">Email address</Label>
+                    <Input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="font-mono text-sm"
+                    />
+                </div>
+                <div>
+                    <Label className="text-xs">Display name</Label>
+                    <Input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder='e.g., "Acme Academy Support"'
+                    />
+                </div>
+                <div>
+                    <Label className="text-xs">Notes (optional)</Label>
+                    <Input
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="For your team's reference"
+                    />
+                </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+                {isDirty && (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleReset}
+                        disabled={saving}
+                    >
+                        Cancel
+                    </Button>
+                )}
+                <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleUpdate}
+                    disabled={!canSave}
+                >
+                    {saving ? 'Saving…' : 'Save changes'}
+                </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                >
+                    <Trash className="size-4 mr-1" />
+                    {deleting ? 'Removing…' : 'Remove'}
+                </Button>
             </div>
         </div>
     );

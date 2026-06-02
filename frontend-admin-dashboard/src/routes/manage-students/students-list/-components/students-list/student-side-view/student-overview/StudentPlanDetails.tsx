@@ -12,6 +12,7 @@ import {
     CaretDown,
     CaretUp,
     CurrencyDollar,
+    Tag,
     TrendUp,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
@@ -21,12 +22,7 @@ import { toast } from 'sonner';
 import { format, formatDate } from 'date-fns';
 import { PolicyActionsTimeline } from '@/components/common/PolicyActionsTimeline';
 import type { PolicyDetails } from '@/types/membership-expiry';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { cn } from '@/lib/utils';
 
@@ -86,6 +82,70 @@ const computeDaysLeft = (endDate?: string | null): number | null => {
     if (!endDate) return null;
     const diffMs = new Date(endDate).getTime() - Date.now();
     return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+};
+
+/**
+ * Reads the coupon snapshot for display. Prefers the structured
+ * {@code applied_coupon} field that the BE now exposes (see
+ * CouponSnapshotDTO); falls back to parsing the raw
+ * {@code applied_coupon_discount_json} blob so we keep working against
+ * older BE builds that haven't deployed the structured field yet.
+ */
+interface RawCouponSnapshot {
+    discountType?: string;
+    discount_type?: string;
+    discountPoint?: number;
+    discount_point?: number;
+    maxDiscountPoint?: number | null;
+    max_discount_point?: number | null;
+    couponCode?: { code?: string } | null;
+    coupon_code?: { code?: string } | null;
+    name?: string;
+}
+
+/**
+ * Mirrors the BE's CouponDiscountUtil.computeDiscount so we can render the
+ * effective amount the learner actually paid (plan price minus this value)
+ * on the membership card. Plays it safe — never returns a negative number,
+ * never returns more than the cap when one is set.
+ */
+const computeCouponDiscount = (
+    grossAmount: number,
+    applied: { type: string | null; point: number | null; maxPoint: number | null } | null
+): number => {
+    if (!applied || applied.point == null) return 0;
+    const point = applied.point;
+    if ((applied.type || '').toUpperCase() === 'PERCENTAGE') {
+        const raw = (grossAmount * point) / 100;
+        const capped = applied.maxPoint != null ? Math.min(raw, applied.maxPoint) : raw;
+        return Math.max(0, Math.min(grossAmount, capped));
+    }
+    return Math.max(0, Math.min(grossAmount, point));
+};
+
+const parseAppliedCoupon = (plan: UserPlan) => {
+    if (plan.applied_coupon) {
+        const a = plan.applied_coupon;
+        if (!a.coupon_code && a.discount_point == null) return null;
+        return {
+            code: a.coupon_code ?? null,
+            type: a.discount_type ?? null,
+            point: a.discount_point ?? null,
+            maxPoint: a.max_discount_point ?? null,
+        };
+    }
+    if (!plan.applied_coupon_discount_id || !plan.applied_coupon_discount_json) return null;
+    try {
+        const raw = JSON.parse(plan.applied_coupon_discount_json) as RawCouponSnapshot;
+        const code = raw.couponCode?.code || raw.coupon_code?.code || raw.name || null;
+        const type = raw.discountType ?? raw.discount_type ?? null;
+        const point = raw.discountPoint ?? raw.discount_point ?? null;
+        const maxPoint = raw.maxDiscountPoint ?? raw.max_discount_point ?? null;
+        if (!code && point == null) return null;
+        return { code, type, point, maxPoint };
+    } catch {
+        return null;
+    }
 };
 
 const getExpiryLabel = (plan: UserPlan): string | null => {
@@ -149,6 +209,35 @@ const EnrollmentStatusBadge = ({
     );
 };
 
+/**
+ * Renders the coupon used at enrollment (if any). Pulls the snapshot from
+ * UserPlan.applied_coupon_discount_json so the row keeps showing the right
+ * info even if the coupon definition changed after the redemption.
+ */
+const CouponAppliedRow = ({ plan, currency }: { plan: UserPlan; currency: string }) => {
+    const applied = parseAppliedCoupon(plan);
+    if (!applied) return null;
+    const isPercentage = (applied.type || '').toUpperCase() === 'PERCENTAGE';
+    const discountLabel = isPercentage
+        ? `${applied.point}% off${applied.maxPoint ? ` · max ${getCurrencySymbol(currency)}${applied.maxPoint}` : ''}`
+        : `${getCurrencySymbol(currency === 'N/A' ? 'INR' : currency)}${applied.point} off`;
+    return (
+        <div className="mt-2 flex items-center gap-2 rounded-md border border-success-200 bg-success-50 px-2.5 py-1.5">
+            <Tag className="size-3.5 shrink-0 text-success-600" weight="fill" />
+            <div className="min-w-0 flex-1">
+                <div className="flex items-baseline gap-1.5">
+                    <span className="font-mono text-xs font-semibold text-success-700">
+                        {applied.code || 'Coupon'}
+                    </span>
+                    {applied.point != null && (
+                        <span className="text-xs text-success-600">{discountLabel}</span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
     if (!policy?.on_expiry_policy) return null;
     const isEnabled = policy.on_expiry_policy.enable_auto_renewal;
@@ -177,9 +266,7 @@ const AutoRenewalBadge = ({ policy }: { policy: PolicyDetails | null }) => {
                         ? `Payment attempt on ${
                               policy.on_expiry_policy.next_payment_attempt_date
                                   ? format(
-                                        new Date(
-                                            policy.on_expiry_policy.next_payment_attempt_date
-                                        ),
+                                        new Date(policy.on_expiry_policy.next_payment_attempt_date),
                                         'MMM dd, yyyy'
                                     )
                                   : 'scheduled date'
@@ -215,7 +302,7 @@ const PolicyDetailsSection = ({
                         </span>
                         <AutoRenewalBadge policy={policy} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                         {policy.on_expiry_policy?.final_expiry_date && (
                             <div className="flex items-center gap-1">
                                 <Calendar className="size-3 text-danger-500" />
@@ -252,16 +339,14 @@ const PolicyDetailsSection = ({
                                     {policy.reenrollment_policy.next_eligible_enrollment_date
                                         ? `from ${format(
                                               new Date(
-                                                  policy.reenrollment_policy
-                                                      .next_eligible_enrollment_date
+                                                  policy.reenrollment_policy.next_eligible_enrollment_date
                                               ),
                                               'MMM dd, yyyy'
                                           )}`
                                         : 'available'}
                                     {policy.reenrollment_policy.reenrollment_gap_in_days > 0 && (
                                         <span className="ml-1 text-neutral-400">
-                                            (
-                                            {policy.reenrollment_policy.reenrollment_gap_in_days}{' '}
+                                            ({policy.reenrollment_policy.reenrollment_gap_in_days}{' '}
                                             day gap)
                                         </span>
                                     )}
@@ -305,9 +390,7 @@ const PolicyDetailsSection = ({
 };
 
 // Pick the days-left tone for headline + progress + status label.
-const getDaysLeftTone = (
-    daysLeft: number | null
-): { color: string; status: string } => {
+const getDaysLeftTone = (daysLeft: number | null): { color: string; status: string } => {
     if (daysLeft === null) {
         return { color: 'text-neutral-500', status: 'No expiry' };
     }
@@ -334,6 +417,10 @@ const PlanCard = ({
     const expiryLabel = getExpiryLabel(plan);
     const amount = getPlanAmount(plan);
     const currency = getPlanCurrency(plan);
+    const appliedCoupon = parseAppliedCoupon(plan);
+    const couponDiscount = computeCouponDiscount(amount, appliedCoupon);
+    const finalAmount = Math.max(0, amount - couponDiscount);
+    const hasCouponDiscount = couponDiscount > 0 && finalAmount < amount;
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-3 transition-all duration-200 hover:border-primary-200 hover:shadow-sm">
@@ -373,13 +460,11 @@ const PlanCard = ({
                 </div>
             )}
 
-            <div className="grid grid-cols-2 gap-1.5 text-xs text-neutral-600">
+            <div className="grid grid-cols-1 gap-1.5 text-xs text-neutral-600 sm:grid-cols-2">
                 {plan.start_date && (
                     <div className="flex items-center gap-1">
                         <Calendar className="size-3 text-neutral-400" />
-                        <span>
-                            Started {formatDate(new Date(plan.start_date), 'dd MMM yyyy')}
-                        </span>
+                        <span>Started {formatDate(new Date(plan.start_date), 'dd MMM yyyy')}</span>
                     </div>
                 )}
                 {expiryLabel && (
@@ -391,13 +476,28 @@ const PlanCard = ({
                 {currency !== 'N/A' && amount > 0 && (
                     <div className="flex items-center gap-1">
                         <CurrencyDollar className="size-3 text-neutral-400" />
-                        <span>
-                            {getCurrencySymbol(currency)}
-                            {amount}
-                        </span>
+                        {hasCouponDiscount ? (
+                            <span className="flex items-baseline gap-1">
+                                <span className="text-neutral-400 line-through">
+                                    {getCurrencySymbol(currency)}
+                                    {amount}
+                                </span>
+                                <span className="font-semibold text-success-700">
+                                    {getCurrencySymbol(currency)}
+                                    {finalAmount}
+                                </span>
+                            </span>
+                        ) : (
+                            <span>
+                                {getCurrencySymbol(currency)}
+                                {amount}
+                            </span>
+                        )}
                     </div>
                 )}
             </div>
+
+            <CouponAppliedRow plan={plan} currency={currency} />
 
             <PolicyDetailsSection policy={policy} compact />
         </div>
@@ -500,11 +600,7 @@ const StudentPlanDetails = ({ userId, instituteId }: StudentPlanDetailsProps) =>
                 <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-neutral-800">Active Memberships</h3>
                     {activePlans.length > 0 && (
-                        <MyButton
-                            onClick={handleViewHistory}
-                            buttonType="secondary"
-                            scale="small"
-                        >
+                        <MyButton onClick={handleViewHistory} buttonType="secondary" scale="small">
                             <Eye className="mr-1 size-3" />
                             View History
                         </MyButton>

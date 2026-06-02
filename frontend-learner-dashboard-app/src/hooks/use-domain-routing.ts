@@ -14,6 +14,7 @@ import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { applyTabBranding } from "@/utils/branding";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
+import { upsertInstituteDetails } from "@/services/institute-settings-cache";
 
 export interface DomainRoutingState {
   isLoading: boolean;
@@ -83,32 +84,32 @@ export const useDomainRouting = () => {
         value: data.instituteId,
       });
 
-      // Store institute details
-      await Preferences.set({
-        key: "InstituteDetails",
-        value: JSON.stringify({
-          id: data.instituteId,
-          name: data.instituteName,
-          logo_file_id: data.instituteLogoFileId,
-          institute_logo_file_id: data.instituteLogoFileId,
-          institute_theme_code: data.instituteThemeCode,
-          home_icon_click_route: data.homeIconClickRoute ?? null,
-          homeIconClickRoute: data.homeIconClickRoute ?? null,
-          playStoreAppLink: data.playStoreAppLink ?? null,
-          appStoreAppLink: data.appStoreAppLink ?? null,
-          windowsAppLink: data.windowsAppLink ?? null,
-          macAppLink: data.macAppLink ?? null,
-          learnerPortalUrl: data.learnerPortalUrl ?? null,
-          instructorPortalUrl: data.instructorPortalUrl ?? null,
-          hideInstituteName:
-            typeof data.hideInstituteName === "boolean"
-              ? data.hideInstituteName
-              : null,
-          logoWidthPx:
-            typeof data.logoWidthPx === "number" ? data.logoWidthPx : null,
-          logoHeightPx:
-            typeof data.logoHeightPx === "number" ? data.logoHeightPx : null,
-        }),
+      // Merge-write so we don't clobber institute_settings_json or other
+      // fields owned by other writers (enroll-form, useSidebar, the settings
+      // cache). This hook runs on every page nav and previously wiped any
+      // settings the invite flow had populated.
+      await upsertInstituteDetails({
+        id: data.instituteId,
+        name: data.instituteName,
+        logo_file_id: data.instituteLogoFileId,
+        institute_logo_file_id: data.instituteLogoFileId,
+        institute_theme_code: data.instituteThemeCode,
+        home_icon_click_route: data.homeIconClickRoute ?? null,
+        homeIconClickRoute: data.homeIconClickRoute ?? null,
+        playStoreAppLink: data.playStoreAppLink ?? null,
+        appStoreAppLink: data.appStoreAppLink ?? null,
+        windowsAppLink: data.windowsAppLink ?? null,
+        macAppLink: data.macAppLink ?? null,
+        learnerPortalUrl: data.learnerPortalUrl ?? null,
+        instructorPortalUrl: data.instructorPortalUrl ?? null,
+        hideInstituteName:
+          typeof data.hideInstituteName === "boolean"
+            ? data.hideInstituteName
+            : null,
+        logoWidthPx:
+          typeof data.logoWidthPx === "number" ? data.logoWidthPx : null,
+        logoHeightPx:
+          typeof data.logoHeightPx === "number" ? data.logoHeightPx : null,
       });
 
       // Store per-institute learner settings for quick access

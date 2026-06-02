@@ -55,6 +55,9 @@ public class AiQuestionEvaluation {
         @Column(name = "status", nullable = false, length = 50)
         private String status;
 
+        @Column(name = "rubric_version")
+        private Integer rubricVersion;
+
         // Timestamps
         @Column(name = "started_at")
         private Date startedAt;

@@ -21,6 +21,7 @@ import vacademy.io.admin_core_service.features.institute_learner.entity.StudentS
 import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
 import vacademy.io.admin_core_service.features.learner.service.LearnerCouponService;
+import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.ComplexPaymentOptionOperation;
 import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.OneTimePaymentOptionOperation;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.payments.service.PaymentService;
@@ -92,6 +93,9 @@ public class ProductPageEnrollmentService {
     private OneTimePaymentOptionOperation oneTimePaymentOptionOperation;
 
     @Autowired
+    private ComplexPaymentOptionOperation complexPaymentOptionOperation;
+
+    @Autowired
     private PaymentLogRepository paymentLogRepository;
 
     @Autowired
@@ -155,9 +159,11 @@ public class ProductPageEnrollmentService {
             learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
                     user.getId(), invitedSession.getId(), packageSessionId, request.getInstituteId());
 
+            // Pass the full UserDTO so the ABANDONED_CART workflow's webhook gets
+            // #ctx['user'] populated — same shape as LEARNER_BATCH_ENROLLMENT.
             StudentSessionInstituteGroupMapping entry = learnerEnrollmentEntryService
                     .createOnlyDetailsFilledEntry(user.getId(), invitedSession, actualSession,
-                            request.getInstituteId(), null);
+                            request.getInstituteId(), null, user);
 
             abandonedCartEntryIds.add(entry.getId());
         }
@@ -254,8 +260,9 @@ public class ProductPageEnrollmentService {
             log.warn("Currency was missing from request; defaulted to {}", planCurrency);
         }
 
-        // Create / find user
-        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+        // Create / find user — use addLearnerRoute (same as learner/enroll) so the
+        // STUDENT role is assigned in the auth-service user_role table.
+        UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(
                 request.getUser(), request.getInstituteId(), false);
         payReq.setEmail(user.getEmail());
 
@@ -317,6 +324,7 @@ public class ProductPageEnrollmentService {
                     PaymentStatusEnum.PAID.name(),
                     "{\"razorpayPaymentId\":\"" + payReq.getRazorpayRequest().getRazorpayPaymentId() + "\","
                             + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
+            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
             log.info("Razorpay Phase 2: payment verified, paymentLogId={}", parentPaymentLogId);
 
         } else if (finalTotal <= 0.0) {
@@ -326,6 +334,7 @@ public class ProductPageEnrollmentService {
                     StringUtils.hasText(payReq.getCurrency()) ? payReq.getCurrency() : "INR",
                     null, null);
             paymentLogService.updatePaymentLog(parentPaymentLogId, "ACTIVE", PaymentStatusEnum.PAID.name(), "{}");
+            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
             payReq.setOrderId(parentPaymentLogId);
             isGatewayPaidSync = true;
             log.info("Free enrollment: gateway bypassed, created PAID log={}", parentPaymentLogId);
@@ -336,6 +345,7 @@ public class ProductPageEnrollmentService {
                     StringUtils.hasText(payReq.getCurrency()) ? payReq.getCurrency() : "INR",
                     null, null);
             paymentLogService.updatePaymentLog(parentPaymentLogId, "ACTIVE", PaymentStatusEnum.PAYMENT_PENDING.name(), "{}");
+            appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
             payReq.setOrderId(parentPaymentLogId);
             log.info("MANUAL payment: gateway bypassed, PENDING log={}", parentPaymentLogId);
         } else {
@@ -423,6 +433,8 @@ public class ProductPageEnrollmentService {
                     createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(),
                             -(int) Math.round(discountAmount));
                 }
+
+                appendUtmToPaymentLog(parentPaymentLogId, request.getUtmParams());
 
                 // Link the first UserPlan to the parent PaymentLog. Without this link,
                 // handlePostPaymentLogic() treats the payment as a donation (userPlan == null)
@@ -527,6 +539,94 @@ public class ProductPageEnrollmentService {
                 .status(isRazorpayPhase2 || isGatewayPaidSync ? PaymentStatusEnum.PAID.name() : "INITIATED")
                 .enrolledPackageSessionIds(enrolledSessionIds)
                 .message("Enrollment successful")
+                .build();
+    }
+
+    // -------------------------------------------------------------------------
+    // CPO enrollment without payment: creates UserPlan + SFP rows so the learner
+    // can then select and pay individual installments via the open CPO fee endpoints.
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public ProductPageEnrollResponse enrollCpoForProductPage(ProductPageCpoEnrollRequest request) {
+        log.info("CPO enroll for product page code={}, institute={}",
+                request.getProductPageCode(), request.getInstituteId());
+
+        var page = coursePageRepository.findByCode(request.getProductPageCode())
+                .orElseThrow(() -> new VacademyException("Product page not found: " + request.getProductPageCode()));
+        if (!page.getInstituteId().equals(request.getInstituteId())) {
+            throw new VacademyException("Product page does not belong to this institute");
+        }
+
+        ProductPageInviteMapping mapping = mappingRepository
+                .findByProductPageIdAndStatusIn(page.getId(), List.of("ACTIVE"))
+                .stream()
+                .filter(m -> m.getPsInvitePaymentOption().getId().equals(request.getPsInvitePaymentOptionId()))
+                .findFirst()
+                .orElseThrow(() -> new VacademyException("Mapping not found: " + request.getPsInvitePaymentOptionId()));
+
+        PackageSessionLearnerInvitationToPaymentOption bridge = mapping.getPsInvitePaymentOption();
+        EnrollInvite invite = bridge.getEnrollInvite();
+
+        // Validate that the payment option is actually CPO type
+        if (!"CPO".equalsIgnoreCase(bridge.getPaymentOption().getType())) {
+            throw new VacademyException("Payment option " + bridge.getPaymentOption().getId() + " is not CPO type");
+        }
+
+        PaymentPlan plan = paymentPlanRepository.findById(request.getPaymentPlanId())
+                .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + request.getPaymentPlanId()));
+
+        // Create / find user
+        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+                request.getUserDetails(), request.getInstituteId(), false);
+
+        studentRegistrationManager.createStudentFromRequest(
+                user, mapToStudentExtraDetails(request.getLearnerExtraDetails()));
+
+        // Save custom field values
+        if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
+            List<CustomFieldValueDTO> filteredFields = filterFieldsForInvite(
+                    request.getCustomFieldValues(), invite.getId());
+            customFieldValueService.addCustomFieldValue(
+                    filteredFields, CustomFieldValueSourceTypeEnum.USER.name(), user.getId());
+        }
+
+        // Build the enroll DTO with no payment initiation request → CPO creates UserPlan + SFP rows
+        LearnerPackageSessionsEnrollDTO enrollDTO = new LearnerPackageSessionsEnrollDTO();
+        enrollDTO.setPackageSessionIds(List.of(bridge.getPackageSession().getId()));
+        enrollDTO.setPlanId(plan.getId());
+        enrollDTO.setPaymentOptionId(bridge.getPaymentOption().getId());
+        enrollDTO.setEnrollInviteId(invite.getId());
+        enrollDTO.setCustomFieldValues(
+                filterFieldsForInvite(request.getCustomFieldValues(), invite.getId()));
+        enrollDTO.setPaymentInitiationRequest(null); // no payment now
+
+        vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan =
+                userPlanService.createUserPlan(user.getId(), plan, null, invite,
+                        bridge.getPaymentOption(), null, "ACTIVE");
+
+        Map<String, Object> extraData = new HashMap<>();
+        complexPaymentOptionOperation.enrollLearnerToBatch(
+                user, enrollDTO, request.getInstituteId(),
+                invite, bridge.getPaymentOption(), userPlan, extraData,
+                request.getLearnerExtraDetails());
+
+        // Send credentials (user was just created)
+        try {
+            String learnerPortalUrl = instituteRepository.findById(request.getInstituteId())
+                    .map(Institute::getLearnerPortalBaseUrl)
+                    .orElse(null);
+            authService.createUserFromAuthServiceForLearnerEnrollment(user, request.getInstituteId(), true, learnerPortalUrl);
+        } catch (Exception e) {
+            log.error("Failed to send credentials for CPO product page user={}: {}", user.getId(), e.getMessage(), e);
+        }
+
+        log.info("CPO enrollment done (no payment) for user={}, userPlan={}", user.getId(), userPlan.getId());
+        return ProductPageEnrollResponse.builder()
+                .userId(user.getId())
+                .userPlanId(userPlan.getId())
+                .status("CPO_ENROLLED")
+                .message("CPO enrollment created. Please select installments to pay.")
                 .build();
     }
 
@@ -717,6 +817,23 @@ public class ProductPageEnrollmentService {
             item.setAmount(amount);
             paymentLogLineItemRepository.save(item);
         });
+    }
+
+    private void appendUtmToPaymentLog(String paymentLogId, Map<String, String> utmParams) {
+        if (paymentLogId == null || utmParams == null || utmParams.isEmpty()) return;
+        try {
+            paymentLogRepository.findById(paymentLogId).ifPresent(paymentLog -> {
+                String existing = paymentLog.getPaymentSpecificData();
+                Map<String, Object> data = (existing != null && !existing.isBlank())
+                        ? JsonUtil.fromJson(existing, Map.class) : new HashMap<>();
+                if (data == null) data = new HashMap<>();
+                data.putAll(utmParams);
+                paymentLog.setPaymentSpecificData(JsonUtil.toJson(data));
+                paymentLogRepository.save(paymentLog);
+            });
+        } catch (Exception e) {
+            log.warn("Failed to append UTM params to paymentLog={}: {}", paymentLogId, e.getMessage());
+        }
     }
 
     private vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails mapToStudentExtraDetails(

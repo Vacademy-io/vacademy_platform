@@ -126,13 +126,14 @@ public class StudentRegistrationManager {
                 .setInstituteStudentDetails(InstituteStudentDetails.builder().instituteId(instituteId).build());
 
         Student student = checkAndCreateStudent(instituteStudentDTO);
-        if (instituteStudentDTO.getInstituteStudentDetails() != null) {
-            linkStudentToInstitute(student, instituteStudentDTO.getInstituteStudentDetails());
-            if (instituteStudentDTO.getInstituteStudentDetails().getEnrollmentStatus()
-                    .equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
-                triggerEnrollmentWorkflow(instituteStudentDTO.getInstituteStudentDetails().getInstituteId(),
+        InstituteStudentDetails details = instituteStudentDTO.getInstituteStudentDetails();
+        if (details != null && StringUtils.hasText(details.getPackageSessionId())) {
+            linkStudentToInstitute(student, details);
+            if (StringUtils.hasText(details.getEnrollmentStatus()) &&
+                    details.getEnrollmentStatus().equalsIgnoreCase(LearnerSessionStatusEnum.ACTIVE.name())) {
+                triggerEnrollmentWorkflow(details.getInstituteId(),
                         instituteStudentDTO.getUserDetails(),
-                        instituteStudentDTO.getInstituteStudentDetails().getPackageSessionId(), null);
+                        details.getPackageSessionId(), null);
             }
         }
         return ResponseEntity.ok(new StudentDTO(student));
@@ -250,6 +251,15 @@ public class StudentRegistrationManager {
             }
             if (studentExtraDetails.getParentsToMotherMobileNumber() != null) {
                 student.setParentToMotherMobileNumber(studentExtraDetails.getParentsToMotherMobileNumber());
+            }
+            if (studentExtraDetails.getBillingContactName() != null) {
+                student.setBillingContactName(studentExtraDetails.getBillingContactName());
+            }
+            if (studentExtraDetails.getBillingContactEmail() != null) {
+                student.setBillingContactEmail(studentExtraDetails.getBillingContactEmail());
+            }
+            if (studentExtraDetails.getBillingContactRole() != null) {
+                student.setBillingContactRole(studentExtraDetails.getBillingContactRole());
             }
         }
         return instituteStudentRepository.save(student);

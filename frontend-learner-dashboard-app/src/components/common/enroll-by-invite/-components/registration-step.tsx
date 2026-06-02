@@ -3,6 +3,8 @@ import { Separator } from "@/components/ui/separator";
 import { GraduationCap, ArrowCounterClockwise } from "@phosphor-icons/react";
 import { FormProvider, UseFormReturn, useWatch } from "react-hook-form";
 import { FormControl, FormField, FormItem } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import ComboboxField from "@/components/design-system/combobox-field";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
@@ -96,6 +98,39 @@ export interface InviteData {
 }
 
 // Registration step props interface
+export interface BillingContactState {
+  hasSeparate: boolean;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export const EMPTY_BILLING_CONTACT: BillingContactState = {
+  hasSeparate: false,
+  name: "",
+  email: "",
+  role: "",
+};
+
+/**
+ * Per-field configuration for the billing-contact form. Mirrors the
+ * `postformfillConfiguration.billingContactFields` shape written by the admin
+ * invite-settings page. Each field has a customizable label + required flag;
+ * the role field also takes a comma-separated `options` string which, when
+ * non-empty, switches the input from free-text to a dropdown.
+ */
+export interface BillingContactFieldsConfig {
+  name?:  { label?: string; required?: boolean };
+  email?: { label?: string; required?: boolean };
+  role?:  { label?: string; required?: boolean; options?: string };
+}
+
+const DEFAULT_BILLING_FIELD_LABELS = {
+  name: "Billing Contact Full Name",
+  email: "Billing Contact Email",
+  role: "Role",
+};
+
 export interface RegistrationStepProps {
   /** Course data containing all course-related information */
   courseData: FinalCourseData;
@@ -107,6 +142,14 @@ export interface RegistrationStepProps {
   onSubmit: (values: FormValues) => void;
   /** React Hook Form instance */
   form: UseFormReturn<FormValues>;
+  /** Admin gate: invite enabled "Collect Billing Contact Details" */
+  collectBillingContact?: boolean;
+  /** Controlled billing-contact state (lifted to enroll-form) */
+  billingContact?: BillingContactState;
+  /** Callback fired when any billing-contact field changes */
+  onBillingContactChange?: (next: BillingContactState) => void;
+  /** Per-field config from invite's settingJson (label, required, role options) */
+  billingContactFields?: BillingContactFieldsConfig;
 }
 
 const currencySymbols: { [key: string]: string } = {
@@ -152,7 +195,37 @@ const RegistrationStep = ({
   instituteId,
   onSubmit,
   form,
+  collectBillingContact = false,
+  billingContact = EMPTY_BILLING_CONTACT,
+  onBillingContactChange,
+  billingContactFields,
 }: RegistrationStepProps) => {
+  // Resolve the per-field billing config once. Falls back to the previously
+  // hard-coded labels + required-ness so invites written before the admin
+  // schema landed continue to render exactly as they used to.
+  const billingFieldConfig = {
+    name: {
+      label: billingContactFields?.name?.label || DEFAULT_BILLING_FIELD_LABELS.name,
+      required: billingContactFields?.name?.required ?? true,
+    },
+    email: {
+      label: billingContactFields?.email?.label || DEFAULT_BILLING_FIELD_LABELS.email,
+      required: billingContactFields?.email?.required ?? true,
+    },
+    role: {
+      label: billingContactFields?.role?.label || DEFAULT_BILLING_FIELD_LABELS.role,
+      required: billingContactFields?.role?.required ?? true,
+      options: (billingContactFields?.role?.options || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    },
+  };
+
+  const updateBillingContact = (patch: Partial<BillingContactState>) => {
+    if (!onBillingContactChange) return;
+    onBillingContactChange({ ...billingContact, ...patch });
+  };
   // Sub-step: 0 = fill details, 1 = verify OTP
   const [subStep, setSubStep] = useState(0);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
@@ -287,6 +360,32 @@ const RegistrationStep = ({
     if (!emailRegex.test(email)) {
       toast.error("Please enter a valid email address");
       return;
+    }
+
+    if (collectBillingContact && billingContact.hasSeparate) {
+      const trimmedName = billingContact.name.trim();
+      const trimmedEmail = billingContact.email.trim();
+      const trimmedRole = billingContact.role.trim();
+      // Per-field required check honours the invite's billingContactFields config.
+      // A field marked required=false is allowed to be empty; the rest still need
+      // to be filled. Email format is only validated when a value is present
+      // (matches the spirit of "optional but valid").
+      if (billingFieldConfig.name.required && !trimmedName) {
+        toast.error(`Please enter ${billingFieldConfig.name.label.toLowerCase()}`);
+        return;
+      }
+      if (billingFieldConfig.email.required && !trimmedEmail) {
+        toast.error(`Please enter ${billingFieldConfig.email.label.toLowerCase()}`);
+        return;
+      }
+      if (billingFieldConfig.role.required && !trimmedRole) {
+        toast.error(`Please enter ${billingFieldConfig.role.label.toLowerCase()}`);
+        return;
+      }
+      if (trimmedEmail && !emailRegex.test(trimmedEmail)) {
+        toast.error(`Please enter a valid ${billingFieldConfig.email.label.toLowerCase()}`);
+        return;
+      }
     }
 
     // If email OTP verification is disabled, skip directly to form submission
@@ -636,7 +735,123 @@ const RegistrationStep = ({
                   );
                 }
               )}
-              
+
+              {collectBillingContact && (
+                <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="billing-contact-toggle"
+                      checked={billingContact.hasSeparate}
+                      onCheckedChange={(checked) =>
+                        updateBillingContact({ hasSeparate: Boolean(checked) })
+                      }
+                      className="mt-1"
+                    />
+                    <label
+                      htmlFor="billing-contact-toggle"
+                      className="flex-1 cursor-pointer select-none"
+                    >
+                      <div className="text-sm font-semibold text-gray-900">
+                        Add a separate billing contact
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Choose this if the person who will receive invoices and
+                        renewal notices for this enrollment is different from
+                        you (e.g. a parent / guardian, your employer, or your
+                        finance team).
+                      </p>
+                    </label>
+                  </div>
+
+                  {billingContact.hasSeparate && (
+                    <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor="billing-contact-name"
+                          className="text-sm font-medium text-gray-800"
+                        >
+                          {billingFieldConfig.name.label}
+                          {billingFieldConfig.name.required && (
+                            <span className="text-danger-600"> *</span>
+                          )}
+                        </label>
+                        <Input
+                          id="billing-contact-name"
+                          type="text"
+                          value={billingContact.name}
+                          onChange={(e) =>
+                            updateBillingContact({ name: e.target.value })
+                          }
+                          placeholder="First name & last name"
+                          required={billingFieldConfig.name.required}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor="billing-contact-email"
+                          className="text-sm font-medium text-gray-800"
+                        >
+                          {billingFieldConfig.email.label}
+                          {billingFieldConfig.email.required && (
+                            <span className="text-danger-600"> *</span>
+                          )}
+                        </label>
+                        <Input
+                          id="billing-contact-email"
+                          type="email"
+                          value={billingContact.email}
+                          onChange={(e) =>
+                            updateBillingContact({ email: e.target.value })
+                          }
+                          required={billingFieldConfig.email.required}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <label
+                          htmlFor="billing-contact-role"
+                          className="text-sm font-medium text-gray-800"
+                        >
+                          {billingFieldConfig.role.label}
+                          {billingFieldConfig.role.required && (
+                            <span className="text-danger-600"> *</span>
+                          )}
+                        </label>
+                        {billingFieldConfig.role.options.length > 0 ? (
+                          <select
+                            id="billing-contact-role"
+                            value={billingContact.role}
+                            onChange={(e) =>
+                              updateBillingContact({ role: e.target.value })
+                            }
+                            required={billingFieldConfig.role.required}
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            <option value="">Select…</option>
+                            {billingFieldConfig.role.options.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            id="billing-contact-role"
+                            type="text"
+                            value={billingContact.role}
+                            onChange={(e) =>
+                              updateBillingContact({ role: e.target.value })
+                            }
+                            required={billingFieldConfig.role.required}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Next Button */}
               <div className="flex items-center justify-between pt-4">
                 <button

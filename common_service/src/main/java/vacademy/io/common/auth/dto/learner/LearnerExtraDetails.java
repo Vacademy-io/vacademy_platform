@@ -15,4 +15,8 @@ public class LearnerExtraDetails {
     private String parentsToMotherMobileNumber;
     private String parentsToMotherEmail;
     private String linkedInstituteName;
+
+    private String billingContactName;
+    private String billingContactEmail;
+    private String billingContactRole;
 }

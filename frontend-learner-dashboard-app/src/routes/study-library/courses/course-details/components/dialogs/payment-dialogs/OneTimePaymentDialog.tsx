@@ -28,6 +28,9 @@ import { EnrollmentSuccessDialog } from "./EnrollmentSuccessDialog";
 import { EnrollmentPendingDialog } from "./EnrollmentPendingDialog";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 // TypeScript declarations for Stripe
 declare global {
@@ -73,6 +76,42 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
   const [cardElement, setCardElement] = useState<any>(null);
   const [cardElementError, setCardElementError] = useState<string>('');
   const [cardElementReady, setCardElementReady] = useState<boolean>(false);
+
+  // Discount coupon — gated by institute toggle (admin Settings → Coupons).
+  const couponsEnabled = useCouponsEnabled();
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: enrollmentData?.id || null,
+      packageSessionId,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
+
+  // Drop the applied coupon if the learner switches plans — its discount was
+  // computed against the previous plan's price, and leaving it in place would
+  // make the gateway charge a different amount than the BE re-validates to.
+  const prevPlanIdRef = useRef<string | null | undefined>(selectedPaymentPlan?.id);
+  useEffect(() => {
+    const currentId = selectedPaymentPlan?.id;
+    if (prevPlanIdRef.current !== currentId) {
+      prevPlanIdRef.current = currentId;
+      if (couponCtx.state.appliedCode) {
+        couponCtx.clear();
+      }
+    }
+  }, [selectedPaymentPlan?.id, couponCtx]);
+
   const cardElementRef = useRef<HTMLDivElement>(null);
 
   // Fetch enrollment data when dialog opens
@@ -262,13 +301,14 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
         paymentGatewayData,
         selectedPaymentPlan,
         selectedPaymentOption,
-        amount: selectedPaymentPlan.actual_price,
+        amount: effectiveAmount,
         currency: selectedPaymentPlan.currency || enrollmentData.currency,
         description: `One-time payment for ${courseTitle}`,
         paymentType: 'one-time',
         paymentMethod,
         token,
         returnUrl: window.location.origin + "/courses", // Default return URL
+        couponCode: couponCtx.state.appliedCode,
       });
 
       // Close the main dialog
@@ -538,6 +578,29 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 </div>
               </div>
               
+              {couponsEnabled && (
+                <div>
+                  <CouponInput
+                    state={couponCtx.state}
+                    onChange={couponCtx.setCode}
+                    onApply={couponCtx.apply}
+                    onClear={couponCtx.clear}
+                    currencySymbol={selectedPaymentPlan?.currency === "INR" ? "₹" : "$"}
+                  />
+                  {couponCtx.state.appliedCode && couponCtx.state.discount > 0 && (
+                    <div className="mt-3 flex justify-between rounded bg-gray-50 px-3 py-2 text-sm">
+                      <span className="text-gray-600">
+                        Subtotal {selectedPaymentPlan?.actual_price?.toFixed(2)} ·
+                        Coupon ({couponCtx.state.appliedCode}) − {couponCtx.state.discount.toFixed(2)}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        You pay {effectiveAmount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Card className="shadow-sm border border-gray-200">
                 <CardContent className="p-6">
                   <div className={`border rounded-lg p-4 bg-white ${

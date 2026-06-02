@@ -156,43 +156,58 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     let mobile_number = '';
     let username = '';
 
-    // Helper to find field by name (case-insensitive)
-    const findFieldByName = (names: string[]) => {
-      return instituteCustomFields.find(f => 
-        names.some(name => f.custom_field.fieldName.toLowerCase() === name.toLowerCase())
-      );
+    // Match core identity fields by `fieldKey` (the stable machine ID set at
+    // field creation by the backend's CustomFieldKeyGenerator) — NOT by the
+    // freeform display label `fieldName`, which admins can rename freely
+    // (e.g. "Full Name (First Name & Last Name)") and which breaks string match.
+    // Two key patterns coexist in production:
+    //   - Legacy seeded defaults:  "full_name" / "email" / "phone_number"
+    //   - Admin-created via UI:    "<slug>_inst_<instituteId>"
+    const matchKey = (prefix: string) => (f: InstituteCustomField) => {
+      const k = f.custom_field.fieldKey;
+      return k === prefix || k.startsWith(prefix + '_inst_');
     };
 
-    // Name field - could be 'name', 'Name', 'Full Name', 'full_name'
-    const nameField = findFieldByName(['name', 'full name', 'full_name']);
-    if (nameField) {
-      full_name = formData[nameField.custom_field.fieldKey] || '';
-    }
+    const nameField  = instituteCustomFields.find(matchKey('full_name'));
+    const emailField = instituteCustomFields.find(matchKey('email'));
+    const phoneField = instituteCustomFields.find(matchKey('phone_number'));
 
-    // If no single name field, try First Name + Last Name combination
+    if (nameField)  full_name     = formData[nameField.custom_field.fieldKey] || '';
+    if (emailField) email         = formData[emailField.custom_field.fieldKey] || '';
+    if (phoneField) mobile_number = formData[phoneField.custom_field.fieldKey] || '';
+
+    // Fallback for split-name forms (institutes using First Name + Last Name
+    // instead of a single combined Full Name field).
     if (!full_name) {
-      const firstNameField = findFieldByName(['first name', 'firstname']);
-      const lastNameField = findFieldByName(['last name', 'lastname']);
-      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] : '';
-      const lastName = lastNameField ? formData[lastNameField.custom_field.fieldKey] : '';
-      full_name = `${firstName || ''} ${lastName || ''}`.trim();
+      const firstNameField = instituteCustomFields.find(matchKey('first_name'));
+      const lastNameField  = instituteCustomFields.find(matchKey('last_name'));
+      const firstName = firstNameField ? formData[firstNameField.custom_field.fieldKey] || '' : '';
+      const lastName  = lastNameField ? formData[lastNameField.custom_field.fieldKey] || '' : '';
+      full_name = `${firstName} ${lastName}`.trim();
     }
 
-    // Email field - could be 'email', 'Email'
-    const emailField = findFieldByName(['email']);
-    email = emailField ? formData[emailField.custom_field.fieldKey] : '';
-
-    // Phone field - could be 'phone', 'Phone', 'Mobile', 'mobile_number'
-    const phoneField = findFieldByName(['phone', 'mobile', 'mobile_number']);
-    mobile_number = phoneField ? formData[phoneField.custom_field.fieldKey] : '';
-
-    // If standard fields form fallback (if custom fields didn't cover them or failed to load)
+    // Fallback for institutes whose invite form has no custom fields configured.
+    // The hardcoded Email/Full Name/Mobile inputs render in that branch (see the
+    // `instituteCustomFields.length === 0` body of the dialog below).
     if (!email && formData.email) email = formData.email;
     if (!full_name && formData.full_name) full_name = formData.full_name;
     if (!mobile_number && formData.mobile_number) mobile_number = formData.mobile_number;
 
     if (!email || !full_name) {
-      toast.error('Email and Name are required fields.');
+      // Distinguish "user left a visible input blank" from "this invite form
+      // has no recognizable email/name field configured" — the latter is an
+      // admin/config problem and needs a different message so the user doesn't
+      // think they're missing an input that doesn't exist.
+      const hasFormFields = instituteCustomFields.length > 0;
+      const isConfigProblem =
+        hasFormFields && (!emailField || (!nameField && !full_name));
+      if (isConfigProblem) {
+        toast.error(
+          "This institute's invite form is missing a recognizable Email or Full Name field. Ask an admin to verify the invite form configuration."
+        );
+      } else {
+        toast.error('Email and Name are required fields.');
+      }
       return;
     }
 
@@ -250,7 +265,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
     } catch (error: any) {
       console.error('Error adding member:', error);
       // Extract error message from API response
-      const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || 'Failed to add learner';
+      const errorMessage = error?.response?.data?.ex || error?.response?.data?.message || 'Failed to add staff';
       toast.error(errorMessage);
     } finally {
       setIsAdding(false);
@@ -286,13 +301,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         user_ids: selectedMembers,
       });
 
-      toast.success(`Successfully terminated ${selectedMembers.length} learner(s)`);
+      toast.success(`Successfully terminated ${selectedMembers.length} staff member(s)`);
       setSelectedMembers([]);
       setIsTerminateDialogOpen(false);
       loadMembers(); // Refresh the list
     } catch (error) {
       console.error('Error terminating members:', error);
-      toast.error('Failed to terminate learners. Please try again.');
+      toast.error('Failed to terminate staff. Please try again.');
     } finally {
       setIsTerminating(false);
     }
@@ -435,7 +450,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               inputClass="!w-full h-10 !rounded-md !border-input"
               buttonClass="!rounded-l-md !border-input"
               countryCodeEditable={false}
-              enableAreaCodes={true}
+              enableAreaCodes={false}
               disableCountryGuess={false}
               preferredCountries={preferredCountries}
             />
@@ -467,7 +482,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{(adminMappings.find(m => m.package_session_id === selectedPackageSession) || adminMappings[0])?.sub_org_details?.institute_name || 'Sub Organization'}</h1>
-          <p className="text-gray-600 mt-1">Manage learners for your {(adminMappings.find(m => m.package_session_id === selectedPackageSession) || adminMappings[0])?.sub_org_details?.institute_name || 'Sub Organization'}</p>
+          <p className="text-gray-600 mt-1">Manage staff for your {(adminMappings.find(m => m.package_session_id === selectedPackageSession) || adminMappings[0])?.sub_org_details?.institute_name || 'Sub Organization'}</p>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={loadMembers} variant="outline" size="sm">
@@ -482,12 +497,12 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             <DialogTrigger asChild>
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Learner
+                Add Staff
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md w-vw-95 max-h-screen-90 overflow-y-auto p-4 sm:p-6 z-50">
               <DialogHeader>
-                <DialogTitle>Add New Learner</DialogTitle>
+                <DialogTitle>Add New Staff</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 {loadingCustomFields ? (
@@ -515,7 +530,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         type="email"
                         value={formData.email}
                         onChange={(e) => setFormData((prev: any) => ({ ...prev, email: e.target.value }))}
-                        placeholder="learner@example.com"
+                        placeholder="staff@example.com"
                         className={formData.email && !validateEmail(formData.email) ? "border-red-500" : ""}
                       />
                     </div>
@@ -626,7 +641,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                     Cancel
                   </Button>
                   <Button onClick={handleAddMember} className="w-full sm:w-auto" disabled={isAdding}>
-                    {isAdding ? 'Adding...' : 'Add Learner'}
+                    {isAdding ? 'Adding...' : 'Add Staff'}
                   </Button>
                 </div>
               </div>
@@ -677,7 +692,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
-                Learners ({members.length})
+                Staff ({members.length})
               </CardTitle>
               {selectedPackageSession && (
                 <p className="text-sm text-gray-600 mt-1">
@@ -686,7 +701,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               )}
               {selectedMembers.length > 0 && (
                 <p className="text-sm text-gray-600 mt-1">
-                  {selectedMembers.length} learner{selectedMembers.length > 1 ? 's' : ''} selected
+                  {selectedMembers.length} staff member{selectedMembers.length > 1 ? 's' : ''} selected
                 </p>
               )}
             </div>
@@ -704,7 +719,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         Confirm Termination
                       </AlertDialogTitle>
                       <AlertDialogDescription className="text-gray-600">
-                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> learner{selectedMembers.length > 1 ? 's' : ''}?
+                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> staff member{selectedMembers.length > 1 ? 's' : ''}?
                         This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -737,13 +752,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-              <span className="ml-3 text-gray-600">Loading learners...</span>
+              <span className="ml-3 text-gray-600">Loading staff...</span>
             </div>
           ) : members.length === 0 ? (
             <div className="text-center py-8">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No learners found</h3>
-              <p className="text-gray-600">Start by adding learners to this package session.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No staff found</h3>
+              <p className="text-gray-600">Start by adding staff to this package session.</p>
             </div>
           ) : (
             (() => {

@@ -126,7 +126,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query(value = """
                 SELECT
-                    COALESCE((COUNT(DISTINCT dt.page_number) * 100.0 / MAX(ds.published_document_total_pages)), 0) AS percentage_watched
+                    COALESCE((COUNT(DISTINCT dt.page_number) * 100.0 / NULLIF(MAX(ds.published_document_total_pages), 0)), 0) AS percentage_watched
                 FROM
                     slide s
                 JOIN
@@ -271,7 +271,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.quizSlideQuestionTracked qt
-            WHERE al.userId = :userId AND al.slideId = :slideId
+            WHERE al.userId = :userId AND al.slideId = :slideId AND al.sourceType = 'QUIZ'
             """)
     Page<ActivityLog> findActivityLogsWithQuizSlide(@Param("userId") String userId,
             @Param("slideId") String slideId,

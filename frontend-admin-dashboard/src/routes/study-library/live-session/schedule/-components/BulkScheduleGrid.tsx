@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Controller, useForm, useFieldArray } from 'react-hook-form';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    Controller,
+    useForm,
+    useFieldArray,
+    useWatch,
+    useFormState,
+    type UseFormReturn,
+} from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { fromZonedTime, format as formatTZ, toZonedTime } from 'date-fns-tz';
 import { useNavigate } from '@tanstack/react-router';
@@ -20,7 +27,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { WAITING_ROOM_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
-import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass } from '@phosphor-icons/react';
+import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,7 +76,6 @@ import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { LiveSessionPreviewDialog } from './LiveSessionPreviewDialog';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
-import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
@@ -187,6 +193,29 @@ const BULK_DEFAULT_FEEDBACK_QUESTIONS = [
     },
 ];
 
+/**
+ * A row is "ready" once it has a title, date, start time, and either a link or
+ * a platform that auto-provisions one (Zoho / BBB). Shared by the live header
+ * count badge and the preview dialog so both agree on what's submittable.
+ */
+const isRowReady = (r: {
+    title?: string;
+    startDate?: string;
+    startTime?: string;
+    platform?: string;
+    link?: string;
+}) =>
+    Boolean(
+        r?.title &&
+            r?.startDate &&
+            r?.startTime &&
+            (r?.platform === 'zoho' || r?.platform === 'bbb' || r?.link)
+    );
+
+// Stable empty fallback so the memoized RowEditor doesn't see a new `courses`
+// array identity on every render while the study-library query is in flight.
+const EMPTY_COURSES: RowBatchPickerProps['courses'] = [];
+
 export function BulkScheduleGrid() {
     const navigate = useNavigate();
     const { setBulkSessionIds, setStep1Data } = useLiveSessionStore();
@@ -202,8 +231,20 @@ export function BulkScheduleGrid() {
 
     // Same subject source the single-class form uses, so the bulk grid offers
     // the institute's curated subject list instead of free text.
-    const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
-    const { SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
+    // Use plain useQuery (not useSuspenseQuery) so the component doesn't throw
+    // a Promise when the institute fetch is still in flight. The route gate
+    // only waits for live-session settings, so on a cold load (deep link /
+    // refresh) the institute query may still be pending here. With no
+    // <Suspense> boundary above this component, a throw would bubble to the
+    // route errorComponent and render the "System Crashed" page. Guarding
+    // with isLoading + an early return preserves the same behaviour minus
+    // the crash.
+    const { data: instituteDetails, isLoading: instituteLoading } = useQuery(
+        useInstituteQuery()
+    );
+    const { SubjectFilterData } = useFilterDataForAssesment(
+        instituteDetails as never
+    );
     const subjectOptions = useMemo(
         () =>
             (SubjectFilterData ?? []).map((s: { name: string }) => ({
@@ -383,7 +424,12 @@ export function BulkScheduleGrid() {
         name: 'rows',
     });
 
-    const watchedRows = form.watch('rows');
+    // NOTE: intentionally NOT subscribing to `rows` here. Watching the whole
+    // rows array re-rendered this large component (and its child editors /
+    // rich-text fields) on every keystroke in any cell, which accumulated DOM
+    // churn until the tab ran out of memory on long editing sessions. Per-row
+    // state now lives in the memoized <RowEditor>; the header count uses a
+    // scoped <ReadyCountBadge>; the preview reads a non-reactive snapshot.
     const watchedTimeZone = form.watch('timeZone');
 
     // If settings load after the form mounted and the admin hasn't picked a
@@ -409,11 +455,14 @@ export function BulkScheduleGrid() {
                 form.getValues('timeZone') ?? initialTimeZone
             ) as never
         );
-    const duplicateRow = (idx: number) => {
-        const current = form.getValues(`rows.${idx}`);
-        if (!current) return;
-        insert(idx + 1, { ...current });
-    };
+    const duplicateRow = useCallback(
+        (idx: number) => {
+            const current = form.getValues(`rows.${idx}`);
+            if (!current) return;
+            insert(idx + 1, { ...current });
+        },
+        [form, insert]
+    );
 
     const handleBulkPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
         // Tab-separated rows from spreadsheet, mapping columns:
@@ -718,9 +767,27 @@ export function BulkScheduleGrid() {
     };
 
     const totalRows = fields.length;
-    const validRowCount = watchedRows?.filter(
-        (r) => r.title && r.startDate && r.startTime && (r.platform === 'zoho' || r.platform === 'bbb' || r.link)
-    ).length ?? 0;
+    // Non-reactive snapshot for the (modal) preview dialog. The grid can't be
+    // edited while the dialog is open, and opening it re-renders this component
+    // (via `previewOpen` state), so reading current values here — instead of
+    // subscribing to every row — stays accurate without re-rendering the whole
+    // form on each keystroke. The live header count uses <ReadyCountBadge>.
+    const previewRows = form.getValues('rows') ?? [];
+    const previewValidCount = previewRows.filter(isRowReady).length;
+
+    // Wait for the institute to load before mounting the grid. `instituteDetails`
+    // is consumed by onSubmit (batches_for_sessions, learner_portal_base_url),
+    // and downstream submit code assumes it is defined. Showing a loader here
+    // also avoids the previous crash where useSuspenseQuery would throw a
+    // pending Promise without a Suspense boundary above and trip the
+    // route-level errorComponent ("System Crashed").
+    if (instituteLoading || !instituteDetails) {
+        return (
+            <div className="flex h-64 items-center justify-center">
+                <CircleNotch className="size-8 animate-spin text-neutral-400" />
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-5 pb-20">
@@ -1292,17 +1359,10 @@ export function BulkScheduleGrid() {
                 description="One row per class. Paste tab-separated rows from a spreadsheet to bulk-fill."
                 headerRight={
                     <div className="flex items-center gap-2">
-                        <Badge
-                            variant="secondary"
-                            className={cn(
-                                'rounded-full px-2.5 py-1 text-xs',
-                                validRowCount === totalRows && totalRows > 0
-                                    ? 'bg-primary-100 text-primary-600'
-                                    : ''
-                            )}
-                        >
-                            {validRowCount}/{totalRows} ready
-                        </Badge>
+                        <ReadyCountBadge
+                            control={form.control}
+                            totalRows={totalRows}
+                        />
                     </div>
                 }
                 contentClassName="p-0 sm:p-0"
@@ -1359,367 +1419,21 @@ export function BulkScheduleGrid() {
                                 </TableRow>
                             </TableHeader>
                         <TableBody>
-                            {fields.map((field, index) => {
-                                const rowErrors = form.formState.errors.rows?.[index];
-                                const hasError = Boolean(rowErrors);
-                                const platform = watchedRows?.[index]?.platform;
-                                const linkRequired = platform !== 'zoho' && platform !== 'bbb';
-                                return (
-                                    <TableRow
-                                        key={field.id}
-                                        className={cn(hasError && 'bg-danger-50/40')}
-                                    >
-                                        <TableCell className="text-center text-xs text-neutral-500">
-                                            {index + 1}
-                                            {hasError && (
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                            <Warning
-                                                                size={14}
-                                                                className="ml-1 inline text-danger-600"
-                                                            />
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                            Row has validation errors
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                {...form.register(`rows.${index}.title` as const)}
-                                                placeholder="e.g. Algebra Recap"
-                                                className="h-8"
-                                            />
-                                            {rowErrors?.title && (
-                                                <p className="mt-1 text-[11px] text-danger-600">
-                                                    {rowErrors.title.message as string}
-                                                </p>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Controller
-                                                control={form.control}
-                                                name={`rows.${index}.subject` as const}
-                                                render={({ field }) => (
-                                                    <Select
-                                                        value={field.value || '__none__'}
-                                                        onValueChange={(v) =>
-                                                            field.onChange(
-                                                                v === '__none__' ? '' : v
-                                                            )
-                                                        }
-                                                    >
-                                                        <SelectTrigger className="h-8">
-                                                            <SelectValue placeholder="Select" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="__none__">
-                                                                None
-                                                            </SelectItem>
-                                                            {subjectOptions.map((opt) => (
-                                                                <SelectItem
-                                                                    key={opt.value}
-                                                                    value={opt.value}
-                                                                >
-                                                                    {opt.label}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                )}
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                type="date"
-                                                {...form.register(
-                                                    `rows.${index}.startDate` as const
-                                                )}
-                                                className="h-8"
-                                            />
-                                            {rowErrors?.startDate && (
-                                                <p className="mt-1 text-[11px] text-danger-600">
-                                                    {rowErrors.startDate.message as string}
-                                                </p>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                type="time"
-                                                {...form.register(
-                                                    `rows.${index}.startTime` as const
-                                                )}
-                                                className="h-8"
-                                            />
-                                            {rowErrors?.startTime && (
-                                                <p className="mt-1 text-[11px] text-danger-600">
-                                                    {rowErrors.startTime.message as string}
-                                                </p>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                type="number"
-                                                min={0}
-                                                max={24}
-                                                {...form.register(
-                                                    `rows.${index}.durationHours` as const
-                                                )}
-                                                className="h-8"
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                type="number"
-                                                min={0}
-                                                max={59}
-                                                {...form.register(
-                                                    `rows.${index}.durationMinutes` as const
-                                                )}
-                                                className="h-8"
-                                            />
-                                            {rowErrors?.durationMinutes && (
-                                                <p className="mt-1 text-[11px] text-danger-600">
-                                                    {rowErrors.durationMinutes.message as string}
-                                                </p>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Select
-                                                value={platform ?? 'other'}
-                                                onValueChange={(v) =>
-                                                    form.setValue(
-                                                        `rows.${index}.platform` as const,
-                                                        v,
-                                                        { shouldValidate: true }
-                                                    )
-                                                }
-                                            >
-                                                <SelectTrigger className="h-8">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {filteredStreamingOptions.map((opt) => (
-                                                        <SelectItem
-                                                            key={opt._id}
-                                                            value={opt.value}
-                                                        >
-                                                            {opt.label}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Input
-                                                {...form.register(`rows.${index}.link` as const)}
-                                                placeholder={
-                                                    linkRequired
-                                                        ? 'https://…'
-                                                        : 'Auto-generated'
-                                                }
-                                                disabled={!linkRequired}
-                                                className="h-8"
-                                            />
-                                            {rowErrors?.link && (
-                                                <p className="mt-1 text-[11px] text-danger-600">
-                                                    {rowErrors.link.message as string}
-                                                </p>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Controller
-                                                control={form.control}
-                                                name={
-                                                    `rows.${index}.selectedLevels` as const
-                                                }
-                                                render={({ field }) => (
-                                                    <RowBatchPicker
-                                                        value={field.value ?? []}
-                                                        onChange={field.onChange}
-                                                        courses={courses ?? []}
-                                                        sessionList={sessionList}
-                                                    />
-                                                )}
-                                            />
-                                        </TableCell>
-                                        <TableCell>
-                                            <RowWaitingRoomPicker
-                                                rowIndex={index}
-                                                row={watchedRows?.[index] ?? null}
-                                                shared={form.watch('sharedOptions')}
-                                                onChange={(patch) => {
-                                                    if ('enabled' in patch) {
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomEnabled` as const,
-                                                            patch.enabled,
-                                                            { shouldDirty: true }
-                                                        );
-                                                    }
-                                                    if ('minutes' in patch) {
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomMinutes` as const,
-                                                            patch.minutes,
-                                                            { shouldDirty: true }
-                                                        );
-                                                    }
-                                                    if ('thumbnailFileId' in patch) {
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomThumbnailFileId` as const,
-                                                            patch.thumbnailFileId,
-                                                            { shouldDirty: true }
-                                                        );
-                                                    }
-                                                    if ('musicFileId' in patch) {
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomMusicFileId` as const,
-                                                            patch.musicFileId,
-                                                            { shouldDirty: true }
-                                                        );
-                                                    }
-                                                    if (patch.reset) {
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomEnabled` as const,
-                                                            undefined,
-                                                            { shouldDirty: true }
-                                                        );
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomMinutes` as const,
-                                                            undefined,
-                                                            { shouldDirty: true }
-                                                        );
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomThumbnailFileId` as const,
-                                                            undefined,
-                                                            { shouldDirty: true }
-                                                        );
-                                                        form.setValue(
-                                                            `rows.${index}.waitingRoomMusicFileId` as const,
-                                                            undefined,
-                                                            { shouldDirty: true }
-                                                        );
-                                                    }
-                                                }}
-                                            />
-                                        </TableCell>
-                                        {liveSessionSettings.descriptionEnabled && (
-                                        <TableCell>
-                                            <Controller
-                                                control={form.control}
-                                                name={`rows.${index}.description` as const}
-                                                render={({ field }) => {
-                                                    const plain = (field.value ?? '')
-                                                        .replace(/<[^>]*>/g, '')
-                                                        .trim();
-                                                    return (
-                                                        <Popover>
-                                                            <PopoverTrigger asChild>
-                                                                <Button
-                                                                    type="button"
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    className={cn(
-                                                                        'h-8 w-full justify-start gap-1.5 truncate text-xs',
-                                                                        plain &&
-                                                                            'border-primary-300 bg-primary-50'
-                                                                    )}
-                                                                >
-                                                                    <Article size={14} />
-                                                                    <span className="truncate">
-                                                                        {plain
-                                                                            ? plain.slice(0, 28) +
-                                                                              (plain.length > 28
-                                                                                  ? '…'
-                                                                                  : '')
-                                                                            : 'Add description'}
-                                                                    </span>
-                                                                </Button>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent
-                                                                align="start"
-                                                                className="w-[420px] p-3"
-                                                                onOpenAutoFocus={(e) =>
-                                                                    e.preventDefault()
-                                                                }
-                                                            >
-                                                                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                                                    Description for row {index + 1}
-                                                                </div>
-                                                                <RichTextEditor
-                                                                    value={field.value || ''}
-                                                                    onChange={field.onChange}
-                                                                    onBlur={field.onBlur}
-                                                                    minHeight={140}
-                                                                />
-                                                                {plain && (
-                                                                    <div className="mt-2 flex justify-end">
-                                                                        <Button
-                                                                            type="button"
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            className="text-xs text-neutral-500"
-                                                                            onClick={() =>
-                                                                                field.onChange('')
-                                                                            }
-                                                                        >
-                                                                            Clear
-                                                                        </Button>
-                                                                    </div>
-                                                                )}
-                                                            </PopoverContent>
-                                                        </Popover>
-                                                    );
-                                                }}
-                                            />
-                                        </TableCell>
-                                        )}
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-1">
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="size-7"
-                                                                onClick={() => duplicateRow(index)}
-                                                            >
-                                                                <Copy size={14} />
-                                                            </Button>
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                            Duplicate row
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="size-7 text-danger-500 hover:text-danger-700"
-                                                                disabled={fields.length === 1}
-                                                                onClick={() => remove(index)}
-                                                            >
-                                                                <Trash size={14} />
-                                                            </Button>
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                            Remove row
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            {fields.map((field, index) => (
+                                <RowEditor
+                                    key={field.id}
+                                    index={index}
+                                    form={form}
+                                    subjectOptions={subjectOptions}
+                                    filteredStreamingOptions={filteredStreamingOptions}
+                                    courses={courses ?? EMPTY_COURSES}
+                                    sessionList={sessionList}
+                                    descriptionEnabled={liveSessionSettings.descriptionEnabled}
+                                    disableRemove={fields.length === 1}
+                                    onDuplicate={duplicateRow}
+                                    onRemove={remove}
+                                />
+                            ))}
                         </TableBody>
                     </Table>
                     </div>
@@ -1995,8 +1709,8 @@ export function BulkScheduleGrid() {
                         onAttendance: form.watch('notifySettings.onAttendance'),
                     },
                 }}
-                sessions={watchedRows ?? []}
-                validCount={validRowCount}
+                sessions={previewRows}
+                validCount={previewValidCount}
                 courses={courses ?? []}
                 sessionList={sessionList}
             />
@@ -2604,3 +2318,407 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
         </Popover>
     );
 };
+
+type RowEditorProps = {
+    index: number;
+    form: UseFormReturn<BulkSessionForm>;
+    subjectOptions: Array<{ value: string; label: string }>;
+    filteredStreamingOptions: typeof STREAMING_OPTIONS;
+    courses: RowBatchPickerProps['courses'];
+    sessionList: DropdownItemType[];
+    descriptionEnabled: boolean;
+    disableRemove: boolean;
+    onDuplicate: (index: number) => void;
+    onRemove: (index: number) => void;
+};
+
+/**
+ * A single grid row, isolated behind React.memo so editing one row never
+ * re-renders its siblings. It subscribes (via scoped `useWatch` /
+ * `useFormState`) ONLY to the fields it renders against: this row's platform,
+ * its waiting-room overrides, the shared waiting-room defaults, and its own
+ * validation errors. Plain text/number inputs stay uncontrolled
+ * (`form.register`), so typing in them re-renders nothing at all. That is what
+ * stops a large grid from accumulating render/DOM churn (and eventually
+ * crashing the tab) during a long editing session.
+ */
+const RowEditor = memo(function RowEditor({
+    index,
+    form,
+    subjectOptions,
+    filteredStreamingOptions,
+    courses,
+    sessionList,
+    descriptionEnabled,
+    disableRemove,
+    onDuplicate,
+    onRemove,
+}: RowEditorProps) {
+    const { control } = form;
+    const { errors } = useFormState({ control, name: `rows.${index}` as const });
+    const rowErrors = errors.rows?.[index];
+    const hasError = Boolean(rowErrors);
+
+    const platform = useWatch({ control, name: `rows.${index}.platform` as const });
+    const linkRequired = platform !== 'zoho' && platform !== 'bbb';
+
+    const [
+        waitingRoomEnabled,
+        waitingRoomMinutes,
+        waitingRoomThumbnailFileId,
+        waitingRoomMusicFileId,
+    ] = useWatch({
+        control,
+        name: [
+            `rows.${index}.waitingRoomEnabled`,
+            `rows.${index}.waitingRoomMinutes`,
+            `rows.${index}.waitingRoomThumbnailFileId`,
+            `rows.${index}.waitingRoomMusicFileId`,
+        ] as const,
+    });
+    const sharedOptions = useWatch({ control, name: 'sharedOptions' });
+
+    return (
+        <TableRow className={cn(hasError && 'bg-danger-50/40')}>
+            <TableCell className="text-center text-xs text-neutral-500">
+                {index + 1}
+                {hasError && (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Warning
+                                    size={14}
+                                    className="ml-1 inline text-danger-600"
+                                />
+                            </TooltipTrigger>
+                            <TooltipContent>Row has validation errors</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )}
+            </TableCell>
+            <TableCell>
+                <Input
+                    {...form.register(`rows.${index}.title` as const)}
+                    placeholder="e.g. Algebra Recap"
+                    className="h-8"
+                />
+                {rowErrors?.title && (
+                    <p className="mt-1 text-[11px] text-danger-600">
+                        {rowErrors.title.message as string}
+                    </p>
+                )}
+            </TableCell>
+            <TableCell>
+                <Controller
+                    control={control}
+                    name={`rows.${index}.subject` as const}
+                    render={({ field }) => (
+                        <Select
+                            value={field.value || '__none__'}
+                            onValueChange={(v) =>
+                                field.onChange(v === '__none__' ? '' : v)
+                            }
+                        >
+                            <SelectTrigger className="h-8">
+                                <SelectValue placeholder="Select" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__none__">None</SelectItem>
+                                {subjectOptions.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+            </TableCell>
+            <TableCell>
+                <Input
+                    type="date"
+                    {...form.register(`rows.${index}.startDate` as const)}
+                    className="h-8"
+                />
+                {rowErrors?.startDate && (
+                    <p className="mt-1 text-[11px] text-danger-600">
+                        {rowErrors.startDate.message as string}
+                    </p>
+                )}
+            </TableCell>
+            <TableCell>
+                <Input
+                    type="time"
+                    {...form.register(`rows.${index}.startTime` as const)}
+                    className="h-8"
+                />
+                {rowErrors?.startTime && (
+                    <p className="mt-1 text-[11px] text-danger-600">
+                        {rowErrors.startTime.message as string}
+                    </p>
+                )}
+            </TableCell>
+            <TableCell>
+                <Input
+                    type="number"
+                    min={0}
+                    max={24}
+                    {...form.register(`rows.${index}.durationHours` as const)}
+                    className="h-8"
+                />
+            </TableCell>
+            <TableCell>
+                <Input
+                    type="number"
+                    min={0}
+                    max={59}
+                    {...form.register(`rows.${index}.durationMinutes` as const)}
+                    className="h-8"
+                />
+                {rowErrors?.durationMinutes && (
+                    <p className="mt-1 text-[11px] text-danger-600">
+                        {rowErrors.durationMinutes.message as string}
+                    </p>
+                )}
+            </TableCell>
+            <TableCell>
+                <Select
+                    value={platform ?? 'other'}
+                    onValueChange={(v) =>
+                        form.setValue(`rows.${index}.platform` as const, v, {
+                            shouldValidate: true,
+                        })
+                    }
+                >
+                    <SelectTrigger className="h-8">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {filteredStreamingOptions.map((opt) => (
+                            <SelectItem key={opt._id} value={opt.value}>
+                                {opt.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </TableCell>
+            <TableCell>
+                <Input
+                    {...form.register(`rows.${index}.link` as const)}
+                    placeholder={linkRequired ? 'https://…' : 'Auto-generated'}
+                    disabled={!linkRequired}
+                    className="h-8"
+                />
+                {rowErrors?.link && (
+                    <p className="mt-1 text-[11px] text-danger-600">
+                        {rowErrors.link.message as string}
+                    </p>
+                )}
+            </TableCell>
+            <TableCell>
+                <Controller
+                    control={control}
+                    name={`rows.${index}.selectedLevels` as const}
+                    render={({ field }) => (
+                        <RowBatchPicker
+                            value={field.value ?? []}
+                            onChange={field.onChange}
+                            courses={courses}
+                            sessionList={sessionList}
+                        />
+                    )}
+                />
+            </TableCell>
+            <TableCell>
+                <RowWaitingRoomPicker
+                    rowIndex={index}
+                    row={{
+                        waitingRoomEnabled,
+                        waitingRoomMinutes,
+                        waitingRoomThumbnailFileId,
+                        waitingRoomMusicFileId,
+                    }}
+                    shared={sharedOptions}
+                    onChange={(patch) => {
+                        if ('enabled' in patch) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomEnabled` as const,
+                                patch.enabled,
+                                { shouldDirty: true }
+                            );
+                        }
+                        if ('minutes' in patch) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomMinutes` as const,
+                                patch.minutes,
+                                { shouldDirty: true }
+                            );
+                        }
+                        if ('thumbnailFileId' in patch) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomThumbnailFileId` as const,
+                                patch.thumbnailFileId,
+                                { shouldDirty: true }
+                            );
+                        }
+                        if ('musicFileId' in patch) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomMusicFileId` as const,
+                                patch.musicFileId,
+                                { shouldDirty: true }
+                            );
+                        }
+                        if (patch.reset) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomEnabled` as const,
+                                undefined,
+                                { shouldDirty: true }
+                            );
+                            form.setValue(
+                                `rows.${index}.waitingRoomMinutes` as const,
+                                undefined,
+                                { shouldDirty: true }
+                            );
+                            form.setValue(
+                                `rows.${index}.waitingRoomThumbnailFileId` as const,
+                                undefined,
+                                { shouldDirty: true }
+                            );
+                            form.setValue(
+                                `rows.${index}.waitingRoomMusicFileId` as const,
+                                undefined,
+                                { shouldDirty: true }
+                            );
+                        }
+                    }}
+                />
+            </TableCell>
+            {descriptionEnabled && (
+                <TableCell>
+                    <Controller
+                        control={control}
+                        name={`rows.${index}.description` as const}
+                        render={({ field }) => {
+                            const plain = (field.value ?? '')
+                                .replace(/<[^>]*>/g, '')
+                                .trim();
+                            return (
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className={cn(
+                                                'h-8 w-full justify-start gap-1.5 truncate text-xs',
+                                                plain &&
+                                                    'border-primary-300 bg-primary-50'
+                                            )}
+                                        >
+                                            <Article size={14} />
+                                            <span className="truncate">
+                                                {plain
+                                                    ? plain.slice(0, 28) +
+                                                      (plain.length > 28 ? '…' : '')
+                                                    : 'Add description'}
+                                            </span>
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                        align="start"
+                                        className="w-[420px] p-3"
+                                        onOpenAutoFocus={(e) => e.preventDefault()}
+                                    >
+                                        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                            Description for row {index + 1}
+                                        </div>
+                                        <RichTextEditor
+                                            value={field.value || ''}
+                                            onChange={field.onChange}
+                                            onBlur={field.onBlur}
+                                            minHeight={140}
+                                        />
+                                        {plain && (
+                                            <div className="mt-2 flex justify-end">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-xs text-neutral-500"
+                                                    onClick={() => field.onChange('')}
+                                                >
+                                                    Clear
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </PopoverContent>
+                                </Popover>
+                            );
+                        }}
+                    />
+                </TableCell>
+            )}
+            <TableCell className="text-right">
+                <div className="flex justify-end gap-1">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7"
+                                    onClick={() => onDuplicate(index)}
+                                >
+                                    <Copy size={14} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Duplicate row</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 text-danger-500 hover:text-danger-700"
+                                    disabled={disableRemove}
+                                    onClick={() => onRemove(index)}
+                                >
+                                    <Trash size={14} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Remove row</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
+            </TableCell>
+        </TableRow>
+    );
+});
+
+function ReadyCountBadge({
+    control,
+    totalRows,
+}: {
+    control: UseFormReturn<BulkSessionForm>['control'];
+    totalRows: number;
+}) {
+    const rows = useWatch({ control, name: 'rows' });
+    const validRowCount = (rows ?? []).filter(isRowReady).length;
+    return (
+        <Badge
+            variant="secondary"
+            className={cn(
+                'rounded-full px-2.5 py-1 text-xs',
+                validRowCount === totalRows && totalRows > 0
+                    ? 'bg-primary-100 text-primary-600'
+                    : ''
+            )}
+        >
+            {validRowCount}/{totalRows} ready
+        </Badge>
+    );
+}

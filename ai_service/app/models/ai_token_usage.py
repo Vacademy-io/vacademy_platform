@@ -112,6 +112,8 @@ class RequestType(str, enum.Enum):
     AGENT = "agent"                  # AI Agent interactions
     ANALYTICS = "analytics"          # Student analytics
     COPILOT = "copilot"              # Instructor copilot
+    INCIDENT = "incident"            # Incident/LL structure extraction (migrated)
+    QUESTION_METADATA = "question_metadata"  # Question metadata extraction (migrated)
     STOCK = "stock"                  # Stock photos and videos
     AVATAR_VIDEO = "avatar_video"    # Per-second avatar video (fal.ai talking-head, Host feature)
 

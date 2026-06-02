@@ -23,6 +23,12 @@ public class QuizSlideQuestionTracked {
 
     private String questionId;
 
+    @Column(name = "instructor_feedback", columnDefinition = "TEXT")
+    private String instructorFeedback;
+
+    @Column(name = "instructor_feedback_file_id")
+    private String instructorFeedbackFileId;
+
     @ManyToOne
     @JoinColumn(name = "activity_id", nullable = false)
     private ActivityLog activityLog;
@@ -42,11 +48,13 @@ public class QuizSlideQuestionTracked {
     }
 
     public QuizSideActivityLogDTO toQuizSideActivityLogDTO() {
-        QuizSideActivityLogDTO videoSlideQuestionActivityLogDTO = new QuizSideActivityLogDTO();
-        videoSlideQuestionActivityLogDTO.setId(id);
-        videoSlideQuestionActivityLogDTO.setResponseJson(responseJson);
-        videoSlideQuestionActivityLogDTO.setResponseStatus(responseStatus);
-        videoSlideQuestionActivityLogDTO.setQuestionId(questionId);
-        return videoSlideQuestionActivityLogDTO;
+        QuizSideActivityLogDTO dto = new QuizSideActivityLogDTO();
+        dto.setId(id);
+        dto.setResponseJson(responseJson);
+        dto.setResponseStatus(responseStatus);
+        dto.setQuestionId(questionId);
+        dto.setInstructorFeedback(instructorFeedback);
+        dto.setInstructorFeedbackFileId(instructorFeedbackFileId);
+        return dto;
     }
 }

@@ -1101,7 +1101,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     }
 
     navigate({
-      to: `/${tagName}/${course.packageSessionId || course.id}`,
+      to: `/${tagName}/${course.id}`,
       search: searchParams.toString()
         ? {
             enrollInviteId: course.enrollInviteId,

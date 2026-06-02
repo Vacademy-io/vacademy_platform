@@ -30,6 +30,9 @@ public class EmailNotificationService implements INotificationService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.notification_service.service.BillingContactRecipientResolver billingContactRecipientResolver;
+
     private final EnrollmentTemplateService enrollmentTemplateService;
 
     @Override
@@ -153,7 +156,17 @@ public class EmailNotificationService implements INotificationService {
         dynamicParams.put("renewal_link", "https://vacademy.io/renew");
         notificationToUserDTO.setPlaceholders(dynamicParams);
 
-        notificationDTO.setUsers(List.of(notificationToUserDTO));
+        java.util.List<NotificationToUserDTO> recipients = new java.util.ArrayList<>();
+        recipients.add(notificationToUserDTO);
+        billingContactRecipientResolver
+                .buildBillingContactRecipient(userDTO.getId(), instituteId, recipientEmail)
+                .ifPresent(billing -> {
+                    // Reuse the same template placeholders so the renewal CTA / expiry date
+                    // render identically in the billing-contact copy.
+                    billing.setPlaceholders(new HashMap<>(dynamicParams));
+                    recipients.add(billing);
+                });
+        notificationDTO.setUsers(recipients);
         notificationService.sendEmailViaUnified(notificationDTO, instituteId);
     }
 

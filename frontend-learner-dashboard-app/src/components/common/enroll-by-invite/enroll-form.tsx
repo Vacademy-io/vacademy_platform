@@ -55,10 +55,25 @@ import {
   FinalCourseData,
   EnrollmentData,
   SelectedPayment,
+  getSelectedPaymentPrice,
   EnrollmentPolicyDialog,
   EnrollmentPolicyResponse,
   EnrollmentPolicyDialogType,
+  EMPTY_BILLING_CONTACT,
+  BillingContactState,
+  CpoInstallmentSelectionStep,
 } from "./-components";
+import { getCurrencySymbol } from "./-components/payment-selection-step";
+import {
+  enrollCpoWithoutPayment,
+  enrollCpoLearnerForPaymentViaInvite,
+  fetchCpoDues,
+  fetchCpoSchedule,
+  mapCpoScheduleToDues,
+  payCpoInstallments,
+  getFullNameField,
+  CpoInstallmentDue,
+} from "./-services/enroll-invite-services";
 import {
   getPaymentVendor,
   PaymentVendor,
@@ -84,9 +99,9 @@ const hasContent = (htmlString: string | undefined | null): boolean => {
   if (!htmlString) return false;
   // Strip HTML tags and decode HTML entities
   const textContent = htmlString
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/&nbsp;/gi, ' ') // Replace &nbsp; with space
-    .replace(/\s+/g, ' ') // Normalize whitespace
+    .replace(/<[^>]*>/g, "") // Remove HTML tags
+    .replace(/&nbsp;/gi, " ") // Replace &nbsp; with space
+    .replace(/\s+/g, " ") // Normalize whitespace
     .trim();
   return textContent.length > 0;
 };
@@ -103,15 +118,18 @@ type BundledSessionMeta = {
 
 type InvitePackageSession =
   | {
-    package_session_id?: string;
-    payment_option?: {
-      name?: string;
-    } | null;
-  }
+      package_session_id?: string;
+      payment_option?: {
+        name?: string;
+      } | null;
+    }
   | null
   | undefined;
 
-const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps = {}) => {
+const EnrollByInvite = ({
+  vendor: propVendor,
+  utmParams,
+}: EnrollByInviteProps = {}) => {
   // Ensure domain resolution runs on this public route to fetch fontFamily/tab branding from /resolve
   const domainRouting = useDomainRouting();
   const [paymentType, setPaymentType] = useState<string>("");
@@ -131,10 +149,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   const [isAutoLoggingIn, setIsAutoLoggingIn] = useState(false);
   const [stripePaymentProcessor, setStripePaymentProcessor] = useState<
     | (() => Promise<{
-      success: boolean;
-      paymentMethodId?: string;
-      error?: string;
-    }>)
+        success: boolean;
+        paymentMethodId?: string;
+        error?: string;
+      }>)
     | null
   >(null);
   const [razorpayPaymentData, setRazorpayPaymentData] = useState<{
@@ -160,10 +178,36 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   >(null);
   const [submittedUserId, setSubmittedUserId] = useState<string | null>(null);
 
+  // CPO-specific state
+  const [cpoUserId, setCpoUserId] = useState<string | null>(null);
+  const [cpoUserPlanId, setCpoUserPlanId] = useState<string | null>(null);
+  const [cpoDues, setCpoDues] = useState<CpoInstallmentDue[]>([]);
+  const [cpoSelectedSfpIds, setCpoSelectedSfpIds] = useState<string[]>([]);
+  const [cpoSelectedTotal, setCpoSelectedTotal] = useState<number>(0);
+  const [cpoCustomAmount, setCpoCustomAmount] = useState<number | undefined>(
+    undefined,
+  );
+  const [cpoUserEmail, setCpoUserEmail] = useState<string>("");
+  const [cpoEnrolling, setCpoEnrolling] = useState(false);
+  // Real SFP IDs (set after enrollment, used for payment calls)
+  const [cpoRealSfpIds, setCpoRealSfpIds] = useState<string[]>([]);
+  // Stable ref so Razorpay handler (registered before re-render) always reads fresh enrolled data
+  const cpoEnrolledRef = useRef<{
+    userId: string;
+    userPlanId: string;
+    email: string;
+    name: string;
+    sfpIds: string[];
+    customAmount: number;
+  } | null>(null);
+
   // Enrollment Policy Dialog state
-  const [enrollmentPolicyDialogOpen, setEnrollmentPolicyDialogOpen] = useState(false);
-  const [enrollmentPolicyDialogType, setEnrollmentPolicyDialogType] = useState<EnrollmentPolicyDialogType>("success_with_actions");
-  const [enrollmentPolicyResponse, setEnrollmentPolicyResponse] = useState<EnrollmentPolicyResponse | null>(null);
+  const [enrollmentPolicyDialogOpen, setEnrollmentPolicyDialogOpen] =
+    useState(false);
+  const [enrollmentPolicyDialogType, setEnrollmentPolicyDialogType] =
+    useState<EnrollmentPolicyDialogType>("success_with_actions");
+  const [enrollmentPolicyResponse, setEnrollmentPolicyResponse] =
+    useState<EnrollmentPolicyResponse | null>(null);
 
   const [currentStep, setCurrentStep] = useState(0); // 0: Registration, 1: Payment Selection, 2: Review, 3: Payment Details, 4: Payment Pending, 5: Success
   const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState<string | null>(null);
@@ -194,6 +238,24 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   const [referRequest, setReferRequest] = useState<ReferRequest | null>(null);
   // Ref to track the latest referRequest value (to avoid closure issues)
   const referRequestRef = useRef<ReferRequest | null>(null);
+  // Applied discount coupon code + discount value (resolved by CouponInput
+  // inside the review step). BE re-validates + fetches the AppliedCouponDiscount
+  // + atomically decrements at UserPlan creation. The discount value is also
+  // subtracted from payment_initiation_request.amount so the gateway charges
+  // the discounted total — without that, BE records the coupon but the gateway
+  // captures the full price.
+  const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(
+    null,
+  );
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const handleCouponChange = useCallback(
+    (code: string | null, discount: number) => {
+      setAppliedCouponCode(code);
+      setCouponDiscount(code ? discount : 0);
+    },
+    [],
+  );
+  const [billingContact, setBillingContact] = useState<BillingContactState>(EMPTY_BILLING_CONTACT);
   const [enrollmentData, setEnrollmentData] = useState<EnrollmentData>({
     registrationData: {},
     selectedPayment: null,
@@ -220,7 +282,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     useInstituteDetailsStore();
 
   const { data: inviteData, isLoading } = useSuspenseQuery(
-    handleGetEnrollInviteData({ instituteId, inviteCode })
+    handleGetEnrollInviteData({ instituteId, inviteCode }),
   );
 
   const inviteConfig = useMemo(() => {
@@ -235,6 +297,23 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     return {};
   }, [inviteData?.setting_json]);
 
+  const collectBillingContact = Boolean(
+    (inviteConfig as { collectBillingContactDetails?: boolean })
+      ?.collectBillingContactDetails
+  );
+
+  // Per-field config for the billing-contact form. The admin writes this under
+  // postformfillConfiguration.billingContactFields in the invite settingJson;
+  // RegistrationStep falls back to the legacy hard-coded labels + required
+  // semantics when the key is absent so older invites keep their current UX.
+  const billingContactFields = (inviteConfig as {
+    billingContactFields?: {
+      name?:  { label?: string; required?: boolean };
+      email?: { label?: string; required?: boolean };
+      role?:  { label?: string; required?: boolean; options?: string };
+    };
+  })?.billingContactFields;
+
   // Inject GTM if the institute has configured a container ID
   useEffect(() => {
     const gtmId = inviteData?.gtm_container_id;
@@ -244,7 +323,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   // Fire enrollment_page_view once course data is loaded
   const hasFiredPageView = useRef(false);
   useEffect(() => {
-    if (inviteData?.gtm_container_id && courseData.course && !hasFiredPageView.current) {
+    if (
+      inviteData?.gtm_container_id &&
+      courseData.course &&
+      !hasFiredPageView.current
+    ) {
       hasFiredPageView.current = true;
       pushPageView(courseData.course, paymentType, utmParams);
     }
@@ -256,7 +339,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   const lastTrackedStep = useRef(-1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!inviteData?.gtm_container_id || currentStep === lastTrackedStep.current) return;
+    if (
+      !inviteData?.gtm_container_id ||
+      currentStep === lastTrackedStep.current
+    )
+      return;
     lastTrackedStep.current = currentStep;
 
     if (currentStep === 2) {
@@ -269,7 +356,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         courseName: courseData.course || "",
         paymentType,
         currency: enrollmentData.selectedPayment?.currency,
-        amount: enrollmentData.selectedPayment?.amount,
+        amount: getSelectedPaymentPrice(enrollmentData.selectedPayment),
         utmParams,
       });
     }
@@ -289,7 +376,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   const finalCustomFields = useMemo(() => {
     if (hasCustomFieldsInInvite) {
       const converted = convertInviteCustomFields(
-        inviteData.institute_custom_fields
+        inviteData.institute_custom_fields,
       );
       return converted;
     }
@@ -315,7 +402,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   // const vendor = propVendor || getPaymentVendor(inviteData);
 
   const paymentOptions = getDefaultPlanFromPaymentsData(
-    inviteData?.package_session_to_payment_options?.[0]?.payment_option
+    inviteData?.package_session_to_payment_options?.[0]?.payment_option,
   );
   const zodSchema = getDynamicSchema(finalCustomFields || []);
 
@@ -340,7 +427,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                 comma_separated_options?: string[];
               }
             >,
-            field
+            field,
           ) => {
             // Always pass config so non-dropdown types (radio, multi_select,
             // date, file, checkbox, etc.) can read their metadata.
@@ -365,10 +452,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               config?: string;
               comma_separated_options?: string[];
             }
-          >
+          >,
         );
     },
-    []
+    [],
   );
 
   // Helper to safely get allowLearnersToCreateCourses from instituteData settings
@@ -376,7 +463,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     try {
       if (!instituteData?.setting) return false;
       const parsed = JSON.parse(instituteData.setting);
-      return parsed?.setting?.COURSE_SETTING?.data?.permissions?.allowLearnersToCreateCourses || false;
+      return (
+        parsed?.setting?.COURSE_SETTING?.data?.permissions
+          ?.allowLearnersToCreateCourses || false
+      );
     } catch {
       console.warn("Failed to parse institute settings, defaulting to false");
       return false;
@@ -414,39 +504,46 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               newDefaultValues[key].value = val;
             }
             // 2. Try Smart Matching for standard fields if not a "smart" key itself
-            else if (!key.startsWith('__smart_')) {
+            else if (!key.startsWith("__smart_")) {
               // Skip non-matching standard keys
             }
           });
 
           // 3. Apply Smart Keys if exist and target field is empty
-          if (prefillData['__smart_email']) {
-            const emailKey = Object.keys(newDefaultValues).find(k =>
-              k.toLowerCase().includes('email') || k.toLowerCase().includes('mail')
+          if (prefillData["__smart_email"]) {
+            const emailKey = Object.keys(newDefaultValues).find(
+              (k) =>
+                k.toLowerCase().includes("email") ||
+                k.toLowerCase().includes("mail"),
             );
             if (emailKey && !newDefaultValues[emailKey].value) {
               console.log(`[Prefill] Smart match for Email -> ${emailKey}`);
-              newDefaultValues[emailKey].value = prefillData['__smart_email'];
+              newDefaultValues[emailKey].value = prefillData["__smart_email"];
             }
           }
 
-          if (prefillData['__smart_phone']) {
-            const phoneKey = Object.keys(newDefaultValues).find(k =>
-              k.toLowerCase().includes('phone') || k.toLowerCase().includes('mobile') || k.toLowerCase().includes('contact')
+          if (prefillData["__smart_phone"]) {
+            const phoneKey = Object.keys(newDefaultValues).find(
+              (k) =>
+                k.toLowerCase().includes("phone") ||
+                k.toLowerCase().includes("mobile") ||
+                k.toLowerCase().includes("contact"),
             );
             if (phoneKey && !newDefaultValues[phoneKey].value) {
               console.log(`[Prefill] Smart match for Phone -> ${phoneKey}`);
-              newDefaultValues[phoneKey].value = prefillData['__smart_phone'];
+              newDefaultValues[phoneKey].value = prefillData["__smart_phone"];
             }
           }
 
-          if (prefillData['__smart_name']) {
-            const nameKey = Object.keys(newDefaultValues).find(k =>
-              k.toLowerCase().includes('name') || k.toLowerCase().includes('full_name')
+          if (prefillData["__smart_name"]) {
+            const nameKey = Object.keys(newDefaultValues).find(
+              (k) =>
+                k.toLowerCase().includes("name") ||
+                k.toLowerCase().includes("full_name"),
             );
             if (nameKey && !newDefaultValues[nameKey].value) {
               console.log(`[Prefill] Smart match for Name -> ${nameKey}`);
-              newDefaultValues[nameKey].value = prefillData['__smart_name'];
+              newDefaultValues[nameKey].value = prefillData["__smart_name"];
             }
           }
 
@@ -463,7 +560,9 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           if (!hasPrefillAppliedRef.current) {
             shouldResetForm = true;
           } else {
-            console.log("[Prefill] Skipping form reset to preserve prefilled values");
+            console.log(
+              "[Prefill] Skipping form reset to preserve prefilled values",
+            );
           }
         }
       } catch (e) {
@@ -484,6 +583,14 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   form.watch();
 
   const isBundledInvite = Boolean(inviteData?.is_bundled);
+
+  // True when the invite exposes exactly one payment plan to choose from.
+  // Mirrors the skip condition in handleNext() (L818-824) and handlePrevious()
+  // (L850-855) — the Plan-selection step never appears, so the wizard should
+  // collapse to 2 pills (Details + Pay) instead of pretending the user picked.
+  const hasSinglePlan =
+    (inviteData?.package_session_to_payment_options?.[0]?.payment_option
+      ?.payment_plans?.length || 0) === 1;
 
   const bundledPackageSessions = useMemo<BundledSessionMeta[]>(() => {
     const sessions =
@@ -547,7 +654,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   const resolvePackageSessionLabel = (
     packageSessionId: string,
-    fallbackIndex: number
+    fallbackIndex: number,
   ) => {
     const details = getDetailsFromPackageSessionId({ packageSessionId });
     const courseName = details?.package_dto?.package_name;
@@ -581,13 +688,44 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
     let targetStep = 1;
 
+    // ─── CPO flow: fetch installment schedule first, then show selection ───────
+    if (paymentType === "CPO") {
+      setLoading(true);
+      setCpoEnrolling(true);
+      try {
+        const paymentOptionId =
+          inviteData?.package_session_to_payment_options[0]?.payment_option
+            ?.id || "";
+        if (!paymentOptionId) throw new Error("No CPO payment option found.");
+
+        const cpoDto = await fetchCpoSchedule(paymentOptionId);
+        setCpoDues(mapCpoScheduleToDues(cpoDto));
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        const errorData = err?.response?.data;
+        setError(
+          errorData?.ex ||
+            "Failed to load installment schedule. Please try again.",
+        );
+        setLoading(false);
+        setCpoEnrolling(false);
+        return;
+      } finally {
+        setLoading(false);
+        setCpoEnrolling(false);
+      }
+      setCurrentStep(1); // CPO installment selection step
+      return;
+    }
+
     // If there's exactly one plan, preselect and skip selection step
     if (hasSinglePlan && paymentType !== "DONATION") {
       if (!enrollmentData.selectedPayment) {
         const onlyPlan = plans[0];
         try {
           const metadata = JSON.parse(
-            paymentOptionMeta?.payment_option_metadata_json || "{}"
+            paymentOptionMeta?.payment_option_metadata_json || "{}",
           );
           const unit = metadata?.unit || "days";
           const duration =
@@ -628,7 +766,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       try {
         const packageSessionIds =
           inviteData?.package_session_to_payment_options.map(
-            (ps: { package_session_id: string }) => ps?.package_session_id
+            (ps: { package_session_id: string }) => ps?.package_session_id,
           ) || [""];
 
         const response = await submitEnrollmentForm({
@@ -676,9 +814,9 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       ...prev,
       selectedPayment: prev.selectedPayment
         ? {
-          ...prev.selectedPayment,
-          amount: amount,
-        }
+            ...prev.selectedPayment,
+            amount: amount,
+          }
         : null,
     }));
   };
@@ -689,6 +827,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   const handleNext = () => {
     if (currentStep < 5) {
+      // CPO: step 1 (installment selection) → step 3 (payment info); skip review
+      if (currentStep === 1 && paymentType === "CPO") {
+        setCurrentStep(3);
+        return;
+      }
       // If payment type is FREE and we're on registration step, skip payment selection
       if (currentStep === 0 && paymentType === "FREE") {
         setCurrentStep(2); // Skip to review step
@@ -709,6 +852,11 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   const handlePrevious = () => {
     if (currentStep > 0) {
+      // CPO: payment info (3) → installment selection (1)
+      if (currentStep === 3 && paymentType === "CPO") {
+        setCurrentStep(1);
+        return;
+      }
       // Reset auto-enroll flag when going back from review step or success step
       if (currentStep === 2 || currentStep === 5) {
         hasAutoEnrolledRef.current = false;
@@ -733,22 +881,32 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   const handleAutoLogin = async (response: any) => {
     // Check for direct tokens first (most automatic flow)
-    const directAccessToken = response?.payment_response?.response_data?.accessToken;
-    const directRefreshToken = response?.payment_response?.response_data?.refreshToken;
+    const directAccessToken =
+      response?.payment_response?.response_data?.accessToken;
+    const directRefreshToken =
+      response?.payment_response?.response_data?.refreshToken;
 
     if (directAccessToken && directRefreshToken) {
       try {
         setIsAutoLoggingIn(true);
         console.log("[EnrollByInvite] Using direct tokens from response");
-        await performFullAuthCycle({ accessToken: directAccessToken, refreshToken: directRefreshToken }, instituteId);
+        await performFullAuthCycle(
+          { accessToken: directAccessToken, refreshToken: directRefreshToken },
+          instituteId,
+        );
 
         toast.success("Enrollment successful! Redirecting to dashboard...");
         setTimeout(() => {
-          window.location.href = inviteConfig?.redirectPath || `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+          window.location.href =
+            inviteConfig?.redirectPath ||
+            `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
         }, 1500);
         return;
       } catch (error) {
-        console.error("[EnrollByInvite] Auth cycle with direct tokens failed:", error);
+        console.error(
+          "[EnrollByInvite] Auth cycle with direct tokens failed:",
+          error,
+        );
         // Fallback to credential-based login if token login fails
       }
     }
@@ -760,12 +918,18 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       try {
         setIsAutoLoggingIn(true);
         console.log("[EnrollByInvite] Performing auto-login using credentials");
-        const loginResponse = await loginEnrolledUser(userEmail, userPassword, instituteId);
+        const loginResponse = await loginEnrolledUser(
+          userEmail,
+          userPassword,
+          instituteId,
+        );
         await performFullAuthCycle(loginResponse, instituteId);
 
         toast.success("Login successful! Redirecting to dashboard...");
         setTimeout(() => {
-          window.location.href = inviteConfig?.redirectPath || `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+          window.location.href =
+            inviteConfig?.redirectPath ||
+            `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
         }, 1500);
       } catch (error) {
         console.error("[EnrollByInvite] Auto-login failed:", error);
@@ -775,7 +939,9 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       // If no credentials, user might be already logged in or it's an existing user
       // We still wait a bit then redirect
       setTimeout(() => {
-        window.location.href = inviteConfig?.redirectPath || `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
+        window.location.href =
+          inviteConfig?.redirectPath ||
+          `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`;
       }, 2000);
     }
   };
@@ -784,7 +950,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   // Helper function to fetch enrollment policy and show appropriate dialog
   const fetchAndHandleEnrollmentPolicy = async (
     scenario: "success" | "error_already_enrolled" = "success",
-    enrollmentErrorMessage?: string
+    enrollmentErrorMessage?: string,
   ): Promise<boolean> => {
     try {
       const packageSessionId =
@@ -792,7 +958,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
       if (!packageSessionId) {
         console.log(
-          "[EnrollByInvite] No package session ID available for enrollment policy"
+          "[EnrollByInvite] No package session ID available for enrollment policy",
         );
         return false;
       }
@@ -800,7 +966,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       const policyResponse = await getEnrollmentPolicy({ packageSessionId });
       console.log(
         "[EnrollByInvite] Enrollment policy response:",
-        policyResponse
+        policyResponse,
       );
 
       if (policyResponse && Object.keys(policyResponse).length > 0) {
@@ -836,7 +1002,8 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           // If the error matches alreadyEnrolledMessage, keep already_enrolled dialog
           else if (
             policyResponse?.reenrollmentPolicy?.alreadyEnrolledMessage &&
-            enrollmentErrorMessage === policyResponse.reenrollmentPolicy.alreadyEnrolledMessage
+            enrollmentErrorMessage ===
+              policyResponse.reenrollmentPolicy.alreadyEnrolledMessage
           ) {
             dialogType = "already_enrolled";
           }
@@ -883,20 +1050,23 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     const userDetails = getUserDetails();
 
     if (userDetails.email) {
-      prefillData['__smart_email'] = userDetails.email;
+      prefillData["__smart_email"] = userDetails.email;
       console.log("[Prefill] Smart Email:", userDetails.email);
     }
     if (userDetails.contact) {
-      prefillData['__smart_phone'] = userDetails.contact;
+      prefillData["__smart_phone"] = userDetails.contact;
       console.log("[Prefill] Smart Phone:", userDetails.contact);
     }
     if (userDetails.name) {
-      prefillData['__smart_name'] = userDetails.name;
+      prefillData["__smart_name"] = userDetails.name;
       console.log("[Prefill] Smart Name:", userDetails.name);
     }
 
     try {
-      localStorage.setItem("enrollment_prefill_data", JSON.stringify(prefillData));
+      localStorage.setItem(
+        "enrollment_prefill_data",
+        JSON.stringify(prefillData),
+      );
       console.log("[Prefill] Saved to LocalStorage:", prefillData);
     } catch (e) {
       console.error("Failed to save prefill data", e);
@@ -908,6 +1078,293 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   };
 
   const handleSubmitEnrollment = async () => {
+    // ─── CPO payment flow ─────────────────────────────────────────────────────
+    // Two-phase: enroll without payment (creates UserPlan + SFP rows) → pay the
+    // selected amount via payCpoInstallments which has its own customAmount path.
+    // This avoids ComplexPaymentOptionOperation overriding the amount with duesNow.
+    if (paymentType === "CPO") {
+      if (!cpoCustomAmount && cpoSelectedSfpIds.length === 0) {
+        setError("Please select at least one installment to pay.");
+        return;
+      }
+      const payAmount =
+        cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
+      if (payAmount <= 0) {
+        setError("Payment amount must be greater than zero.");
+        return;
+      }
+
+      const vendor = getPaymentVendor(inviteData);
+      const currency = inviteData?.currency || "INR";
+
+      if (inviteData?.gtm_container_id) {
+        pushPaymentInitiated({
+          courseName: courseData.course || "",
+          paymentType,
+          vendor: vendor || "STRIPE",
+          currency,
+          amount: payAmount,
+          utmParams,
+        });
+      }
+
+      const learnerFullName = getFullNameField(form.getValues());
+
+      // Enroll without payment (once) → get real SFP IDs, then payCpoInstallments
+      const getOrEnrollCpoSfpIds = async (): Promise<{
+        userId: string;
+        userPlanId: string;
+        email: string;
+        name: string;
+        sfpIds: string[];
+      }> => {
+        // Use ref first — avoids stale closure when called from within Razorpay handlers
+        if (cpoEnrolledRef.current) {
+          return cpoEnrolledRef.current;
+        }
+        if (cpoRealSfpIds.length > 0 && cpoUserId && cpoUserPlanId) {
+          const cached = {
+            userId: cpoUserId,
+            userPlanId: cpoUserPlanId,
+            email: cpoUserEmail,
+            name: learnerFullName,
+            sfpIds: cpoRealSfpIds,
+            customAmount: payAmount,
+          };
+          cpoEnrolledRef.current = cached;
+          return cached;
+        }
+        const packageSessionIds =
+          inviteData?.package_session_to_payment_options.map(
+            (ps: { package_session_id: string }) => ps?.package_session_id,
+          ) || [""];
+        const paymentOptionId =
+          inviteData?.package_session_to_payment_options[0]?.payment_option
+            ?.id || "";
+        if (!paymentOptionId) throw new Error("No CPO payment option found.");
+
+        const result = await enrollCpoWithoutPayment({
+          registrationData: form.getValues(),
+          instituteId,
+          enrollInviteId: inviteData?.id,
+          paymentOptionId,
+          packageSessionIds,
+          allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
+          isUsingInstituteCustomFields,
+        });
+        if (!result.userId || !result.userPlanId) {
+          throw new Error(
+            "Enrollment succeeded but userPlanId was not returned. Please try again.",
+          );
+        }
+        // Write to state (triggers re-render later) AND ref (immediately readable in callbacks)
+        setCpoUserId(result.userId);
+        setCpoUserPlanId(result.userPlanId);
+        setCpoUserEmail(result.userEmail);
+
+        const sfpDues = await fetchCpoDues({
+          userId: result.userId,
+          userPlanId: result.userPlanId,
+        });
+        const pendingIds = sfpDues
+          .filter((d) => d.status !== "PAID" && d.status !== "WAIVED")
+          .map((d) => d.id);
+        if (pendingIds.length === 0)
+          throw new Error(
+            "No pending installments were generated. Please contact support.",
+          );
+        setCpoRealSfpIds(pendingIds);
+
+        const enrolled = {
+          userId: result.userId,
+          userPlanId: result.userPlanId,
+          email: result.userEmail,
+          name: learnerFullName,
+          sfpIds: pendingIds,
+          customAmount: payAmount,
+        };
+        cpoEnrolledRef.current = enrolled;
+        return enrolled;
+      };
+
+      if (vendor === "RAZORPAY") {
+        setLoading(true);
+        setError(null);
+        try {
+          const enrolled = await getOrEnrollCpoSfpIds();
+          const paymentResponse = await payCpoInstallments({
+            userId: enrolled.userId,
+            userPlanId: enrolled.userPlanId,
+            instituteId,
+            studentFeePaymentIds: enrolled.sfpIds,
+            customAmount: payAmount,
+            paymentVendor: "RAZORPAY",
+            currency,
+            email: enrolled.email,
+            name: enrolled.name,
+            razorpayPaymentData: razorpayPaymentData || undefined,
+          });
+          const orderDetails =
+            paymentResponse?.payment_response?.response_data ||
+            paymentResponse?.response_data;
+          if (!orderDetails?.razorpayKeyId || !orderDetails?.razorpayOrderId)
+            throw new Error("Failed to create Razorpay order");
+          setOrderId(
+            paymentResponse?.payment_response?.order_id ||
+              paymentResponse?.order_id,
+          );
+          setPaymentCompletionResponse(paymentResponse);
+          if (razorpayRef.current) {
+            razorpayRef.current.openPayment({
+              razorpayKeyId: orderDetails.razorpayKeyId,
+              razorpayOrderId: orderDetails.razorpayOrderId,
+              amount: orderDetails.amount,
+              currency: orderDetails.currency || currency,
+              contact: "",
+              email: enrolled.email,
+            });
+          }
+          setLoading(false);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const errorData = err?.response?.data;
+          const msg =
+            errorData?.ex ||
+            (err instanceof Error ? err.message : null) ||
+            "Failed to initiate payment";
+          setError(msg);
+          if (inviteData?.gtm_container_id)
+            pushPaymentFailed({
+              courseName: courseData.course || "",
+              vendor: "RAZORPAY",
+              errorMessage: msg,
+              utmParams,
+            });
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (vendor === "STRIPE") {
+        if (
+          !stripePaymentProcessor ||
+          typeof stripePaymentProcessor !== "function"
+        ) {
+          setError(
+            "Stripe payment is not ready yet. Please wait and try again.",
+          );
+          return;
+        }
+        setLoading(true);
+        setError(null);
+        const stripeResult = await stripePaymentProcessor();
+        if (!stripeResult.success || !stripeResult.paymentMethodId) {
+          setError(stripeResult.error || "Payment processing failed");
+          setLoading(false);
+          return;
+        }
+        try {
+          const enrolled = await getOrEnrollCpoSfpIds();
+          const paymentResponse = await payCpoInstallments({
+            userId: enrolled.userId,
+            userPlanId: enrolled.userPlanId,
+            instituteId,
+            studentFeePaymentIds: enrolled.sfpIds,
+            customAmount: payAmount,
+            paymentVendor: "STRIPE",
+            currency,
+            email: enrolled.email,
+            name: enrolled.name,
+            paymentMethodId: stripeResult.paymentMethodId,
+          });
+          setOrderId(paymentResponse?.payment_response?.order_id);
+          setPaymentCompletionResponse(paymentResponse);
+          setTimeout(async () => {
+            if (
+              paymentResponse?.payment_response?.response_data
+                ?.paymentStatus === "PAID"
+            ) {
+              setCurrentStep(5);
+              await fetchAndHandleEnrollmentPolicy();
+            } else setCurrentStep(4);
+          }, 100);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const errorData = err?.response?.data;
+          const msg =
+            errorData?.ex ||
+            (err instanceof Error ? err.message : null) ||
+            "Payment failed";
+          setError(msg);
+          if (inviteData?.gtm_container_id)
+            pushPaymentFailed({
+              courseName: courseData.course || "",
+              vendor: "STRIPE",
+              errorMessage: msg,
+              utmParams,
+            });
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (vendor === "EWAY") {
+        if (!ewayEncryptedData) {
+          setError("Please complete the payment form");
+          return;
+        }
+        setLoading(true);
+        setError(null);
+        try {
+          const enrolled = await getOrEnrollCpoSfpIds();
+          const paymentResponse = await payCpoInstallments({
+            userId: enrolled.userId,
+            userPlanId: enrolled.userPlanId,
+            instituteId,
+            studentFeePaymentIds: enrolled.sfpIds,
+            customAmount: payAmount,
+            paymentVendor: "EWAY",
+            currency: "aud",
+            email: enrolled.email,
+            name: enrolled.name,
+            ewayPaymentData: ewayEncryptedData,
+          });
+          setOrderId(paymentResponse?.payment_response?.order_id);
+          setPaymentCompletionResponse(paymentResponse);
+          setTimeout(async () => {
+            if (
+              paymentResponse?.payment_response?.response_data
+                ?.paymentStatus === "PAID"
+            ) {
+              setCurrentStep(5);
+              await fetchAndHandleEnrollmentPolicy();
+            } else setCurrentStep(4);
+          }, 100);
+        } catch (err) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const errorData = err?.response?.data;
+          setError(
+            errorData?.ex ||
+              (err instanceof Error ? err.message : null) ||
+              "Payment failed",
+          );
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Default / unsupported vendor for CPO
+      setError(
+        "Payment gateway not supported for CPO enrollment. Please contact support.",
+      );
+      return;
+    }
+
     // Fire payment_initiated GTM event (skip for FREE — no payment involved)
     if (inviteData?.gtm_container_id && paymentType !== "FREE") {
       pushPaymentInitiated({
@@ -915,7 +1372,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         paymentType,
         vendor: getPaymentVendor(inviteData) || "STRIPE",
         currency: enrollmentData.selectedPayment?.currency,
-        amount: enrollmentData.selectedPayment?.amount,
+        amount: getSelectedPaymentPrice(enrollmentData.selectedPayment),
         utmParams,
       });
     }
@@ -926,7 +1383,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       try {
         // Use ref to get the latest referRequest value (avoids closure issues)
         const currentReferRequest = referRequestRef.current;
-        console.log("[FREE Enrollment] Using referRequest:", currentReferRequest);
+        console.log(
+          "[FREE Enrollment] Using referRequest:",
+          currentReferRequest,
+        );
 
         const paymentResponse = await handleEnrollLearnerForPayment({
           registrationData: form.getValues(),
@@ -938,12 +1398,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             inviteData?.package_session_to_payment_options[0].payment_option.id,
           package_session_ids:
             inviteData?.package_session_to_payment_options.map(
-              (ps: { package_session_id: string }) => ps?.package_session_id
+              (ps: { package_session_id: string }) => ps?.package_session_id,
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: currentReferRequest,
+          couponCode: appliedCouponCode,
+          couponDiscount,
           paymentVendor: "STRIPE", // Default for FREE payments
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
         setPaymentCompletionResponse(paymentResponse);
@@ -960,14 +1423,22 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+          );
           if (!dialogOpened) {
             toast.error(errorData?.ex || "Enrollment failed");
           }
         }
         setError(errorData?.ex);
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "NONE", errorMessage: errorData?.ex || "Enrollment failed", utmParams });
+          pushPaymentFailed({
+            courseName: courseData.course || "",
+            vendor: "NONE",
+            errorMessage: errorData?.ex || "Enrollment failed",
+            utmParams,
+          });
         }
       } finally {
         setLoading(false);
@@ -997,13 +1468,16 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             inviteData?.package_session_to_payment_options[0].payment_option.id,
           package_session_ids:
             inviteData?.package_session_to_payment_options.map(
-              (ps: { package_session_id: string }) => ps?.package_session_id
+              (ps: { package_session_id: string }) => ps?.package_session_id,
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
+          couponCode: appliedCouponCode,
+          couponDiscount,
           ewayPaymentData: ewayEncryptedData,
           paymentVendor: "EWAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
         setOrderId(paymentResponse?.payment_response?.order_id);
@@ -1027,14 +1501,22 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+          );
           if (!dialogOpened) {
             toast.error(errorData?.ex || "Payment failed");
           }
         }
         setError(errorData?.ex);
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "EWAY", errorMessage: errorData?.ex || "Payment failed", utmParams });
+          pushPaymentFailed({
+            courseName: courseData.course || "",
+            vendor: "EWAY",
+            errorMessage: errorData?.ex || "Payment failed",
+            utmParams,
+          });
         }
         console.error(err);
       } finally {
@@ -1062,12 +1544,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             inviteData?.package_session_to_payment_options[0].payment_option.id,
           package_session_ids:
             inviteData?.package_session_to_payment_options.map(
-              (ps: { package_session_id: string }) => ps?.package_session_id
+              (ps: { package_session_id: string }) => ps?.package_session_id,
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
+          couponCode: appliedCouponCode,
+          couponDiscount,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
         });
 
         // Extract userPlanId from response (backend creates enrollment and returns it)
@@ -1078,7 +1563,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
         if (!userPlanId) {
           throw new Error(
-            "Enrollment created but user plan ID not received. Please contact support."
+            "Enrollment created but user plan ID not received. Please contact support.",
           );
         }
 
@@ -1093,12 +1578,8 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         }
 
         const returnUrl = getCashfreeReturnUrl();
-        const amount =
-          enrollmentData.selectedPayment?.actual_price ??
-          enrollmentData.selectedPayment?.amount ??
-          0;
-        const currency =
-          enrollmentData.selectedPayment?.currency || "INR";
+        const amount = getSelectedPaymentPrice(enrollmentData.selectedPayment);
+        const currency = enrollmentData.selectedPayment?.currency || "INR";
 
         // Step 2: Call user-plan-payment API to get paymentSessionId
         const cfResponse = await initiateCashfreePayment(
@@ -1110,7 +1591,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             email: userEmail,
             returnUrl,
             token,
-          }
+          },
         );
 
         const paymentSessionId =
@@ -1119,7 +1600,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
         if (!paymentSessionId) {
           throw new Error(
-            "Failed to initialize payment. Please try again or contact support."
+            "Failed to initialize payment. Please try again or contact support.",
           );
         }
 
@@ -1129,7 +1610,9 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         // Step 3: Launch Cashfree checkout (redirects to return_url on success/failure)
         // For now always use sandbox (incl. production) for testing; set VITE_CASHFREE_SANDBOX=false when ready for prod keys
         const isSandbox = import.meta.env.VITE_CASHFREE_SANDBOX !== "false";
-        const cashfree = await loadCashfree({ mode: isSandbox ? "sandbox" : "production" });
+        const cashfree = await loadCashfree({
+          mode: isSandbox ? "sandbox" : "production",
+        });
 
         if (!cashfree) {
           throw new Error("Failed to load Cashfree payment gateway.");
@@ -1141,21 +1624,38 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         });
 
         if (checkoutResult?.error) {
-          throw new Error(checkoutResult.error.message || "Payment initialization failed.");
+          throw new Error(
+            checkoutResult.error.message || "Payment initialization failed.",
+          );
         }
         // On success, checkout redirects to return_url - no further action needed
       } catch (err) {
-        const errorData = (err as { response?: { data?: { ex?: string; responseCode?: string } } })?.response?.data;
+        const errorData = (
+          err as {
+            response?: { data?: { ex?: string; responseCode?: string } };
+          }
+        )?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+          );
           if (!dialogOpened) {
             toast.error(errorData?.ex || "Payment failed");
           }
         }
-        const cashfreeErrorMsg = (err as Error)?.message || errorData?.ex || "Failed to initiate Cashfree payment";
+        const cashfreeErrorMsg =
+          (err as Error)?.message ||
+          errorData?.ex ||
+          "Failed to initiate Cashfree payment";
         setError(cashfreeErrorMsg);
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "CASHFREE", errorMessage: cashfreeErrorMsg, utmParams });
+          pushPaymentFailed({
+            courseName: courseData.course || "",
+            vendor: "CASHFREE",
+            errorMessage: cashfreeErrorMsg,
+            utmParams,
+          });
         }
         console.error("Cashfree enrollment error:", err);
       } finally {
@@ -1180,13 +1680,16 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             inviteData?.package_session_to_payment_options[0].payment_option.id,
           package_session_ids:
             inviteData?.package_session_to_payment_options.map(
-              (ps: { package_session_id: string }) => ps?.package_session_id
+              (ps: { package_session_id: string }) => ps?.package_session_id,
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequest,
+          couponCode: appliedCouponCode,
+          couponDiscount,
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
         });
 
@@ -1225,14 +1728,22 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         // @ts-expect-error
         const errorData = err?.response?.data;
         if (errorData?.responseCode?.includes("510")) {
-          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errorData?.ex,
+          );
           if (!dialogOpened) {
             toast.error(errorData?.ex || "Failed to initiate payment");
           }
         }
         setError(errorData?.ex || "Failed to initiate payment");
         if (inviteData?.gtm_container_id) {
-          pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to initiate payment", utmParams });
+          pushPaymentFailed({
+            courseName: courseData.course || "",
+            vendor: "RAZORPAY",
+            errorMessage: errorData?.ex || "Failed to initiate payment",
+            utmParams,
+          });
         }
         console.error("Razorpay enrollment error:", err);
         setLoading(false);
@@ -1274,12 +1785,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         payment_option_id:
           inviteData?.package_session_to_payment_options[0].payment_option.id,
         package_session_ids: inviteData?.package_session_to_payment_options.map(
-          (ps: { package_session_id: string }) => ps?.package_session_id
+          (ps: { package_session_id: string }) => ps?.package_session_id,
         ) || [""],
         allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
         referRequest: referRequest,
+        couponCode: appliedCouponCode,
+        couponDiscount,
         paymentVendor: "STRIPE",
         isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+        billingContact: collectBillingContact ? billingContact : undefined,
         // userId: submittedUserId || undefined,
       });
       setOrderId(paymentResponse?.payment_response?.order_id);
@@ -1303,14 +1817,22 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       // @ts-expect-error
       const errorData = err?.response?.data;
       if (errorData?.responseCode?.includes("510")) {
-        const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+        const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+          "error_already_enrolled",
+          errorData?.ex,
+        );
         if (!dialogOpened) {
           toast.error(errorData?.ex || "Payment failed");
         }
       }
       setError(errorData?.ex);
       if (inviteData?.gtm_container_id) {
-        pushPaymentFailed({ courseName: courseData.course || "", vendor: "STRIPE", errorMessage: errorData?.ex || "Payment failed", utmParams });
+        pushPaymentFailed({
+          courseName: courseData.course || "",
+          vendor: "STRIPE",
+          errorMessage: errorData?.ex || "Payment failed",
+          utmParams,
+        });
       }
       console.error(err);
     } finally {
@@ -1328,12 +1850,40 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       !loading &&
       currentStep === 3
     ) {
-      // Call API again with payment details to complete the enrollment
       const completeRazorpayEnrollment = async () => {
         setLoading(true);
         setError(null);
 
         try {
+          // CPO: second Razorpay call goes to cpo-pay-installments
+          if (paymentType === "CPO" && cpoEnrolledRef.current) {
+            const enrolled = cpoEnrolledRef.current;
+            const paymentResponse = await payCpoInstallments({
+              userId: enrolled.userId,
+              userPlanId: enrolled.userPlanId,
+              instituteId,
+              studentFeePaymentIds: enrolled.sfpIds,
+              customAmount: enrolled.customAmount,
+              paymentVendor: "RAZORPAY",
+              currency: inviteData?.currency || "INR",
+              email: enrolled.email,
+              name: enrolled.name,
+              razorpayPaymentData,
+            });
+            setPaymentCompletionResponse(paymentResponse);
+            setTimeout(async () => {
+              if (
+                paymentResponse?.payment_response?.response_data
+                  ?.paymentStatus === "PAID"
+              ) {
+                setCurrentStep(5);
+                await fetchAndHandleEnrollmentPolicy();
+              } else setCurrentStep(4);
+            }, 100);
+            return;
+          }
+
+          // Regular non-CPO Razorpay completion
           const paymentResponse = await handleEnrollLearnerForPayment({
             registrationData: form.getValues(),
             enrollmentData: enrollmentData,
@@ -1344,19 +1894,21 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                 .id,
             package_session_ids:
               inviteData?.package_session_to_payment_options.map(
-                (ps: { package_session_id: string }) => ps?.package_session_id
+                (ps: { package_session_id: string }) => ps?.package_session_id,
               ) || [""],
             allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
             referRequest: referRequest,
+            couponCode: appliedCouponCode,
+            couponDiscount,
             razorpayPaymentData: razorpayPaymentData, // Now includes payment details
             paymentVendor: "RAZORPAY",
             isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+            billingContact: collectBillingContact ? billingContact : undefined,
             // userId: submittedUserId || undefined,
           });
 
           setPaymentCompletionResponse(paymentResponse);
 
-          // Check payment status and navigate accordingly
           setTimeout(async () => {
             if (
               paymentResponse?.payment_response?.response_data
@@ -1367,7 +1919,6 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                 return;
               }
               setCurrentStep(5);
-              // Fetch and handle enrollment policy (shows dialog if needed)
               await fetchAndHandleEnrollmentPolicy();
             } else {
               setCurrentStep(4);
@@ -1378,14 +1929,22 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           // @ts-expect-error
           const errorData = err?.response?.data;
           if (errorData?.responseCode?.includes("510")) {
-            const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errorData?.ex);
+            const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+              "error_already_enrolled",
+              errorData?.ex,
+            );
             if (!dialogOpened) {
               toast.error(errorData?.ex || "Failed to complete enrollment");
             }
           }
           setError(errorData?.ex || "Failed to complete enrollment");
           if (inviteData?.gtm_container_id) {
-            pushPaymentFailed({ courseName: courseData.course || "", vendor: "RAZORPAY", errorMessage: errorData?.ex || "Failed to complete enrollment", utmParams });
+            pushPaymentFailed({
+              courseName: courseData.course || "",
+              vendor: "RAZORPAY",
+              errorMessage: errorData?.ex || "Failed to complete enrollment",
+              utmParams,
+            });
           }
           console.error("Razorpay completion error:", err);
         } finally {
@@ -1426,12 +1985,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             inviteData?.package_session_to_payment_options[0].payment_option.id,
           package_session_ids:
             inviteData?.package_session_to_payment_options.map(
-              (ps: { package_session_id: string }) => ps?.package_session_id
+              (ps: { package_session_id: string }) => ps?.package_session_id,
             ) || [""],
           allowLearnersToCreateCourses: getAllowLearnersToCreateCourses(),
           referRequest: referRequestRef.current,
+          couponCode: appliedCouponCode,
+          couponDiscount,
           paymentVendor: "CASHFREE",
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
+          billingContact: collectBillingContact ? billingContact : undefined,
         });
 
         const userPlanId =
@@ -1454,16 +2016,13 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           const token = await getTokenFromStorage(TokenKey.accessToken);
           if (!token) {
             throw new Error(
-              "Payment session not in response. Please log in to complete payment."
+              "Payment session not in response. Please log in to complete payment.",
             );
           }
           const userEmail = getUserDetails().email;
           if (!userEmail) throw new Error("Email is required.");
 
-          const amount =
-            enrollmentData.selectedPayment?.actual_price ??
-            enrollmentData.selectedPayment?.amount ??
-            0;
+          const amount = getSelectedPaymentPrice(enrollmentData.selectedPayment);
           const cfResponse = await initiateCashfreePayment(
             instituteId,
             userPlanId,
@@ -1473,7 +2032,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               email: userEmail,
               returnUrl: getCashfreeReturnUrl(),
               token,
-            }
+            },
           );
 
           paymentSessionId =
@@ -1502,28 +2061,36 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           paymentResponse?.user?.email ??
           getUserDetails().email;
         const userPassword =
-          paymentResponse?.user?.password ??
-          getPasswordField(form.getValues());
+          paymentResponse?.user?.password ?? getPasswordField(form.getValues());
         if (ordId && username && userPassword) {
           try {
             sessionStorage.setItem(
               `enroll_payment_creds_${ordId}`,
-              JSON.stringify({ username, password: userPassword })
+              JSON.stringify({ username, password: userPassword }),
             );
           } catch {
             /* ignore */
           }
         }
       } catch (err) {
-        const errData = (err as { response?: { data?: { ex?: string; responseCode?: string } } })?.response?.data;
+        const errData = (
+          err as {
+            response?: { data?: { ex?: string; responseCode?: string } };
+          }
+        )?.response?.data;
         if (errData?.responseCode?.includes("510")) {
-          const dialogOpened = await fetchAndHandleEnrollmentPolicy("error_already_enrolled", errData?.ex);
+          const dialogOpened = await fetchAndHandleEnrollmentPolicy(
+            "error_already_enrolled",
+            errData?.ex,
+          );
           if (!dialogOpened) {
             toast.error(errData?.ex || "Payment failed");
           }
         }
         setError(
-          (err as Error)?.message || errData?.ex || "Failed to initialize payment"
+          (err as Error)?.message ||
+            errData?.ex ||
+            "Failed to initialize payment",
         );
       } finally {
         setCashfreeInitLoading(false);
@@ -1551,7 +2118,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
       try {
         const transformedData = await safeJsonParse(
           inviteData?.web_page_meta_data_json,
-          {}
+          {},
         );
         const paymentTypeValue =
           inviteData?.package_session_to_payment_options[0]?.payment_option
@@ -1559,6 +2126,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         setPaymentType(paymentTypeValue);
 
         // If payment type is FREE, ONE_TIME, or DONATION, automatically set the default payment plan
+        // CPO does not pre-select a payment plan — installments are loaded after enrollment
         if (
           paymentTypeValue === "FREE" ||
           paymentTypeValue === "ONE_TIME" ||
@@ -1571,7 +2139,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           if (defaultPaymentPlan) {
             // Get the unit from payment option metadata to format duration correctly
             const paymentOptionMetadata = JSON.parse(
-              paymentOptionMeta?.payment_option_metadata_json || "{}"
+              paymentOptionMeta?.payment_option_metadata_json || "{}",
             );
             const unit = paymentOptionMetadata?.unit || "days";
 
@@ -1579,8 +2147,8 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               unit === "days"
                 ? `${defaultPaymentPlan.validity_in_days} days`
                 : `${Math.floor(
-                  defaultPaymentPlan.validity_in_days / 30
-                )} months`;
+                    defaultPaymentPlan.validity_in_days / 30,
+                  )} months`;
 
             // @ts-expect-error // TODO:fix this
             const preselectedPayment: SelectedPayment = {
@@ -1600,9 +2168,8 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             }));
           }
         }
-        const transformedJsonData = await transformApiDataToCourseDataForInvite(
-          transformedData
-        );
+        const transformedJsonData =
+          await transformApiDataToCourseDataForInvite(transformedData);
         setCourseData({
           aboutCourse: transformedJsonData?.aboutCourse || "",
           course: transformedJsonData?.course || "",
@@ -1682,7 +2249,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
 
   // Wrapper function to update both state and ref for referRequest
   const updateReferRequest = (newReferRequest: ReferRequest | null) => {
-    console.log("[enroll-form] updateReferRequest called with:", newReferRequest);
+    console.log(
+      "[enroll-form] updateReferRequest called with:",
+      newReferRequest,
+    );
     referRequestRef.current = newReferRequest; // Update ref immediately
     setReferRequest(newReferRequest); // Also update state
   };
@@ -1690,11 +2260,18 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
   // Handler for when referral is successfully applied - auto-enroll for FREE courses
   const handleReferralApplied = () => {
     // For FREE courses, auto-submit enrollment after referral is applied
-    if (paymentType === "FREE" && currentStep === 2 && !hasAutoEnrolledRef.current) {
+    if (
+      paymentType === "FREE" &&
+      currentStep === 2 &&
+      !hasAutoEnrolledRef.current
+    ) {
       hasAutoEnrolledRef.current = true;
       // Small delay to ensure UI has updated
       setTimeout(() => {
-        console.log("[handleReferralApplied] Triggering auto-enrollment, referRequestRef.current:", referRequestRef.current);
+        console.log(
+          "[handleReferralApplied] Triggering auto-enrollment, referRequestRef.current:",
+          referRequestRef.current,
+        );
         handleSubmitEnrollment();
       }, 500);
     }
@@ -1736,9 +2313,31 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
+            collectBillingContact={collectBillingContact}
+            billingContact={billingContact}
+            onBillingContactChange={setBillingContact}
+            billingContactFields={billingContactFields}
           />
         );
       case 1: {
+        // CPO installment selection step
+        if (paymentType === "CPO") {
+          return (
+            <CpoInstallmentSelectionStep
+              dues={cpoDues}
+              currency={inviteData?.currency || "INR"}
+              selectedSfpIds={cpoSelectedSfpIds}
+              onSelectionChange={(ids, total) => {
+                setCpoSelectedSfpIds(ids);
+                setCpoSelectedTotal(total);
+              }}
+              customAmount={cpoCustomAmount}
+              onCustomAmountChange={setCpoCustomAmount}
+              loading={cpoEnrolling}
+            />
+          );
+        }
+
         // Skip payment selection step for FREE payments
         if (paymentType === "FREE") {
           return (
@@ -1757,6 +2356,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               refCode={ref || ""}
               onUnappliedCodeChange={setHasUnappliedReferral}
               onReferralApplied={handleReferralApplied}
+              instituteId={instituteId}
+              enrollInviteId={inviteData?.id || ""}
+              userEmail={
+                enrollmentData.registrationData?.email?.value as
+                  | string
+                  | undefined
+              }
+              onCouponChange={handleCouponChange}
+              initialCouponCode={appliedCouponCode}
             />
           );
         }
@@ -1767,7 +2375,7 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           try {
             const metadata = JSON.parse(
               inviteData?.package_session_to_payment_options[0]?.payment_option
-                ?.payment_option_metadata_json || "{}"
+                ?.payment_option_metadata_json || "{}",
             );
             donationMetadata = {
               allowCustomAmount:
@@ -1810,20 +2418,43 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             refCode={ref || ""}
             onUnappliedCodeChange={setHasUnappliedReferral}
             onReferralApplied={handleReferralApplied}
+            instituteId={instituteId}
+            enrollInviteId={inviteData?.id || ""}
+            userEmail={
+              enrollmentData.registrationData?.email?.value as
+                | string
+                | undefined
+            }
+            onCouponChange={handleCouponChange}
+            initialCouponCode={appliedCouponCode}
           />
         );
       case 3: {
         const vendor = propVendor || getPaymentVendor(inviteData);
-        const userDetails = getUserDetails();
+        const userDetails =
+          paymentType === "CPO"
+            ? { name: "", email: cpoUserEmail, contact: "" }
+            : getUserDetails();
+        const cpoPayAmount =
+          cpoCustomAmount !== undefined ? cpoCustomAmount : cpoSelectedTotal;
         return (
           <PaymentInfoStep
             error={error}
             vendor={vendor}
             amount={
-              enrollmentData.selectedPayment?.actual_price ||
-              enrollmentData.selectedPayment?.amount
+              paymentType === "CPO"
+                ? cpoPayAmount
+                : Math.max(
+                    0,
+                    getSelectedPaymentPrice(enrollmentData.selectedPayment) -
+                      (appliedCouponCode ? couponDiscount : 0),
+                  )
             }
-            currency={enrollmentData.selectedPayment?.currency}
+            currency={
+              paymentType === "CPO"
+                ? inviteData?.currency || "INR"
+                : enrollmentData.selectedPayment?.currency
+            }
             onEwayPaymentReady={setEwayEncryptedData}
             onEwayError={setError}
             onStripePaymentReady={(processor) => {
@@ -1876,6 +2507,17 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             email={enrollmentData?.registrationData?.email?.value || ""}
             isAutoLoggingIn={isAutoLoggingIn}
             config={inviteConfig}
+            amountDisplay={
+              enrollmentData.selectedPayment
+                ? `${getCurrencySymbol(
+                    enrollmentData.selectedPayment.currency || ""
+                  )}${
+                    enrollmentData.selectedPayment.actual_price ??
+                    enrollmentData.selectedPayment.amount ??
+                    ""
+                  }`
+                : ""
+            }
           />
         );
       default:
@@ -1886,6 +2528,10 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
             instituteId={instituteId}
             onSubmit={onSubmit}
             form={form}
+            collectBillingContact={collectBillingContact}
+            billingContact={billingContact}
+            onBillingContactChange={setBillingContact}
+            billingContactFields={billingContactFields}
           />
         );
     }
@@ -1925,10 +2571,15 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
           institute_settings_json: string;
         };
 
-        await Preferences.set({
-          key: "InstituteDetails",
-          value: JSON.stringify(mappedDetails),
-        });
+        // Merge-write so we don't clobber fields owned by other writers
+        // (use-domain-routing, useSidebar). Lazy-imported so the change is
+        // local to this file and doesn't reorganize the top-of-file imports.
+        const { upsertInstituteDetails } = await import(
+          "@/services/institute-settings-cache"
+        );
+        await upsertInstituteDetails(
+          mappedDetails as unknown as Record<string, unknown>,
+        );
 
         // Store learner branding subset used by applyTabBranding
         const learnerKey = `LEARNER_${instituteId}`;
@@ -1984,7 +2635,12 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
     void loadPolicyLinks();
   }, [instituteId]);
 
-  if (isLoading || isInstituteLoading || (loading && paymentType === "FREE"))
+  if (
+    isLoading ||
+    isInstituteLoading ||
+    (loading && paymentType === "FREE") ||
+    cpoEnrolling
+  )
     return <DashboardLoader />;
 
   // Helper to extract YouTube video ID from URL
@@ -2014,7 +2670,8 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                     null,
                   instituteLogoFileId:
                     inviteData?.sub_org?.logo_file_id ??
-                    instituteData?.institute_logo_file_id ?? null,
+                    instituteData?.institute_logo_file_id ??
+                    null,
                   instituteThemeCode:
                     (instituteData?.institute_theme_code as string) ||
                     (instituteData?.theme as string) ||
@@ -2067,13 +2724,16 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
                 </h1>
                 {courseData.description && (
                   <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                    {courseData.description.replace(/<[^>]*>/g, '')}
+                    {courseData.description.replace(/<[^>]*>/g, "")}
                   </p>
                 )}
                 {courseData.tags && courseData.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {courseData.tags.map((tag, i) => (
-                      <span key={i} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                      <span
+                        key={i}
+                        className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded"
+                      >
                         {tag}
                       </span>
                     ))}
@@ -2082,19 +2742,28 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
               </div>
 
               {/* Price Badge - Show only if not FREE */}
-              {paymentType !== "FREE" && enrollmentData.selectedPayment && (
-                <div className="flex-shrink-0 text-right">
-                  <div className="text-lg font-semibold text-gray-900">
-                    {enrollmentData.selectedPayment.currency?.toUpperCase()}{" "}
-                    {enrollmentData.selectedPayment.amount ?? enrollmentData.selectedPayment.actual_price}
-                  </div>
-                  {enrollmentData.selectedPayment.duration && (
-                    <div className="text-xs text-gray-500">
-                      {enrollmentData.selectedPayment.duration}
-                    </div>
-                  )}
+              {paymentType === "CPO" && (
+                <div className="flex-shrink-0">
+                  <span className="px-3 py-1 bg-blue-50 text-blue-700 text-sm font-medium rounded-full">
+                    Installment Plan
+                  </span>
                 </div>
               )}
+              {paymentType !== "FREE" &&
+                paymentType !== "CPO" &&
+                enrollmentData.selectedPayment && (
+                  <div className="flex-shrink-0 text-right">
+                    <div className="text-lg font-semibold text-gray-900">
+                      {enrollmentData.selectedPayment.currency?.toUpperCase()}{" "}
+                      {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
+                    </div>
+                    {enrollmentData.selectedPayment.duration && (
+                      <div className="text-xs text-gray-500">
+                        {enrollmentData.selectedPayment.duration}
+                      </div>
+                    )}
+                  </div>
+                )}
               {paymentType === "FREE" && (
                 <div className="flex-shrink-0">
                   <span className="px-3 py-1 bg-green-50 text-green-700 text-sm font-medium rounded-full">
@@ -2112,218 +2781,273 @@ const EnrollByInvite = ({ vendor: propVendor, utmParams }: EnrollByInviteProps =
         {/* Progress Steps - Centered above content */}
         {currentStep < 5 && (
           <div className="mb-6">
-            {paymentType !== "FREE" ? (
-              <div className="flex items-center justify-center gap-0">
-                {/* Step 1: Details */}
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                    }`}>
-                    {currentStep > 0 ? "✓" : "1"}
-                  </div>
-                  <span className={`text-xs sm:text-sm font-medium ${currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
-                    }`}>
-                    Details
-                  </span>
+            {(() => {
+              // Build the wizard pills. The Plan-selection step is only a real
+              // user-facing step when there are >=2 payment plans to choose
+              // between (and the flow isn't FREE). When the invite exposes a
+              // single plan or is FREE, handleNext skips currentStep === 1
+              // entirely — so we drop the pill instead of flashing it.
+              const showPlanPill =
+                paymentType !== "FREE" &&
+                !(paymentType !== "DONATION" && hasSinglePlan);
+              const finalLabel = paymentType === "FREE" ? "Confirm" : "Pay";
+
+              type Pill = {
+                label: string;
+                // currentStep value at which this pill is "active" (highlighted)
+                activeFrom: number;
+                activeUntil: number;
+                // currentStep value at which this pill flips to ✓ (done)
+                doneFrom: number;
+              };
+              const pills: Pill[] = [
+                { label: "Details", activeFrom: 0, activeUntil: 0, doneFrom: 1 },
+              ];
+              if (showPlanPill) {
+                pills.push({
+                  label: "Plan",
+                  activeFrom: 1,
+                  activeUntil: 1,
+                  doneFrom: 2,
+                });
+              }
+              pills.push({
+                label: finalLabel,
+                activeFrom: 2,
+                activeUntil: 4,
+                // FREE flow exits to step 5 (success) immediately after confirm;
+                // paid flow doesn't tick the final pill until success either.
+                doneFrom: paymentType === "FREE" ? 3 : 5,
+              });
+
+              return (
+                <div className="flex items-center justify-center gap-0">
+                  {pills.map((pill, idx) => {
+                    const isActive =
+                      currentStep >= pill.activeFrom &&
+                      currentStep <= pill.activeUntil;
+                    const isDone = currentStep >= pill.doneFrom;
+                    const showCheck = isDone;
+                    const number = String(idx + 1);
+                    const isLast = idx === pills.length - 1;
+                    return (
+                      <div key={pill.label} className="flex items-center">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${
+                              isActive || isDone
+                                ? "bg-primary text-white"
+                                : "bg-gray-200 text-gray-500"
+                            }`}
+                          >
+                            {showCheck ? "✓" : number}
+                          </div>
+                          <span
+                            className={`text-xs sm:text-sm font-medium ${
+                              isActive
+                                ? "text-primary"
+                                : isDone
+                                  ? "text-gray-700"
+                                  : "text-gray-400"
+                            }`}
+                          >
+                            {pill.label}
+                          </span>
+                        </div>
+                        {!isLast && (
+                          <div
+                            className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${
+                              isDone ? "bg-primary" : "bg-gray-200"
+                            }`}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {/* Connector */}
-                <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 0 ? "bg-primary" : "bg-gray-200"}`} />
-                {/* Step 2: Plan */}
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                    }`}>
-                    {currentStep > 1 ? "✓" : "2"}
-                  </div>
-                  <span className={`text-xs sm:text-sm font-medium ${currentStep === 1 ? "text-primary" : currentStep > 1 ? "text-gray-700" : "text-gray-400"
-                    }`}>
-                    Plan
-                  </span>
-                </div>
-                {/* Connector */}
-                <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep > 1 ? "bg-primary" : "bg-gray-200"}`} />
-                {/* Step 3: Pay */}
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                    }`}>
-                    {currentStep > 4 ? "✓" : "3"}
-                  </div>
-                  <span className={`text-xs sm:text-sm font-medium ${currentStep >= 2 && currentStep < 5 ? "text-primary" : currentStep >= 5 ? "text-gray-700" : "text-gray-400"
-                    }`}>
-                    Pay
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center gap-0">
-                {/* Step 1: Details */}
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 0 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                    }`}>
-                    {currentStep > 0 ? "✓" : "1"}
-                  </div>
-                  <span className={`text-xs sm:text-sm font-medium ${currentStep === 0 ? "text-primary" : currentStep > 0 ? "text-gray-700" : "text-gray-400"
-                    }`}>
-                    Details
-                  </span>
-                </div>
-                {/* Connector */}
-                <div className={`w-8 sm:w-16 h-0.5 mx-1 sm:mx-2 ${currentStep >= 2 ? "bg-primary" : "bg-gray-200"}`} />
-                {/* Step 2: Confirm */}
-                <div className="flex items-center gap-2">
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold ${currentStep >= 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"
-                    }`}>
-                    {currentStep > 2 ? "✓" : "2"}
-                  </div>
-                  <span className={`text-xs sm:text-sm font-medium ${currentStep >= 2 ? "text-primary" : "text-gray-400"
-                    }`}>
-                    Confirm
-                  </span>
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
-        <div className={`grid grid-cols-1 ${hasRightSectionContent && currentStep === 0 ? "lg:grid-cols-3" : ""} gap-6`}>
+        <div
+          className={`grid grid-cols-1 ${hasRightSectionContent && currentStep === 0 ? "lg:grid-cols-3" : ""} gap-6`}
+        >
           {/* Main Form Area */}
-          <div className={`${hasRightSectionContent && currentStep === 0 ? "lg:col-span-2" : "w-full max-w-2xl mx-auto"} space-y-4`}>
+          <div
+            className={`${hasRightSectionContent && currentStep === 0 ? "lg:col-span-2" : "w-full max-w-2xl mx-auto"} space-y-4`}
+          >
             {/* Step Content */}
             {renderCurrentStep()}
 
             {/* Course Structure Preview - Bundled Courses */}
-            {currentStep === 0 && isBundledInvite && bundledPackageSessions.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h3 className="text-base font-medium text-gray-900 mb-3">
-                  What's Included
-                </h3>
+            {currentStep === 0 &&
+              isBundledInvite &&
+              bundledPackageSessions.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h3 className="text-base font-medium text-gray-900 mb-3">
+                    What's Included
+                  </h3>
 
-                {bundledPackageSessions.length > 1 ? (
-                  <Tabs
-                    value={activePackageSessionId ?? bundledPackageSessions[0]?.packageSessionId}
-                    onValueChange={setActivePackageSessionId}
-                  >
-                    <TabsList className="flex flex-wrap w-full gap-1.5 bg-gray-50 p-1 rounded-md mb-3 h-auto">
-                      {bundledPackageSessions.map((session, index) => (
-                        <TabsTrigger
+                  {bundledPackageSessions.length > 1 ? (
+                    <Tabs
+                      value={
+                        activePackageSessionId ??
+                        bundledPackageSessions[0]?.packageSessionId
+                      }
+                      onValueChange={setActivePackageSessionId}
+                    >
+                      <TabsList className="flex flex-wrap w-full gap-1.5 bg-gray-50 p-1 rounded-md mb-3 h-auto">
+                        {bundledPackageSessions.map((session, index) => (
+                          <TabsTrigger
+                            key={session.packageSessionId}
+                            value={session.packageSessionId}
+                            className="flex-1 min-w-reg-120 px-3 py-1.5 text-xs font-medium rounded text-gray-600 bg-transparent data-[state=active]:bg-white data-[state=active]:text-gray-900"
+                          >
+                            {resolvePackageSessionLabel(
+                              session.packageSessionId,
+                              index,
+                            )}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+
+                      {bundledPackageSessions.map((session) => (
+                        <TabsContent
                           key={session.packageSessionId}
                           value={session.packageSessionId}
-                          className="flex-1 min-w-reg-120 px-3 py-1.5 text-xs font-medium rounded text-gray-600 bg-transparent data-[state=active]:bg-white data-[state=active]:text-gray-900"
+                          className="focus-visible:outline-none focus-visible:ring-0 mt-0"
                         >
-                          {resolvePackageSessionLabel(session.packageSessionId, index)}
-                        </TabsTrigger>
+                          {activePackageSessionId === session.packageSessionId
+                            ? (() => {
+                                const sessionDetails =
+                                  getDetailsFromPackageSessionId({
+                                    packageSessionId: session.packageSessionId,
+                                  });
+                                const previewCourseId =
+                                  sessionDetails?.package_dto?.id ?? "";
+                                const previewLevelId =
+                                  sessionDetails?.level?.id ?? undefined;
+
+                                if (!previewCourseId) {
+                                  return (
+                                    <p className="text-sm text-gray-500 py-4 text-center">
+                                      Course details loading...
+                                    </p>
+                                  );
+                                }
+
+                                return (
+                                  <CatalogCourseStructureDetails
+                                    key={session.packageSessionId}
+                                    courseDepth={5}
+                                    courseId={previewCourseId}
+                                    instituteId={instituteId ?? ""}
+                                    packageSessionId={session.packageSessionId}
+                                    levelId={previewLevelId}
+                                  />
+                                );
+                              })()
+                            : null}
+                        </TabsContent>
                       ))}
-                    </TabsList>
+                    </Tabs>
+                  ) : (
+                    (() => {
+                      const singleSessionId =
+                        bundledPackageSessions[0]?.packageSessionId ?? "";
+                      if (!singleSessionId) return null;
 
-                    {bundledPackageSessions.map((session) => (
-                      <TabsContent
-                        key={session.packageSessionId}
-                        value={session.packageSessionId}
-                        className="focus-visible:outline-none focus-visible:ring-0 mt-0"
-                      >
-                        {activePackageSessionId === session.packageSessionId ? (
-                          (() => {
-                            const sessionDetails = getDetailsFromPackageSessionId({
-                              packageSessionId: session.packageSessionId,
-                            });
-                            const previewCourseId = sessionDetails?.package_dto?.id ?? "";
-                            const previewLevelId = sessionDetails?.level?.id ?? undefined;
+                      const sessionDetails = getDetailsFromPackageSessionId({
+                        packageSessionId: singleSessionId,
+                      });
+                      const previewCourseId =
+                        sessionDetails?.package_dto?.id ?? "";
+                      const previewLevelId =
+                        sessionDetails?.level?.id ?? undefined;
 
-                            if (!previewCourseId) {
-                              return (
-                                <p className="text-sm text-gray-500 py-4 text-center">
-                                  Course details loading...
-                                </p>
-                              );
-                            }
+                      if (!previewCourseId) return null;
 
-                            return (
-                              <CatalogCourseStructureDetails
-                                key={session.packageSessionId}
-                                courseDepth={5}
-                                courseId={previewCourseId}
-                                instituteId={instituteId ?? ""}
-                                packageSessionId={session.packageSessionId}
-                                levelId={previewLevelId}
-                              />
-                            );
-                          })()
-                        ) : null}
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                ) : (
-                  (() => {
-                    const singleSessionId = bundledPackageSessions[0]?.packageSessionId ?? "";
-                    if (!singleSessionId) return null;
-
-                    const sessionDetails = getDetailsFromPackageSessionId({
-                      packageSessionId: singleSessionId,
-                    });
-                    const previewCourseId = sessionDetails?.package_dto?.id ?? "";
-                    const previewLevelId = sessionDetails?.level?.id ?? undefined;
-
-                    if (!previewCourseId) return null;
-
-                    return (
-                      <CatalogCourseStructureDetails
-                        courseDepth={5}
-                        courseId={previewCourseId}
-                        instituteId={instituteId ?? ""}
-                        packageSessionId={singleSessionId}
-                        levelId={previewLevelId}
-                      />
-                    );
-                  })()
-                )}
-              </div>
-            )}
+                      return (
+                        <CatalogCourseStructureDetails
+                          courseDepth={5}
+                          courseId={previewCourseId}
+                          instituteId={instituteId ?? ""}
+                          packageSessionId={singleSessionId}
+                          levelId={previewLevelId}
+                        />
+                      );
+                    })()
+                  )}
+                </div>
+              )}
 
             {/* YouTube Video - Compact */}
-            {currentStep === 0 && courseData.courseMedia && courseData.courseMediaId?.type === "youtube" && (
-              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
-                  <iframe
-                    className="absolute top-0 left-0 w-full h-full"
-                    src={`https://www.youtube.com/embed/${getYouTubeVideoId(courseData.courseMediaId.id)}`}
-                    title={courseData.course}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
+            {currentStep === 0 &&
+              courseData.courseMedia &&
+              courseData.courseMediaId?.type === "youtube" && (
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  <div
+                    className="relative w-full"
+                    style={{ paddingBottom: "56.25%" }}
+                  >
+                    <iframe
+                      className="absolute top-0 left-0 w-full h-full"
+                      src={`https://www.youtube.com/embed/${getYouTubeVideoId(courseData.courseMediaId.id)}`}
+                      title={courseData.course}
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Navigation Buttons */}
-            {currentStep > 0 && currentStep < 4 && !(currentStep === 1 && paymentType === "FREE") && (
-              <NavigationButtons
-                currentStep={currentStep}
-                selectedPayment={enrollmentData.selectedPayment}
-                onPrevious={handlePrevious}
-                onNext={handleNext}
-                onSubmitEnrollment={handleSubmitEnrollment}
-                loading={loading}
-                paymentType={paymentType}
-                donationAmountValid={donationAmountValid}
-                paymentVendor={currentStep === 3 ? getPaymentVendor(inviteData) : undefined}
-                isPaymentDataReady={
-                  currentStep === 3
-                    ? getPaymentVendor(inviteData) === "EWAY"
-                      ? !!ewayEncryptedData
-                      : getPaymentVendor(inviteData) === "STRIPE"
-                        ? !!stripePaymentProcessor
-                        : getPaymentVendor(inviteData) === "RAZORPAY"
-                          ? !!razorpayPaymentData
-                          : false
-                    : false
-                }
-                hasUnappliedReferral={hasUnappliedReferral}
-                hidePrimaryButton={
-                  currentStep === 3 &&
-                  getPaymentVendor(inviteData) === "CASHFREE" &&
-                  !!cashfreeSessionData
-                }
-              />
-            )}
+            {currentStep > 0 &&
+              currentStep < 4 &&
+              !(currentStep === 1 && paymentType === "FREE") && (
+                <NavigationButtons
+                  currentStep={currentStep}
+                  selectedPayment={
+                    paymentType === "CPO"
+                      ? cpoSelectedSfpIds.length > 0 ||
+                        (cpoCustomAmount !== undefined && cpoCustomAmount > 0)
+                        ? ({
+                            amount: cpoCustomAmount ?? cpoSelectedTotal,
+                            currency: inviteData?.currency || "INR",
+                          } as SelectedPayment)
+                        : null
+                      : enrollmentData.selectedPayment
+                  }
+                  onPrevious={handlePrevious}
+                  onNext={handleNext}
+                  onSubmitEnrollment={handleSubmitEnrollment}
+                  loading={loading || cpoEnrolling}
+                  paymentType={paymentType}
+                  donationAmountValid={donationAmountValid}
+                  paymentVendor={
+                    currentStep === 3 ? getPaymentVendor(inviteData) : undefined
+                  }
+                  isPaymentDataReady={
+                    currentStep === 3
+                      ? getPaymentVendor(inviteData) === "EWAY"
+                        ? !!ewayEncryptedData
+                        : getPaymentVendor(inviteData) === "STRIPE"
+                          ? !!stripePaymentProcessor
+                          : getPaymentVendor(inviteData) === "RAZORPAY"
+                            ? !!razorpayPaymentData
+                            : false
+                      : false
+                  }
+                  hasUnappliedReferral={hasUnappliedReferral}
+                  hidePrimaryButton={
+                    currentStep === 3 &&
+                    getPaymentVendor(inviteData) === "CASHFREE" &&
+                    !!cashfreeSessionData
+                  }
+                />
+              )}
           </div>
 
           {/* Sidebar - Course Details */}

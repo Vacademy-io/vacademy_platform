@@ -53,6 +53,36 @@ export const SuggestionsPanel = ({
         return q ? others.filter((r) => getRowLabel(r).toLowerCase().includes(q)) : others;
     }, [readyRows, selectedId, rightSearch, getRowLabel]);
 
+    const allVisibleSelected = useMemo(
+        () => otherRows.length > 0 && otherRows.every((r) => currentSuggestions.includes(r.psInvitePaymentOptionId)),
+        [otherRows, currentSuggestions]
+    );
+
+    const toggleAll = () => {
+        if (!selectedId) return;
+        const next = { ...suggestions };
+        if (allVisibleSelected) {
+            // Deselect all visible
+            const idsToRemove = new Set(otherRows.map((r) => r.psInvitePaymentOptionId));
+            next[selectedId] = (next[selectedId] ?? []).filter((id) => !idsToRemove.has(id));
+            for (const id of idsToRemove) {
+                next[id] = (next[id] ?? []).filter((sid) => sid !== selectedId);
+            }
+        } else {
+            // Select all visible
+            const idsToAdd = otherRows
+                .map((r) => r.psInvitePaymentOptionId)
+                .filter((id) => !currentSuggestions.includes(id));
+            next[selectedId] = [...(next[selectedId] ?? []), ...idsToAdd];
+            for (const id of idsToAdd) {
+                if (!(next[id] ?? []).includes(selectedId)) {
+                    next[id] = [...(next[id] ?? []), selectedId];
+                }
+            }
+        }
+        onUpdateSuggestions(next);
+    };
+
     const toggle = (targetId: string) => {
         if (!selectedId) return;
         const isChecked = currentSuggestions.includes(targetId);
@@ -160,15 +190,30 @@ export const SuggestionsPanel = ({
                                 <p className="mb-2 truncate text-sm font-semibold text-neutral-800">
                                     {getRowLabel(selectedRow)}
                                 </p>
-                                <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5">
-                                    <Search className="size-3.5 shrink-0 text-neutral-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search courses…"
-                                        value={rightSearch}
-                                        onChange={(e) => setRightSearch(e.target.value)}
-                                        className="flex-1 bg-transparent text-xs outline-none placeholder:text-neutral-400"
-                                    />
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5">
+                                        <Search className="size-3.5 shrink-0 text-neutral-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search courses…"
+                                            value={rightSearch}
+                                            onChange={(e) => setRightSearch(e.target.value)}
+                                            className="flex-1 bg-transparent text-xs outline-none placeholder:text-neutral-400"
+                                        />
+                                    </div>
+                                    {otherRows.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={toggleAll}
+                                            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                                                allVisibleSelected
+                                                    ? 'border-primary-300 bg-primary-50 text-primary-600 hover:bg-primary-100'
+                                                    : 'border-neutral-200 bg-white text-neutral-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600'
+                                            }`}
+                                        >
+                                            {allVisibleSelected ? 'Deselect all' : 'Select all'}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 

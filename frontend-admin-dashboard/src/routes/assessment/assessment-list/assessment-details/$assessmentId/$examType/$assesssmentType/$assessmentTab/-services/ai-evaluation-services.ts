@@ -1,4 +1,5 @@
 import {
+    BASE_URL,
     GET_COMPLETED_QUESTIONS_URL,
     GET_EVALUATION_PROGRESS_URL,
     STOP_EVALUATION_URL,
@@ -22,11 +23,28 @@ export interface CriteriaBreakdown {
     reason: string;
 }
 
+export type AnnotationStyle =
+    | 'tick'
+    | 'cross'
+    | 'circle'
+    | 'underline'
+    | 'margin_note'
+    | 'region_note';
+
+export interface QuestionAnnotation {
+    target: string;
+    page_id: string;
+    style: AnnotationStyle;
+    text?: string;
+}
+
 export interface EvaluationDetailsJson {
     marks_awarded: number;
     feedback: string;
     extracted_answer: string;
     criteria_breakdown: CriteriaBreakdown[];
+    annotations?: QuestionAnnotation[];
+    confidence?: number;
 }
 
 export interface QuestionProgress {
@@ -38,6 +56,8 @@ export interface QuestionProgress {
     feedback?: string;
     extracted_answer?: string;
     evaluation_details_json?: EvaluationDetailsJson;
+    annotations?: QuestionAnnotation[];
+    rubric_version?: number;
     started_at?: string;
     completed_at?: string;
 }
@@ -71,6 +91,9 @@ export interface EvaluationProgress {
     };
     completed_questions: QuestionProgress[];
     pending_questions: QuestionProgress[];
+    layout_map_url?: string | null;
+    rubric_version?: number | null;
+    ai_service_job_id?: string | null;
 }
 
 /**
@@ -121,6 +144,24 @@ export const getCompletedQuestions = async (processId: string): Promise<Question
     });
 
     return response?.data || [];
+};
+
+/**
+ * Fetch the persisted LayoutMap JSON for an evaluation. URL comes from
+ * EvaluationProgress.layout_map_url, which the backend returns as a relative
+ * path (e.g. "/assessment-service/copy-check/layout/<id>"). Prefix BASE_URL
+ * so the request hits the backend origin in production rather than the FE
+ * origin (which would 404).
+ */
+export const getLayoutMap = async (layoutMapUrl: string): Promise<unknown> => {
+    const fullUrl = layoutMapUrl.startsWith('http')
+        ? layoutMapUrl
+        : `${BASE_URL}${layoutMapUrl}`;
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: fullUrl,
+    });
+    return response?.data;
 };
 
 /**

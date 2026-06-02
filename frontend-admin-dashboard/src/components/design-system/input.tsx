@@ -7,9 +7,9 @@ import { Label } from '../ui/label';
 import { EyeSlash, WarningCircle, Eye } from '@phosphor-icons/react';
 
 const inputSizeVariants = {
-    large: 'w-60 h-10 py-2 px-3 text-subtitle',
-    medium: 'w-60 h-9 py-2 px-3 text-body',
-    small: 'w-60 h-6 p-2 text-caption',
+    large: 'w-full sm:w-60 h-10 py-2 px-3 text-subtitle',
+    medium: 'w-full sm:w-60 h-9 py-2 px-3 text-body',
+    small: 'w-full sm:w-60 h-6 p-2 text-caption',
 } as const;
 
 const InputError = ({ errorMessage }: InputErrorProps) => {
@@ -18,7 +18,7 @@ const InputError = ({ errorMessage }: InputErrorProps) => {
             <span>
                 <WarningCircle />
             </span>
-            <span className="mt-[3px]">{errorMessage}</span>
+            <span className="mt-0.5">{errorMessage}</span>
         </div>
     );
 };

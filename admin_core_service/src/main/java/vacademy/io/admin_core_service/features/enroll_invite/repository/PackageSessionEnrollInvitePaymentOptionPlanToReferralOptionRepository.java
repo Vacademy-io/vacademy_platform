@@ -38,11 +38,13 @@ public interface PackageSessionEnrollInvitePaymentOptionPlanToReferralOptionRepo
     @Query("SELECT psr FROM PackageSessionEnrollInvitePaymentOptionPlanToReferralOption psr " +
             "WHERE psr.packageSessionLearnerInvitationToPaymentOption = :mapping " +
             "AND psr.paymentPlan = :paymentPlan " +
-            "AND psr.status IN :status")
+            "AND psr.status IN :status " +
+            "AND psr.referralOption.status IN :referralOptionStatus")
     Optional<PackageSessionEnrollInvitePaymentOptionPlanToReferralOption> findByPackageSessionLearnerInvitationToPaymentOptionAndPaymentPlanAndStatusIn(
             @Param("mapping") PackageSessionLearnerInvitationToPaymentOption packageSessionLearnerInvitationToPaymentOption,
             @Param("paymentPlan") PaymentPlan paymentPlan,
-            @Param("status") List<String> status);
+            @Param("status") List<String> status,
+            @Param("referralOptionStatus") List<String> referralOptionStatus);
 
     @Modifying
     @Query(value = """

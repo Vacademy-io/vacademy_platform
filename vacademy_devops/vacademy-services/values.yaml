@@ -139,11 +139,11 @@ ingress:
 # ---------------------------------------------------------------------------
 pgbouncer:
   enabled: true                   # cloud prod = true; standalone overlay sets false
-  dbHost: "REPLACE_WITH_LINODE_DB_HOST"
-  dbReadHost: "REPLACE_WITH_LINODE_READ_REPLICA_HOST"
-  dbPort: 26754
+  dbHost: "REPLACE_WITH_DB_HOST"
+  dbReadHost: "REPLACE_WITH_DB_READ_HOST"
+  dbPort: 5432
   dbUsername: "postgres"
-  dbPassword: "REPLACE_WITH_LINODE_DB_PASSWORD"
+  dbPassword: "REPLACE_WITH_DB_PASSWORD"
 
 # ---------------------------------------------------------------------------
 # FULL ENVIRONMENT — source of truth for every service's runtime config.

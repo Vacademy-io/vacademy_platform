@@ -27,13 +27,13 @@ const formatMillisToTime = (millis: number): string => {
 };
 
 const VIDEO_LOG_COLUMN_WIDTHS: ColumnWidthConfig = {
-    startTime: 'min-w-[100px]',
-    endTime: 'min-w-[100px]',
+    startTime: 'min-w-24',
+    endTime: 'min-w-24',
 };
 
 const DOC_LOG_COLUMN_WIDTHS: ColumnWidthConfig = {
-    page: 'min-w-[50px]',
-    timeSpent: 'min-w-[50px]',
+    page: 'min-w-12',
+    timeSpent: 'min-w-12',
 };
 
 interface VideoLog {
@@ -139,7 +139,7 @@ export const LogDetailsDialog = ({ isOpen, onClose, logData }: LogDetailsDialogP
     }, [logData, page, pageSize]);
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="w-[600px] max-w-[600px]">
+            <DialogContent className="w-full max-w-2xl">
                 <DialogHeader>
                     <DialogTitle className="text-h3 font-semibold text-primary-500">
                         {isVideo ? 'Video Timestamps Logs' : 'Document Read Logs'}

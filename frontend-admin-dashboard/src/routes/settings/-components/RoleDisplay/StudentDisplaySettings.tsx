@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -34,10 +35,18 @@ import MaxActiveSessionsSetting from './MaxActiveSessionsSetting';
 export default function StudentDisplaySettings(): JSX.Element {
     const [settings, setSettings] = useState<StudentDisplaySettingsData | null>(null);
     const [saving, setSaving] = useState(false);
+    const [hasChanges, setHasChanges] = useState(false);
+
+    // Snapshot of the last loaded/saved state for the Discard button in the
+    // sticky unsaved-changes bar.
+    const pristineSettingsRef = useRef<StudentDisplaySettingsData | null>(null);
 
     useEffect(() => {
         getStudentDisplaySettings()
-            .then(setSettings)
+            .then((s) => {
+                setSettings(s);
+                pristineSettingsRef.current = s;
+            })
             .catch(() => setSettings(null));
     }, []);
 
@@ -46,6 +55,7 @@ export default function StudentDisplaySettings(): JSX.Element {
         value: StudentDisplaySettingsData[K]
     ) => {
         setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+        setHasChanges(true);
     };
 
     const onSave = async () => {
@@ -53,9 +63,17 @@ export default function StudentDisplaySettings(): JSX.Element {
         setSaving(true);
         try {
             await saveStudentDisplaySettings(settings);
+            pristineSettingsRef.current = settings;
+            setHasChanges(false);
         } finally {
             setSaving(false);
         }
+    };
+
+    const discardChanges = () => {
+        if (!pristineSettingsRef.current) return;
+        setSettings(pristineSettingsRef.current);
+        setHasChanges(false);
     };
 
     // Helpers for custom tabs/sub-tabs and widgets
@@ -240,13 +258,10 @@ export default function StudentDisplaySettings(): JSX.Element {
     if (!settings) return <div className="p-4 text-sm">Loading...</div>;
 
     return (
-        <div className="space-y-4 p-2">
-            {/* Save at top */}
-            <div className="flex justify-end">
-                <Button disabled={saving} onClick={onSave}>
-                    {saving ? 'Saving...' : 'Save Settings'}
-                </Button>
-            </div>
+        <div className="space-y-4 p-2 pb-20">
+            {/* Save is handled by the sticky UnsavedChangesBar at the bottom of
+                the viewport, so the redundant top + bottom buttons that used
+                to live here have been removed. */}
             <Card>
                 <CardHeader>
                     <CardTitle>Sidebar</CardTitle>
@@ -1077,11 +1092,12 @@ export default function StudentDisplaySettings(): JSX.Element {
                 </div>
             </Card>
 
-            <div className="flex justify-end">
-                <Button disabled={saving} onClick={onSave}>
-                    {saving ? 'Saving...' : 'Save Settings'}
-                </Button>
-            </div>
+            <UnsavedChangesBar
+                dirty={hasChanges}
+                saving={saving}
+                onSave={onSave}
+                onDiscard={discardChanges}
+            />
         </div>
     );
 }

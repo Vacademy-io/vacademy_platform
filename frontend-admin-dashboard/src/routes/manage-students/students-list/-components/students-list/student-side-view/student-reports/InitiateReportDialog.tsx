@@ -69,33 +69,33 @@ export const InitiateReportDialog = ({ onSuccess }: InitiateReportDialogProps) =
             onOpenChange={setOpen}
             trigger={<MyButton>New Report</MyButton>}
             heading={`Generate ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Report`}
-            dialogWidth="sm:max-w-[425px]"
+            dialogWidth="sm:max-w-md"
             content={
                 <div className="flex flex-col gap-4">
                     <p className="text-sm text-gray-500">
                         Select a date range to analyze performance.
                     </p>
                     <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="start-date" className="text-right">
+                        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-4">
+                            <Label htmlFor="start-date" className="text-left sm:text-right">
                                 Start Date
                             </Label>
                             <Input
                                 id="start-date"
                                 type="date"
-                                className="col-span-3"
+                                className="col-span-1 sm:col-span-3"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                             />
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="end-date" className="text-right">
+                        <div className="grid grid-cols-1 items-center gap-4 sm:grid-cols-4">
+                            <Label htmlFor="end-date" className="text-left sm:text-right">
                                 End Date
                             </Label>
                             <Input
                                 id="end-date"
                                 type="date"
-                                className="col-span-3"
+                                className="col-span-1 sm:col-span-3"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                             />

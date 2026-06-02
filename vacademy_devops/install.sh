@@ -18,7 +18,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CHART="$HERE/vacademy-services"
 SECRET_FILE="$CHART/values.secret.yaml"
-RELEASE="vacademy"
+RELEASE="vac"   # MUST match the release name in .github/workflows/deploy-stage-server.yml,
+                # otherwise the CD workflow creates a second, conflicting release on the box.
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
 
 c_info()  { printf '\033[0;34m[*]\033[0m %s\n' "$*"; }

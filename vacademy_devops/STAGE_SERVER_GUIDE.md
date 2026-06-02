@@ -149,7 +149,6 @@ cert-manager, prompts for domain/keys, writes `values.secret.yaml`, deploys).
 Point `admin.<domain>` and `app.<domain>` DNS A-records at the box; TLS issues
 itself. After that, day-to-day deploys go through the GitHub Actions workflow.
 
-> ⚠️ **Known mismatch:** `install.sh` creates the Helm release as **`vacademy`**,
-> but the CD workflow upgrades **`vac`**. On the existing stage box the release is
-> `vac`. Align these before bootstrapping a new box that will also use the CD
-> workflow, or the workflow will create a second, conflicting release.
+> Both `install.sh` and the CD workflow use Helm release **`vac`** (in the
+> `default` namespace), so a freshly-bootstrapped box plugs straight into the
+> existing CD without creating a second, conflicting release.

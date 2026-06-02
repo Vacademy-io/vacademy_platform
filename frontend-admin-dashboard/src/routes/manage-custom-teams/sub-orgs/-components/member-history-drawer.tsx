@@ -6,14 +6,49 @@ import {
     SheetDescription,
 } from '@/components/ui/sheet';
 import { CpoInstallmentsEditor } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-payment-history/cpo-installments-editor';
-import { useQuery } from '@tanstack/react-query';
+// react-query imports consolidated below to avoid a duplicate-import lint.
 import {
     getInvoicesByUser,
     downloadInvoicePdf,
     buildInvoiceFilename,
+    triggerInvoiceReminderForSfp,
+    sendInvoiceReminder,
     type InvoiceSummary,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
-import { Download, ExternalLink, FileText, Lock } from 'lucide-react';
+import { getInvoiceDownloadUrl } from '@/services/invoice-service';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { CreateInvoiceDialog } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-payment-history/create-invoice-dialog';
+import { MarkPaidDialog } from './mark-paid-dialog';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Bell, Copy, Plus } from '@phosphor-icons/react';
+import { CircleCheck, Download, ExternalLink, FileText, Lock } from 'lucide-react';
+
+/**
+ * Resolve a working URL for the invoice. Mirrors manage-students payment-history:
+ *  - if `pdf_url` is present, use it directly (already a presigned S3 link)
+ *  - otherwise, if `pdf_file_id` exists, fall back to the backend's download endpoint
+ *    which 302-redirects to a freshly-presigned URL
+ *  - returns null when neither is present (truly no PDF on this row)
+ */
+function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
+    const direct = inv.pdf_url || inv.pdfUrl;
+    if (direct) return direct;
+    const fileId = inv.pdf_file_id || inv.pdfFileId || inv.file_id || inv.fileId;
+    if (fileId) return getInvoiceDownloadUrl(inv.id);
+    // Synthetic SFP rows that link to a real Invoice expose its id on `inv.id` —
+    // call the canonical endpoint which regenerates the PDF when missing. Rows
+    // still keyed by "sfp:..." have no payment yet → leave as No PDF.
+    if (typeof inv.id === 'string' && !inv.id.startsWith('sfp:')) {
+        const status = String(inv.status || '').toUpperCase();
+        if (status === 'PAID' || status === 'PARTIAL' || status === 'PARTIAL_PAID') {
+            return getInvoiceDownloadUrl(inv.id);
+        }
+    }
+    return null;
+}
 
 interface Props {
     open: boolean;
@@ -90,8 +125,11 @@ export function MemberHistoryDrawer({
                                 <CpoInstallmentsEditor userId={userId} />
                             </div>
 
-                            {/* Invoices are read-only for everyone; no gating needed. */}
-                            <InvoicesSection userId={userId} />
+                            {/* Invoices list. The Create Invoice CTA is intentionally
+                                NOT gated by `readOnly` — sub-org admins are allowed to
+                                raise ad-hoc invoices against their members. The CPO
+                                ledger above stays read-only for them as before. */}
+                            <InvoicesSection userId={userId} userName={userName} />
                         </div>
                     ) : (
                         <p className="text-sm text-muted-foreground">No member selected.</p>
@@ -102,11 +140,72 @@ export function MemberHistoryDrawer({
     );
 }
 
-function InvoicesSection({ userId }: { userId: string }) {
+function InvoicesSection({ userId, userName }: { userId: string; userName?: string | null }) {
+    const queryClient = useQueryClient();
+    const instituteId = getCurrentInstituteId() || '';
     const { data: invoices = [], isLoading } = useQuery<InvoiceSummary[]>({
         queryKey: ['member-invoices', userId],
         queryFn: () => getInvoicesByUser(userId),
         enabled: !!userId,
+    });
+    const canRemind = !isCallerSubOrgAdmin();
+    const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+    const [remindingId, setRemindingId] = useState<string | null>(null);
+    // Two parallel UI states for the per-row PENDING_PAYMENT actions:
+    //   - copiedLinkId   → flips a row's Copy Link button to "Copied" for 2s
+    //   - markPaidTarget → opens the MarkPaidDialog scoped to one invoice at a time
+    const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+    const [markPaidTarget, setMarkPaidTarget] = useState<{ id: string; number?: string } | null>(null);
+
+    const handleCopyLink = async (invoiceId: string, link: string) => {
+        try {
+            await navigator.clipboard.writeText(link);
+            setCopiedLinkId(invoiceId);
+            toast.success('Payment link copied');
+            window.setTimeout(() => {
+                setCopiedLinkId((prev) => (prev === invoiceId ? null : prev));
+            }, 2000);
+        } catch (_err) {
+            toast.error('Could not copy to clipboard');
+        }
+    };
+    const remindMutation = useMutation({
+        mutationFn: (sfpId: string) => triggerInvoiceReminderForSfp(sfpId),
+        onMutate: (sfpId) => setRemindingId(sfpId),
+        onSettled: () => setRemindingId(null),
+        onSuccess: (data) => {
+            toast.success(
+                data?.recipient_email
+                    ? `Reminder sent to ${data.recipient_email}`
+                    : 'Reminder fired'
+            );
+            queryClient.invalidateQueries({ queryKey: ['member-invoices', userId] });
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.message || 'Failed to send reminder');
+        },
+    });
+    // Separate mutation for admin-invoice reminders. Different endpoint + payload
+    // than the SFP reminder; shares the remindingId state so only one row spins.
+    const invoiceReminderMutation = useMutation({
+        mutationFn: (invoiceId: string) => sendInvoiceReminder(invoiceId),
+        onMutate: (invoiceId) => setRemindingId(invoiceId),
+        onSettled: () => setRemindingId(null),
+        onSuccess: (data) => {
+            const channels: string[] = [];
+            if (data.alert_sent) channels.push('in-app');
+            if (data.email_sent) channels.push('email');
+            const where = data.recipient_email ? ` to ${data.recipient_email}` : '';
+            toast.success(
+                channels.length > 0
+                    ? `Reminder sent${where} via ${channels.join(' + ')}`
+                    : `Reminder${where} — no channels delivered (check Invoice Settings)`
+            );
+            queryClient.invalidateQueries({ queryKey: ['member-invoices', userId] });
+        },
+        onError: (err: any) => {
+            toast.error(err?.response?.data?.message || 'Failed to send invoice reminder');
+        },
     });
 
     if (isLoading) {
@@ -121,21 +220,55 @@ function InvoicesSection({ userId }: { userId: string }) {
         );
     }
 
-    if (invoices.length === 0) return null;
+    // No early-return on empty list — we still need to render the section so the
+    // Create Invoice CTA is reachable when the member has zero invoices yet.
 
     return (
         <section>
-            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <FileText className="h-4 w-4" />
-                Invoices ({invoices.length})
-            </h3>
+            <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <FileText className="h-4 w-4" />
+                    Invoices ({invoices.length})
+                </h3>
+                {!!userId && !!instituteId && (
+                    <button
+                        type="button"
+                        onClick={() => setCreateInvoiceOpen(true)}
+                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[11px] font-medium text-primary-700 hover:bg-primary-100"
+                    >
+                        <Plus className="h-3 w-3" />
+                        Create Invoice
+                    </button>
+                )}
+            </div>
+            {invoices.length === 0 && (
+                <p className="mb-2 text-xs text-muted-foreground">
+                    No invoices yet. Create one with the button above.
+                </p>
+            )}
             <ul className="space-y-1 rounded-md border">
                 {invoices.map((inv) => {
                     const number =
                         inv.invoice_number || inv.invoiceNumber || inv.id;
                     const date = inv.invoice_date || inv.invoiceDate;
                     const amount = inv.total_amount ?? inv.totalAmount;
-                    const url = inv.pdf_url || inv.pdfUrl;
+                    const url = resolveInvoiceUrl(inv);
+                    const status = String(inv.status || '').toUpperCase();
+                    const isSfpRow = typeof inv.id === 'string' && inv.id.startsWith('sfp:');
+                    const sfpId = isSfpRow ? inv.id.slice('sfp:'.length) : null;
+                    const isRemindable =
+                        canRemind
+                        && !!sfpId
+                        && (status === 'PENDING'
+                            || status === 'UNPAID'
+                            || status === 'OVERDUE'
+                            || status === 'PARTIAL'
+                            || status === 'PARTIAL_PAID');
+                    // Admin invoices that are pending payment carry a payment_link +
+                    // are eligible for Mark Paid. SFP synthetic rows never carry these.
+                    const paymentLink = inv.payment_link || inv.paymentLink;
+                    const isPendingAdminInvoice =
+                        !isSfpRow && status === 'PENDING_PAYMENT' && typeof inv.id === 'string';
                     return (
                         <li
                             key={inv.id}
@@ -149,6 +282,66 @@ function InvoicesSection({ userId }: { userId: string }) {
                                 </p>
                             </div>
                             <span className="shrink-0 font-medium">{fmtMoney(amount)}</span>
+                            {isRemindable && sfpId && (
+                                <button
+                                    type="button"
+                                    onClick={() => remindMutation.mutate(sfpId)}
+                                    disabled={remindingId === sfpId}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                    title="Send installment-due reminder"
+                                >
+                                    <Bell className="size-3" />
+                                    {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                </button>
+                            )}
+                            {isPendingAdminInvoice && (
+                                <button
+                                    type="button"
+                                    onClick={() => invoiceReminderMutation.mutate(inv.id)}
+                                    disabled={remindingId === inv.id}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                    title="Re-send the payment-due reminder (email + in-app alert)"
+                                >
+                                    <Bell className="size-3" />
+                                    {remindingId === inv.id ? 'Sending…' : 'Remind'}
+                                </button>
+                            )}
+                            {isPendingAdminInvoice && paymentLink && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleCopyLink(inv.id, paymentLink)}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                    title="Copy learner payment link"
+                                >
+                                    {copiedLinkId === inv.id ? (
+                                        <>
+                                            <CircleCheck className="size-3" />
+                                            Copied
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Copy className="size-3" />
+                                            Copy Link
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                            {isPendingAdminInvoice && (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        setMarkPaidTarget({
+                                            id: inv.id,
+                                            number:
+                                                inv.invoice_number || inv.invoiceNumber || inv.id,
+                                        })
+                                    }
+                                    className="inline-flex shrink-0 items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                    title="Record an offline / manual payment for this invoice"
+                                >
+                                    Mark Paid
+                                </button>
+                            )}
                             {url ? (
                                 <div className="flex shrink-0 items-center gap-1">
                                     <a
@@ -182,6 +375,33 @@ function InvoicesSection({ userId }: { userId: string }) {
                     );
                 })}
             </ul>
+            {/* Same dialog manage-students uses on the learner side-view payment-history.
+                Reused as-is so behaviour (line items, currency, due-date, gateway link,
+                PDF generation) is identical across both surfaces. Successful create
+                invalidates this section's `member-invoices` cache so the new row
+                appears immediately. */}
+            <CreateInvoiceDialog
+                userId={userId}
+                userName={userName || 'Member'}
+                instituteId={instituteId}
+                open={createInvoiceOpen}
+                onOpenChange={setCreateInvoiceOpen}
+                onSuccess={() => {
+                    queryClient.invalidateQueries({ queryKey: ['member-invoices', userId] });
+                }}
+            />
+            {/* Per-row Mark Paid action. Opens only when the user clicks Mark Paid on a
+                PENDING_PAYMENT row — markPaidTarget carries both the id (for the API
+                call) and the human invoice number (for the dialog title + toast). */}
+            <MarkPaidDialog
+                open={!!markPaidTarget}
+                onOpenChange={(o) => !o && setMarkPaidTarget(null)}
+                invoiceId={markPaidTarget?.id || ''}
+                invoiceNumber={markPaidTarget?.number}
+                onSuccess={() =>
+                    queryClient.invalidateQueries({ queryKey: ['member-invoices', userId] })
+                }
+            />
         </section>
     );
 }

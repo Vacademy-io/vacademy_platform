@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router';
 import { ArrowLeft, Check, Circle, CheckCircle } from '@phosphor-icons/react';
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -33,6 +33,9 @@ import { getPublicUrl } from '@/services/upload_file';
 import { FileText } from '@phosphor-icons/react';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
 import { CaretLeft } from 'phosphor-react';
+import { PdfAnnotationOverlay, type Annotation, type LayoutMap } from './-components/PdfAnnotationOverlay';
+import { RubricChangedBadge } from './-components/RubricChangedBadge';
+import { getLayoutMap } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
 
 export const Route = createFileRoute('/assessment/evaluation-ai/$attemptId/$processId/')({
     component: RouteComponent,
@@ -79,6 +82,10 @@ function RouteComponent() {
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [isLoadingPdf, setIsLoadingPdf] = useState(false);
     const [duration, setDuration] = useState('0s');
+    // Callback ref triggers a re-render with the populated element so the
+    // overlay receives a non-null container on the same tick the PDF wrapper
+    // mounts. A bare useRef would still be `null` when JSX is evaluated.
+    const [pdfContainerEl, setPdfContainerEl] = useState<HTMLDivElement | null>(null);
 
     const { data: attemptDetails, isLoading: isAttemptLoading } = useQuery({
         ...getAttemptDetails(attemptId),
@@ -120,6 +127,26 @@ function RouteComponent() {
             toast.error('Failed to stop evaluation');
         },
     });
+
+    const layoutMapUrl = progress?.layout_map_url ?? null;
+    const { data: layoutMapData } = useQuery({
+        queryKey: ['COPY_CHECK_LAYOUT_MAP', layoutMapUrl],
+        queryFn: () => (layoutMapUrl ? getLayoutMap(layoutMapUrl) : null),
+        enabled: !!layoutMapUrl,
+        staleTime: 5 * 60_000,
+    });
+    const layoutMap = (layoutMapData ?? null) as LayoutMap | null;
+
+    const annotations: Annotation[] = useMemo(() => {
+        const out: Annotation[] = [];
+        for (const q of progress?.completed_questions ?? []) {
+            const qAnnotations = q.annotations ?? q.evaluation_details_json?.annotations ?? [];
+            for (const ann of qAnnotations) {
+                out.push({ ...ann, question_id: q.question_id });
+            }
+        }
+        return out;
+    }, [progress?.completed_questions]);
 
     const { data: assessmentData } = useQuery({
         ...getAssessmentDetails({
@@ -421,6 +448,7 @@ function RouteComponent() {
                                         isExpanded={expandedQuestion === question.question_id}
                                         onToggle={() => toggleQuestion(question.question_id)}
                                         questionDetails={questionDetails}
+                                        currentRubricVersion={progress?.rubric_version}
                                     />
                                 );
                             })
@@ -476,15 +504,17 @@ function RouteComponent() {
                             </div>
                             <div className="h-full w-full bg-neutral-100 p-4">
                                 {pdfUrl ? (
-                                    <Suspense
-                                        fallback={
-                                            <div className="flex h-full w-full animate-pulse items-center justify-center rounded bg-gray-100">
-                                                Loading PDF...
-                                            </div>
-                                        }
+                                    <div
+                                        ref={setPdfContainerEl}
+                                        className="relative h-full w-full"
                                     >
                                         <SimplePDFViewer pdfUrl={pdfUrl} />
-                                    </Suspense>
+                                        <PdfAnnotationOverlay
+                                            pdfContainerEl={pdfContainerEl}
+                                            layoutMap={layoutMap}
+                                            annotations={annotations}
+                                        />
+                                    </div>
                                 ) : (
                                     <div className="flex h-full items-center justify-center">
                                         <DashboardLoader />
@@ -504,9 +534,16 @@ interface QuestionCardProps {
     isExpanded: boolean;
     onToggle: () => void;
     questionDetails?: any;
+    currentRubricVersion?: number | null;
 }
 
-function QuestionCard({ question, isExpanded, onToggle, questionDetails }: QuestionCardProps) {
+function QuestionCard({
+    question,
+    isExpanded,
+    onToggle,
+    questionDetails,
+    currentRubricVersion,
+}: QuestionCardProps) {
     const isCompleted = question.status === 'COMPLETED';
     const completedTime = question.completed_at
         ? formatDistanceToNow(new Date(question.completed_at), { addSuffix: true })
@@ -546,7 +583,13 @@ function QuestionCard({ question, isExpanded, onToggle, questionDetails }: Quest
                             Q{question.question_number}
                         </div>
                         <div>
-                            <h3 className="font-semibold">Question {question.question_number}</h3>
+                            <div className="flex items-center gap-2">
+                                <h3 className="font-semibold">Question {question.question_number}</h3>
+                                <RubricChangedBadge
+                                    evaluationVersion={question.rubric_version}
+                                    currentVersion={currentRubricVersion}
+                                />
+                            </div>
                             {isCompleted && (
                                 <p className="text-sm text-neutral-600">
                                     Completed {completedTime}

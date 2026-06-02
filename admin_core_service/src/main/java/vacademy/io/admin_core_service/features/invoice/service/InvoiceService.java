@@ -99,6 +99,12 @@ public class InvoiceService {
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
+    // Used by buildSfpInvoiceDTOs() to walk SFP → PaymentLog → Invoice so the synthetic
+    // installment rows can carry the real Invoice's pdf_file_id / pdf_url. Avoids the
+    // "No PDF" state on PAID/PARTIAL rows that actually have a persisted invoice.
+    @Autowired
+    private vacademy.io.admin_core_service.features.fee_management.repository.StudentFeeAllocationLedgerRepository studentFeeAllocationLedgerRepository;
+
     @Autowired
     private StudentSessionRepository studentSessionRepository;
 
@@ -115,11 +121,24 @@ public class InvoiceService {
     private NotificationService notificationService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.notification_service.service.BillingContactRecipientResolver billingContactRecipientResolver;
+
+    @Autowired
     @Lazy
     private PaymentService paymentService;
 
     @Autowired
     private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    // Manual / offline payment recording on admin invoices ("Mark Paid" button).
+    // Mirrors the CPO side-view offline flow but tied to an Invoice instead of a
+    // UserPlan — userPlan is null on the resulting PaymentLog because admin invoices
+    // aren't bound to an enrollment.
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
     @Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerPortalUrl;
@@ -130,6 +149,35 @@ public class InvoiceService {
     /** Type for institute invoice PDF layout templates (how line items, totals, etc. are shown in the PDF — like default_invoice.html). Not email templates. */
     private static final String INVOICE_TEMPLATE_TYPE = "INVOICE";
     private static final String INVOICE_STATUS_GENERATED = "GENERATED";
+
+    /**
+     * Builds the description text shown on a discount/coupon invoice line item.
+     * For COUPON-type rows we look up the actual coupon code (e.g. "SAVE20") via
+     * the line item's source_id (FK to AppliedCouponDiscount) so the receipt
+     * cites the redeemed code instead of a generic "Discount: coupon" label.
+     * Falls back to the legacy "Discount: <source>" string if anything is
+     * missing — we never want a malformed lookup to break invoice generation.
+     */
+    private String buildDiscountDescription(PaymentLogLineItem item) {
+        String source = item.getSource();
+        String type = item.getType();
+        boolean looksLikeCoupon = (type != null && type.toUpperCase().contains("COUPON"))
+                || (source != null && source.toLowerCase().contains("coupon"));
+        if (looksLikeCoupon && item.getSourceId() != null) {
+            try {
+                String code = appliedCouponDiscountRepository.findById(item.getSourceId())
+                        .map(acd -> acd.getCouponCode() != null ? acd.getCouponCode().getCode() : null)
+                        .orElse(null);
+                if (code != null && !code.isBlank()) {
+                    return "Coupon " + code;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to resolve coupon code for invoice line item {}: {}",
+                        item.getId(), e.getMessage());
+            }
+        }
+        return source != null ? "Discount: " + source : "Discount";
+    }
     private static final String INVOICE_STATUS_PENDING_PAYMENT = "PENDING_PAYMENT";
     private static final String INVOICE_STATUS_PAID = "PAID";
     private static final String DEFAULT_INVOICE_PREFIX = "INV";
@@ -164,6 +212,61 @@ public class InvoiceService {
             }
         }
         return null;
+    }
+
+    /**
+     * Looks up the Invoice by id and returns a usable presigned PDF URL. If the row's
+     * {@code pdf_file_id} is null (typical when local-dev S3 upload failed at create
+     * time), regenerates the PDF, persists the new fileId, and returns the URL — so
+     * subsequent reads hit the fast path. Returns null only when the invoice doesn't
+     * exist or regeneration fails.
+     *
+     * <p>This is the single canonical "give me a downloadable PDF for this invoice"
+     * path. {@code /v1/invoices/{invoiceId}/download} routes through here; the listing
+     * surfaces real invoice ids on synthetic SFP rows (see {@link #buildSfpInvoiceDTOs})
+     * so the same endpoint serves both real-Invoice and SFP-derived listings.
+     */
+    @Transactional
+    public String resolveOrRegeneratePdfUrl(String invoiceId) {
+        if (invoiceId == null || invoiceId.isBlank()) return null;
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        if (invoice == null) return null;
+        if (StringUtils.hasText(invoice.getPdfFileId())) {
+            String url = mediaService.getFilePublicUrlById(invoice.getPdfFileId());
+            if (StringUtils.hasText(url)) return url;
+        }
+        // Missing or unresolvable fileId → regenerate on demand.
+        String regenFileId = regenerateInvoicePdf(invoice);
+        if (!StringUtils.hasText(regenFileId)) return null;
+        invoice.setPdfFileId(regenFileId);
+        invoiceRepository.save(invoice);
+        return mediaService.getFilePublicUrlById(regenFileId);
+    }
+
+    /**
+     * Rebuilds the invoice PDF from the persisted Invoice's data and re-uploads to S3.
+     * Returns the new file id, or null if any step fails. Caller is responsible for
+     * persisting the new id on the Invoice row.
+     */
+    private String regenerateInvoicePdf(Invoice invoice) {
+        try {
+            // Reuse the same builder path generateInvoice uses, but driven from the
+            // already-persisted PaymentLog mappings on the Invoice row.
+            List<PaymentLog> paymentLogs = invoicePaymentLogMappingRepository
+                    .findPaymentLogsByInvoiceId(invoice.getId());
+            if (paymentLogs.isEmpty()) return null;
+            InvoiceData invoiceData = buildInvoiceDataFromMultiplePaymentLogs(
+                    paymentLogs, invoice.getInstituteId());
+            // Preserve the original invoice number; this is a PDF refresh, not a new bill.
+            invoiceData.setInvoiceNumber(invoice.getInvoiceNumber());
+            String templateHtml = loadInvoiceTemplate(invoice.getInstituteId());
+            String filledTemplate = replaceTemplatePlaceholders(templateHtml, invoiceData);
+            byte[] pdfBytes = generatePdfFromHtml(filledTemplate);
+            return uploadInvoiceToS3(pdfBytes, invoice.getInvoiceNumber(), invoice.getInstituteId());
+        } catch (Exception e) {
+            log.warn("regenerateInvoicePdf failed for invoice {}: {}", invoice.getId(), e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -587,13 +690,21 @@ public class InvoiceService {
             log.warn("Using fallback description for payment log: {}", paymentLogId);
         }
 
-        // Main plan item - use payment amount from payment log
+        // Main plan item — show GROSS plan price (actualPrice) here so the
+        // discount line items can subtract from it visually. Using the net
+        // gateway-captured amount instead would render as
+        // "Course ₹450, Coupon −₹50" which sums to ₹400 instead of the ₹450
+        // actually charged. Falls back to paymentAmount when paymentPlan is
+        // unavailable so we don't blank the line.
+        BigDecimal grossUnitPrice = paymentPlan != null
+                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                : paymentAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
                 .quantity(1)
-                .unitPrice(paymentAmount)
-                .amount(paymentAmount)
+                .unitPrice(grossUnitPrice)
+                .amount(grossUnitPrice)
                 .sourceId(paymentLogId) // Store payment log ID as source
                 .build();
         lineItems.add(planItem);
@@ -615,7 +726,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
+                            .description(buildDiscountDescription(item))
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -860,14 +971,20 @@ public class InvoiceService {
                     : "Package Enrollment";
         }
 
-        // Main plan item - use total amount from payment log (which is the actual paid
-        // amount)
+        // Main plan item — show GROSS plan price so the discount line items
+        // subtract from it visually. The totalAmount passed in is the net
+        // (post-discount) figure from the payment log; using that for the
+        // course line would double-count the discount on the rendered
+        // invoice. Falls back to totalAmount when paymentPlan is unavailable.
+        BigDecimal grossUnitPrice = paymentPlan != null
+                ? BigDecimal.valueOf(paymentPlan.getActualPrice())
+                : totalAmount;
         InvoiceLineItemData planItem = InvoiceLineItemData.builder()
                 .itemType("PLAN")
                 .description(description.trim())
                 .quantity(1)
-                .unitPrice(totalAmount)
-                .amount(totalAmount)
+                .unitPrice(grossUnitPrice)
+                .amount(grossUnitPrice)
                 .build();
         lineItems.add(planItem);
 
@@ -888,7 +1005,7 @@ public class InvoiceService {
                 if (discountValue.compareTo(BigDecimal.ZERO) > 0) {
                     InvoiceLineItemData discountItem = InvoiceLineItemData.builder()
                             .itemType(item.getType())
-                            .description(item.getSource() != null ? "Discount: " + item.getSource() : "Discount")
+                            .description(buildDiscountDescription(item))
                             .quantity(1)
                             .unitPrice(discountValue.negate())
                             .amount(discountValue.negate())
@@ -2124,17 +2241,23 @@ public class InvoiceService {
                 toUser.setPlaceholders(Map.of("email", user.getEmail()));
                 toUser.setAttachments(List.of(attachmentDTO));
 
+                java.util.List<AttachmentUsersDTO> recipients = new java.util.ArrayList<>();
+                recipients.add(toUser);
+                billingContactRecipientResolver
+                        .buildBillingContactAttachmentRecipient(user.getId(), instituteId, user.getEmail(), List.of(attachmentDTO))
+                        .ifPresent(recipients::add);
+
                 AttachmentNotificationDTO attachmentDto = AttachmentNotificationDTO.builder()
                         .body(body)
                         .subject(subject)
                         .notificationType("EMAIL")
                         .source("INVOICE")
                         .sourceId(invoice.getId())
-                        .users(List.of(toUser))
+                        .users(recipients)
                         .build();
 
                 notificationService.sendAttachmentEmailViaUnified(List.of(attachmentDto), instituteId);
-                log.info("Invoice email sent to learner {} for invoice: {} (PDF attached)", user.getEmail(), invoice.getInvoiceNumber());
+                log.info("Invoice email sent to {} recipient(s) for invoice: {} (PDF attached)", recipients.size(), invoice.getInvoiceNumber());
             } else {
                 NotificationDTO notificationDTO = new NotificationDTO();
                 notificationDTO.setBody(body);
@@ -2146,9 +2269,16 @@ public class InvoiceService {
                 toUser.setChannelId(user.getEmail());
                 toUser.setUserId(user.getId());
                 toUser.setPlaceholders(Map.of("email", user.getEmail()));
-                notificationDTO.setUsers(List.of(toUser));
+
+                java.util.List<NotificationToUserDTO> recipients = new java.util.ArrayList<>();
+                recipients.add(toUser);
+                billingContactRecipientResolver
+                        .buildBillingContactRecipient(user.getId(), instituteId, user.getEmail())
+                        .ifPresent(recipients::add);
+                notificationDTO.setUsers(recipients);
+
                 notificationService.sendEmailViaUnified(notificationDTO, instituteId);
-                log.info("Invoice email sent to learner {} for invoice: {} (link in body)", user.getEmail(), invoice.getInvoiceNumber());
+                log.info("Invoice email sent to {} recipient(s) for invoice: {} (link in body)", recipients.size(), invoice.getInvoiceNumber());
             }
         } catch (Exception e) {
             log.error("Error sending invoice email", e);
@@ -2203,7 +2333,28 @@ public class InvoiceService {
                 : invoiceRepository.findByUserIdOrderByCreatedAtDesc(userId);
         List<InvoiceDTO> result = invoices.stream().map(this::mapToDTO).collect(Collectors.toList());
 
-        result.addAll(buildSfpInvoiceDTOs(userId));
+        // Synthetic per-installment rows. Dedupe vs real-Invoice rows already in
+        // `result` by invoice id — buildSfpInvoiceDTOs now writes the real Invoice's
+        // id onto its synthetic DTO when one exists, so we must avoid emitting both
+        // the real-Invoice row AND the synthetic-with-real-id row for the same id.
+        // The synthetic row is preferred because it carries the per-installment
+        // status/due-date the admin actually wants to see in this listing.
+        java.util.Set<String> realInvoiceIds = new java.util.HashSet<>();
+        for (InvoiceDTO existing : result) {
+            if (existing.getId() != null) realInvoiceIds.add(existing.getId());
+        }
+        List<InvoiceDTO> sfpRows = buildSfpInvoiceDTOs(userId);
+        java.util.Set<String> sfpRowsTakingOverRealId = new java.util.HashSet<>();
+        for (InvoiceDTO sfpRow : sfpRows) {
+            String id = sfpRow.getId();
+            if (id != null && !id.startsWith("sfp:") && realInvoiceIds.contains(id)) {
+                sfpRowsTakingOverRealId.add(id);
+            }
+        }
+        if (!sfpRowsTakingOverRealId.isEmpty()) {
+            result.removeIf(r -> r.getId() != null && sfpRowsTakingOverRealId.contains(r.getId()));
+        }
+        result.addAll(sfpRows);
 
         // Sort: invoices with a due_date first by due_date asc, then created_at desc.
         result.sort((a, b) -> {
@@ -2237,6 +2388,55 @@ public class InvoiceService {
      */
     private List<InvoiceDTO> buildSfpInvoiceDTOs(String userId) {
         List<StudentFeePayment> sfps = studentFeePaymentRepository.findByUserId(userId);
+
+        // Pre-build a sfpId → (realInvoiceId, pdfFileId, pdfUrl) lookup so each
+        // synthetic row exposes the actual Invoice it corresponds to. Once the real
+        // invoice id is on the DTO, the frontend hits the canonical
+        // /v1/invoices/{invoiceId}/download endpoint — same path the manage-students
+        // payment-history surface uses. The endpoint regenerates the PDF on the fly
+        // when the persisted Invoice has no fileId (the dev-S3-fail case), so a
+        // missing fileId at this point is fine — we still surface the real id.
+        //
+        // Path: SFP → StudentFeeAllocationLedger (latest by createdAt) → PaymentLog
+        //       → InvoicePaymentLogMapping → Invoice. We pick the MOST RECENT
+        // allocation per SFP because a partial payment can produce multiple ledger
+        // rows over time; the latest one corresponds to the invoice the admin wants.
+        Map<String, String[]> sfpIdToPdfInfo = new HashMap<>();
+        try {
+            List<String> sfpIds = sfps.stream()
+                    .map(StudentFeePayment::getId)
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.toList());
+            if (!sfpIds.isEmpty()) {
+                List<vacademy.io.admin_core_service.features.fee_management.entity.StudentFeeAllocationLedger> ledgers =
+                        studentFeeAllocationLedgerRepository
+                                .findByStudentFeePaymentIdInOrderByCreatedAtDesc(sfpIds);
+                Map<String, String> sfpIdToPaymentLogId = new HashMap<>();
+                for (var ledger : ledgers) {
+                    // findByStudentFeePaymentIdInOrderByCreatedAtDesc is sorted desc, so
+                    // putIfAbsent keeps the most-recent PaymentLog per SFP.
+                    sfpIdToPaymentLogId.putIfAbsent(
+                            ledger.getStudentFeePaymentId(), ledger.getPaymentLogId());
+                }
+                for (Map.Entry<String, String> e : sfpIdToPaymentLogId.entrySet()) {
+                    invoicePaymentLogMappingRepository
+                            .findFirstByPaymentLogId(e.getValue())
+                            .ifPresent(mapping -> {
+                                Invoice inv = mapping.getInvoice();
+                                if (inv == null) return;
+                                String realInvoiceId = inv.getId();
+                                String pdfFileId = inv.getPdfFileId();
+                                String url = StringUtils.hasText(pdfFileId)
+                                        ? mediaService.getFilePublicUrlById(pdfFileId)
+                                        : null;
+                                sfpIdToPdfInfo.put(e.getKey(),
+                                        new String[]{realInvoiceId, pdfFileId, url});
+                            });
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not enrich SFP DTOs with invoice PDFs for user {}: {}", userId, e.getMessage());
+        }
         List<InvoiceDTO> dtos = new ArrayList<>();
         for (StudentFeePayment sfp : sfps) {
             String status = sfp.getStatus();
@@ -2268,8 +2468,17 @@ public class InvoiceService {
             LocalDateTime createdAt = sfp.getCreatedAt();
             String prefix = invoiceNumberPrefixForStatus(status);
 
+            String[] pdfInfo = sfpIdToPdfInfo.get(sfp.getId());
+            String realInvoiceId = pdfInfo != null ? pdfInfo[0] : null;
+            String pdfFileId = pdfInfo != null ? pdfInfo[1] : null;
+            String pdfUrl = pdfInfo != null ? pdfInfo[2] : null;
+            // When a real Invoice exists for this SFP, expose its id so the FE's
+            // existing /v1/invoices/{id}/download path can resolve (and regenerate
+            // if needed) the PDF without a per-SFP endpoint. Otherwise fall back to
+            // the synthetic "sfp:..." marker so the row remains uniquely-keyed.
+            String dtoId = StringUtils.hasText(realInvoiceId) ? realInvoiceId : ("sfp:" + sfp.getId());
             dtos.add(InvoiceDTO.builder()
-                    .id("sfp:" + sfp.getId())
+                    .id(dtoId)
                     .invoiceNumber(prefix + "-" + sfp.getId())
                     .userId(sfp.getUserId())
                     .userPlanId(sfp.getUserPlanId())
@@ -2285,6 +2494,8 @@ public class InvoiceService {
                     .status(mapSfpStatusToInvoiceStatus(status))
                     .createdAt(createdAt)
                     .updatedAt(sfp.getUpdatedAt())
+                    .pdfFileId(pdfFileId)
+                    .pdfUrl(pdfUrl)
                     .lineItems(java.util.Collections.emptyList())
                     .build());
         }
@@ -2702,6 +2913,180 @@ public class InvoiceService {
     }
 
     /**
+     * Records a manual / offline payment against a PENDING_PAYMENT admin invoice.
+     * Mirrors the CPO side-view recordOfflinePayment flow but binds to an Invoice
+     * instead of a UserPlan — the resulting PaymentLog has {@code userPlan=null}
+     * because admin invoices aren't tied to an enrollment.
+     *
+     * <p>End state: PaymentLog (vendor=MANUAL, status=SUCCESS, paymentStatus=PAID)
+     * + InvoicePaymentLogMapping + invoice.status=PAID. Email is best-effort —
+     * logged on failure, not rethrown.
+     */
+    @Transactional
+    public InvoiceDTO markInvoicePaidManually(
+            String invoiceId,
+            vacademy.io.admin_core_service.features.invoice.dto.ManualInvoicePaymentRequestDTO request,
+            CustomUserDetails userDetails) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+        if (!INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) {
+            throw new VacademyException("Invoice is not pending payment (status="
+                    + invoice.getStatus() + ")");
+        }
+
+        String currency = StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR";
+        double amount = invoice.getTotalAmount() != null
+                ? invoice.getTotalAmount().doubleValue() : 0d;
+
+        // 1. PaymentLog — userPlan=null because admin invoices aren't bound to enrollments.
+        String paymentLogId = paymentLogService.createPaymentLog(
+                invoice.getUserId(),
+                amount,
+                vacademy.io.common.payment.enums.PaymentGateway.MANUAL.name(),
+                vacademy.io.common.payment.enums.PaymentGateway.MANUAL.name(),
+                currency,
+                null,
+                null,
+                new java.util.Date());
+
+        // 2. Promote to SUCCESS/PAID + audit metadata
+        Map<String, Object> paymentSpecificData = new HashMap<>();
+        if (request != null && StringUtils.hasText(request.getTransactionId())) {
+            paymentSpecificData.put("transaction_id", request.getTransactionId());
+        }
+        if (request != null && StringUtils.hasText(request.getNotes())) {
+            paymentSpecificData.put("notes", request.getNotes());
+        }
+        paymentSpecificData.put("source", "ADMIN_INVOICE_MANUAL");
+        paymentSpecificData.put("invoice_id", invoiceId);
+        if (userDetails != null && StringUtils.hasText(userDetails.getUserId())) {
+            paymentSpecificData.put("recorded_by", userDetails.getUserId());
+        }
+        try {
+            paymentLogService.updatePaymentLogOnly(
+                    paymentLogId,
+                    vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
+                    vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
+                    new ObjectMapper().writeValueAsString(paymentSpecificData));
+        } catch (Exception e) {
+            throw new VacademyException("Failed to promote payment log to SUCCESS: " + e.getMessage());
+        }
+
+        // 3. Link PaymentLog → Invoice + flip status to PAID
+        PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
+                .orElseThrow(() -> new VacademyException(
+                        "Payment log not found after creation: " + paymentLogId));
+        InvoicePaymentLogMapping mapping = new InvoicePaymentLogMapping();
+        mapping.setInvoice(invoice);
+        mapping.setPaymentLog(persistedLog);
+        invoicePaymentLogMappingRepository.save(mapping);
+
+        invoice.setStatus("PAID");
+        invoice = invoiceRepository.save(invoice);
+
+        // 4. Best-effort confirmation email — logged-on-fail per the design doc.
+        try {
+            UserDTO user = authService.getUsersFromAuthServiceByUserIds(
+                    List.of(invoice.getUserId())).stream().findFirst().orElse(null);
+            if (user != null) {
+                Institute institute = instituteRepository.findById(invoice.getInstituteId())
+                        .orElse(null);
+                if (institute != null) {
+                    byte[] pdfBytes = StringUtils.hasText(invoice.getPdfFileId())
+                            ? fetchPdfBytesFromS3(invoice.getPdfFileId()) : null;
+                    sendInvoiceEmail(invoice, user, institute.getId(), pdfBytes);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Manual-payment confirmation email failed for invoice {}: {}",
+                    invoiceId, e.getMessage());
+        }
+
+        return mapToDTO(invoice);
+    }
+
+    /**
+     * Fires a fresh payment-due reminder for a PENDING_PAYMENT admin invoice. Re-uses
+     * the same email + in-app alert path the create flow uses, with the same payment
+     * link the learner already has. Safe to call repeatedly — no DB state mutation,
+     * just notifications.
+     *
+     * <p>Both the email (gated by INVOICE_SETTING.sendInvoiceEmail) and the in-app
+     * alert are best-effort: failures are logged and the call still returns 200 with
+     * whichever channels succeeded so the FE can give precise feedback to the admin.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> sendInvoiceReminder(String invoiceId, CustomUserDetails userDetails) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
+        if (!INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) {
+            throw new VacademyException(
+                    "Reminders can only be sent for PENDING_PAYMENT invoices (current status: "
+                    + invoice.getStatus() + ")");
+        }
+
+        UserDTO user = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()))
+                .stream().findFirst().orElseThrow(
+                        () -> new VacademyException("Invoice user not found: " + invoice.getUserId()));
+        Institute institute = instituteRepository.findById(invoice.getInstituteId())
+                .orElseThrow(() -> new VacademyException(
+                        "Institute not found: " + invoice.getInstituteId()));
+
+        String paymentLink = buildPaymentLink(institute, invoice.getId());
+        String currency = StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR";
+        String amountStr = currency + " " + invoice.getTotalAmount()
+                .setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+
+        boolean emailSent = false;
+        boolean alertSent = false;
+
+        // In-app system alert — mirrors what createAdminInvoices fires at creation
+        // time, but with a "Reminder:" prefix so the learner sees this is a follow-up
+        // rather than a brand-new bill.
+        try {
+            String dueStr = invoice.getDueDate() != null
+                    ? invoice.getDueDate().toLocalDate().toString() : "N/A";
+            notificationService.createSystemAlertAnnouncement(
+                    invoice.getInstituteId(),
+                    List.of(invoice.getUserId()),
+                    "Reminder: Invoice " + invoice.getInvoiceNumber() + " · " + amountStr,
+                    "Your invoice (" + invoice.getInvoiceNumber() + ") of " + amountStr
+                            + " is still pending. Due " + dueStr + ". Tap to pay: " + paymentLink,
+                    "system",
+                    institute.getInstituteName() != null
+                            ? institute.getInstituteName() : "Institute",
+                    "ADMIN",
+                    userDetails != null ? userDetails.getUserId() : null);
+            alertSent = true;
+        } catch (Exception e) {
+            log.warn("In-app alert reminder failed for invoice {}: {}", invoiceId, e.getMessage());
+        }
+
+        // Email — gated by INVOICE_SETTING.sendInvoiceEmail (same as create-time send).
+        try {
+            byte[] pdfBytes = StringUtils.hasText(invoice.getPdfFileId())
+                    ? fetchPdfBytesFromS3(invoice.getPdfFileId()) : null;
+            sendInvoiceEmail(invoice, user, invoice.getInstituteId(), pdfBytes);
+            emailSent = true;
+        } catch (Exception e) {
+            log.warn("Email reminder failed for invoice {}: {}", invoiceId, e.getMessage());
+        }
+
+        log.info("[InvoiceReminder] invoiceId={} email_sent={} alert_sent={} triggered_by={}",
+                invoiceId, emailSent, alertSent,
+                userDetails != null ? userDetails.getUserId() : "system");
+
+        Map<String, Object> out = new HashMap<>();
+        out.put("invoice_id", invoiceId);
+        out.put("invoice_number", invoice.getInvoiceNumber());
+        out.put("recipient_email", user.getEmail());
+        out.put("email_sent", emailSent);
+        out.put("alert_sent", alertSent);
+        out.put("payment_link", paymentLink);
+        return out;
+    }
+
+    /**
      * Initiates gateway payment for an admin-created invoice.
      * Creates PaymentLog (userPlan=null) and links it to the invoice.
      */
@@ -2911,6 +3296,27 @@ public class InvoiceService {
     /**
      * Map Invoice entity to DTO
      */
+    /**
+     * Only PENDING_PAYMENT admin invoices need a payment link in the listing — paid
+     * invoices, refunded, and synthetic SFP-derived rows don't have a learner-facing
+     * pay page. Resolves the institute via repo (mapToDTO has only the FK string).
+     * Best-effort: returns null on any failure (the FE just hides the Copy Link button).
+     */
+    private String computePaymentLinkForListing(Invoice invoice) {
+        try {
+            if (invoice == null) return null;
+            if (!INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) return null;
+            if (!StringUtils.hasText(invoice.getInstituteId())) return null;
+            Institute inst = instituteRepository.findById(invoice.getInstituteId()).orElse(null);
+            if (inst == null) return null;
+            return buildPaymentLink(inst, invoice.getId());
+        } catch (Exception e) {
+            log.debug("computePaymentLinkForListing failed for invoice {}: {}",
+                    invoice != null ? invoice.getId() : null, e.getMessage());
+            return null;
+        }
+    }
+
     private InvoiceDTO mapToDTO(Invoice invoice) {
         List<InvoiceLineItemDTO> lineItemDTOs = null;
         if (invoice.getLineItems() != null) {
@@ -2969,10 +3375,54 @@ public class InvoiceService {
                                                                                                                      // from
                                                                                                                      // file
                                                                                                                      // ID
+                .paymentLink(computePaymentLinkForListing(invoice))
                 .taxIncluded(invoice.getTaxIncluded())
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())
                 .lineItems(lineItemDTOs)
+                .build();
+    }
+
+    public PublicInvoiceListResponse getInvoicesByEmailPublic(String email, String instituteId) {
+        String normalizedEmail = email.toLowerCase().trim();
+        UserDTO user = authService.getUserByEmail(normalizedEmail);
+        log.info("[invoice-by-email] email='{}' resolved userId={}", normalizedEmail,
+                user != null ? user.getId() : "null");
+        if (user == null || user.getId() == null) {
+            return new PublicInvoiceListResponse(normalizedEmail, 0, List.of());
+        }
+        List<InvoiceDTO> invoices = getInvoicesByUserId(user.getId(), instituteId);
+        log.info("[invoice-by-email] userId={} → {} invoice(s)", user.getId(), invoices.size());
+        List<PublicInvoiceDTO> publicInvoices = invoices.stream()
+                .map(this::toPublicInvoiceDTO)
+                .collect(Collectors.toList());
+        return new PublicInvoiceListResponse(normalizedEmail, publicInvoices.size(), publicInvoices);
+    }
+
+    private PublicInvoiceDTO toPublicInvoiceDTO(InvoiceDTO dto) {
+        List<PublicInvoiceLineItemDTO> items = dto.getLineItems() == null ? List.of() :
+                dto.getLineItems().stream()
+                        .map(li -> PublicInvoiceLineItemDTO.builder()
+                                .itemType(li.getItemType())
+                                .description(li.getDescription())
+                                .quantity(li.getQuantity())
+                                .unitPrice(li.getUnitPrice())
+                                .amount(li.getAmount())
+                                .build())
+                        .collect(Collectors.toList());
+        return PublicInvoiceDTO.builder()
+                .invoiceNumber(dto.getInvoiceNumber())
+                .invoiceDate(dto.getInvoiceDate())
+                .status(dto.getStatus())
+                .currency(dto.getCurrency())
+                .subtotal(dto.getSubtotal())
+                .discountAmount(dto.getDiscountAmount())
+                .taxAmount(dto.getTaxAmount())
+                .totalAmount(dto.getTotalAmount())
+                .taxIncluded(dto.getTaxIncluded())
+                .pdfUrl(dto.getPdfUrl())
+                .createdAt(dto.getCreatedAt())
+                .lineItems(items)
                 .build();
     }
 }

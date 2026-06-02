@@ -25,6 +25,9 @@ public class InvoiceController {
     @Autowired
     private InvoiceService invoiceService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.invoice.service.ManualReminderService manualReminderService;
+
     /**
      * Get invoice by ID
      */
@@ -46,20 +49,38 @@ public class InvoiceController {
     }
 
     /**
-     * Download invoice PDF
-     * Note: This endpoint would need to be implemented to fetch PDF from S3
+     * Manually fire an {@code INSTALLMENT_DUE_REMINDER} workflow event for a single SFP
+     * (installment). Mirrors the per-row context the scheduled fee-reminder job builds,
+     * so any workflow already authored against that event runs unchanged.
+     *
+     * <p>Request: {@code POST /v1/invoices/sfp/{sfpId}/send-reminder}
+     * (no body — the SFP id is enough to derive recipient/amount/dueDate).
+     */
+    @PostMapping("/sfp/{sfpId}/send-reminder")
+    public ResponseEntity<java.util.Map<String, Object>> sendManualReminder(
+            @PathVariable String sfpId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
+        String triggeredBy = userDetails != null ? userDetails.getUserId() : null;
+        return ResponseEntity.ok(manualReminderService.triggerReminderForSfp(sfpId, triggeredBy));
+    }
+
+    /**
+     * Download invoice PDF — 302-redirects to a freshly-presigned S3 URL. If the
+     * persisted Invoice row has no {@code pdf_file_id} (typical when local-dev S3
+     * upload failed at create time), the service regenerates the PDF on demand,
+     * persists the new file id, and returns the URL — so this endpoint is the only
+     * thing the frontend needs to call regardless of whether the PDF was ever
+     * successfully uploaded the first time.
      */
     @GetMapping("/{invoiceId}/download")
     public ResponseEntity<String> downloadInvoice(@PathVariable String invoiceId) {
-        InvoiceDTO invoice = invoiceService.getInvoiceById(invoiceId);
-        if (invoice.getPdfUrl() != null) {
-            // Return redirect to PDF URL or implement actual download
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Location", invoice.getPdfUrl());
-            return new ResponseEntity<>(headers, HttpStatus.FOUND);
-        } else {
+        String url = invoiceService.resolveOrRegeneratePdfUrl(invoiceId);
+        if (url == null || url.isBlank()) {
             return ResponseEntity.notFound().build();
         }
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Location", url);
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
     /**
@@ -114,6 +135,37 @@ public class InvoiceController {
             @RequestAttribute("user") CustomUserDetails userDetails) {
         PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Record an offline / manual payment against a PENDING_PAYMENT admin invoice.
+     * Creates a MANUAL PaymentLog (no UserPlan), links it to the invoice, flips
+     * status to PAID, and sends a best-effort confirmation email.
+     *
+     * <p>Body: {@code {"transaction_id": "...", "notes": "..."}} (both optional).
+     */
+    @PostMapping("/{invoiceId}/mark-paid-manual")
+    public ResponseEntity<InvoiceDTO> markInvoicePaidManually(
+            @PathVariable String invoiceId,
+            @RequestBody(required = false) vacademy.io.admin_core_service.features.invoice.dto.ManualInvoicePaymentRequestDTO request,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
+        return ResponseEntity.ok(invoiceService.markInvoicePaidManually(invoiceId, request, userDetails));
+    }
+
+    /**
+     * Re-send the payment-due reminder for a PENDING_PAYMENT admin invoice. Fires
+     * the same in-app system alert + email the creation flow uses, but with a
+     * "Reminder:" prefix so the learner can distinguish a follow-up from the
+     * original bill. Both channels are best-effort; the response reports which
+     * succeeded so the FE can toast precisely.
+     *
+     * <p>{@code POST /v1/invoices/{invoiceId}/send-reminder}
+     */
+    @PostMapping("/{invoiceId}/send-reminder")
+    public ResponseEntity<java.util.Map<String, Object>> sendInvoiceReminder(
+            @PathVariable String invoiceId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails userDetails) {
+        return ResponseEntity.ok(invoiceService.sendInvoiceReminder(invoiceId, userDetails));
     }
 
     /**

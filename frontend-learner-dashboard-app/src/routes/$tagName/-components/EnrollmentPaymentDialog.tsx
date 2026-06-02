@@ -30,6 +30,9 @@ import { cachedGet } from "@/lib/http/clientCache";
 import { getCurrencySymbol } from "@/utils/currency";
 import axios from "axios";
 import { toast } from "sonner";
+import { useCouponsEnabled } from "@/components/common/coupon/use-coupons-enabled";
+import { useCheckoutCoupon } from "@/components/common/coupon/use-checkout-coupon";
+import { CouponInput } from "@/components/common/coupon/CouponInput";
 
 interface EnrollmentPaymentDialogProps {
   open: boolean;
@@ -97,6 +100,50 @@ export const EnrollmentPaymentDialog: React.FC<
   const [paymentError, setPaymentError] = useState<string>("");
   const [stripePromise, setStripePromise] = useState<any>(null);
   const [currency, setCurrency] = useState<string>("USD");
+
+  // Institute-level coupon kill switch (admin Settings → Coupons).
+  const couponsEnabled = useCouponsEnabled();
+  // Coupon state — re-validated by BE at enroll time + atomically decremented
+  // (V308/V309). `appliedDiscount` is the live discount value from validate.
+  const couponCtx = useCheckoutCoupon({
+    buildRequest: (code) => ({
+      couponCode: code,
+      instituteId,
+      enrollInviteId: courseData.enrollInviteId || null,
+      packageSessionId:
+        selectedPaymentPlan?.package_session_id ||
+        (courseData as { package_session_id?: string }).package_session_id ||
+        null,
+      paymentPlanId: selectedPaymentPlan?.id ?? null,
+      userEmail: email || null,
+      totalAmount:
+        typeof selectedPaymentPlan?.actual_price === "number"
+          ? selectedPaymentPlan.actual_price
+          : 0,
+    }),
+  });
+  // Effective amount the gateway should actually charge, after coupon discount.
+  const effectiveAmount = Math.max(
+    0,
+    (selectedPaymentPlan?.actual_price ?? 0) -
+      (couponCtx.state.appliedCode ? couponCtx.state.discount : 0)
+  );
+
+  // Plan switch invalidates the discount value the FE captured for the old
+  // plan: the BE will re-validate against the new plan at enroll time and
+  // may compute a different discount than what the gateway already charged.
+  // Drop the applied coupon so the learner sees a clean slate and re-applies
+  // for the new plan.
+  const prevPlanIdRef = useRef<string | null | undefined>(selectedPaymentPlan?.id);
+  useEffect(() => {
+    const currentId = selectedPaymentPlan?.id;
+    if (prevPlanIdRef.current !== currentId) {
+      prevPlanIdRef.current = currentId;
+      if (couponCtx.state.appliedCode) {
+        couponCtx.clear();
+      }
+    }
+  }, [selectedPaymentPlan?.id, couponCtx]);
 
   // OTP state variables
   const [otpSent, setOtpSent] = useState(false);
@@ -870,9 +917,41 @@ export const EnrollmentPaymentDialog: React.FC<
                         </div>
                       )}
 
+                      {/* Discount Coupon — institute-level toggle gates whether
+                          the UI is visible at all. The applied discount is
+                          subtracted from `effectiveAmount` below so the gateway
+                          actually charges the discounted price. */}
+                      {couponsEnabled && (
+                        <div className="mb-4">
+                          <CouponInput
+                            state={couponCtx.state}
+                            onChange={couponCtx.setCode}
+                            onApply={couponCtx.apply}
+                            onClear={couponCtx.clear}
+                            currencySymbol={getCurrencySymbol(currency || "")}
+                          />
+                          {couponCtx.state.appliedCode &&
+                            couponCtx.state.discount > 0 && (
+                              <div className="mt-3 flex justify-between text-sm">
+                                <span className="text-gray-600">
+                                  Subtotal {getCurrencySymbol(currency)}
+                                  {selectedPaymentPlan.actual_price.toFixed(2)} ·
+                                  Coupon ({couponCtx.state.appliedCode}) −
+                                  {getCurrencySymbol(currency)}
+                                  {couponCtx.state.discount.toFixed(2)}
+                                </span>
+                                <span className="font-semibold text-gray-900">
+                                  You pay {getCurrencySymbol(currency)}
+                                  {effectiveAmount.toFixed(2)}
+                                </span>
+                              </div>
+                            )}
+                        </div>
+                      )}
+
                       {vendor === "CASHFREE" ? (
                         <CashfreePaymentForm
-                          amount={selectedPaymentPlan.actual_price}
+                          amount={effectiveAmount}
                           currency={currency}
                           email={email}
                           fullName={fullName}
@@ -887,7 +966,7 @@ export const EnrollmentPaymentDialog: React.FC<
                         />
                       ) : vendor === "RAZORPAY" ? (
                         <PaymentForm
-                          amount={selectedPaymentPlan.actual_price}
+                          amount={effectiveAmount}
                           currency={currency}
                           email={email}
                           fullName={fullName}
@@ -904,7 +983,7 @@ export const EnrollmentPaymentDialog: React.FC<
                       ) : stripePromise ? (
                         <Elements stripe={stripePromise}>
                           <StripeConnectedPaymentForm
-                            amount={selectedPaymentPlan.actual_price}
+                            amount={effectiveAmount}
                             currency={currency}
                             email={email}
                             fullName={fullName}
@@ -1075,6 +1154,7 @@ const CashfreePaymentForm: React.FC<CashfreePaymentFormProps> = ({
                 ?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
+            coupon_code: couponCtx.state.appliedCode || null,
             payment_initiation_request: {
               vendor: "CASHFREE",
               amount,
@@ -1361,6 +1441,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
+          coupon_code: couponCtx.state.appliedCode || null,
           payment_initiation_request: {
             vendor: "RAZORPAY",
             amount: amount,
@@ -1519,6 +1600,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               enrollmentData?.package_session_to_payment_options?.[0]
                 ?.payment_option?.id || null,
             enroll_invite_id: finalEnrollInviteId,
+            coupon_code: couponCtx.state.appliedCode || null,
             payment_initiation_request: {
               amount: 0,
               currency: "USD",
@@ -1609,6 +1691,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             payment_option_id: enrollmentData?.package_session_to_payment_options?.[0]?.payment_option?.id || "",
             enroll_invite_id: finalEnrollInviteId,
             refer_request: null,
+            coupon_code: couponCtx.state.appliedCode || null,
             payment_initiation_request: {
               vendor: "RAZORPAY",
               amount: amount,
@@ -1770,6 +1853,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
               ?.payment_option?.id || "",
           enroll_invite_id: finalEnrollInviteId,
           refer_request: null,
+          coupon_code: couponCtx.state.appliedCode || null,
           payment_initiation_request: {
             vendor: "STRIPE",
             amount: amount,

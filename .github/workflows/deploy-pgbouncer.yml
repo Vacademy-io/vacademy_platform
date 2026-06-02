@@ -1,4 +1,4 @@
-name: Deploy PgBouncer to LKE
+name: Deploy PgBouncer to k3s
 
 on:
   push:
@@ -16,11 +16,11 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v3
 
-      - name: Connect to LKE kubernetes cluster
+      - name: Connect to Hetzner k3s kubernetes cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
           method: kubeconfig
-          kubeconfig: ${{ secrets.VACADEMY_STAGE_KUBECONFIG }}
+          kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG }}
 
       - name: Create PgBouncer userlist secret
         run: |
@@ -50,7 +50,6 @@ jobs:
             ./vacademy_devops/vacademy-services \
             --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
             --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
-            --set pgbouncer.dbPort=26754 \
             --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
             --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
             --show-only templates/pgbouncer-configmap.yaml \
@@ -58,8 +57,22 @@ jobs:
 
       - name: Apply PgBouncer Deployment and Service
         run: |
-          kubectl apply -f vacademy_devops/vacademy-services/templates/pgbouncer-deployment.yaml
-          kubectl apply -f vacademy_devops/vacademy-services/templates/pgbouncer-service.yaml
+          helm template vacademy-services \
+            ./vacademy_devops/vacademy-services \
+            --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
+            --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
+            --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
+            --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
+            --show-only templates/pgbouncer-deployment.yaml \
+            | kubectl apply -f -
+          helm template vacademy-services \
+            ./vacademy_devops/vacademy-services \
+            --set pgbouncer.dbHost=${{ secrets.PGBOUNCER_DB_HOST }} \
+            --set pgbouncer.dbReadHost=${{ secrets.PGBOUNCER_DB_READ_HOST }} \
+            --set pgbouncer.dbUsername=${{ secrets.DB_USERNAME }} \
+            --set pgbouncer.dbPassword=${{ secrets.DB_PASSWORD }} \
+            --show-only templates/pgbouncer-service.yaml \
+            | kubectl apply -f -
 
       - name: Restart PgBouncer to pick up config changes
         run: |

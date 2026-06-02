@@ -167,10 +167,10 @@ export const StudentReports = () => {
     };
 
     return (
-        <div className="flex h-full flex-col gap-6 p-6">
-            <div className="flex items-center justify-between">
+        <div className="flex h-full flex-col gap-4 p-3 sm:gap-6 sm:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-neutral-900">
+                    <h2 className="text-h3 font-bold tracking-tight text-neutral-900 sm:text-h2">
                         {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Reports
                     </h2>
                 </div>

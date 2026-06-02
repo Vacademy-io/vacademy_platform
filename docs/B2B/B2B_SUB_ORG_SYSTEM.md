@@ -23,7 +23,7 @@
 19. [API Reference](#api-reference)
 20. [Data Flow Diagrams](#data-flow-diagrams)
 21. [Key Invariants](#key-invariants)
-22. [Recent Changes (V183+)](#recent-changes-v183) — section 7 covers Sub-Org Team Management (`/manage-suborg-teams`)
+22. [Recent Changes (V183+)](#recent-changes-v183) — section 7 covers Sub-Org Team Management (`/manage-suborg-teams`); **section 8 covers Configurable Admin Permissions, Edit Sub-Org, Invite Mirroring, Manual Reminder & Payment (2026-05-28)**
 
 ---
 
@@ -1655,6 +1655,201 @@ Admins toggle the sidebar entry via the existing Display Settings UI (`/settings
 - `SubOrgLearnerController` endpoints (learner enroll / terminate / members / admins) untouched.
 - `/manage-institute/teams` and `/manage-custom-teams` routes untouched.
 - `RoleInternalController` returned to its original single endpoint state (no extra internal route added in production code).
+
+---
+
+### 8. Configurable Admin Permissions, Edit Sub-Org, Invite Mirroring, Manual Reminder & Payment
+
+**Date:** 2026-05-28 · **Scope:** Granular per-sub-org permission control, in-place editing of an existing sub-org's configuration, mirroring SUBORG_LEARNER invites across every institute-wide payment option, manual offline-payment recording from the analytics panel, and on-demand installment-due reminder triggers. Plus a critical fix to how the backend looks up the sub-org's settings-bearing invite.
+
+#### What an institute admin can now configure
+
+| Setting | When | Stored in |
+|---|---|---|
+| `ADMIN_PERMISSIONS` (e.g. `["FULL","CREATE_COURSE"]`) | At sub-org create OR via Edit Sub-Org modal OR via dedicated PATCH | `enroll_invite.setting_json` → `setting.SUB_ORG_SETTING.ADMIN_PERMISSIONS` |
+| `AUTH_ROLES` | At create OR via Edit Sub-Org modal | settingJson `AUTH_ROLES` |
+| `ALLOWED_TEAM_ROLES` | At create OR via Edit Sub-Org modal OR via dedicated PATCH | settingJson `ALLOWED_TEAM_ROLES` |
+| `MEMBER_COUNT` (seat cap) | At create OR via Edit Sub-Org modal | settingJson `MEMBER_COUNT` + `payment_plan.member_count` (non-CPO only) |
+| `validity_in_days` | At create OR via Edit Sub-Org modal | `enroll_invite.learner_access_days` + `payment_plan.validity_in_days` |
+| Linked package sessions | At create OR additively via Edit Sub-Org modal | `package_session_learner_invitation_to_payment_option` rows on the org invite |
+
+**FULL is NOT a wildcard.** To unlock features (e.g. course creation) the institute admin must explicitly grant the granular permission. `FULL` alone does not satisfy `hasFacultyPermission('CREATE_COURSE')`.
+
+#### resolveAdminPermissionCsv — the canonical read path
+
+`SubOrgSubscriptionService.resolveAdminPermissionCsv(subOrgId, parentInstituteId)` returns the CSV that every FSPSSM write path stamps onto `access_permission`:
+
+```java
+public String resolveAdminPermissionCsv(String subOrgId, String parentInstituteId) {
+    EnrollInvite invite = findOrgLevelSubOrgInvite(subOrgId, parentInstituteId).orElse(null);
+    if (invite == null || !StringUtils.hasText(invite.getSettingJson())) return "FULL";
+    // parse settingJson.SUB_ORG_SETTING.ADMIN_PERMISSIONS, return String.join(",", perms)
+    // fall back to "FULL" on any failure so legacy sub-orgs keep working
+}
+```
+
+**Why `findOrgLevelSubOrgInvite` exists (CRITICAL):** A single sub-org has multiple rows with `tag='SUB_ORG'`, same `sub_org_id`:
+1. **One original org-level invite** — created by `createSubOrgWithSubscription`, carries `settingJson` + `package_session_learner_invitation_to_payment_option` links.
+2. **N scoped FREE invites** — created by `createScopedFreeInvites` AFTER the admin pays, one per linked PS. `settingJson` is `null` on these.
+
+`enrollInviteRepository.findBySubOrgIdAndInstituteId(...)` returns ALL of them ordered by `created_at DESC`. Naive `candidates.get(0)` lands on a scoped invite once the admin has paid → settingJson is null → resolver fell back to `"FULL"` → FSPSSM saved as `"FULL"` regardless of what the admin had configured.
+
+The helper:
+```java
+private Optional<EnrollInvite> findOrgLevelSubOrgInvite(String subOrgId, String parentInstituteId) {
+    List<EnrollInvite> candidates = enrollInviteRepository
+            .findBySubOrgIdAndInstituteId(subOrgId, parentInstituteId, List.of(StatusEnum.ACTIVE.name()));
+    // prefer the one with non-blank settingJson, take the OLDEST (the original)
+    EnrollInvite withSettings = candidates.stream()
+            .filter(i -> StringUtils.hasText(i.getSettingJson()))
+            .min(Comparator.comparing(EnrollInvite::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+            .orElse(null);
+    return Optional.ofNullable(withSettings != null ? withSettings : candidates.isEmpty() ? null : candidates.get(0));
+}
+```
+
+**Every read/write of settingJson must route through this helper.** Direct `candidates.get(0)` is now considered a bug.
+
+#### FSPSSM write paths (all unified)
+
+Every place that previously hardcoded `"FULL"` for `access_permission` now resolves from settingJson:
+
+| Path | When | File |
+|---|---|---|
+| Admin self-signup via SUB_ORG invite link | Learner accepts shareable URL | `LearnerEnrollRequestService.postProcessSubOrgEnrollment` |
+| Admin/learner added via `/sub-org/v1/add-member` | Institute admin uses "Add User" form on the deep page | `SubOrgLearnerService.enrollLearnerToSubOrg` → `syncFacultyMappingForSubOrgAdmin(..., accessPermission)` |
+| Team member added via `/sub-org/v1/team/add` | Add Member dialog in the Teams tab | `SubOrgTeamService.addTeamMember` |
+
+Override priority: explicit `request.accessPermission` on the DTO wins → otherwise `resolveAdminPermissionCsv` reads settingJson → otherwise legacy `"FULL"`.
+
+**Frontend invariant:** the team-add form (`add-member-form.tsx`) MUST NOT send `access_permission` for `mode==='subOrg'`. The default value `"FULL"` would otherwise short-circuit the backend resolver. The form omits the field entirely so backend reads from settingJson.
+
+#### SUBORG_LEARNER invite mirroring (#4)
+
+When a parent institute has multiple invites per PS (FREE / ONE_TIME / SUBSCRIPTION / CPO), the sub-org's learner side should be able to enrol through any of them. `mirrorSuborgLearnerInvitesForPs(subOrgId, parentInstituteId, ps, fallbackOption, requestOrNull)`:
+
+1. Reads `pslipoRepository.findActiveByPackageSessionIdsAndInstituteId([psId], parentInstituteId)`.
+2. Filters source to institute-wide invites (`ei.sub_org_id IS NULL`) — never mirrors a sub-org's own invites.
+3. Dedupes by `PaymentOption.id`.
+4. Skips PaymentOptions already mirrored for `(subOrgId, ps)` (idempotent).
+5. Creates one SUBORG_LEARNER invite per missing PaymentOption, naming format `"SubOrgLearner — <ps label> · <option type>"`.
+6. Fallback: if no institute-wide PaymentOptions exist for the PS AND the sub-org has no existing mirror, creates a single SUBORG_LEARNER invite with the admin's option (preserves the legacy "at least one learner invite" guarantee).
+
+`resyncSuborgLearnerInvites(subOrgId, parentInstituteId)` calls this helper across every PS already linked to the sub-org's org invite. Exposed via `POST /institute/v1/sub-org/{subOrgId}/resync-invites`. The frontend's "Re-sync invites" button on the institute-admin deep page (`/manage-custom-teams/sub-orgs/$subOrgSlug`) invalidates the scoped-invites + subscription-status queries on success.
+
+#### Edit Sub-Org modal (#3a)
+
+The institute-admin deep page surfaces an **Edit sub-org** button that opens [edit-sub-org-modal.tsx](../../frontend-admin-dashboard/src/routes/manage-custom-teams/sub-orgs/-components/edit-sub-org-modal.tsx). One modal, five sections, single PATCH:
+
+- **Linked courses** — existing PSes shown locked (removal would orphan enrolled learners). An "Add courses" picker lets the admin add new PSes; on save the backend creates new PSLIPO rows on the org invite + runs `mirrorSuborgLearnerInvitesForPs` for each new PS.
+- **Auth roles** — auth-service roles assigned to anyone joining via the invite (settingJson `AUTH_ROLES`).
+- **Allowed team roles** — pick-list the sub-org admin can use in their own Teams tab (settingJson `ALLOWED_TEAM_ROLES`).
+- **Admin permissions** — multi-select `FULL` / `CREATE_COURSE` (settingJson `ADMIN_PERMISSIONS`). NOTE: existing FSPSSM rows are NOT back-filled; the new value only applies to admins enrolled after save.
+- **Seat cap + Validity** — `MEMBER_COUNT` (settingJson + non-CPO `PaymentPlan.memberCount`) and `validity_in_days` (`learner_access_days` + non-CPO `PaymentPlan.validityInDays`). CPO sub-orgs only update settingJson — the synthetic plan is shared across sub-orgs.
+
+Deferred (not in Edit modal): **removing** linked PSes, **swapping** the CPO. Both would require migrating already-enrolled UserPlans.
+
+Single endpoint: `PATCH /institute/v1/sub-org/{subOrgId}/configuration` (body shape — each field optional):
+```json
+{
+  "auth_roles": ["TEACHER"],
+  "allowed_team_roles": ["Mentor"],
+  "admin_permissions": ["FULL","CREATE_COURSE"],
+  "member_count": 25,
+  "validity_in_days": 365,
+  "add_package_session_ids": ["ps-uuid-1","ps-uuid-2"]
+}
+```
+
+Returns `{ sub_org_id, applied: { … } }` with the subset that was actually applied — duplicates in `add_package_session_ids` are silently skipped, the response's `added_package_session_ids` reports the actual additions.
+
+#### Record Payment from the analytics-panel Invoices tab
+
+Institute admins can record an offline payment against a sub-org admin's CPO ledger directly from the deep page Invoices tab without drilling into the member-history drawer. Calls the existing `CpoSideViewController.recordOfflinePayment` endpoint (`POST /v1/fee-management/user-plan/{userPlanId}/record-offline-payment`).
+
+Frontend gate: `canEditLedger = !restrictedView && !isCallerSubOrgAdmin()`. Backend gate: `CpoSideViewService.assertNotSubOrgAdmin` rejects sub-org admins. The dialog seeds the amount with `next_due.amount_expected - next_due.amount_paid` (falls back to `outstanding_amount`). Generate-invoice checkbox triggers the regular `invoiceService.generateInvoice` path (FIFO-allocates via `StudentFeeAllocationLedger`).
+
+#### Manual installment reminder
+
+[`ManualReminderService`](../../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/invoice/service/ManualReminderService.java) constructs the same `feePaymentList` context the scheduled job builds (in `QueryServiceImpl.getUpcomingFeeInstallments`) but for a single SFP, then calls:
+```java
+workflowTriggerService.handleTriggerEvents(
+    WorkflowTriggerEvent.INSTALLMENT_DUE_REMINDER.name(),
+    null, instituteId, ctx);
+```
+
+`reminderType` buckets match the cron (`BEFORE_DUE` / `DUE_SOON` / `DUE_TODAY` / `OVERDUE`), with a `MANUAL` fallback for ad-hoc sends far from the due date — workflow templates that branch on `reminderType` keep working unchanged.
+
+Endpoint: `POST /v1/invoices/sfp/{sfpId}/send-reminder`. Frontend "Remind" button on each PENDING/UNPAID/OVERDUE/PARTIAL synthetic invoice row in both the analytics panel and the MemberHistoryDrawer.
+
+#### Invoice PDF regeneration on the canonical download endpoint
+
+`GET /v1/invoices/{invoiceId}/download` now uses `InvoiceService.resolveOrRegeneratePdfUrl(invoiceId)`:
+
+1. If `invoice.pdfFileId` is non-blank → presign via `mediaService.getFilePublicUrlById(...)` and 302-redirect (fast path).
+2. If `pdfFileId` is null (typical when local-dev S3 upload failed at create) → `regenerateInvoicePdf(invoice)` rebuilds the PDF from the persisted PaymentLog mappings, re-uploads to S3, persists the new file id, returns the URL. Subsequent reads hit the fast path.
+3. If everything fails → 404.
+
+This means the FE never needs an SFP-specific endpoint to view PDFs. Synthetic SFP rows in `buildSfpInvoiceDTOs` now expose the REAL Invoice's id when one exists (via `StudentFeeAllocationLedger` → `PaymentLog` → `InvoicePaymentLogMapping` → `Invoice`), so the same `/v1/invoices/{id}/download` works for both real-Invoice rows and SFP-derived rows.
+
+#### New / changed DTO fields
+
+```java
+// CreateSubOrgSubscriptionDTO
+private List<String> adminPermissions;        // → settingJson.ADMIN_PERMISSIONS
+
+// SubOrgEnrollRequestDTO
+private String accessPermission;              // optional CSV override; resolver runs when blank
+
+// EnrollInviteSettingDTO.SubOrgSetting
+@JsonProperty("ADMIN_PERMISSIONS")
+private List<String> adminPermissions;        // new field, persists multi-select
+```
+
+#### New / changed endpoints (admin-core-service)
+
+| Method | Path | Purpose |
+|---|---|---|
+| PATCH | `/institute/v1/sub-org/{subOrgId}/admin-permissions` | Replace settingJson `ADMIN_PERMISSIONS` (body: `{"admin_permissions":[...]}`). |
+| PATCH | `/institute/v1/sub-org/{subOrgId}/configuration` | Edit any subset of {auth_roles, allowed_team_roles, admin_permissions, member_count, validity_in_days, add_package_session_ids}. Returns `applied` subset. |
+| POST | `/institute/v1/sub-org/{subOrgId}/resync-invites` | Re-runs SUBORG_LEARNER mirror logic across every linked PS. Idempotent. |
+| POST | `/v1/invoices/sfp/{sfpId}/send-reminder` | Fires `INSTALLMENT_DUE_REMINDER` workflow with single-item context. |
+| GET | `/v1/invoices/{invoiceId}/download` *(behavior change)* | Now regenerates PDF when `pdf_file_id` is null instead of returning 404. |
+| GET | `/institute/v1/sub-org/scoped-invites` *(response enriched)* | Now also returns `admin_permissions`, `auth_roles`, `member_count_setting`, `learner_access_days_top` to support Edit Sub-Org pre-fill. |
+
+#### Frontend additions
+
+| File | Purpose |
+|---|---|
+| `routes/manage-custom-teams/sub-orgs/-components/edit-sub-org-modal.tsx` | Single-modal config editor for an existing sub-org. |
+| `routes/manage-custom-teams/sub-orgs/-components/record-sub-org-payment-dialog.tsx` | Record offline payment dialog (Invoices tab). |
+| `routes/manage-custom-teams/sub-orgs/-components/invite-link-section.tsx` | Reusable invite-link block (shared between modal + deep page). |
+| `routes/manage-custom-teams/sub-orgs/-components/member-history-drawer.tsx` | Adds "Remind" + invoice resolver + linked-invoice id fallback. |
+| `routes/manage-suborg-teams/-components/sub-org-analytics-panel.tsx` | "Record Payment" button + per-row "Remind" + invoice resolver. |
+| `routes/manage-suborg-teams/index.lazy.tsx` | Multi-sub-org picker (when caller has >1 accessible sub-org); auto-selects first; gated `setSelectedSubOrgId` by `isCallerSubOrgAdmin()` so institute admins don't poison branding via the page. |
+| `routes/manage-custom-teams/sub-orgs/$subOrgSlug.lazy.tsx` | Institute-admin deep page. Hosts the Edit Sub-Org / Re-sync invites buttons. Does NOT call `setSelectedSubOrgId`. |
+| `routes/study-library/courses/-components/course-material.tsx` | `canCreateCourse` gate now requires explicit `CREATE_COURSE` permission for anyone with any FSPSSM mapping. FULL is NOT a shortcut. |
+| `lib/auth/facultyAccessUtils.ts` | New `isCallerSubOrgAdmin()` and `getValidSelectedSubOrgId()` — the latter rejects stale selected_suborg_id values that aren't in the caller's actual FSPSSM-derived `subOrgs[]` and self-heals localStorage. |
+| `routes/manage-custom-teams/-services/custom-team-services.ts` | New service fns: `updateSubOrgConfiguration`, `updateSubOrgAdminPermissions`, `updateSubOrgTeamRoles`, `resyncSubOrgInvites`, `recordSubOrgAdminOfflinePayment`, `triggerInvoiceReminderForSfp`. `InvoiceSummary` extended with `pdf_file_id` / `pdfFileId`. |
+| `constants/display-settings/admin-defaults.ts` + `teacher-defaults.ts` | New `manage-institute-suborgs` sub-item hidden by default; opt-in via Display Settings. |
+| `components/common/layout-container/sidebar/utils.ts` | "Manage Institute Sub-Orgs" sub-item under `manage-institute`. |
+| `routes/manage-custom-teams/-components/add-member-form.tsx` | **Critical:** for `mode==='subOrg'` the form NO LONGER sends `access_permission` — letting the backend resolve from settingJson. Sending the default `"FULL"` would short-circuit `resolveAdminPermissionCsv`. |
+
+#### Key invariants (reaffirmed)
+
+- A sub-org has multiple `tag='SUB_ORG'` invites; only the **original** carries settingJson. Always route through `SubOrgSubscriptionService.findOrgLevelSubOrgInvite` for settingJson reads/writes.
+- For granular feature gates on `FSPSSM.access_permission`, check the **explicit** permission only — don't OR with `FULL` as a shortcut.
+- Pure institute admins (no `facultyAccessData` and no `HAS_FACULTY_ASSIGNED`) are unrestricted; anyone with ANY FSPSSM mapping is permission-gated.
+- Edit Sub-Org modal saves apply only to FUTURE admin enrollments — existing FSPSSM rows are not back-filled.
+- Frontend forms must not send a hardcoded default access_permission for sub-org-mode add-member; backend resolver is the source of truth.
+
+#### Memory notes
+
+The following invariants have been saved to project memory so future Claude sessions don't reintroduce these bugs:
+
+- `feedback_full_not_shortcut.md` — Don't OR with `FULL` as a wildcard for granular permission checks.
+- `feedback_suborg_invite_lookup.md` — Always use `findOrgLevelSubOrgInvite`; never `candidates.get(0)` for settingJson access.
+- `feedback_suborg_local_url.md` — Sub-org URLs default to `BASE_URL`; flip to `LOCAL_ADMIN_CORE_BASE` only when the user explicitly asks for local-dev testing.
 
 ---
 

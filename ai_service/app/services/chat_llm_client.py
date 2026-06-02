@@ -31,10 +31,11 @@ class ChatLLMClient:
         max_tokens: int = 1500,
         institute_id: Optional[str] = None,
         user_id: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Call LLM with tool support, trying providers in priority order.
-        
+
         Args:
             messages: List of message dicts with role and content
             tools: Optional list of tool definitions
@@ -42,15 +43,20 @@ class ChatLLMClient:
             max_tokens: Maximum tokens to generate
             institute_id: Optional institute ID for key resolution
             user_id: Optional user ID for key resolution
-            
+            model: Optional explicit model override — when supplied, takes
+                priority over the resolver's choice (used by copy-check to
+                escalate flagged questions to a stronger model).
+
         Returns:
             Response dict with content, tool_calls, finish_reason, etc.
         """
         # Resolve all keys at once
-        openrouter_key, gemini_key, model = self.api_key_resolver.resolve_keys(
+        openrouter_key, gemini_key, resolved_model = self.api_key_resolver.resolve_keys(
             institute_id=institute_id or "default",
             user_id=user_id
         )
+        # Caller override wins over the resolver's pick.
+        model = model or resolved_model
 
         # Track per-provider failure reasons so the final exception surfaces
         # actionable detail (e.g. "Gemini: 403 PERMISSION_DENIED") instead of

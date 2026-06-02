@@ -13,7 +13,30 @@ interface SuccessStepProps {
         showLoginButton?: boolean;
         content?: string;
     };
+    /**
+     * Optional formatted amount (currency symbol + value) to interpolate into
+     * `config.content` wherever the institute used the {{amount}} token.
+     * When undefined or empty, the token is replaced with an empty string.
+     */
+    amountDisplay?: string;
 }
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const interpolateTokens = (
+    template: string,
+    vars: Record<string, string>
+): string => {
+    let out = template;
+    for (const [key, value] of Object.entries(vars)) {
+        const re = new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, "g");
+        const replacement = value ?? "";
+        // Function form neutralizes $&, $1, $$ etc. in the replacement string —
+        // so an amount like "$25.00" is inserted verbatim.
+        out = out.replace(re, () => replacement);
+    }
+    return out;
+};
 
 const SuccessStep = ({
     courseName,
@@ -21,7 +44,14 @@ const SuccessStep = ({
     email,
     isAutoLoggingIn,
     config,
+    amountDisplay,
 }: SuccessStepProps) => {
+    const renderedContent = config?.content
+        ? interpolateTokens(config.content, {
+              courseName: courseName ?? "",
+              amount: amountDisplay ?? "",
+          })
+        : null;
     const navigate = useNavigate();
     return (
         <div className="space-y-6">
@@ -36,8 +66,8 @@ const SuccessStep = ({
                     <h2 className="text-2xl font-bold text-gray-900 mb-4">
                         Enrollment Request Submitted!
                     </h2>
-                    {config?.content ? (
-                        <div dangerouslySetInnerHTML={{ __html: config.content }} className="text-gray-600 text-lg mb-6" />
+                    {renderedContent ? (
+                        <div dangerouslySetInnerHTML={{ __html: renderedContent }} className="text-gray-600 text-lg mb-6" />
                     ) : (
                         <p className="text-gray-600 text-lg mb-6">
                             Thank you for your interest in {courseName}. Your

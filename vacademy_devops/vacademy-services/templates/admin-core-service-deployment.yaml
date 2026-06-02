@@ -40,16 +40,12 @@ spec:
             - secretRef:
                 name: vacademy-secrets
           resources:
-            {{- if .Values.services.admin_core_service.resources }}
-            {{- toYaml .Values.services.admin_core_service.resources | nindent 12 }}
-            {{- else }}
             requests:
               cpu: "250m"
-              memory: "1Gi"
+              memory: "1536Mi"
             limits:
               cpu: "1000m"
-              memory: "2Gi"
-            {{- end }}
+              memory: "3Gi"
           livenessProbe:
             httpGet:
               path: /admin-core-service/actuator/health

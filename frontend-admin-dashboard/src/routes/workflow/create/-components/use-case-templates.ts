@@ -1463,6 +1463,134 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             };
         },
     },
+
+    // ─── 28. Send abandoned-cart data to external webhook ───
+    // Mirrors webhook_on_enrollment but fires when a learner starts the enrollment
+    // form but hasn't completed payment yet. Backend (LearnerEnrollmentEntryService)
+    // now puts the same context shape on this trigger as LEARNER_BATCH_ENROLLMENT
+    // (user UserDTO + packageName + packageId + triggerTime), so the webhook
+    // payload uses the SAME SpEL — minus payment fields, which don't exist yet
+    // at abandoned-cart time.
+    //
+    // No QUERY enrichment node here. We could fetch the SSIGM row (it's saved
+    // before the trigger fires), but adding the same after-commit deferral fix
+    // we applied to LEARNER_BATCH_ENROLLMENT is a separate concern — for now
+    // the trigger context's direct fields are enough to identify the lead in
+    // the CRM/Pabbly.
+    {
+        id: 'webhook_on_abandoned_cart',
+        name: 'Send abandoned cart data to webhook',
+        description: 'When a learner fills the enrollment form but does not complete payment, POST their details to an external webhook (Pabbly, Zapier, n8n) for re-targeting / nurture campaigns.',
+        icon: '🛒',
+        triggerEvents: ['ABANDONED_CART'],
+        workflowType: 'EVENT_DRIVEN',
+        questions: [
+            {
+                id: 'webhookUrl',
+                label: 'Webhook URL',
+                helpText: 'The POST endpoint that will receive the abandoned-cart data. Get this from your Pabbly Connect / Zapier / n8n / Make workflow.',
+                type: 'text',
+                required: true,
+            },
+            {
+                id: 'scope',
+                label: 'When should this fire?',
+                helpText: 'Pick "institute-wide" to fire on every abandoned cart in your institute, or "specific course" to fire only for one course.',
+                type: 'select',
+                required: true,
+                defaultValue: 'institute',
+                options: [
+                    { value: 'institute', label: 'For every abandoned cart in this institute' },
+                    { value: 'course', label: 'Only when carts are abandoned for a specific course' },
+                ],
+            },
+            {
+                id: 'courseId',
+                label: 'Which course?',
+                helpText: 'The webhook will only fire when carts are abandoned for batches of this course.',
+                type: 'package_select',
+                required: true,
+                showIf: { questionId: 'scope', values: ['course'] },
+            },
+            {
+                id: 'payloadJson',
+                label: 'Webhook payload (JSON)',
+                type: 'json_payload',
+                required: true,
+                jsonPayloadHint:
+                    'Edit the JSON below. Each value can be a literal string OR a SpEL expression. '
+                    + 'Available on the context:  '
+                    + '#ctx[\'triggerTime\'] (ISO timestamp), '
+                    + '#ctx[\'user\'].fullName / .email / .mobileNumber / .username, '
+                    + '#ctx[\'packageName\'] (course), '
+                    + '#ctx[\'packageId\'], #ctx[\'packageSessionIds\'] (batch), '
+                    + '#ctx[\'userId\'], #ctx[\'userPlanId\'] (often null at abandoned-cart time), '
+                    + '#ctx[\'instituteName\'], #ctx[\'instituteId\']. '
+                    + 'Payment fields are NOT available — the cart was abandoned before payment started.',
+                defaultValue: JSON.stringify(
+                    {
+                        Timestamp: "#ctx['triggerTime']",
+                        Name: "#ctx['user'].fullName",
+                        Phone: "#ctx['user'].mobileNumber",
+                        Email: "#ctx['user'].email",
+                        CourseName: "#ctx['packageName']",
+                        Status: 'ABANDONED_CART',
+                    },
+                    null,
+                    2,
+                ),
+            },
+        ],
+        generateWorkflow: (answers, triggerEvent) => {
+            const triggerNode = makeNode('TRIGGER', 'Trigger: Cart abandoned', {
+                triggerEvent: triggerEvent ?? 'ABANDONED_CART',
+            }, 250, 50, true);
+
+            let body: Record<string, unknown> = {};
+            try {
+                const raw = (answers.payloadJson as string) ?? '{}';
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    body = parsed as Record<string, unknown>;
+                }
+            } catch {
+                body = {
+                    Timestamp: "#ctx['triggerTime']",
+                    Email: "#ctx['user'].email",
+                    Name: "#ctx['user'].fullName",
+                    Status: 'ABANDONED_CART',
+                };
+            }
+
+            // Course-level scoping via HTTP_REQUEST's `condition` field — same
+            // pattern as webhook_on_enrollment. The handler evaluates the
+            // condition before firing and skips the request when false.
+            const courseCondition =
+                answers.scope === 'course' && answers.courseId
+                    ? `#ctx['packageId'] == '${String(answers.courseId).replace(/'/g, "\\'")}'`
+                    : undefined;
+
+            const webhookNode = makeNode('HTTP_REQUEST', 'POST abandoned cart to webhook', {
+                resultKey: 'webhookResponse',
+                config: {
+                    requestType: 'EXTERNAL',
+                    method: 'POST',
+                    url: answers.webhookUrl as string,
+                    ...(courseCondition ? { condition: courseCondition } : {}),
+                    body,
+                },
+            }, 250, 230);
+
+            return {
+                nodes: [triggerNode, webhookNode],
+                edges: [makeEdge(triggerNode.id, webhookNode.id)],
+                workflowDescription:
+                    answers.scope === 'course' && answers.courseId
+                        ? 'POST abandoned-cart data to external webhook — fires only for the selected course.'
+                        : 'POST abandoned-cart data to external webhook on every abandoned cart in this institute.',
+            };
+        },
+    },
 ];
 
 /** Get templates matching a trigger event (or scheduled) */

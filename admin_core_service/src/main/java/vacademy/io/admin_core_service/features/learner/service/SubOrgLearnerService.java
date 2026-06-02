@@ -95,6 +95,8 @@ public class SubOrgLearnerService {
     private final StudentFeePaymentRepository studentFeePaymentRepository;
     private final CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
+    private final vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService subOrgSubscriptionService;
+    private final vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService instituteSettingService;
 
     @Transactional(readOnly = true)
     public SubOrgResponseDTO getUsersByPackageSessionAndSubOrg(
@@ -378,6 +380,13 @@ public class SubOrgLearnerService {
         String learnerUserPlanId = createLearnerUserPlan(user.getId(), request.getSubOrgId(), primaryPsId);
 
         // 7-9. Per-PS: SSIGM + StudentSubOrg + faculty mapping (admin only).
+        // Resolve the FSPSSM access_permission CSV once: explicit request override wins,
+        // otherwise read the sub-org's persisted ADMIN_PERMISSIONS setting (falls back to
+        // "FULL" inside the service). Avoids re-fetching the org-level invite per-PS.
+        String resolvedAccessPermission = StringUtils.hasText(request.getAccessPermission())
+                ? request.getAccessPermission()
+                : subOrgSubscriptionService.resolveAdminPermissionCsv(
+                        request.getSubOrgId(), request.getInstituteId());
         StudentSessionInstituteGroupMapping firstMapping = null;
         for (PackageSession ps : packageSessions) {
             // createMapping reads request.packageSessionId — temporarily set it.
@@ -390,7 +399,8 @@ public class SubOrgLearnerService {
                 if (firstMapping == null) firstMapping = mapping;
                 if (isAdminRole(request.getCommaSeparatedOrgRoles())) {
                     syncFacultyMappingForSubOrgAdmin(user, ps.getId(),
-                            request.getSubOrgId(), request.getCommaSeparatedOrgRoles());
+                            request.getSubOrgId(), request.getCommaSeparatedOrgRoles(),
+                            resolvedAccessPermission);
                 }
             } finally {
                 request.setPackageSessionId(saved);
@@ -424,6 +434,24 @@ public class SubOrgLearnerService {
         // 12. Optional offline payment record + invoice.
         ManualPaymentResult paymentResult = recordOfflinePaymentIfRequested(
                 request, user.getId(), learnerUserPlanId, admin.getUserId(), resolvedLearnerOption);
+
+        // Hydrate password back from auth-service so the LMS create-user webhook
+        // (workflow node referencing #ctx['member']['password']) receives the real
+        // stored credential instead of null. createUserFromAuthService strips
+        // passwords from its response, so the UserDTO held above has no password
+        // even though one was generated and persisted. Mirrors the bulk-assign
+        // workaround in BulkAssignmentService. Best-effort: a fetch blip leaves
+        // password=null and downstream workflow nodes must branch on it; we don't
+        // want a credential read-back to abort an otherwise-successful enrollment.
+        try {
+            UserDTO userWithPwd = authService.getUsersFromAuthServiceWithPasswordByUserId(user.getId());
+            if (userWithPwd != null && StringUtils.hasText(userWithPwd.getPassword())) {
+                user.setPassword(userWithPwd.getPassword());
+            }
+        } catch (Exception e) {
+            log.warn("Could not fetch stored password for sub-org learner userId={}: {}",
+                    user.getId(), e.getMessage());
+        }
 
         // Trigger workflow for each PS (existing per-PS contract).
         for (String psId : psIds) {
@@ -702,7 +730,14 @@ public class SubOrgLearnerService {
     }
 
     /**
-     * Create new user or fetch existing user with proper user_roles entry
+     * Create new user or fetch existing user with proper user_roles entry.
+     * <p>
+     * Honors the institute-level COURSE_SETTING.enrollmentNotifications.showSendCredentials
+     * toggle — same gate that bulk/v3/assign, the admin "Enrol Customer" button and
+     * learner/v1/enroll already follow. When the admin disabled "Send Credentials" in
+     * display settings, the auth-service credential email is suppressed for sub-org
+     * member adds too. Default is true for back-compat (any read failure also defaults
+     * to true so a setting-blip can't silently swallow a credential delivery).
      */
     private UserDTO createOrFetchUser(SubOrgEnrollRequestDTO request) {
         log.info("Creating or fetching user with email: {}, userId: {}",
@@ -719,9 +754,45 @@ public class SubOrgLearnerService {
             log.info("Generated password for user with email: {}", request.getUser().getEmail());
         }
 
+        boolean sendCredentials = readCourseSettingEnrollmentFlag(
+                request.getInstituteId(), "showSendCredentials");
+        if (!sendCredentials) {
+            log.info("Skipping credential email for sub-org member add: " +
+                    "COURSE_SETTING.showSendCredentials=false for institute {}",
+                    request.getInstituteId());
+        }
+
         return authService.createUserFromAuthService(
                 request.getUser(),
-                request.getInstituteId(), true);
+                request.getInstituteId(),
+                sendCredentials);
+    }
+
+    /**
+     * Reads INSTITUTE.setting.COURSE_SETTING.data.enrollmentNotifications.{flagKey}.
+     * Defaults to {@code true} when the setting block or flag is missing so behavior
+     * is unchanged for institutes that never touched the toggle. Mirrors the same
+     * helper in {@code LearnerEnrollRequestService} / {@code UserPlanService} —
+     * kept inline here to avoid cross-service dependency just for one JSON walk.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean readCourseSettingEnrollmentFlag(String instituteId, String flagKey) {
+        try {
+            Object data = instituteSettingService.getSettingByInstituteIdAndKey(instituteId, "COURSE_SETTING");
+            if (!(data instanceof java.util.Map)) {
+                return true;
+            }
+            Object enrollmentNotifications = ((java.util.Map<String, Object>) data).get("enrollmentNotifications");
+            if (!(enrollmentNotifications instanceof java.util.Map)) {
+                return true;
+            }
+            Object flag = ((java.util.Map<String, Object>) enrollmentNotifications).get(flagKey);
+            return !(flag instanceof Boolean) || (Boolean) flag;
+        } catch (Exception e) {
+            log.warn("Could not read COURSE_SETTING.enrollmentNotifications.{} for institute {}: {}",
+                    flagKey, instituteId, e.getMessage());
+            return true;
+        }
     }
 
     private String generateRandomPassword(int length) {
@@ -1146,7 +1217,12 @@ public class SubOrgLearnerService {
      * - One entry per SUBORG_LEARNER invite with access_type = ENROLL_INVITE (auto-discovered via sub_org_id)
      */
     private void syncFacultyMappingForSubOrgAdmin(UserDTO user, String packageSessionId,
-                                                   String subOrgId, String orgRoles) {
+                                                   String subOrgId, String orgRoles,
+                                                   String accessPermission) {
+        // Caller resolves the CSV; we only guard against empty so a stray null/blank
+        // doesn't write an empty access_permission column.
+        String effectivePermission = StringUtils.hasText(accessPermission) ? accessPermission : "FULL";
+
         // 1. PACKAGE_SESSION entry
         AddUserAccessDTO psAccessDTO = AddUserAccessDTO.builder()
                 .userId(user.getId())
@@ -1156,12 +1232,13 @@ public class SubOrgLearnerService {
                 .userType(orgRoles)
                 .accessType("PACKAGE_SESSION")
                 .accessId(packageSessionId)
-                .accessPermission("FULL")
+                .accessPermission(effectivePermission)
                 .linkageType("SUB_ORG")
                 .suborgId(subOrgId)
                 .build();
         facultyService.grantUserAccess(psAccessDTO);
-        log.info("Synced FSPSSM (PACKAGE_SESSION) user={}, PS={}, subOrg={}", user.getId(), packageSessionId, subOrgId);
+        log.info("Synced FSPSSM (PACKAGE_SESSION) user={}, PS={}, subOrg={}, perm={}",
+                user.getId(), packageSessionId, subOrgId, effectivePermission);
 
         // 2. ENROLL_INVITE entries — auto-discover invites with sub_org_id for this PS
         try {
@@ -1176,7 +1253,7 @@ public class SubOrgLearnerService {
                         .userType(orgRoles)
                         .accessType("ENROLL_INVITE")
                         .accessId(inviteId)
-                        .accessPermission("FULL")
+                        .accessPermission(effectivePermission)
                         .linkageType("SUB_ORG")
                         .suborgId(subOrgId)
                         .build();

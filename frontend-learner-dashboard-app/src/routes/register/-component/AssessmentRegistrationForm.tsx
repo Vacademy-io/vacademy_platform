@@ -75,15 +75,15 @@ const MetaChip = ({
   label: string;
   value: string;
 }) => (
-  <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 shadow-sm">
+  <div className="flex flex-col items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2 py-3 text-center shadow-sm">
     <div className="flex size-7 items-center justify-center rounded-md bg-primary-50 text-primary-600">
       {icon}
     </div>
-    <div className="flex flex-col min-w-0">
-      <span className="text-caption font-medium uppercase tracking-wide text-neutral-500">
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-caption font-medium uppercase tracking-wide text-neutral-500 leading-tight">
         {label}
       </span>
-      <span className="text-xs font-semibold text-neutral-800 truncate">
+      <span className="text-xs font-semibold text-neutral-800 leading-tight break-words">
         {value}
       </span>
     </div>
@@ -147,10 +147,36 @@ const case3 = (serverTime: number, endDate: string) => {
   return serverTime > registrationEndDate;
 };
 
+// Surface the backend's human-readable message (ErrorInfo.ex) when present,
+// falling back to the axios message. Also toasts plain Errors (e.g. the
+// client-side blank user_id guard) instead of letting them fail silently.
+const showRegistrationError = (error: unknown) => {
+  if (error instanceof AxiosError) {
+    const serverMessage = (
+      error.response?.data as { ex?: string } | undefined
+    )?.ex;
+    toast.error(serverMessage || error.message, {
+      className: "error-toast",
+      duration: 2000,
+    });
+  } else if (error instanceof Error) {
+    toast.error(error.message, {
+      className: "error-toast",
+      duration: 2000,
+    });
+  } else {
+    console.error("Unexpected error:", error);
+  }
+};
+
 const AssessmentRegistrationForm = () => {
   const navigate = useNavigate();
   const [userHasAttemptCount, setUserHasAttemptCount] = useState(false);
   const [isAlreadyLoggedIn, setIsAlreadyLoggedIn] = useState(false);
+  // NOTE: the name is misleading — `true` means the email was NOT found (a new
+  // registrant); `false` means the email already EXISTS (set in
+  // CheckEmailStatusAlertDialog when an OTP is sent). onSubmit no longer relies
+  // on this flag to decide the user_id — it keys off participantsDto.user_id.
   const [userAlreadyRegistered, setUserAlreadyRegistered] = useState(false);
   const { code } = Route.useSearch();
   const { data: instituteDetails } = useInstituteDetails();
@@ -360,16 +386,7 @@ const AssessmentRegistrationForm = () => {
     onSuccess: () => {
       toast.success("You have been registered successfully!");
     },
-    onError: (error: unknown) => {
-      if (error instanceof AxiosError) {
-        toast.error(error.message, {
-          className: "error-toast",
-          duration: 2000,
-        });
-      } else {
-        console.error("Unexpected error:", error);
-      }
-    },
+    onError: showRegistrationError,
   });
 
   const handleGetUserIdMutation = useMutation({
@@ -383,6 +400,13 @@ const AssessmentRegistrationForm = () => {
       return handleGetUserId(institute_id, custom_field_request_list);
     },
     onSuccess: async (response) => {
+      if (!response?.user_id) {
+        toast.error("We couldn't resolve your account. Please try again.", {
+          className: "error-toast",
+          duration: 3000,
+        });
+        return;
+      }
       const participantsData = {
         username: response.username,
         user_id: response.user_id,
@@ -394,41 +418,40 @@ const AssessmentRegistrationForm = () => {
         guardian_mobile_number: response.parents_mobile_number,
         reattempt_count: 1,
       };
-      const registerParticipant = await handleRegisterOpenParticipant(
+      // handleRegisterOpenParticipant returns response.data and axios throws on
+      // non-2xx, so reaching here means the registration succeeded.
+      await handleRegisterOpenParticipant(
         data.assessment_custom_fields,
         data.institute_id,
         data.assessment_public_dto.assessment_id,
         participantsData,
         form.getValues(),
       );
-      if (registerParticipant.status === 200) {
-        toast.success("You have been registered successfully!");
-      }
+      toast.success("You have been registered successfully!");
     },
-    onError: (error: unknown) => {
-      if (error instanceof AxiosError) {
-        toast.error(error.message, {
-          className: "error-toast",
-          duration: 2000,
-        });
-      } else {
-        console.error("Unexpected error:", error);
-      }
-    },
+    onError: showRegistrationError,
   });
 
   function onSubmit(values: FormValues) {
-    if (userAlreadyRegistered) {
-      handleGetUserIdMutation.mutate({
-        institute_id: data.institute_id,
-        custom_field_request_list: values,
-      });
-    } else {
+    // Register directly only when we already hold a resolved learner identity:
+    // CheckEmailStatusAlertDialog populates `participantsDto` (with a real user_id
+    // and the remaining attempt count) once an existing learner verifies their
+    // email. In every other case — a brand-new email, or an existing auth user who
+    // isn't yet a learner in this institute (so the dialog left participantsDto
+    // blank) — resolve/create the learner via add-institute_learner first, then
+    // register. This guarantees we never POST a blank user_id, which would collide
+    // on the UNIQUE(assessment_id, user_id) constraint for every anonymous registrant.
+    if (participantsDto.user_id) {
       handleRegisterParticipant.mutate({
         assessment_custom_fields: data.assessment_custom_fields,
         institute_id: data.institute_id,
         assessment_id: data.assessment_public_dto.assessment_id,
         participantsDto,
+        custom_field_request_list: values,
+      });
+    } else {
+      handleGetUserIdMutation.mutate({
+        institute_id: data.institute_id,
         custom_field_request_list: values,
       });
     }

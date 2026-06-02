@@ -33,10 +33,10 @@ spec:
           resources:
             requests:
               cpu: "200m"
-              memory: "512Mi"
+              memory: "768Mi"
             limits:
               cpu: "350m"
-              memory: "1Gi"
+              memory: "2Gi"
           livenessProbe:
             httpGet:
               path: /notification-service/actuator/health

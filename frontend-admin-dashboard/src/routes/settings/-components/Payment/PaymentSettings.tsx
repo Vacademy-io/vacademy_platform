@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { CreditCard, Globe, Plus } from '@phosphor-icons/react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { PaymentPlanList } from './PaymentPlanList';
 import { MyButton } from '@/components/design-system/button';
 import { SubscriptionPlanPreview } from './SubscriptionPlanPreview';
@@ -32,6 +32,9 @@ import { PaymentPlan, PaymentPlans, PaymentPlanTag, PaymentPlanType } from '@/ty
 import { PaymentPlanCreator } from './PaymentPlanCreator/index';
 import { getCurrencySymbol } from './utils/utils';
 import { DAYS_IN_MONTH } from '../../-constants/terms';
+import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
+import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 interface Interval {
     price: string;
@@ -72,6 +75,11 @@ const PaymentSettings = () => {
 
     const [paymentPlans, setPaymentPlans] = useState<PaymentPlan[]>([]);
     const instituteId = getInstituteId();
+
+    // CPO hooks
+    const createCPOMutation = useCreateCPO();
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
+    const batches = useMemo(() => instituteDetails?.batches_for_sessions ?? [], [instituteDetails]);
 
     // Helper functions for plan transformations
     const transformIntervalsToSubscriptionPlans = (intervals: Interval[] = []) => {
@@ -143,6 +151,7 @@ const PaymentSettings = () => {
                     PaymentPlans.UPFRONT,
                     PaymentPlans.DONATION,
                     PaymentPlans.FREE,
+                    PaymentPlans.CPO,
                 ],
                 source: 'INSTITUTE',
                 source_id: instituteId ?? '',
@@ -232,6 +241,21 @@ const PaymentSettings = () => {
                                 isDefault: false,
                                 requireApproval: paymentOption.require_approval,
                             } as PaymentPlan;
+                        } else if (paymentOption.type === PaymentPlans.CPO) {
+                            // CPO mirror: id = mirror PaymentOption ID (used for makeDefault)
+                            // complex_payment_option_id = actual CPO ID (used for full-details fetch)
+                            return {
+                                id: paymentOption.id || '',
+                                tag: paymentOption.tag as PaymentPlanTag,
+                                type: PaymentPlans.CPO as PaymentPlanType,
+                                name: paymentOption.name || '',
+                                currency: 'INR',
+                                isDefault: paymentOption.tag === 'DEFAULT',
+                                config: {
+                                    cpoId: paymentOption.complex_payment_option_id || '',
+                                },
+                                requireApproval: paymentOption.require_approval,
+                            } as PaymentPlan;
                         } else if (paymentOption.payment_plans?.length > 0) {
                             // For other non-subscription plans, just use the first plan
                             const plan = paymentOption.payment_plans[0];
@@ -287,6 +311,7 @@ const PaymentSettings = () => {
         loadPaymentOptions();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
 
     const handleError = (error: unknown, operation: string) => {
         console.error(`Error in ${operation}:`, error);
@@ -376,6 +401,19 @@ const PaymentSettings = () => {
     const handleSavePaymentPlan = async (plan: PaymentPlan) => {
         setIsSaving(true);
         try {
+            // CPO plans use a separate API
+            if (plan.type === PaymentPlans.CPO) {
+                const cpoForm = plan.config?.cpoForm;
+                if (!cpoForm) throw new Error('Missing CPO form data');
+                const payload = buildCreateCPOPayload(cpoForm, batches);
+                await createCPOMutation.mutateAsync(payload);
+                toast.success('Fee plan created successfully');
+                setEditingPlan(null);
+                setShowPaymentPlanCreator(false);
+                setRequireApproval(false);
+                return;
+            }
+
             const apiPlans = transformLocalPlanToApiFormatArray(plan);
             const discountedIntervals = calculateDiscountedIntervals(plan);
 
@@ -500,7 +538,10 @@ const PaymentSettings = () => {
         );
     const getPaidPlans = () =>
         paymentPlans.filter(
-            (plan) => plan.type === PaymentPlans.SUBSCRIPTION || plan.type === PaymentPlans.UPFRONT
+            (plan) =>
+                plan.type === PaymentPlans.SUBSCRIPTION ||
+                plan.type === PaymentPlans.UPFRONT ||
+                plan.type === PaymentPlans.CPO
         );
 
     const renderPlanPreview = () => {
@@ -610,7 +651,7 @@ const PaymentSettings = () => {
                                 Paid Options
                             </h3>
                             <Badge variant="outline" className="border-blue-200 text-blue-600">
-                                {getPaidPlans().length} plans
+                                {getPaidPlans().length} plan{getPaidPlans().length !== 1 ? 's' : ''}
                             </Badge>
                         </div>
                         {isLoading ? (

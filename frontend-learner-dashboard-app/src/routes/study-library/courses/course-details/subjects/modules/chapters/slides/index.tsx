@@ -400,8 +400,12 @@ function Slides() {
 
       const completion = calculateOverallCompletion(accessibleSlides);
 
-      // Priority 1: If course is 100% completed
-      if (completion === 100) {
+      // Priority 1: If course is 100% completed AND the user hasn't explicitly
+      // asked for a specific slide via URL. The !slideId gate matters because
+      // this effect re-runs on every slideId change — without the gate, every
+      // Next / Previous / sidebar click on a completed chapter would re-route
+      // back to the first slide (or feedback), making the chapter feel locked.
+      if (completion === 100 && !slideId) {
         // Check if user has already seen feedback for this course
         const feedbackSeenKey = `feedback_seen_${courseId}_${chapterId}`;
         const hasSeenFeedback = localStorage.getItem(feedbackSeenKey);

@@ -311,7 +311,40 @@ export const inviteLinkSchema = z.object({
         redirectPath: z.string().optional(),
         showLoginButton: z.boolean().default(true),
         content: z.string().optional(),
-    }).default({ showLoginButton: true }),
+        collectBillingContactDetails: z.boolean().default(false),
+        // Per-field configuration for the billing-contact fields rendered on the
+        // learner registration form when collectBillingContactDetails=true.
+        // Each field has a customizable label and a required flag; the third
+        // field (role) also accepts a comma-separated `options` string —
+        // when present the learner sees a dropdown, when empty a free-text input.
+        billingContactFields: z.object({
+            name: z.object({
+                label: z.string().default('Billing Contact Full Name'),
+                required: z.boolean().default(true),
+            }).default({ label: 'Billing Contact Full Name', required: true }),
+            email: z.object({
+                label: z.string().default('Billing Contact Email'),
+                required: z.boolean().default(true),
+            }).default({ label: 'Billing Contact Email', required: true }),
+            role: z.object({
+                label: z.string().default('Role'),
+                required: z.boolean().default(false),
+                options: z.string().default(''),
+            }).default({ label: 'Role', required: false, options: '' }),
+        }).default({
+            name:  { label: 'Billing Contact Full Name', required: true },
+            email: { label: 'Billing Contact Email',     required: true },
+            role:  { label: 'Role', required: false, options: '' },
+        }),
+    }).default({
+        showLoginButton: true,
+        collectBillingContactDetails: false,
+        billingContactFields: {
+            name:  { label: 'Billing Contact Full Name', required: true },
+            email: { label: 'Billing Contact Email',     required: true },
+            role:  { label: 'Role', required: false, options: '' },
+        },
+    }),
 });
 
 export type InviteLinkFormValues = z.infer<typeof inviteLinkSchema>;

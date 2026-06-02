@@ -3015,7 +3015,7 @@ public class InvoiceService {
      * alert are best-effort: failures are logged and the call still returns 200 with
      * whichever channels succeeded so the FE can give precise feedback to the admin.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> sendInvoiceReminder(String invoiceId, CustomUserDetails userDetails) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
@@ -3056,7 +3056,7 @@ public class InvoiceService {
                     institute.getInstituteName() != null
                             ? institute.getInstituteName() : "Institute",
                     "ADMIN",
-                    userDetails != null ? userDetails.getUserId() : null);
+                    Map.of("priority", 3, "isDismissible", true, "showBadge", true, "isActive", true));
             alertSent = true;
         } catch (Exception e) {
             log.warn("In-app alert reminder failed for invoice {}: {}", invoiceId, e.getMessage());

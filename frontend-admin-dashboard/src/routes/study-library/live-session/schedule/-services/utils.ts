@@ -5,6 +5,8 @@ import {
     GET_LIVE_SESSIONS,
     DELETE_LIVE_SESSION,
     CREATE_PROVIDER_MEETING,
+    CREATE_PROVIDER_MEETINGS_FOR_SESSION,
+    PROVIDER_MEETING_AVAILABILITY_FOR_SESSION,
     // GET_LIVE_SESSIONS,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -143,6 +145,10 @@ export interface CreateProviderMeetingParams {
     durationMinutes: number;
     timezone: string;
     provider: string;
+    /** Zoom only — which institute_zoom_account to create the meeting under. */
+    zoomAccountId?: string;
+    /** Zoom only — meeting settings (waitingRoom, muteUponEntry, joinBeforeHost, autoRecording). */
+    zoomConfig?: Record<string, unknown>;
 }
 
 export const createProviderMeeting = async (data: CreateProviderMeetingParams) => {
@@ -153,6 +159,81 @@ export const createProviderMeeting = async (data: CreateProviderMeetingParams) =
         },
     });
     return response.data;
+};
+
+/**
+ * Provisions a provider meeting for EVERY schedule of a session server-side, in one
+ * call. The backend loops the session's not-yet-provisioned schedules (idempotent)
+ * and derives each occurrence's start time + duration from its own row, so the admin
+ * browser no longer loops a create call per occurrence. Used for recurring sessions.
+ * Returns 202 immediately ({ status: 'PROCESSING', pendingCount }).
+ */
+export interface CreateProviderMeetingsForSessionParams {
+    instituteId: string;
+    sessionId: string;
+    topic: string;
+    agenda: string;
+    /** Fallback duration if a schedule row has no start→last-entry window. */
+    durationMinutes: number;
+    timezone: string;
+    provider: string;
+    /** Vendor-neutral meeting settings (preferred). */
+    providerConfig?: Record<string, unknown>;
+    /** Vendor-neutral provider-account selector (preferred over zoomAccountId). */
+    providerAccountId?: string;
+    /** @deprecated Zoom legacy — use providerAccountId. Sent during transition. */
+    zoomAccountId?: string;
+    /** @deprecated Zoom legacy — use providerConfig. Sent during transition. */
+    zoomConfig?: Record<string, unknown>;
+}
+
+export const createProviderMeetingsForSession = async (
+    data: CreateProviderMeetingsForSessionParams
+) => {
+    const response = await authenticatedAxiosInstance.post(
+        CREATE_PROVIDER_MEETINGS_FOR_SESSION,
+        data,
+        {
+            headers: {
+                Accept: '*/*',
+                'Content-Type': 'application/json',
+            },
+        }
+    );
+    return response.data;
+};
+
+export interface ConflictingSession {
+    meetingKey: string;
+    topic: string;
+    startTimeMillisec: number;
+    endTimeMillisec: number;
+}
+
+export interface ProviderAvailabilityResult {
+    available: boolean;
+    conflicts?: ConflictingSession[];
+}
+
+/**
+ * Double-booking check: returns other meetings already booked on the same provider
+ * account that overlap any occurrence of this session. Advisory — the caller warns
+ * the admin; it never blocks. Failures resolve to available=true so scheduling is
+ * never gated on this call.
+ */
+export const checkProviderAvailabilityForSession = async (
+    sessionId: string,
+    providerAccountId: string
+): Promise<ProviderAvailabilityResult> => {
+    try {
+        const response = await authenticatedAxiosInstance.get<ProviderAvailabilityResult>(
+            PROVIDER_MEETING_AVAILABILITY_FOR_SESSION,
+            { params: { sessionId, providerAccountId } }
+        );
+        return response.data ?? { available: true, conflicts: [] };
+    } catch {
+        return { available: true, conflicts: [] };
+    }
 };
 
 export const getLiveSessions = async (instituteId: string) => {

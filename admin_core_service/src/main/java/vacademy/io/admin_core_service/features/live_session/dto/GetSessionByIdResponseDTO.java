@@ -62,6 +62,10 @@ public class GetSessionByIdResponseDTO {
         private String timezone;
         private Boolean dailyAttendance;
         private String providerRecordingsJson;
+        /** Per-schedule link_type — needed so the UI can branch (e.g. show "Start as Host" for Zoom). */
+        private String linkType;
+        /** Provider host-start URL (Zoom start_url with ZAK). Admin opens this to start as host with no prompts. */
+        private String providerHostUrl;
     }
 
     @Getter

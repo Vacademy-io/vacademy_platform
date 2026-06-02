@@ -47,4 +47,6 @@ public interface ScheduleDTO {
     Boolean getAllowPlayPause();
     Boolean getDailyAttendance();
     String getProviderRecordingsJson();
+    /** Provider host-start URL (Zoom: start_url with embedded ZAK). Lets admin click "Start as Host" without prompts. */
+    String getProviderHostUrl();
 }

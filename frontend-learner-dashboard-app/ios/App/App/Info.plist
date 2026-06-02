@@ -149,5 +149,18 @@
 				remote-notification
 			</string>
 		</array>
+		<!-- Allow querying/opening the Zoom app via custom URL schemes
+		     (AppLauncher.canOpenUrl needs these declared on iOS) -->
+		<key>
+			LSApplicationQueriesSchemes
+		</key>
+		<array>
+			<string>
+				zoommtg
+			</string>
+			<string>
+				zoomus
+			</string>
+		</array>
 	</dict>
 </plist>

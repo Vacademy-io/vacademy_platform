@@ -7,7 +7,7 @@ metadata:
   labels:
     app: admin-core-service
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.services.admin_core_service.replicas | default .Values.replicaCount }}
   strategy:
     type: RollingUpdate
     rollingUpdate:

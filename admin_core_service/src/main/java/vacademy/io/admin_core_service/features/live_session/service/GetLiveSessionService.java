@@ -43,7 +43,7 @@ public class GetLiveSessionService {
     @Autowired
     private PackageSessionRepository packageSessionRepository;
 
-        private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(Date date, List<LiveSessionListDTO> sessions) {
+        private GroupedSessionsByDateDTO createGroupedSessionsByDateDTO(java.util.Date date, List<LiveSessionListDTO> sessions) {
                 String defaultLink = null;
                 String defaultName = null;
 
@@ -357,28 +357,31 @@ public class GetLiveSessionService {
                 sessionRepository.findUpcomingSessionsForUserAndBatchWithFilters(batchId, userId, startDate, endDate, offset, size);
 
         // Map projections to DTOs
-        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
-                p.getSessionId(),
-                p.getWaitingRoomTime(),
-                p.getThumbnailFileId(),
-                p.getBackgroundScoreFileId(),
-                p.getSessionStreamingServiceType(),
-                p.getScheduleId(),
-                p.getMeetingDate(),
-                p.getStartTime(),
-                p.getLastEntryTime(),
-                p.getRecurrenceType(),
-                p.getAccessLevel(),
-                p.getTitle(),
-                p.getSubject(),
-                p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone(),
-                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink(),
-                p.getDefaultClassName(),
-                p.getLinkType()
-        )).toList());
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> {
+            LiveSessionListDTO dto = new LiveSessionListDTO(
+                    p.getSessionId(),
+                    p.getWaitingRoomTime(),
+                    p.getThumbnailFileId(),
+                    p.getBackgroundScoreFileId(),
+                    p.getSessionStreamingServiceType(),
+                    p.getScheduleId(),
+                    p.getMeetingDate(),
+                    p.getStartTime(),
+                    p.getLastEntryTime(),
+                    p.getRecurrenceType(),
+                    p.getAccessLevel(),
+                    p.getTitle(),
+                    p.getSubject(),
+                    p.getMeetingLink(),
+                    p.getRegistrationFormLinkForPublicSessions(),
+                    p.getTimezone(),
+                    deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                    p.getDefaultClassLink(),
+                    p.getDefaultClassName(),
+                    p.getLinkType());
+            dto.setProviderMeetingId(p.getProviderMeetingId());
+            return dto;
+        }).toList());
 
                 enrichWithPackageSessionDetails(flatList);
 
@@ -404,28 +407,31 @@ public class GetLiveSessionService {
         
         // Map projections to DTOs
         List<LiveSessionListDTO> sessions = page.getContent().stream()
-            .map(p -> new LiveSessionListDTO(
-                p.getSessionId(),
-                p.getWaitingRoomTime(),
-                p.getThumbnailFileId(),
-                p.getBackgroundScoreFileId(),
-                p.getSessionStreamingServiceType(),
-                p.getScheduleId(),
-                p.getMeetingDate(),
-                p.getStartTime(),
-                p.getLastEntryTime(),
-                p.getRecurrenceType(),
-                p.getAccessLevel(),
-                p.getTitle(),
-                p.getSubject(),
-                p.getMeetingLink(),
-                p.getRegistrationFormLinkForPublicSessions(),
-                p.getTimezone(),
-                deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
-                p.getDefaultClassLink(),
-                p.getDefaultClassName(),
-                p.getLinkType()
-            ))
+            .map(p -> {
+                LiveSessionListDTO dto = new LiveSessionListDTO(
+                    p.getSessionId(),
+                    p.getWaitingRoomTime(),
+                    p.getThumbnailFileId(),
+                    p.getBackgroundScoreFileId(),
+                    p.getSessionStreamingServiceType(),
+                    p.getScheduleId(),
+                    p.getMeetingDate(),
+                    p.getStartTime(),
+                    p.getLastEntryTime(),
+                    p.getRecurrenceType(),
+                    p.getAccessLevel(),
+                    p.getTitle(),
+                    p.getSubject(),
+                    p.getMeetingLink(),
+                    p.getRegistrationFormLinkForPublicSessions(),
+                    p.getTimezone(),
+                    deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
+                    p.getDefaultClassLink(),
+                    p.getDefaultClassName(),
+                    p.getLinkType());
+                dto.setProviderMeetingId(p.getProviderMeetingId());
+                return dto;
+            })
             .collect(Collectors.toList());
 
         enrichWithPackageSessionDetails(sessions);

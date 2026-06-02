@@ -233,22 +233,35 @@ function RouteComponent() {
     const isLiveClassStarted = now >= sessionDate;
     const hasSessionEnded = now > sessionEndDate;
 
-    // If session has ended, show error
-    if (hasSessionEnded) {
+    // Zoom relaxation: any Zoom session lets Zoom decide its own lifecycle —
+    // don't gate by our scheduled last_entry_time (soft deadline) or by
+    // provider_meeting_id presence (the list API may not include it in older
+    // cached responses; the SDK / backend will surface a real "meeting ended"
+    // if Zoom has actually ended it). Match link_type case-insensitively —
+    // backend may send "ZOOM", "zoom" or "ZOOM_MEETING".
+    const lt = (session.link_type ?? "").toLowerCase();
+    const isZoomReady = lt === "zoom" || lt === "zoom_meeting";
+
+    // If session has ended, show error — except for Zoom-ready sessions; the
+    // SDK / backend will surface a real "meeting ended" if Zoom has ended it.
+    if (hasSessionEnded && !isZoomReady) {
       toast.error("This class has ended");
       return;
     }
 
-    // If it's before waiting room time, show error
-    if (isBeforeWaitingRoom) {
+    // If it's before waiting room time, show error — skip for Zoom-ready
+    // sessions so learners can join early.
+    if (isBeforeWaitingRoom && !isZoomReady) {
       toast.error(
         "Class has not started yet. Please wait for the waiting room to open."
       );
       return;
     }
 
-    // If we're in waiting room period, ONLY go to waiting room
-    if (isInWaitingRoom) {
+    // If we're in waiting room period, ONLY go to waiting room — skip for
+    // Zoom-ready sessions; they go straight to the SDK / Zoom app, which has
+    // its own waiting room and handles the host-not-started case.
+    if (isInWaitingRoom && !isZoomReady) {
       // Navigate to waiting room without marking attendance
       (navigate as any)({
         to: "/study-library/live-class/waiting-room",
@@ -257,8 +270,9 @@ function RouteComponent() {
       return;
     }
 
-    // If live class has started, proceed to live session
-    if (isLiveClassStarted) {
+    // If live class has started (or it's a Zoom session with a meeting that's
+    // joinable any time), proceed to live session.
+    if (isLiveClassStarted || isZoomReady) {
       // Helper to navigate/open based on session type
       const isBbb = session.link_type === "bbb" || session.link_type === "BBB_MEETING";
 
@@ -453,6 +467,13 @@ function RouteComponent() {
     const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
     const isLiveClassStarted = now >= sessionDate;
 
+    // Zoom relaxation: any Zoom session is joinable any time — Zoom handles
+    // "waiting for host" and "meeting ended" itself, so we trust the platform
+    // rather than gating by our scheduled start/end or by provider_meeting_id
+    // presence (which may be absent in older cached responses).
+    const lt = (session.link_type ?? "").toLowerCase();
+    const canJoinEarlyZoom = lt === "zoom" || lt === "zoom_meeting";
+
     return (
       <div
         key={session.schedule_id}
@@ -546,7 +567,7 @@ function RouteComponent() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            {isLive && (session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING") && (
+            {(isLive || canJoinEarlyZoom) && (session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING" || canJoinEarlyZoom) && (
               <Button
                 variant="default"
                 size="sm"
@@ -554,11 +575,13 @@ function RouteComponent() {
                 onClick={() => handleJoinSession(session)}
               >
                 <ArrowSquareOut size={16} className="mr-1.5" />
-                {isBeforeWaitingRoom
-                  ? "Not Started"
-                  : isInWaitingRoom
-                    ? "Join Waiting Room"
-                    : "Join Session"}
+                {!isLive && canJoinEarlyZoom
+                  ? "Join Early"
+                  : isBeforeWaitingRoom
+                    ? "Not Started"
+                    : isInWaitingRoom
+                      ? "Join Waiting Room"
+                      : "Join Session"}
               </Button>
             )}
           </div>
@@ -652,7 +675,7 @@ function RouteComponent() {
             </div>
           </div>
           <div className="space-y-2">
-            {isLive && (session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING") && (
+            {(isLive || canJoinEarlyZoom) && (session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING" || canJoinEarlyZoom) && (
               <Button
                 variant="default"
                 size="sm"
@@ -660,12 +683,12 @@ function RouteComponent() {
                 onClick={() => handleJoinSession(session)}
               >
                 <ArrowSquareOut size={16} className="mr-1.5" />
-                {isBeforeWaitingRoom
-                  ? "Not Started"
-                  : isInWaitingRoom
-                    ? "Join Waiting Room"
-                    : (session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
-                      ? "Join Session"
+                {!isLive && canJoinEarlyZoom
+                  ? "Join Early"
+                  : isBeforeWaitingRoom
+                    ? "Not Started"
+                    : isInWaitingRoom
+                      ? "Join Waiting Room"
                       : "Join Session"}
               </Button>
             )}

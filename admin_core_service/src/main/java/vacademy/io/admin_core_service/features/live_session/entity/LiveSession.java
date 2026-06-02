@@ -34,7 +34,8 @@ import java.util.Date;
         @ColumnResult(name = "learnerButtonConfig", type = String.class),
         @ColumnResult(name = "defaultClassLink", type = String.class),
         @ColumnResult(name = "defaultClassName", type = String.class),
-        @ColumnResult(name = "linkType", type = String.class)
+        @ColumnResult(name = "linkType", type = String.class),
+        @ColumnResult(name = "providerMeetingId", type = String.class)
 }))
 public class LiveSession {
 
@@ -90,6 +91,18 @@ public class LiveSession {
     /** JSON config for post-session learner feedback (enabled, questions with type/mandatory flags) */
     @Column(name = "feedback_config_json", columnDefinition = "text")
     private String feedbackConfigJson;
+
+    /**
+     * Zoom provider-account id chosen for this session, and the meeting settings
+     * JSON the admin configured. Persisted so the provisioning retry job can
+     * re-create meetings for any occurrence whose up-front async provisioning was
+     * interrupted (process restart / partial failure) without re-asking the UI.
+     */
+    @Column(name = "zoom_account_id")
+    private String zoomAccountId;
+
+    @Column(name = "zoom_config_json", columnDefinition = "text")
+    private String zoomConfigJson;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

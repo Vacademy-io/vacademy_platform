@@ -36,6 +36,7 @@ import {
 } from '@/services/live-session-settings';
 import { LIVE_SESSION_SETTINGS_QUERY_KEY } from '@/hooks/useLiveSessionSettings';
 import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
+import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
     youtube: 'YouTube',
@@ -281,6 +282,11 @@ export default function LiveSessionSettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Zoom integration — multi-account credential management.
+                Placed under the platform allow-list so the Zoom config sits right next
+                to the toggle that allows the Zoom platform itself. */}
+            <ZoomIntegrationCard />
 
             {/* Recurring */}
             <Card className="border-neutral-200 shadow-none">

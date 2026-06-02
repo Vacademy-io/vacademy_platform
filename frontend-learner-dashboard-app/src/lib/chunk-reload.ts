@@ -83,9 +83,20 @@ function writeRecord(record: ReloadRecord): void {
  * Reload the page, subject to a retry budget. Returns true if a reload was
  * triggered; false when the budget is exhausted and the caller should fall
  * back to a visible error UI.
+ *
+ * Also a no-op on Zoom-embed routes — the SDK fires unhandled rejections
+ * during reconnect/visibilitychange that look like chunk errors but aren't;
+ * reloading mid-meeting is a worse UX than letting the SDK self-recover.
  */
 export function reloadForChunkError(): boolean {
   if (typeof window === "undefined") return false;
+  if ((window as unknown as { __zoomMeetingActive?: boolean }).__zoomMeetingActive) {
+    return false;
+  }
+  const path = window.location.pathname;
+  if (path.includes("/live-session/host/") || path.includes("/live-class/embed")) {
+    return false;
+  }
   const record = readRecord();
   if (record.count >= MAX_RELOADS) {
     return false;

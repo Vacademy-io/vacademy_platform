@@ -26,9 +26,33 @@ public interface LiveSessionProviderStrategy {
     /**
      * Register a participant with the provider and return a unique join link
      * pre-filled with their name/email so they skip the guest form.
+     *
+     * Default: not supported. Join-URL providers (BBB, Zoho) override it; SDK-join
+     * providers (e.g. Zoom) leave it as the default and issue a signature instead
+     * (see {@link #supportsSdkJoin()}), so a new provider need not implement it.
      */
-    ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
-            String participantEmail, String instituteId);
+    default ParticipantJoinLinkDTO getParticipantJoinLink(String providerMeetingId, String participantName,
+            String participantEmail, String instituteId) {
+        throw new vacademy.io.common.exceptions.VacademyException(
+                org.springframework.http.HttpStatus.NOT_IMPLEMENTED,
+                "getParticipantJoinLink not supported by provider " + getProviderName()
+                        + " — SDK-join providers issue a per-join signature instead");
+    }
+
+    /** Whether this provider joins via an embedded SDK signature (vs a pre-registered join URL). */
+    default boolean supportsSdkJoin() {
+        return false;
+    }
+
+    /** Whether this provider supports multiple per-institute accounts (vs a single connected config). */
+    default boolean supportsMultiAccount() {
+        return false;
+    }
+
+    /** Whether this provider delivers attendance/recording events via webhooks. */
+    default boolean supportsWebhooks() {
+        return false;
+    }
 
     /**
      * Fetch all recordings for a given provider meeting ID.

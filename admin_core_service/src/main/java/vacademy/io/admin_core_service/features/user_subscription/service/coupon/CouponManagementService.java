@@ -63,7 +63,13 @@ public class CouponManagementService {
             throw new VacademyException("instituteId is required");
         }
         String code = request.getCode().trim().toUpperCase();
-        if (couponCodeRepository.findByInstituteIdAndCode(instituteId, code).isPresent()) {
+        // Status-aware existence check — mirrors the V318 partial unique index
+        // (institute_id, code) WHERE status <> 'DELETED'. Without the status
+        // filter a previously soft-deleted coupon with the same code blocked
+        // re-creation and the admin got a misleading "already exists" error.
+        if (couponCodeRepository
+                .findByInstituteIdAndCodeAndStatusNot(instituteId, code, STATUS_DELETED)
+                .isPresent()) {
             throw new VacademyException("A coupon with this code already exists in this institute");
         }
         validateDiscountInput(request.getAppliedDiscount());

@@ -23,6 +23,12 @@ public interface CouponCodeRepository extends JpaRepository<CouponCode, String> 
     // and the public validate endpoint where institute_id is part of the request.
     Optional<CouponCode> findByInstituteIdAndCode(String instituteId, String code);
 
+    // Status-aware variant — used by the admin create-coupon uniqueness check so
+    // soft-deleted rows don't block re-creating a coupon with the same code.
+    // Mirrors the V318 partial unique index (institute_id, code) WHERE status <> 'DELETED'.
+    Optional<CouponCode> findByInstituteIdAndCodeAndStatusNot(
+            String instituteId, String code, String status);
+
     // Legacy PRODUCT_PAGE coupons are still global at lookup time (the product page
     // resolves to a single institute) — used by the backward-compat delegation in
     // ProductPageService.validateCoupon to find a coupon by code without forcing

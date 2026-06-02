@@ -236,6 +236,34 @@ function ViewLiveSession() {
         }
     };
 
+    // Reusable Zoom provisioning badge — rendered in both the one-time and recurring views.
+    const zoomProvisionBadge =
+        isZoomSession && zoomProvision && zoomProvision.total > 0 ? (
+            zoomProvision.pending > 0 ? (
+                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+                    <div className="flex items-center gap-2 text-xs text-warning-700">
+                        <WarningCircle className="size-4 shrink-0" weight="fill" />
+                        <span>
+                            {zoomProvision.pending} of {zoomProvision.total} Zoom meeting
+                            {zoomProvision.total === 1 ? '' : 's'} not set up yet.
+                        </span>
+                    </div>
+                    <button
+                        onClick={handleProvisionZoomNow}
+                        disabled={provisioningZoom}
+                        className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                    >
+                        {provisioningZoom ? 'Provisioning…' : 'Provision now'}
+                    </button>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 text-xs text-success-600">
+                    <CheckCircle2 className="size-4 shrink-0" weight="fill" />
+                    Zoom meeting ready
+                </div>
+            )
+        ) : null;
+
     /**
      * For Zoom: navigate to the in-app host embed route which mounts the Zoom
      * Web Meeting SDK with role=1 + ZAK token, so the admin starts the meeting
@@ -851,31 +879,7 @@ function ViewLiveSession() {
                                             </div>
                                         )}
 
-                                        {isZoomSession && zoomProvision && zoomProvision.total > 0 && (
-                                            zoomProvision.pending > 0 ? (
-                                                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
-                                                    <div className="flex items-center gap-2 text-xs text-warning-700">
-                                                        <WarningCircle className="size-4 shrink-0" weight="fill" />
-                                                        <span>
-                                                            {zoomProvision.pending} of {zoomProvision.total} Zoom meeting
-                                                            {zoomProvision.total === 1 ? '' : 's'} not set up yet.
-                                                        </span>
-                                                    </div>
-                                                    <button
-                                                        onClick={handleProvisionZoomNow}
-                                                        disabled={provisioningZoom}
-                                                        className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50"
-                                                    >
-                                                        {provisioningZoom ? 'Provisioning…' : 'Provision now'}
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-2 text-xs text-success-600">
-                                                    <CheckCircle2 className="size-4 shrink-0" weight="fill" />
-                                                    Zoom meeting ready
-                                                </div>
-                                            )
-                                        )}
+                                        {zoomProvisionBadge}
 
                                         {isZoomSession && !isRecurring && groupedSchedules.length > 0 && (
                                             <div className="space-y-2">
@@ -1312,6 +1316,10 @@ function ViewLiveSession() {
                         )}
 
                         {/* Calendar View for Recurring Sessions */}
+                        {isRecurring && zoomProvisionBadge && (
+                            <div className="mb-4">{zoomProvisionBadge}</div>
+                        )}
+
                         {isRecurring && groupedSchedules.length > 0 && (
                             <Card className="overflow-hidden border-border/60 shadow-sm">
                                 <CardHeader className="bg-muted/40 px-6 py-4">

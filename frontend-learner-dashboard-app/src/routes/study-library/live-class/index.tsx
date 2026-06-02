@@ -467,12 +467,14 @@ function RouteComponent() {
     const isInWaitingRoom = now >= waitingRoomStart && now < sessionDate;
     const isLiveClassStarted = now >= sessionDate;
 
-    // Zoom relaxation: any Zoom session is joinable any time — Zoom handles
-    // "waiting for host" and "meeting ended" itself, so we trust the platform
-    // rather than gating by our scheduled start/end or by provider_meeting_id
-    // presence (which may be absent in older cached responses).
+    // Zoom: joinable any time (no scheduled-window gate) — Zoom handles "waiting for host"
+    // and "meeting ended" itself. But we DO gate on provider_meeting_id: an un-provisioned
+    // Zoom meeting would 409 in the SDK, so show "Setting up…" until it exists. BBB/others
+    // provision at join time, so they're never gated this way.
     const lt = (session.link_type ?? "").toLowerCase();
-    const canJoinEarlyZoom = lt === "zoom" || lt === "zoom_meeting";
+    const isZoom = lt === "zoom" || lt === "zoom_meeting";
+    const canJoinEarlyZoom = isZoom;
+    const zoomSettingUp = isZoom && !session.provider_meeting_id;
 
     return (
       <div
@@ -571,17 +573,21 @@ function RouteComponent() {
               <Button
                 variant="default"
                 size="sm"
-                className="shrink-0 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                disabled={zoomSettingUp}
+                title={zoomSettingUp ? "The Zoom meeting is still being set up. Check back shortly." : undefined}
+                className="shrink-0 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={() => handleJoinSession(session)}
               >
                 <ArrowSquareOut size={16} className="mr-1.5" />
-                {!isLive && canJoinEarlyZoom
-                  ? "Join Early"
-                  : isBeforeWaitingRoom
-                    ? "Not Started"
-                    : isInWaitingRoom
-                      ? "Join Waiting Room"
-                      : "Join Session"}
+                {zoomSettingUp
+                  ? "Setting up…"
+                  : !isLive && canJoinEarlyZoom
+                    ? "Join Early"
+                    : isBeforeWaitingRoom
+                      ? "Not Started"
+                      : isInWaitingRoom
+                        ? "Join Waiting Room"
+                        : "Join Session"}
               </Button>
             )}
           </div>
@@ -679,17 +685,21 @@ function RouteComponent() {
               <Button
                 variant="default"
                 size="sm"
-                className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                disabled={zoomSettingUp}
+                title={zoomSettingUp ? "The Zoom meeting is still being set up. Check back shortly." : undefined}
+                className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={() => handleJoinSession(session)}
               >
                 <ArrowSquareOut size={16} className="mr-1.5" />
-                {!isLive && canJoinEarlyZoom
-                  ? "Join Early"
-                  : isBeforeWaitingRoom
-                    ? "Not Started"
-                    : isInWaitingRoom
-                      ? "Join Waiting Room"
-                      : "Join Session"}
+                {zoomSettingUp
+                  ? "Setting up…"
+                  : !isLive && canJoinEarlyZoom
+                    ? "Join Early"
+                    : isBeforeWaitingRoom
+                      ? "Not Started"
+                      : isInWaitingRoom
+                        ? "Join Waiting Room"
+                        : "Join Session"}
               </Button>
             )}
           </div>

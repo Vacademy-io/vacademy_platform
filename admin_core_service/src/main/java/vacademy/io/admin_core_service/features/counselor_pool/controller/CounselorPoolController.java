@@ -62,13 +62,17 @@ public class CounselorPoolController {
     // Audience attachment
     // ────────────────────────────────────────────────────────────────
 
-    @PostMapping("/{poolId}/audiences/{audienceId}")
-    public ResponseEntity<String> addAudienceToPool(
+    /**
+     * Attach one or more audiences (campaigns) to the pool atomically.
+     * Body: { audience_ids: [...] }. If any id fails, nothing is added.
+     */
+    @PostMapping("/{poolId}/audiences")
+    public ResponseEntity<String> addAudiencesToPool(
             @PathVariable String poolId,
-            @PathVariable String audienceId,
+            @RequestBody AddAudiencesRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
-        poolService.addAudienceToPool(poolId, audienceId, user.getUserId());
-        return ResponseEntity.ok("Audience attached");
+        poolService.addAudiencesToPool(poolId, request.getAudienceIds(), user.getUserId());
+        return ResponseEntity.ok("Audiences attached");
     }
 
     @DeleteMapping("/{poolId}/audiences/{audienceId}")
@@ -97,13 +101,17 @@ public class CounselorPoolController {
     // Counselor (member) management
     // ────────────────────────────────────────────────────────────────
 
-    @PostMapping("/{poolId}/counselors/{counselorUserId}")
-    public ResponseEntity<String> addCounselorToPool(
+    /**
+     * Add one or more counselors to the pool atomically.
+     * Body: { counselor_user_ids: [...] }. If any id fails, nothing is added.
+     */
+    @PostMapping("/{poolId}/counselors")
+    public ResponseEntity<String> addCounselorsToPool(
             @PathVariable String poolId,
-            @PathVariable String counselorUserId,
+            @RequestBody AddCounselorsRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
-        poolService.addCounselorToPool(poolId, counselorUserId, user.getUserId());
-        return ResponseEntity.ok("Counselor added to pool");
+        poolService.addCounselorsToPool(poolId, request.getCounselorUserIds(), user.getUserId());
+        return ResponseEntity.ok("Counselors added to pool");
     }
 
     @DeleteMapping("/{poolId}/counselors/{counselorUserId}")

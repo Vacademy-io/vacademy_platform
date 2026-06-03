@@ -37,6 +37,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import MultiSelectAddList from './MultiSelectAddList';
 import {
     handleFetchCampaignsList,
     type CampaignItem,
@@ -45,7 +46,7 @@ import {
     CounselorPoolDTO,
     type MonthlyTargetEntry,
     PoolMemberDTO,
-    useAddCounselorToPool,
+    useAddCounselorsToPool,
     useBulkUpdateMemberStatus,
     useCounselorMemberships,
     useRemoveCounselorFromPool,
@@ -109,7 +110,6 @@ const fetchBackupEligibleCounsellors = async (): Promise<InstituteUser[]> => {
 };
 
 export default function CounselorsTab({ pool }: CounselorsTabProps) {
-    const [pendingUserId, setPendingUserId] = useState<string>('');
     const [statusDialog, setStatusDialog] = useState<{
         counselorUserId: string;
         counselorName: string;
@@ -154,7 +154,7 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
         [instituteUsers, counselorsInPool]
     );
 
-    const { mutate: addCounselor, isPending: adding } = useAddCounselorToPool(pool.id);
+    const { mutateAsync: addCounselorsAsync } = useAddCounselorsToPool(pool.id);
     const { mutate: removeCounselor, isPending: removing } = useRemoveCounselorFromPool(pool.id);
     const { mutate: updateStatus, isPending: updatingStatus } = useUpdateMemberStatus(pool.id);
     const { mutate: bulkUpdateStatus, isPending: bulkUpdatingStatus } = useBulkUpdateMemberStatus();
@@ -182,19 +182,21 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
     const { data: memberships = [], isLoading: membershipsLoading } =
         useCounselorMemberships(membershipsCounselorId);
 
-    const handleAdd = () => {
-        if (!pendingUserId) return;
+    // One atomic bulk add. On failure the whole batch is rejected, so we keep
+    // every checked id selected for retry; on success we clear them all.
+    const handleAddCounselors = async (ids: string[]): Promise<string[]> => {
         if ((pool.audiences ?? []).length === 0) {
             toast.error('Add at least one campaign to the pool before adding counselors');
-            return;
+            return ids; // keep all checked — nothing was attempted
         }
-        addCounselor(pendingUserId, {
-            onSuccess: () => {
-                toast.success('Counselor added');
-                setPendingUserId('');
-            },
-            onError: (err) => toast.error(extractError(err) ?? 'Failed to add counselor'),
-        });
+        try {
+            await addCounselorsAsync(ids);
+            toast.success(ids.length === 1 ? 'Counselor added' : `${ids.length} counselors added`);
+            return [];
+        } catch (err) {
+            toast.error(extractError(err) ?? 'Failed to add counselors');
+            return ids;
+        }
     };
 
     const handleRemove = (counselorUserId: string, name: string) => {
@@ -361,41 +363,17 @@ export default function CounselorsTab({ pool }: CounselorsTabProps) {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center gap-3">
-                        <Select value={pendingUserId} onValueChange={setPendingUserId}>
-                            <SelectTrigger className="w-full max-w-md">
-                                <SelectValue
-                                    placeholder={
-                                        usersLoading
-                                            ? 'Loading counselors…'
-                                            : availableUsers.length === 0
-                                              ? 'All eligible counselors already in pool'
-                                              : 'Select a counselor'
-                                    }
-                                />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableUsers.map((u) => (
-                                    <SelectItem key={u.id} value={u.id}>
-                                        {u.full_name}
-                                        {u.email && (
-                                            <span className="ml-2 text-xs text-muted-foreground">
-                                                {u.email}
-                                            </span>
-                                        )}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <MyButton
-                            buttonType="primary"
-                            scale="small"
-                            onClick={handleAdd}
-                            disable={!pendingUserId || adding}
-                        >
-                            {adding ? 'Adding…' : 'Add'}
-                        </MyButton>
-                    </div>
+                    <MultiSelectAddList
+                        items={availableUsers.map((u) => ({
+                            id: u.id,
+                            label: u.full_name,
+                        }))}
+                        loading={usersLoading}
+                        onAdd={handleAddCounselors}
+                        searchPlaceholder="Search counselors…"
+                        emptyText="All eligible counselors are already in this pool."
+                        itemNoun="counselor"
+                    />
                 </CardContent>
             </Card>
 

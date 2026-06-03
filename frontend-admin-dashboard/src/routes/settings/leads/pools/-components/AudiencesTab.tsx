@@ -4,26 +4,19 @@
  * institute's full campaign list. Backend enforces "one campaign per pool".
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { MyButton } from '@/components/design-system/button';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import MultiSelectAddList from './MultiSelectAddList';
 import {
     handleFetchCampaignsList,
     type CampaignItem,
 } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import {
     CounselorPoolDTO,
-    useAddAudienceToPool,
+    useAddAudiencesToPool,
     useRemoveAudienceFromPool,
 } from '@/services/counselor-pool';
 
@@ -32,8 +25,6 @@ interface AudiencesTabProps {
 }
 
 export default function AudiencesTab({ pool }: AudiencesTabProps) {
-    const [pendingAudienceId, setPendingAudienceId] = useState<string>('');
-
     // Reuse the existing campaign-list service from audience-manager. Pull a wide page
     // (size 500) so we get every campaign in the institute regardless of pagination.
     const instituteId = getCurrentInstituteId() ?? '';
@@ -45,7 +36,7 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
     const { data: campaignsPage, isLoading } = useQuery(campaignsQuery);
     const allCampaigns: CampaignItem[] = campaignsPage?.content ?? [];
 
-    const { mutate: addAudience, isPending: adding } = useAddAudienceToPool(pool.id);
+    const { mutateAsync: addAudiencesAsync } = useAddAudiencesToPool(pool.id);
     const { mutate: removeAudience, isPending: removing } = useRemoveAudienceFromPool(pool.id);
 
     const attachedIds = useMemo(
@@ -71,15 +62,19 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
         [allCampaigns, attachedIds]
     );
 
-    const handleAdd = () => {
-        if (!pendingAudienceId) return;
-        addAudience(pendingAudienceId, {
-            onSuccess: () => {
-                toast.success('Campaign attached to pool');
-                setPendingAudienceId('');
-            },
-            onError: (err) => toast.error(extractError(err) ?? 'Failed to attach campaign'),
-        });
+    // One atomic bulk attach. On failure the whole batch is rejected, so we keep
+    // every checked id selected for retry; on success we clear them all.
+    const handleAddAudiences = async (ids: string[]): Promise<string[]> => {
+        try {
+            await addAudiencesAsync(ids);
+            toast.success(
+                ids.length === 1 ? 'Campaign attached' : `${ids.length} campaigns attached`
+            );
+            return [];
+        } catch (err) {
+            toast.error(extractError(err) ?? 'Failed to attach campaigns');
+            return ids;
+        }
     };
 
     const handleRemove = (audienceId: string, campaignName: string) => {
@@ -101,40 +96,19 @@ export default function AudiencesTab({ pool }: AudiencesTabProps) {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                    <div className="flex items-center gap-3">
-                        <Select value={pendingAudienceId} onValueChange={setPendingAudienceId}>
-                            <SelectTrigger className="w-full max-w-md">
-                                <SelectValue
-                                    placeholder={
-                                        isLoading
-                                            ? 'Loading campaigns…'
-                                            : available.length === 0
-                                              ? 'No unattached campaigns available'
-                                              : 'Select a campaign'
-                                    }
-                                />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {available.map((c) => (
-                                    <SelectItem key={c.id} value={c.id!}>
-                                        {c.campaign_name}
-                                        <span className="ml-2 text-xs text-muted-foreground">
-                                            ({c.status})
-                                        </span>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <MyButton
-                            buttonType="primary"
-                            scale="small"
-                            onClick={handleAdd}
-                            disable={!pendingAudienceId || adding}
-                        >
-                            {adding ? 'Adding…' : 'Add'}
-                        </MyButton>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
+                    <MultiSelectAddList
+                        items={available.map((c) => ({
+                            id: c.id!,
+                            label: c.campaign_name ?? '(unnamed campaign)',
+                            sublabel: c.status,
+                        }))}
+                        loading={isLoading}
+                        onAdd={handleAddAudiences}
+                        searchPlaceholder="Search campaigns…"
+                        emptyText="No unattached campaigns available."
+                        itemNoun="campaign"
+                    />
+                    <p className="text-caption text-neutral-400">
                         A campaign already in another pool will be rejected — remove it from there
                         first.
                     </p>

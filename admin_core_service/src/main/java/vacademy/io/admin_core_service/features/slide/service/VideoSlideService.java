@@ -262,7 +262,11 @@ public class VideoSlideService {
 
     private void separateNewAndExistingQuestions(List<VideoSlideQuestionDTO> questionDTOs, List<VideoSlideQuestionDTO> toAdd, Map<String, VideoSlideQuestionDTO> questionMap, VideoSlide videoSlide) {
         for (VideoSlideQuestionDTO questionDTO : questionDTOs) {
-            if (questionDTO.isNewQuestion()) {
+            // A question with no stable id must be treated as new. Previously a
+            // question with isNewQuestion()==false and a blank id was filed as
+            // "existing", then findAllById([""]) matched no row and it was
+            // silently dropped (no insert, no error) — added questions vanished.
+            if (questionDTO.isNewQuestion() || !StringUtils.hasText(questionDTO.getId())) {
                 toAdd.add(questionDTO);
             } else {
                 questionMap.put(questionDTO.getId(), questionDTO);
@@ -333,7 +337,14 @@ public class VideoSlideService {
     }
 
     private void updateQuestionOptions(VideoSlideQuestion videoSlideQuestion, VideoSlideQuestionDTO videoSlideQuestionDTO) {
-        List<VideoSlideQuestionOption> existingOptions = videoSlideQuestion.getOptions();
+        // Without an evaluation payload there is nothing to reconcile, and
+        // readJson(null) below would throw — bail out instead of 500-ing.
+        if (!StringUtils.hasText(videoSlideQuestionDTO.getAutoEvaluationJson())) {
+            return;
+        }
+        List<VideoSlideQuestionOption> existingOptions = videoSlideQuestion.getOptions() != null
+                ? videoSlideQuestion.getOptions()
+                : new ArrayList<>();
         Map<String, VideoSlideQuestionOption> existingOptionMap = existingOptions.stream()
                 .collect(Collectors.toMap(VideoSlideQuestionOption::getId, option -> option));
 

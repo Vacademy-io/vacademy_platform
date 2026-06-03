@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import {
     converDataToAssignmentFormat,
     convertToQuestionBackendSlideFormat,
+    converDataToVideoFormat,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-helper/helper';
 import { createQuizSlidePayload } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-components/quiz/utils/api-helpers';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
@@ -118,17 +119,16 @@ export function useNonAdminSlides(chapterId: string) {
                     toast.success('Quiz slide published successfully');
                 } else if (slide?.source_type === 'VIDEO') {
                     if (slide.video_slide) {
-                        const videoSlidePayload = {
-                            id: slide.id,
-                            title: slide.title,
-                            image_file_id: slide.image_file_id || '',
-                            description: slide.description || '',
-                            slide_order: slide.slide_order,
-                            video_slide: slide.video_slide,
+                        // Convert in-memory (MyQuestion-shaped) video questions into the
+                        // snake_case VideoSlideQuestionDTO shape the backend expects.
+                        // Spreading slide.video_slide raw sent camelCase questions that the
+                        // backend silently dropped, so added questions were never persisted.
+                        const videoSlidePayload = converDataToVideoFormat({
+                            activeItem: slide,
                             status: publishedStatus,
-                            new_slide: isNewSlide,
                             notify: false,
-                        };
+                            newSlide: isNewSlide,
+                        });
                         await slidesMutations.addUpdateVideoSlide(videoSlidePayload);
                         toast.success('Video slide published successfully');
                     } else {

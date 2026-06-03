@@ -11,6 +11,8 @@ import { VideoPlayerTimeFormType } from '../-form-schemas/video-player-time-sche
 import { uploadQuestionPaperFormSchema } from '@/routes/assessment/question-papers/-utils/upload-question-paper-form-schema';
 import { z } from 'zod';
 import { Switch } from '@/components/ui/switch';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 type QuestionPaperForm = z.infer<ReturnType<typeof uploadQuestionPaperFormSchema>>;
 
@@ -47,6 +49,12 @@ const VideoQuestionsTimeFrameAddDialog = ({
     isAddQuestionTypeRef,
     videoDuration,
 }: VideoQuestionsTimeFrameDialogProps) => {
+    // Per-role Display Setting (Settings → Display Settings → Course Permission).
+    // Hide the entire "Add Question" affordance when disabled for this role.
+    // Fail-open: if settings aren't cached yet, the button stays visible.
+    const slideView = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())?.slideView;
+    if (slideView?.showAddVideoQuestion === false) return null;
+
     return (
         <Dialog>
             <DialogTrigger>

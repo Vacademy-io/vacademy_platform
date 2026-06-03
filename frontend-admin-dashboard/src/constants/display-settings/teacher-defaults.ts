@@ -172,6 +172,8 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         showCopyTo: true,
         showMoveTo: true,
         showDelete: true,
+        showAddVideoQuestion: true,
+        showConvertToSplitScreen: true,
     },
     authoredCoursesCard: {
         showCopyToEdit: false,

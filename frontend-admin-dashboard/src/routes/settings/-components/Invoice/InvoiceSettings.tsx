@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronsUpDown, FileText, Plus, Trash2 } from 'lucide-react';
+import {
+    Check,
+    CaretUpDown,
+    FileText,
+    Plus,
+    Trash,
+    Receipt,
+    Percent,
+} from '@phosphor-icons/react';
+import {
+    SettingsPageShell,
+    SettingsSectionsLayout,
+    type SettingsSectionGroup,
+} from '@/components/settings/shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -22,7 +35,6 @@ import {
     CommandList,
 } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
-import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { COUNTRIES, countryCodeToFlag, findCountry } from '../../-utils/countries';
@@ -77,7 +89,7 @@ function CountryCombobox({
                     ) : (
                         <span className="text-slate-500">Select country…</span>
                     )}
-                    <ChevronsUpDown className="size-4 text-slate-400" />
+                    <CaretUpDown className="size-4 text-slate-400" />
                 </button>
             </PopoverTrigger>
             <PopoverContent className="w-[320px] p-0" align="start">
@@ -174,7 +186,7 @@ function TaxComponentEditor({
                             onClick={() => remove(index)}
                             title="Remove component"
                         >
-                            <Trash2 className="size-4" />
+                            <Trash className="size-4" />
                         </Button>
                     </div>
                 ))
@@ -186,6 +198,16 @@ function TaxComponentEditor({
         </div>
     );
 }
+
+const INVOICE_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
+    {
+        sections: [
+            { id: 'grp-general', label: 'General', icon: Receipt },
+            { id: 'grp-tax', label: 'Country & Tax', icon: Percent },
+            { id: 'grp-templates', label: 'Templates', icon: FileText },
+        ],
+    },
+];
 
 export default function InvoiceSettings() {
     const queryClient = useQueryClient();
@@ -305,20 +327,23 @@ export default function InvoiceSettings() {
     }
 
     return (
-        <div className="w-full space-y-6 p-2 sm:p-6">
-            {/* Header */}
-            <div className="space-y-1">
-                <h1 className="flex items-center gap-2 text-lg font-bold">
-                    <FileText className="size-6" />
-                    Invoice Settings
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                    Configure tax, currency and email behaviour for generated invoices, manage the
-                    invoice PDF &amp; email templates, and set the country tax details injected into
-                    those templates.
-                </p>
-            </div>
-
+        <SettingsPageShell
+            title="Invoice Settings"
+            description="Configure tax, currency and email behaviour for generated invoices, manage the invoice PDF & email templates, and set the country tax details injected into those templates."
+            maxWidth="max-w-7xl"
+            dirty={hasChanges}
+            saving={saving}
+            onSave={() => save(settings)}
+            onDiscard={() => {
+                if (data) {
+                    setSettings(data);
+                    setHasChanges(false);
+                }
+            }}
+            saveLabel="Save Invoice Settings"
+        >
+            <SettingsSectionsLayout groups={INVOICE_SETTINGS_SECTIONS}>
+            <section id="grp-general" className="space-y-6">
             {/* General invoice options */}
             <Card>
                 <CardHeader>
@@ -433,7 +458,9 @@ export default function InvoiceSettings() {
                     </div>
                 </CardContent>
             </Card>
+            </section>
 
+            <section id="grp-tax" className="space-y-6">
             {/* Country & tax components */}
             <Card>
                 <CardHeader>
@@ -532,7 +559,7 @@ export default function InvoiceSettings() {
                                             onClick={() => removeTaxComponent(index)}
                                             title="Remove component"
                                         >
-                                            <Trash2 className="size-4" />
+                                            <Trash className="size-4" />
                                         </Button>
                                     </div>
                                 ))}
@@ -602,22 +629,13 @@ export default function InvoiceSettings() {
                     </div>
                 </CardContent>
             </Card>
+            </section>
 
-            {/* Save */}
-            <div className="flex justify-end">
-                <MyButton
-                    buttonType="primary"
-                    scale="medium"
-                    onClick={() => save(settings)}
-                    disable={saving || !hasChanges}
-                >
-                    {saving ? 'Saving…' : 'Save Invoice Settings'}
-                </MyButton>
-            </div>
-
-            {/* Templates */}
+            <section id="grp-templates" className="space-y-6">
             <InvoiceTemplatesSection type="INVOICE" />
             <InvoiceTemplatesSection type="INVOICE_EMAIL" />
-        </div>
+            </section>
+            </SettingsSectionsLayout>
+        </SettingsPageShell>
     );
 }

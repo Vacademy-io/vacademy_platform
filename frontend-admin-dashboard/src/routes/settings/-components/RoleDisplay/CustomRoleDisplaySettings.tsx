@@ -22,7 +22,21 @@ import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
-import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import {
+    ArrowUp,
+    ArrowDown,
+    DotsSixVertical,
+    BookOpen,
+    SquaresFour,
+    UsersThree,
+    ShieldCheck,
+} from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
+import AudienceAccessCard from './AudienceAccessCard';
+import {
+    SettingsSectionsLayout,
+    type SettingsSectionGroup,
+} from '@/components/settings/shell';
 import type {
     CourseListTabId,
     CourseDetailsTabId,
@@ -33,7 +47,17 @@ import type {
     StudentSideViewTabId,
     LearnerManagementSettings,
 } from '@/types/display-settings';
-import { DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS } from '@/types/display-settings';
+
+const CUSTOM_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
+    {
+        sections: [
+            { id: 'grp-courses', label: 'Courses & Permissions', icon: BookOpen },
+            { id: 'grp-layout', label: 'Layout & Navigation', icon: SquaresFour },
+            { id: 'grp-learners', label: 'Content & Learners', icon: UsersThree },
+            { id: 'grp-access', label: 'Dashboard & Access', icon: ShieldCheck },
+        ],
+    },
+];
 
 const COURSE_CREATION_DEFAULTS: CourseCreationSettings = {
     showCreateCourseWithAI: false,
@@ -435,24 +459,20 @@ export default function CustomRoleDisplaySettings({
     if (!settings) return <div className="p-2">Loading...</div>;
 
     return (
-        <div className="space-y-6 p-2 pb-20">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-lg font-bold">Custom Role Display Settings</h1>
-                    <p className="text-sm text-muted-foreground">
-                        Control visibility, ordering, and widgets for Teachers.
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <Button
-                        variant="outline"
+        <>
+            <SettingsSectionsLayout
+                groups={CUSTOM_DISPLAY_SECTIONS}
+                toolbar={
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
                         onClick={() => setSettings(DEFAULT_TEACHER_DISPLAY_SETTINGS)}
                     >
                         Reset to Defaults
-                    </Button>
-                </div>
-            </div>
-
+                    </MyButton>
+                }
+            >
+            <section id="grp-courses" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Course Page Settings</CardTitle>
@@ -474,9 +494,9 @@ export default function CustomRoleDisplaySettings({
                     ).map(([key, label]) => (
                         <div
                             key={key}
-                            className="flex items-center justify-between rounded border p-3"
+                            className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
                         >
-                            <div className="text-sm">{label}</div>
+                            <div className="text-sm font-medium text-neutral-800">{label}</div>
                             <Switch
                                 checked={settings.coursePage?.[key] !== false}
                                 onCheckedChange={(checked) =>
@@ -510,8 +530,8 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                     ))}
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
                             Show advanced IDs menu on Course Details (course / package session /
                             session / level)
                         </div>
@@ -555,8 +575,8 @@ export default function CustomRoleDisplaySettings({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
                             Can directly edit (without Copy-to-Edit / approval)
                         </div>
                         <Switch
@@ -593,15 +613,13 @@ export default function CustomRoleDisplaySettings({
                             ['showCopyTo', 'Can copy slide'],
                             ['showMoveTo', 'Can move slide'],
                             ['showDelete', 'Can delete slide'],
-                            ['showAddVideoQuestion', 'Can add questions to video slides'],
-                            ['showConvertToSplitScreen', 'Can convert video to split screen'],
                         ] as const
                     ).map(([key, label]) => (
                         <div
                             key={key}
-                            className="flex items-center justify-between rounded border p-3"
+                            className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
                         >
-                            <div className="text-sm">{label}</div>
+                            <div className="text-sm font-medium text-neutral-800">{label}</div>
                             <Switch
                                 checked={settings.slideView?.[key] !== false}
                                 onCheckedChange={(checked) =>
@@ -622,8 +640,8 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                     ))}
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Can edit subject / module / chapter</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Can edit subject / module / chapter</div>
                         <Switch
                             checked={settings.coursePage?.canEditCourseStructure === true}
                             onCheckedChange={(checked) =>
@@ -653,8 +671,8 @@ export default function CustomRoleDisplaySettings({
                             }
                         />
                     </div>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Can delete subject / module / chapter</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Can delete subject / module / chapter</div>
                         <Switch
                             checked={settings.coursePage?.canDeleteCourseStructure === true}
                             onCheckedChange={(checked) =>
@@ -684,8 +702,8 @@ export default function CustomRoleDisplaySettings({
                             }
                         />
                     </div>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Can delete course</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Can delete course</div>
                         <Switch
                             checked={settings.authoredCoursesCard?.showDelete !== false}
                             onCheckedChange={(checked) =>
@@ -712,8 +730,8 @@ export default function CustomRoleDisplaySettings({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Show &quot;Copy to Edit&quot; button</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Show &quot;Copy to Edit&quot; button</div>
                         <Switch
                             checked={settings.authoredCoursesCard?.showCopyToEdit !== false}
                             onCheckedChange={(checked) =>
@@ -739,8 +757,8 @@ export default function CustomRoleDisplaySettings({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Show enrolled student count</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Show enrolled student count</div>
                         <Switch
                             checked={
                                 settings.courseListCard?.showEnrolledStudentCount === true
@@ -766,8 +784,8 @@ export default function CustomRoleDisplaySettings({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Show &quot;Create Course with AI&quot;</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Show &quot;Create Course with AI&quot;</div>
                         <Switch
                             checked={
                                 settings.courseCreation?.showCreateCourseWithAI ??
@@ -793,8 +811,8 @@ export default function CustomRoleDisplaySettings({
                             }
                         />
                     </div>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">
                             Require package session selection when adding a new chapter
                         </div>
                         <Switch
@@ -821,8 +839,8 @@ export default function CustomRoleDisplaySettings({
                             }
                         />
                     </div>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Show Advanced Settings</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Show Advanced Settings</div>
                         <Switch
                             checked={
                                 settings.courseCreation?.showAdvancedSettings ??
@@ -848,8 +866,8 @@ export default function CustomRoleDisplaySettings({
                             }
                         />
                     </div>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Limit Course To Single Level</div>
+                    <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                        <div className="text-sm font-medium text-neutral-800">Limit Course To Single Level</div>
                         <Switch
                             checked={
                                 settings.courseCreation?.limitToSingleLevel ??
@@ -1076,7 +1094,9 @@ export default function CustomRoleDisplaySettings({
                     })()}
                 </CardContent>
             </Card>
+            </section>
 
+            <section id="grp-layout" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>UI Options</CardTitle>
@@ -1084,8 +1104,8 @@ export default function CustomRoleDisplaySettings({
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between rounded border p-3">
-                            <div className="text-sm">Show Support Button</div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div className="text-sm font-medium text-neutral-800">Show Support Button</div>
                             <Switch
                                 checked={settings.ui?.showSupportButton !== false}
                                 onCheckedChange={(checked) =>
@@ -1096,8 +1116,8 @@ export default function CustomRoleDisplaySettings({
                                 }
                             />
                         </div>
-                        <div className="flex items-center justify-between rounded border p-3">
-                            <div className="text-sm">Show Sidebar</div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div className="text-sm font-medium text-neutral-800">Show Sidebar</div>
                             <Switch
                                 checked={settings.ui?.showSidebar !== false}
                                 onCheckedChange={(checked) =>
@@ -1112,8 +1132,8 @@ export default function CustomRoleDisplaySettings({
                                 }
                             />
                         </div>
-                        <div className="flex items-center justify-between rounded border p-3">
-                            <div className="text-sm">Show AI Credits</div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div className="text-sm font-medium text-neutral-800">Show AI Credits</div>
                             <Switch
                                 checked={settings.ui?.showAiCredits !== false}
                                 onCheckedChange={(checked) =>
@@ -1231,7 +1251,7 @@ export default function CustomRoleDisplaySettings({
                                             });
                                         }}
                                     >
-                                        <SelectTrigger className="w-[100px]">
+                                        <SelectTrigger className="w-24">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -1334,7 +1354,7 @@ export default function CustomRoleDisplaySettings({
                                 <div key={tab.id} className="mb-3 rounded border p-3">
                                     <div className="flex items-start gap-3">
                                         <div className="flex flex-col items-center gap-1 pt-6">
-                                            <GripVertical className="h-4 w-4 text-muted-foreground mb-1" />
+                                            <DotsSixVertical className="h-4 w-4 text-muted-foreground mb-1" />
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
@@ -1428,7 +1448,7 @@ export default function CustomRoleDisplaySettings({
                                                             }))
                                                         }
                                                     >
-                                                        <SelectTrigger className="w-[100px]">
+                                                        <SelectTrigger className="w-24">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
@@ -1624,7 +1644,7 @@ export default function CustomRoleDisplaySettings({
                                                                             }))
                                                                         }
                                                                     >
-                                                                        <SelectTrigger className="w-[100px]">
+                                                                        <SelectTrigger className="w-24">
                                                                             <SelectValue />
                                                                         </SelectTrigger>
                                                                         <SelectContent>
@@ -1672,7 +1692,9 @@ export default function CustomRoleDisplaySettings({
                     </div>
                 </CardContent>
             </Card>
+            </section>
 
+            <section id="grp-learners" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Course Content Types</CardTitle>
@@ -1702,9 +1724,9 @@ export default function CustomRoleDisplaySettings({
                     ).map(([key, label]) => (
                         <div
                             key={key}
-                            className="flex items-center justify-between rounded border p-3"
+                            className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
                         >
-                            <div className="text-sm">{label}</div>
+                            <div className="text-sm font-medium text-neutral-800">{label}</div>
                             <Switch
                                 checked={settings.contentTypes?.[key] !== false}
                                 onCheckedChange={(checked) =>
@@ -1744,7 +1766,7 @@ export default function CustomRoleDisplaySettings({
                     ))}
                     <div className="space-y-2 rounded border p-3">
                         <div className="flex items-center justify-between">
-                            <div className="text-sm">Video</div>
+                            <div className="text-sm font-medium text-neutral-800">Video</div>
                             <Switch
                                 checked={settings.contentTypes?.video?.enabled !== false}
                                 onCheckedChange={(checked) =>
@@ -1786,7 +1808,7 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                         <div className="flex items-center justify-between">
-                            <div className="text-sm">In-video Question Visible</div>
+                            <div className="text-sm font-medium text-neutral-800">In-video Question Visible</div>
                             <Switch
                                 checked={
                                     settings.contentTypes?.video?.showInVideoQuestion !== false
@@ -1828,6 +1850,55 @@ export default function CustomRoleDisplaySettings({
                                 }
                             />
                         </div>
+                        {settings.contentTypes?.video?.enabled !== false && (
+                            <>
+                                <div className="flex items-center justify-between">
+                                    <div className="text-sm font-medium text-neutral-800">
+                                        Can add questions to video slides
+                                    </div>
+                                    <Switch
+                                        checked={settings.slideView?.showAddVideoQuestion !== false}
+                                        onCheckedChange={(checked) =>
+                                            updateSettings((prev) => ({
+                                                ...prev,
+                                                slideView: {
+                                                    showCopyTo: prev.slideView?.showCopyTo ?? true,
+                                                    showMoveTo: prev.slideView?.showMoveTo ?? true,
+                                                    showDelete: prev.slideView?.showDelete ?? true,
+                                                    showConvertToSplitScreen:
+                                                        prev.slideView?.showConvertToSplitScreen ??
+                                                        true,
+                                                    showAddVideoQuestion: checked,
+                                                },
+                                            }))
+                                        }
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <div className="text-sm font-medium text-neutral-800">
+                                        Can convert video to split screen
+                                    </div>
+                                    <Switch
+                                        checked={
+                                            settings.slideView?.showConvertToSplitScreen !== false
+                                        }
+                                        onCheckedChange={(checked) =>
+                                            updateSettings((prev) => ({
+                                                ...prev,
+                                                slideView: {
+                                                    showCopyTo: prev.slideView?.showCopyTo ?? true,
+                                                    showMoveTo: prev.slideView?.showMoveTo ?? true,
+                                                    showDelete: prev.slideView?.showDelete ?? true,
+                                                    showAddVideoQuestion:
+                                                        prev.slideView?.showAddVideoQuestion ?? true,
+                                                    showConvertToSplitScreen: checked,
+                                                },
+                                            }))
+                                        }
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -1868,9 +1939,9 @@ export default function CustomRoleDisplaySettings({
                     {LEARNER_MANAGEMENT_OPTIONS.map(({ key, label }) => (
                         <div
                             key={key}
-                            className="flex items-center justify-between rounded border p-3"
+                            className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
                         >
-                            <div className="text-sm">{label}</div>
+                            <div className="text-sm font-medium text-neutral-800">{label}</div>
                             <Switch
                                 checked={
                                     settings.learnerManagement?.[key] ??
@@ -1891,106 +1962,9 @@ export default function CustomRoleDisplaySettings({
                     ))}
                 </CardContent>
             </Card>
+            </section>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Live Class Scheduling</CardTitle>
-                    <CardDescription>
-                        Choose which scheduling entry points show up for this role. Both are
-                        on by default. Disabling a mode here hides it for this role even when
-                        the institute-level Live Session setting allows it.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div>
-                            <div className="text-sm font-medium">Single Class scheduling</div>
-                            <div className="mt-0.5 text-xs text-muted-foreground">
-                                The default flow for creating one class at a time.
-                            </div>
-                        </div>
-                        <Switch
-                            checked={
-                                settings.liveClassScheduling?.singleScheduleEnabled ??
-                                DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS.singleScheduleEnabled
-                            }
-                            onCheckedChange={(checked) =>
-                                updateSettings((prev) => ({
-                                    ...prev,
-                                    liveClassScheduling: {
-                                        ...DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS,
-                                        ...prev.liveClassScheduling,
-                                        singleScheduleEnabled: checked,
-                                    },
-                                }))
-                            }
-                        />
-                    </div>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div>
-                            <div className="text-sm font-medium">Bulk Schedule</div>
-                            <div className="mt-0.5 text-xs text-muted-foreground">
-                                Spreadsheet-style grid for creating many independent classes
-                                in one go.
-                            </div>
-                        </div>
-                        <Switch
-                            checked={
-                                settings.liveClassScheduling?.bulkScheduleEnabled ??
-                                DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS.bulkScheduleEnabled
-                            }
-                            onCheckedChange={(checked) =>
-                                updateSettings((prev) => ({
-                                    ...prev,
-                                    liveClassScheduling: {
-                                        ...DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS,
-                                        ...prev.liveClassScheduling,
-                                        bulkScheduleEnabled: checked,
-                                    },
-                                }))
-                            }
-                        />
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Manage Doubts</CardTitle>
-                    <CardDescription>Show or hide the Doubt Management section.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex items-center justify-between rounded border p-3">
-                        <div className="text-sm">Show Manage Doubts</div>
-                        <Switch
-                            checked={(() => {
-                                const parent = settings.sidebar.find(
-                                    (t) => t.id === 'study-library'
-                                );
-                                const sub = parent?.subTabs?.find(
-                                    (s) => s.id === 'doubt-management'
-                                );
-                                return sub?.visible !== false;
-                            })()}
-                            onCheckedChange={(checked) =>
-                                updateSettings((prev) => ({
-                                    ...prev,
-                                    sidebar: prev.sidebar.map((t) => {
-                                        if (t.id !== 'study-library') return t;
-                                        const subTabs = (t.subTabs || []).map((s) =>
-                                            s.id === 'doubt-management'
-                                                ? { ...s, visible: checked }
-                                                : s
-                                        );
-                                        return { ...t, subTabs };
-                                    }),
-                                }))
-                            }
-                        />
-                    </div>
-                </CardContent>
-            </Card>
-
+            <section id="grp-access" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Dashboard Widgets</CardTitle>
@@ -2060,9 +2034,9 @@ export default function CustomRoleDisplaySettings({
                     ).map(([key, label]) => (
                         <div
                             key={key}
-                            className="flex items-center justify-between rounded border p-3"
+                            className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0"
                         >
-                            <div className="text-sm">{label}</div>
+                            <div className="text-sm font-medium text-neutral-800">{label}</div>
                             <Switch
                                 checked={
                                     settings.permissions[
@@ -2120,12 +2094,21 @@ export default function CustomRoleDisplaySettings({
                 </CardContent>
             </Card>
 
+            {roleName && (
+                <AudienceAccessCard
+                    roleName={roleName.toUpperCase()}
+                    roleLabel={roleName}
+                />
+            )}
+            </section>
+            </SettingsSectionsLayout>
+
             <UnsavedChangesBar
                 dirty={hasChanges}
                 saving={isSaving}
                 onSave={save}
                 onDiscard={discardChanges}
             />
-        </div>
+        </>
     );
 }

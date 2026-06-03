@@ -72,8 +72,11 @@ jobs:
           tags: |
             ghcr.io/vacademy-io/render-worker:${{ env.TAG }}
             ghcr.io/vacademy-io/render-worker:latest
-          cache-from: type=registry,ref=ghcr.io/vacademy-io/render-worker:cache
-          cache-to:   type=registry,ref=ghcr.io/vacademy-io/render-worker:cache,mode=max
+          # Use GitHub Actions cache (built into the runner). Avoids the GHCR
+          # auth dance the registry cache backend required and is typically
+          # a bit faster. 10 GB cache quota per repo, free.
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
 
       - name: Connect to k3s
         uses: Azure/k8s-set-context@v4.0.0

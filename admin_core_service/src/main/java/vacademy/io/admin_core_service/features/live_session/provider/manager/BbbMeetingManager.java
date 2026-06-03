@@ -194,6 +194,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         boolean webcamsOnlyForMod = boolOrDefault(bbbCfg, "webcams_only_for_moderator", false);
         String guestPolicy = bbbCfg.containsKey("guest_policy") ? String.valueOf(bbbCfg.get("guest_policy"))
                 : "ALWAYS_ACCEPT";
+        // Webcam caps protect server CPU/bandwidth on large classes (cameras scale
+        // exponentially: 20 cams ≈ 400 streams). Defaults: max 20 simultaneous cameras
+        // per meeting, max 3 per user. 0 disables the respective cap. Admin-overridable
+        // via the provider config keys below.
+        int meetingCameraCap = intOrDefault(bbbCfg, "meeting_camera_cap", 20);
+        int userCameraCap = intOrDefault(bbbCfg, "user_camera_cap", 3);
 
         Map<String, String> params = new LinkedHashMap<>();
         params.put("name", request.getTopic() != null ? request.getTopic() : instituteName + " Live Class");
@@ -203,6 +209,8 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         params.put("allowStartStopRecording", "true");
         params.put("muteOnStart", String.valueOf(muteOnStart));
         params.put("webcamsOnlyForModerator", String.valueOf(webcamsOnlyForMod));
+        params.put("meetingCameraCap", String.valueOf(meetingCameraCap));
+        params.put("userCameraCap", String.valueOf(userCameraCap));
         params.put("guestPolicy", guestPolicy);
         params.put("welcome", "");
 
@@ -237,8 +245,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
             params.put("meetingEndedURL", learnerBaseUrl + "/study-library/live-class");
         }
 
+        // BBB hard-stops a meeting after `duration` minutes (BBB shows "X minutes left"
+        // warnings near the end, then ends it). Add a 30-minute buffer beyond the chosen/
+        // scheduled length so a class is never cut short, while still giving BBB a bound
+        // so the recording pipeline reliably kicks off.
         if (request.getDurationMinutes() > 0) {
-            params.put("duration", String.valueOf(request.getDurationMinutes()));
+            params.put("duration", String.valueOf(request.getDurationMinutes() + 30));
         }
 
         // Guard: if bbbCallbackBaseUrl is localhost the BBB server (Hetzner) can never
@@ -425,6 +437,12 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     params.put("userdata-bbb_auto_join_audio", "true");
                     params.put("userdata-bbb_skip_check_audio", "true");
                     params.put("userdata-bbb_listen_only_mode", "false");
+                    // Transparent listen-only (BBB 3.0): a muted/idle student stays on the
+                    // cheap shared-audio path instead of holding a FreeSWITCH mic channel,
+                    // yet can unmute instantly. This keeps the no-prompt auto-join UX above
+                    // while preventing the "N silent mics = N hot channels" CPU blowup.
+                    // Forced on per-meeting in case the server default is off/regressed.
+                    params.put("userdata-bbb_transparent_listen_only", "true");
 
                     // Hide the Session Details welcome popup (BBB 3.0+)
                     params.put("userdata-bbb_show_session_details_on_join", "false");
@@ -799,6 +817,19 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
         if (val instanceof Boolean)
             return (Boolean) val;
         return Boolean.parseBoolean(String.valueOf(val));
+    }
+
+    private static int intOrDefault(Map<String, Object> map, String key, int defaultValue) {
+        if (!map.containsKey(key))
+            return defaultValue;
+        Object val = map.get(key);
+        if (val instanceof Number)
+            return ((Number) val).intValue();
+        try {
+            return Integer.parseInt(String.valueOf(val).trim());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     private String buildQueryString(Map<String, String> params) {

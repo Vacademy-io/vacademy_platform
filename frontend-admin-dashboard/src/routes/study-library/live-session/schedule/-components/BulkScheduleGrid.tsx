@@ -27,7 +27,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { WAITING_ROOM_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
-import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple } from '@phosphor-icons/react';
+import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple, CheckCircle } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1803,38 +1803,89 @@ export function BulkScheduleGrid() {
                 open={!!resultDialog?.open}
                 onOpenChange={(o) => setResultDialog((s) => (s ? { ...s, open: o } : null))}
             >
-                <DialogContent className="max-w-lg">
+                {/* Override the Dialog primitive's fixed 400px width (too narrow for
+                    the header + two footer buttons). The primitive's viewport cap keeps
+                    it inside small screens; sm:max-w-lg caps it on desktop. */}
+                <DialogContent className="w-full sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>
-                            {resultDialog && resultDialog.failed > 0
-                                ? 'Bulk creation finished with errors'
-                                : 'Bulk scheduling complete'}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {resultDialog?.created} created · {resultDialog?.failed} failed.{' '}
-                            {resultDialog && resultDialog.failed > 0
-                                ? 'Successful sessions already have participants & notifications applied. Download the report for a row-wise status, fix the failed rows, and retry.'
-                                : 'Download the report for a row-wise record of every session.'}
-                        </DialogDescription>
+                        <div className="flex items-start gap-3">
+                            <span
+                                className={cn(
+                                    'flex size-10 shrink-0 items-center justify-center rounded-full',
+                                    resultDialog && resultDialog.failed > 0
+                                        ? 'bg-warning-100 text-warning-600'
+                                        : 'bg-success-100 text-success-600'
+                                )}
+                            >
+                                {resultDialog && resultDialog.failed > 0 ? (
+                                    <Warning size={22} weight="fill" />
+                                ) : (
+                                    <CheckCircle size={22} weight="fill" />
+                                )}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <DialogTitle>
+                                    {resultDialog && resultDialog.failed > 0
+                                        ? 'Bulk creation finished with errors'
+                                        : 'Bulk scheduling complete'}
+                                </DialogTitle>
+                                <DialogDescription className="mt-1">
+                                    {resultDialog && resultDialog.failed > 0
+                                        ? 'Successful sessions already have participants & notifications applied. Download the report for a row-wise status, then fix the failed rows and retry.'
+                                        : 'All sessions were scheduled successfully. Download the report for a row-wise record.'}
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-2.5 py-1 text-sm font-medium text-success-700">
+                                <CheckCircle size={14} weight="fill" />
+                                {resultDialog?.created ?? 0} created
+                            </span>
+                            <span
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-medium',
+                                    resultDialog && resultDialog.failed > 0
+                                        ? 'bg-danger-50 text-danger-700'
+                                        : 'bg-neutral-100 text-neutral-500'
+                                )}
+                            >
+                                <Warning size={14} />
+                                {resultDialog?.failed ?? 0} failed
+                            </span>
+                        </div>
                     </DialogHeader>
                     {resultDialog && resultDialog.failed > 0 && (
-                        <ScrollArea className="max-h-60 w-full overflow-x-hidden rounded border border-neutral-200 sm:max-h-72">
-                            <ul className="divide-y divide-neutral-100 text-sm">
-                                {resultDialog.results
-                                    .filter((r) => !r.success)
-                                    .map((f) => (
-                                        <li key={f.index} className="px-3 py-2">
-                                            <div className="break-words font-medium text-neutral-800">
-                                                Row {f.index + 1}
-                                                {f.title ? `: ${f.title}` : ''}
-                                            </div>
-                                            <div className="whitespace-pre-wrap break-words text-xs text-danger-600">
-                                                {f.error || 'Unknown error'}
-                                            </div>
-                                        </li>
-                                    ))}
-                            </ul>
-                        </ScrollArea>
+                        <div className="flex flex-col gap-1.5">
+                            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                Failed rows ({resultDialog.failed})
+                            </p>
+                            <ScrollArea className="max-h-60 w-full overflow-x-hidden rounded-md border border-neutral-200 sm:max-h-72">
+                                <ul className="divide-y divide-neutral-100 text-sm">
+                                    {resultDialog.results
+                                        .filter((r) => !r.success)
+                                        .map((f) => (
+                                            <li
+                                                key={f.index}
+                                                className="flex items-start gap-2 px-3 py-2"
+                                            >
+                                                <Warning
+                                                    size={16}
+                                                    className="mt-0.5 shrink-0 text-danger-500"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="break-words font-medium text-neutral-800">
+                                                        Row {f.index + 1}
+                                                        {f.title ? `: ${f.title}` : ''}
+                                                    </div>
+                                                    <div className="whitespace-pre-wrap break-words text-xs text-danger-600">
+                                                        {f.error || 'Unknown error'}
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        ))}
+                                </ul>
+                            </ScrollArea>
+                        </div>
                     )}
                     <DialogFooter className="gap-2">
                         <Button

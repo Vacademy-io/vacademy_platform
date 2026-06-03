@@ -321,8 +321,12 @@ public class DistinctUserAudienceService {
         if (json == null || json.equals("[]")) return new HashMap<>();
         try {
             List<CustomFieldValueMap> list = objectMapper.readValue(json, new TypeReference<List<CustomFieldValueMap>>() {});
+            // Skip null values: see StudentListManager.parseCustomFields for the
+            // payload-bloat explanation (~250x bigger response without this guard).
             Map<String, String> map = new HashMap<>();
-            for (CustomFieldValueMap cf : list) map.put(cf.getCustomFieldId(), cf.getValue());
+            for (CustomFieldValueMap cf : list) {
+                if (cf.getValue() != null) map.put(cf.getCustomFieldId(), cf.getValue());
+            }
             return map;
         } catch (JsonProcessingException e) {
             return new HashMap<>();

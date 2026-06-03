@@ -11,7 +11,26 @@ import {
 } from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
 
-import { Sparkles, Save, ShieldCheck, Trash2, Plus, Info, Film, Palette, Type } from 'lucide-react';
+import {
+    Sparkle,
+    FloppyDisk,
+    ShieldCheck,
+    Trash,
+    Plus,
+    Info,
+    FilmStrip,
+    Palette,
+    TextT,
+    BookOpen,
+    Student,
+    Books,
+    Article,
+} from '@phosphor-icons/react';
+import {
+    SettingsPageShell,
+    SettingsSectionsLayout,
+    type SettingsSectionGroup,
+} from '@/components/settings/shell';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     AI_SERVICE_BASE_URL,
@@ -118,6 +137,19 @@ interface ActivityLogResponse {
 
 import { useAIModelsList } from '@/hooks/useAiModels';
 import KnowledgeBase from './KnowledgeBase';
+
+const AI_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
+    {
+        sections: [
+            { id: 'grp-providers', label: 'Providers & Models', icon: Sparkle },
+            { id: 'grp-course-ai', label: 'Course AI', icon: BookOpen },
+            { id: 'grp-student-ai', label: 'Student AI', icon: Student },
+            { id: 'grp-knowledge', label: 'Knowledge Base', icon: Books },
+            { id: 'grp-prompt', label: 'Course Prompt', icon: Article },
+            { id: 'grp-video', label: 'Video', icon: FilmStrip },
+        ],
+    },
+];
 
 const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [openaiKey, setOpenaiKey] = useState('');
@@ -662,13 +694,19 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     }
 
     return (
-        <div className={isTab ? 'space-y-6 p-0' : 'space-y-6 p-6'}>
+        <SettingsPageShell
+            title="AI Settings"
+            description="Configure AI providers, course and student AI, knowledge base, prompts and video generation."
+            maxWidth="max-w-7xl"
+        >
+            <SettingsSectionsLayout groups={AI_SETTINGS_SECTIONS}>
+            <section id="grp-providers" className="space-y-6">
             {/* AI Configuration Card */}
             <Card className="border-indigo-100 shadow-sm">
                 <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
                     <div className="flex items-center gap-2">
                         <div className="rounded-lg bg-indigo-500 p-2 text-white">
-                            <Sparkles className="size-5" />
+                            <Sparkle className="size-5" />
                         </div>
                         <div>
                             <CardTitle className="text-xl">AI Configuration</CardTitle>
@@ -724,7 +762,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         onClick={() => handleDeleteKey('openai')}
                                         className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                                     >
-                                        <Trash2 className="size-4" />
+                                        <Trash className="size-4" />
                                     </Button>
                                 )}
                             </div>
@@ -771,7 +809,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         onClick={() => handleDeleteKey('gemini')}
                                         className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                                     >
-                                        <Trash2 className="size-4" />
+                                        <Trash className="size-4" />
                                     </Button>
                                 )}
                             </div>
@@ -799,7 +837,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     </>
                                 ) : (
                                     <>
-                                        <Trash2 className="mr-2 size-4" />
+                                        <Trash className="mr-2 size-4" />
                                         Delete All Keys
                                     </>
                                 )}
@@ -1108,7 +1146,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                 </>
                             ) : (
                                 <>
-                                    <Save className="mr-2 size-4" />
+                                    <FloppyDisk className="mr-2 size-4" />
                                     Save Keys
                                 </>
                             )}
@@ -1116,14 +1154,16 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </div>
                 </CardContent>
             </Card>
+            </section>
 
+            <section id="grp-course-ai" className="space-y-6">
             {/* AI Course Creator Configuration Card */}
             <Card className="border-indigo-100 shadow-sm">
                 <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="rounded-lg bg-indigo-500 p-2 text-white">
-                                <Sparkles className="size-5" />
+                                <Sparkle className="size-5" />
                             </div>
                             <div>
                                 <CardTitle className="text-xl">Course AI</CardTitle>
@@ -1138,7 +1178,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                             onClick={handleSaveCopilotSettings}
                             disabled={isSavingCopilot}
                         >
-                            <Save className="mr-1 size-4" />
+                            <FloppyDisk className="mr-1 size-4" />
                             {isSavingCopilot ? 'Saving...' : 'Save'}
                         </MyButton>
                     </div>
@@ -1158,14 +1198,16 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </div>
                 </CardContent>
             </Card>
+            </section>
 
+            <section id="grp-student-ai" className="space-y-6">
             {/* Student AI Configuration Card */}
             <Card className="border-indigo-100 shadow-sm">
                 <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className="rounded-lg bg-indigo-500 p-2 text-white">
-                                <Sparkles className="size-5" />
+                                <Sparkle className="size-5" />
                             </div>
                             <div>
                                 <CardTitle className="text-xl">Student AI</CardTitle>
@@ -1299,7 +1341,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                             }}
                                             className="border-red-200 text-red-600 hover:bg-red-50"
                                         >
-                                            <Trash2 className="size-4" />
+                                            <Trash className="size-4" />
                                         </Button>
                                     </div>
                                 ))}
@@ -1647,7 +1689,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                 </>
                             ) : (
                                 <>
-                                    <Save className="mr-2 size-4" />
+                                    <FloppyDisk className="mr-2 size-4" />
                                     Save Settings
                                 </>
                             )}
@@ -1655,16 +1697,20 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </div>
                 </CardContent>
             </Card>
+            </section>
 
+            <section id="grp-knowledge" className="space-y-6">
             {/* Knowledge Base */}
             <KnowledgeBase />
+            </section>
 
+            <section id="grp-prompt" className="space-y-6">
             {/* Institute AI Settings Card */}
             <Card className="border-indigo-100 shadow-sm">
                 <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
                     <div className="flex items-center gap-2">
                         <div className="rounded-lg bg-indigo-500 p-2 text-white">
-                            <Sparkles className="size-5" />
+                            <Sparkle className="size-5" />
                         </div>
                         <div>
                             <CardTitle className="text-xl">Institute AI Course Prompt</CardTitle>
@@ -1741,7 +1787,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         </>
                                     ) : (
                                         <>
-                                            <Save className="mr-2 size-4" />
+                                            <FloppyDisk className="mr-2 size-4" />
                                             Save Prompt
                                         </>
                                     )}
@@ -1751,6 +1797,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     )}
                 </CardContent>
             </Card>
+            </section>
+
+            <section id="grp-video" className="space-y-6">
 
             {/* ═══════════════════════════════════════════════════════════ */}
             {/* VIDEO BRANDING CARD                                        */}
@@ -1759,7 +1808,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 <CardHeader className="border-b border-indigo-50 bg-indigo-50/30">
                     <div className="flex items-center gap-2">
                         <div className="rounded-lg bg-indigo-500 p-2 text-white">
-                            <Film className="size-5" />
+                            <FilmStrip className="size-5" />
                         </div>
                         <div>
                             <CardTitle className="text-xl">Video Branding</CardTitle>
@@ -2189,7 +2238,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         </>
                                     ) : (
                                         <>
-                                            <Save className="mr-2 size-4" />
+                                            <FloppyDisk className="mr-2 size-4" />
                                             Save Branding
                                         </>
                                     )}
@@ -2396,7 +2445,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                             {/* ── Typography ───────────────────────────── */}
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2">
-                                    <Type className="size-4 text-indigo-500" />
+                                    <TextT className="size-4 text-indigo-500" />
                                     <Label className="text-sm font-semibold">Typography</Label>
                                 </div>
                                 <div className="grid gap-4 md:grid-cols-2">
@@ -2460,7 +2509,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                         </>
                                     ) : (
                                         <>
-                                            <Save className="mr-2 size-4" />
+                                            <FloppyDisk className="mr-2 size-4" />
                                             Save Style
                                         </>
                                     )}
@@ -2470,6 +2519,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     )}
                 </CardContent>
             </Card>
+            </section>
+            </SettingsSectionsLayout>
 
             {/* API Keys Info Dialog */}
             <Dialog open={showKeysInfo} onOpenChange={setShowKeysInfo}>
@@ -2552,7 +2603,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </SettingsPageShell>
     );
 };
 

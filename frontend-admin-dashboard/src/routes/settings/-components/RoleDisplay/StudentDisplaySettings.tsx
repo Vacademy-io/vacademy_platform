@@ -5,7 +5,22 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { ArrowUp, ArrowDown, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+    ArrowUp,
+    ArrowDown,
+    Check,
+    CaretDown,
+    CaretRight,
+    SquaresFour,
+    SignIn,
+    GraduationCap,
+    BellSimple,
+} from '@phosphor-icons/react';
+import {
+    SettingsPageShell,
+    SettingsSectionsLayout,
+    type SettingsSectionGroup,
+} from '@/components/settings/shell';
 import {
     Select,
     SelectContent,
@@ -31,6 +46,21 @@ import {
     saveStudentDisplaySettings,
 } from '@/services/student-display-settings';
 import MaxActiveSessionsSetting from './MaxActiveSessionsSetting';
+
+const STUDENT_DISPLAY_SECTIONS: SettingsSectionGroup[] = [
+    {
+        sections: [
+            { id: 'grp-layout', label: 'Layout & Navigation', icon: SquaresFour },
+            { id: 'grp-account', label: 'Login & Account', icon: SignIn },
+            { id: 'grp-learning', label: 'Learning Experience', icon: GraduationCap },
+            {
+                id: 'grp-notifications',
+                label: 'Notifications & Redirect',
+                icon: BellSimple,
+            },
+        ],
+    },
+];
 
 export default function StudentDisplaySettings(): JSX.Element {
     const [settings, setSettings] = useState<StudentDisplaySettingsData | null>(null);
@@ -258,10 +288,16 @@ export default function StudentDisplaySettings(): JSX.Element {
     if (!settings) return <div className="p-4 text-sm">Loading...</div>;
 
     return (
-        <div className="space-y-4 p-2 pb-20">
+        <SettingsPageShell
+            title="Student Display Settings"
+            description="Control what learners see — sidebar, courses, login, certificates, notifications and more."
+            maxWidth="max-w-7xl"
+        >
             {/* Save is handled by the sticky UnsavedChangesBar at the bottom of
                 the viewport, so the redundant top + bottom buttons that used
                 to live here have been removed. */}
+            <SettingsSectionsLayout groups={STUDENT_DISPLAY_SECTIONS}>
+            <section id="grp-layout" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Sidebar</CardTitle>
@@ -486,7 +522,9 @@ export default function StudentDisplaySettings(): JSX.Element {
                     })()}
                 </div>
             </Card>
+            </section>
 
+            <section id="grp-account" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Login & Signup</CardTitle>
@@ -635,7 +673,9 @@ export default function StudentDisplaySettings(): JSX.Element {
             </Card>
 
             <MaxActiveSessionsSetting />
+            </section>
 
+            <section id="grp-learning" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Course Settings</CardTitle>
@@ -1032,7 +1072,9 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                 </div>
             </Card>
+            </section>
 
+            <section id="grp-notifications" className="space-y-6">
             <Card>
                 <CardHeader>
                     <CardTitle>Notifications</CardTitle>
@@ -1091,6 +1133,8 @@ export default function StudentDisplaySettings(): JSX.Element {
                     />
                 </div>
             </Card>
+            </section>
+            </SettingsSectionsLayout>
 
             <UnsavedChangesBar
                 dirty={hasChanges}
@@ -1098,7 +1142,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                 onSave={onSave}
                 onDiscard={discardChanges}
             />
-        </div>
+        </SettingsPageShell>
     );
 }
 
@@ -1218,13 +1262,13 @@ function BreadcrumbModePreview(): JSX.Element {
         <div className="rounded-md border border-neutral-200 bg-neutral-50 overflow-hidden">
             <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 text-[10px] text-neutral-600 bg-white">
                 <span className="flex items-center gap-0.5 rounded px-1 py-0.5 bg-neutral-100">
-                    S1 <ChevronDown className="h-2.5 w-2.5" />
+                    S1 <CaretDown className="h-2.5 w-2.5" />
                 </span>
-                <ChevronRight className="h-2.5 w-2.5 text-neutral-400" />
+                <CaretRight className="h-2.5 w-2.5 text-neutral-400" />
                 <span className="flex items-center gap-0.5 rounded px-1 py-0.5 bg-neutral-100">
-                    M1 <ChevronDown className="h-2.5 w-2.5" />
+                    M1 <CaretDown className="h-2.5 w-2.5" />
                 </span>
-                <ChevronRight className="h-2.5 w-2.5 text-neutral-400" />
+                <CaretRight className="h-2.5 w-2.5 text-neutral-400" />
                 <span className="font-semibold text-neutral-800">C1</span>
             </div>
             <div className="p-2 space-y-1">
@@ -1300,7 +1344,7 @@ function MockTreeRow({
     muted?: boolean;
     activeAncestor?: boolean;
 }): JSX.Element {
-    const Icon = chevron === 'down' ? ChevronDown : ChevronRight;
+    const Icon = chevron === 'down' ? CaretDown : CaretRight;
     return (
         <div
             style={{ paddingLeft: `${indent * 10 + 4}px` }}

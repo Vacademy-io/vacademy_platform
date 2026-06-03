@@ -1,9 +1,16 @@
 import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
-import "./feedback.css";
 import { z } from "zod";
 import { useEffect, useState, useCallback } from "react";
+import { Star, Warning, CheckCircle, CircleNotch } from "@phosphor-icons/react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { BASE_URL } from "@/constants/urls";
+import { getPublicUrl } from "@/services/upload_file";
+import { cn } from "@/lib/utils";
+import { MyButton } from "@/components/design-system/button";
+import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import type {
   FeedbackConfigResponse,
   FeedbackQuestion,
@@ -18,7 +25,19 @@ export const Route = createFileRoute("/study-library/live-class/feedback/")(
   }
 );
 
+/* Shared page shell so every state (loading / success / form) sits on the same
+   centred, subtly brand-tinted background. */
+function FeedbackShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-b from-primary-50/40 via-background to-background p-4">
+      {children}
+    </div>
+  );
+}
+
 /* ─────────────────────── Star Rating Component ─────────────────────── */
+
+const RATING_WORDS = ["Poor", "Fair", "Good", "Very good", "Excellent"];
 
 function StarRating({
   value,
@@ -34,75 +53,65 @@ function StarRating({
   const [hoverValue, setHoverValue] = useState<number | null>(null);
   const displayValue = hoverValue ?? value;
 
-  const handleClick = (
+  const valueFromEvent = (
     starIndex: number,
     e: React.MouseEvent<HTMLButtonElement>
   ) => {
-    if (!allowHalf) {
-      onChange(starIndex + 1);
-      return;
-    }
+    if (!allowHalf) return starIndex + 1;
     const rect = e.currentTarget.getBoundingClientRect();
     const isLeft = e.clientX - rect.left < rect.width / 2;
-    onChange(isLeft ? starIndex + 0.5 : starIndex + 1);
+    return isLeft ? starIndex + 0.5 : starIndex + 1;
   };
 
-  const handleMouseMove = (
-    starIndex: number,
-    e: React.MouseEvent<HTMLButtonElement>
-  ) => {
-    if (!allowHalf) {
-      setHoverValue(starIndex + 1);
-      return;
-    }
-    const rect = e.currentTarget.getBoundingClientRect();
-    const isLeft = e.clientX - rect.left < rect.width / 2;
-    setHoverValue(isLeft ? starIndex + 0.5 : starIndex + 1);
-  };
+  const word =
+    displayValue > 0
+      ? RATING_WORDS[
+          Math.max(0, Math.min(RATING_WORDS.length - 1, Math.round(displayValue) - 1))
+        ]
+      : "";
 
   return (
-    <div
-      className="feedback-stars"
-      onMouseLeave={() => setHoverValue(null)}
-    >
-      {Array.from({ length: maxStars }, (_, i) => {
-        const filled = displayValue >= i + 1;
-        const halfFilled = !filled && displayValue >= i + 0.5;
-        return (
-          <button
-            key={i}
-            type="button"
-            className="feedback-star-btn"
-            onClick={(e) => handleClick(i, e)}
-            onMouseMove={(e) => handleMouseMove(i, e)}
-          >
-            <svg viewBox="0 0 24 24" className="feedback-star-svg">
-              <defs>
-                <linearGradient id={`half-grad-${i}`}>
-                  <stop offset="50%" stopColor="var(--feedback-star)" />
-                  <stop offset="50%" stopColor="transparent" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                fill={
-                  filled
-                    ? "var(--feedback-star)"
-                    : halfFilled
-                      ? `url(#half-grad-${i})`
-                      : "transparent"
-                }
-                stroke="var(--feedback-star)"
-                strokeWidth="1.5"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        );
-      })}
-      {value > 0 && (
-        <span className="feedback-star-label">{value} / {maxStars}</span>
+    <div className="flex flex-col gap-2">
+      <div
+        className="flex items-center gap-1"
+        onMouseLeave={() => setHoverValue(null)}
+      >
+        {Array.from({ length: maxStars }, (_, i) => {
+          const fill =
+            displayValue >= i + 1
+              ? "full"
+              : displayValue >= i + 0.5
+                ? "half"
+                : "none";
+          return (
+            <button
+              key={i}
+              type="button"
+              aria-label={`${i + 1} star${i === 0 ? "" : "s"}`}
+              className="relative rounded-md transition-transform duration-150 ease-out hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+              onClick={(e) => onChange(valueFromEvent(i, e))}
+              onMouseMove={(e) => setHoverValue(valueFromEvent(i, e))}
+            >
+              {/* Empty base */}
+              <Star weight="regular" className="h-9 w-9 text-neutral-300" />
+              {/* Filled overlay, width-clipped to the fill amount */}
+              <span
+                className={cn(
+                  "pointer-events-none absolute inset-0 overflow-hidden",
+                  fill === "full" ? "w-full" : fill === "half" ? "w-1/2" : "w-0"
+                )}
+              >
+                <Star weight="fill" className="h-9 w-9 text-warning-400" />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {displayValue > 0 && (
+        <p className="text-caption font-medium text-muted-foreground">
+          <span className="text-warning-600">{displayValue}</span> / {maxStars}
+          {word && <span className="text-foreground"> · {word}</span>}
+        </p>
       )}
     </div>
   );
@@ -118,8 +127,14 @@ function FeedbackPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [config, setConfig] = useState<FeedbackConfigResponse | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, string | number>>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
+
+  // First letter of the institute name, used as a graceful logo fallback when
+  // there is no logo or it fails to load.
+  const instituteInitial =
+    config?.institute_name?.trim().charAt(0).toUpperCase() ?? "";
 
   // Fetch feedback config. Do NOT auto-redirect when feedback is missing /
   // disabled — silently bouncing the learner away after the meeting ends made
@@ -155,6 +170,30 @@ function FeedbackPage() {
       })
       .finally(() => setLoading(false));
   }, [scheduleId, navigate]);
+
+  // Resolve the institute logo. The backend returns institute_logo as the raw
+  // media file ID (not a public URL), so a direct <img src> 404s — that was the
+  // broken-logo bug. getPublicUrl() resolves a file ID to a signed URL and
+  // passes any already-direct http(s) URL through unchanged, so this is safe
+  // regardless of what the API sends.
+  useEffect(() => {
+    let cancelled = false;
+    const raw = config?.institute_logo;
+    if (!raw) {
+      setLogoUrl(null);
+      return;
+    }
+    getPublicUrl(raw)
+      .then((url) => {
+        if (!cancelled) setLogoUrl(url || null);
+      })
+      .catch(() => {
+        if (!cancelled) setLogoUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config?.institute_logo]);
 
   // Auto-redirect after successful submission
   useEffect(() => {
@@ -233,34 +272,31 @@ function FeedbackPage() {
   /* ── Loading state ── */
   if (loading) {
     return (
-      <>
-        <div className="feedback-page">
-          <div className="feedback-loader">
-            <div className="feedback-spinner" />
-            <p>Loading feedback form…</p>
-          </div>
+      <FeedbackShell>
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <CircleNotch className="h-8 w-8 animate-spin text-primary-500" />
+          <p className="text-body">Loading feedback form…</p>
         </div>
-        <FeedbackStyles />
-      </>
+      </FeedbackShell>
     );
   }
 
   /* ── Already-submitted / success state ── */
   if (submitted) {
     return (
-      <>
-        <div className="feedback-page">
-          <div className="feedback-card feedback-success-card">
-            <div className="feedback-success-icon">✓</div>
-            <h2 className="feedback-success-title">Thank you for your feedback!</h2>
-            <p className="feedback-success-subtitle">
-              Your responses have been recorded. Redirecting you back…
-            </p>
-            <div className="feedback-redirect-bar" />
+      <FeedbackShell>
+        <Card className="w-full max-w-lg p-8 text-center shadow-md animate-in fade-in zoom-in-95 duration-500">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-success-100">
+            <CheckCircle weight="fill" className="h-9 w-9 text-success-500" />
           </div>
-        </div>
-        <FeedbackStyles />
-      </>
+          <h2 className="text-h3 font-semibold text-foreground">
+            Thank you for your feedback!
+          </h2>
+          <p className="mt-2 text-body text-muted-foreground">
+            Your responses have been recorded. Redirecting you back…
+          </p>
+        </Card>
+      </FeedbackShell>
     );
   }
 
@@ -271,152 +307,163 @@ function FeedbackPage() {
   // ready.
   if (!config?.feedback_config?.enabled) {
     return (
-      <>
-        <div className="feedback-page">
-          <div className="feedback-card feedback-success-card">
-            <div className="feedback-success-icon">✓</div>
-            <h2 className="feedback-success-title">Thanks for attending!</h2>
-            <p className="feedback-success-subtitle">
-              {config?.session_title
-                ? `Hope you found "${config.session_title}" useful.`
-                : "Hope you found the session useful."}
-            </p>
-            <button
-              type="button"
-              className="feedback-submit-btn"
-              onClick={() => navigate({ to: "/study-library/live-class" })}
-            >
-              Back to live classes
-            </button>
+      <FeedbackShell>
+        <Card className="w-full max-w-lg p-8 text-center shadow-md animate-in fade-in zoom-in-95 duration-500">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-success-100">
+            <CheckCircle weight="fill" className="h-9 w-9 text-success-500" />
           </div>
-        </div>
-        <FeedbackStyles />
-      </>
+          <h2 className="text-h3 font-semibold text-foreground">
+            Thanks for attending!
+          </h2>
+          <p className="mt-2 text-body text-muted-foreground">
+            {config?.session_title
+              ? `Hope you found "${config.session_title}" useful.`
+              : "Hope you found the session useful."}
+          </p>
+          <MyButton
+            buttonType="primary"
+            scale="large"
+            className="mt-6 w-full min-w-0"
+            onClick={() => navigate({ to: "/study-library/live-class" })}
+          >
+            Back to live classes
+          </MyButton>
+        </Card>
+      </FeedbackShell>
     );
   }
 
   /* ── Main feedback form ── */
   return (
-    <>
-      <div className="feedback-page">
-      <div className="feedback-card">
+    <FeedbackShell>
+      <Card className="w-full max-w-lg p-6 shadow-md sm:p-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
         {/* Header / Branding */}
-        <div className="feedback-header">
-          {config?.institute_logo && (
-            <img
-              src={config.institute_logo}
-              alt={config?.institute_name ?? "Logo"}
-              className="feedback-logo"
-            />
-          )}
-          <h1 className="feedback-title">Session Feedback</h1>
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted shadow-sm">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={config?.institute_name ?? "Institute logo"}
+                className="h-full w-full object-contain p-1.5"
+                onError={() => setLogoUrl(null)}
+              />
+            ) : (
+              <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary-400 to-primary-500 text-h2 font-semibold text-primary-foreground">
+                {instituteInitial || <Star weight="fill" className="h-6 w-6" />}
+              </span>
+            )}
+          </div>
+          <h1 className="text-h2 font-semibold text-foreground sm:text-h1">
+            Session Feedback
+          </h1>
           {config?.session_title && (
-            <p className="feedback-session-name">{config.session_title}</p>
+            <p className="mt-1 text-body text-muted-foreground">
+              {config.session_title}
+            </p>
           )}
           {config?.institute_name && (
-            <p className="feedback-institute-name">{config.institute_name}</p>
+            <p className="mt-1 text-caption uppercase tracking-wide text-neutral-400">
+              {config.institute_name}
+            </p>
           )}
         </div>
 
         {/* Compulsory-feedback notice */}
         {config?.feedback_config?.allow_skip === false && (
-          <div
-            role="note"
-            style={{
-              margin: "0 1.5rem 1rem",
-              padding: "0.75rem 1rem",
-              borderRadius: "0.5rem",
-              backgroundColor: "var(--feedback-warn-bg)",
-              border: "1px solid var(--feedback-warn-border)",
-              color: "var(--feedback-warn-text)",
-              fontSize: "0.85rem",
-              lineHeight: 1.4,
-            }}
-          >
-            <strong>Feedback required.</strong> Your instructor has marked
-            feedback as compulsory for this session — please complete all
-            required questions to continue.
-          </div>
+          <Alert className="mt-6 border-warning-200 bg-warning-50 text-warning-700 [&>svg]:text-warning-600">
+            <Warning weight="fill" className="h-4 w-4" />
+            <AlertDescription className="text-warning-700">
+              <span className="font-semibold text-warning-700">
+                Feedback required.
+              </span>{" "}
+              Your instructor has marked feedback as compulsory for this session
+              — please complete all required questions to continue.
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Questions */}
-        <div className="feedback-questions">
+        <div className="mt-6 flex flex-col gap-4">
           {enabledQuestions.map((q: FeedbackQuestion) => (
-            <div key={q.id} className="feedback-question">
-              <label className="feedback-label">
+            <Card key={q.id} className="p-4 shadow-sm sm:p-5">
+              <Label className="text-subtitle font-semibold text-foreground">
                 {q.label}
-                {q.mandatory && <span className="feedback-required">*</span>}
-              </label>
+                {q.mandatory && (
+                  <span className="ml-0.5 text-danger-500">*</span>
+                )}
+              </Label>
 
-              {q.type === "star_rating" ? (
-                <StarRating
-                  value={(responses[q.id] as number) || 0}
-                  onChange={(v) =>
-                    setResponses((prev) => ({ ...prev, [q.id]: v }))
-                  }
-                  maxStars={q.max_stars ?? 5}
-                  allowHalf={q.allow_half ?? true}
-                />
-              ) : (
-                <textarea
-                  className={`feedback-textarea ${errors[q.id] ? "feedback-textarea-error" : ""}`}
-                  placeholder="Type your response here…"
-                  value={(responses[q.id] as string) || ""}
-                  onChange={(e) => {
-                    setResponses((prev) => ({
-                      ...prev,
-                      [q.id]: e.target.value,
-                    }));
-                    if (errors[q.id]) {
-                      setErrors((prev) => ({ ...prev, [q.id]: false }));
+              <div className="mt-3">
+                {q.type === "star_rating" ? (
+                  <StarRating
+                    value={(responses[q.id] as number) || 0}
+                    onChange={(v) =>
+                      setResponses((prev) => ({ ...prev, [q.id]: v }))
                     }
-                  }}
-                  rows={3}
-                  maxLength={2000}
-                />
-              )}
+                    maxStars={q.max_stars ?? 5}
+                    allowHalf={q.allow_half ?? true}
+                  />
+                ) : (
+                  <Textarea
+                    className={cn(
+                      "min-h-24 resize-y bg-background",
+                      errors[q.id] &&
+                        "border-danger-400 focus-visible:ring-danger-400"
+                    )}
+                    placeholder="Type your response here…"
+                    value={(responses[q.id] as string) || ""}
+                    onChange={(e) => {
+                      setResponses((prev) => ({
+                        ...prev,
+                        [q.id]: e.target.value,
+                      }));
+                      if (errors[q.id]) {
+                        setErrors((prev) => ({ ...prev, [q.id]: false }));
+                      }
+                    }}
+                    rows={3}
+                    maxLength={2000}
+                  />
+                )}
+              </div>
 
               {errors[q.id] && (
-                <span className="feedback-error-text">This field is required</span>
+                <p className="mt-1.5 text-caption text-danger-600">
+                  This field is required
+                </p>
               )}
-            </div>
+            </Card>
           ))}
         </div>
 
         {/* Submit */}
-        <button
-          type="button"
-          className="feedback-submit-btn"
+        <MyButton
+          buttonType="primary"
+          scale="large"
+          className="mt-6 w-full min-w-0"
           onClick={handleSubmit}
-          disabled={submitting}
+          disable={submitting}
         >
           {submitting ? (
-            <span className="feedback-btn-loading">
-              <span className="feedback-spinner-sm" /> Submitting…
+            <span className="flex items-center justify-center gap-2">
+              <CircleNotch className="h-4 w-4 animate-spin" /> Submitting…
             </span>
           ) : (
             "Submit Feedback"
           )}
-        </button>
+        </MyButton>
 
         {config?.feedback_config?.allow_skip !== false && (
-          <button
-            type="button"
-            className="feedback-skip-btn"
+          <MyButton
+            buttonType="text"
+            scale="medium"
+            className="mt-2 w-full"
             onClick={() => navigate({ to: "/study-library/live-class" })}
           >
             Skip
-          </button>
+          </MyButton>
         )}
-      </div>
-      </div>
-
-      <FeedbackStyles />
-    </>
+      </Card>
+    </FeedbackShell>
   );
-}
-
-/* Styles moved to ./feedback.css */
-function FeedbackStyles() {
-  return null;
 }

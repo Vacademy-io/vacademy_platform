@@ -1,0 +1,8 @@
+[Unit]
+Description=Adjust BBB rap-worker resource limits based on live meeting count
+After=network-online.target redis-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bbb-rap-autotune.sh
+TimeoutStartSec=30

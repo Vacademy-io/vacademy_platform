@@ -1,3 +1,12 @@
+{{- /*
+  JVM heap is pinned via JAVA_TOOL_OPTIONS below because the Hetzner
+  Ubuntu 26.04 / Linux 7.0.0 kernel breaks the JVM's cgroup-v2
+  container-support detection: every Java pod read the node's full
+  memory (~11.4 GiB) as its heap budget on a 1-2 GiB pod limit, which
+  caused OOMKill cascades (migration day + media-service OOMKill).
+  Explicit -Xms/-Xmx via JAVA_TOOL_OPTIONS sidesteps the broken
+  auto-detection. See memory/jvm-cgroup-detection-broken-hetzner.md.
+*/ -}}
 {{- if .Values.services.admin_core_service.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -39,13 +48,17 @@ spec:
                 name: myconfigmapv1.0
             - secretRef:
                 name: vacademy-secrets
+          env:
+            # Pin heap explicitly; cgroup-v2 auto-detection is broken on this kernel.
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms512m -Xmx2560m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
           resources:
             requests:
               cpu: "250m"
               memory: "1536Mi"
             limits:
-              cpu: "1000m"
-              memory: "3Gi"
+              cpu: "2000m"
+              memory: "4Gi"
           # startupProbe gates startup: it polls until the app first answers OK,
           # then liveness/readiness take over. With initialDelaySeconds=30 we
           # detect a ready pod ~150s earlier per pod vs the old 180-300s wait,

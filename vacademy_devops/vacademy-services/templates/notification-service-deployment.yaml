@@ -1,3 +1,12 @@
+{{- /*
+  JVM heap is pinned via JAVA_TOOL_OPTIONS below because the Hetzner
+  Ubuntu 26.04 / Linux 7.0.0 kernel breaks the JVM's cgroup-v2
+  container-support detection: every Java pod read the node's full
+  memory (~11.4 GiB) as its heap budget on a 1-2 GiB pod limit, which
+  caused OOMKill cascades (migration day + media-service OOMKill).
+  Explicit -Xms/-Xmx via JAVA_TOOL_OPTIONS sidesteps the broken
+  auto-detection. See memory/jvm-cgroup-detection-broken-hetzner.md.
+*/ -}}
 {{- if .Values.services.notification_service.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,12 +39,16 @@ spec:
                 name: myconfigmapv1.0
             - secretRef:
                 name: vacademy-secrets
+          env:
+            # Pin heap explicitly; cgroup-v2 auto-detection is broken on this kernel.
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms256m -Xmx1280m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
           resources:
             requests:
-              cpu: "200m"
+              cpu: "300m"
               memory: "768Mi"
             limits:
-              cpu: "350m"
+              cpu: "1000m"
               memory: "2Gi"
           livenessProbe:
             httpGet:

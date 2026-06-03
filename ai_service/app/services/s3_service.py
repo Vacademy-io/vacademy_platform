@@ -236,14 +236,18 @@ class S3Service:
         
         return uploaded_urls
     
-    def download_file(self, s3_url: str, local_path: Path) -> bool:
+    def download_file(self, s3_url: str, local_path: Path, expected_missing: bool = False) -> bool:
         """
         Download a file from S3 to a local path.
-        
+
         Args:
             s3_url: Public S3 URL
             local_path: Local path where file should be saved
-            
+            expected_missing: when True, a 404 (the file simply not existing) is
+                logged at DEBUG instead of ERROR. Use for resume/probe downloads
+                of optional artifacts so a normal "not there" doesn't masquerade
+                as a failure in the logs.
+
         Returns:
             True if downloaded successfully
         """
@@ -276,7 +280,14 @@ class S3Service:
         except (ClientError, ValueError, Exception) as e:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"Failed to download {s3_url} to {local_path}: {e}")
+            _code = ""
+            if isinstance(e, ClientError):
+                _code = str(e.response.get("Error", {}).get("Code", ""))
+            if expected_missing and _code in ("404", "NoSuchKey", "NotFound"):
+                # Optional artifact simply not in S3 (resume/probe path) — normal.
+                logger.debug(f"Expected-missing file not in S3 ({_code}): {s3_url}")
+            else:
+                logger.error(f"Failed to download {s3_url} to {local_path}: {e}")
             return False
     
     def delete_file(self, s3_url: str) -> bool:

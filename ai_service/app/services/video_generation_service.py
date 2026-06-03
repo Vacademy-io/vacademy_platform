@@ -997,7 +997,7 @@ class VideoGenerationService:
                         if plan_local.exists():
                             continue
                         logger.info(f"[VideoGenService] Attempting to download {_plan_name} from S3...")
-                        if self.s3_service.download_file(plan_url, plan_local):
+                        if self.s3_service.download_file(plan_url, plan_local, expected_missing=True):
                             logger.info(f"[VideoGenService] Successfully downloaded {_plan_name}")
                         else:
                             logger.info(
@@ -1034,7 +1034,7 @@ class VideoGenerationService:
                     narration_raw_path = run_dir / "narration_raw.json"
                     if not narration_raw_path.exists():
                         logger.info(f"[VideoGenService] Attempting to download narration_raw.json from S3...")
-                        if self.s3_service.download_file(narration_raw_url, narration_raw_path):
+                        if self.s3_service.download_file(narration_raw_url, narration_raw_path, expected_missing=True):
                             logger.info(f"[VideoGenService] Successfully downloaded narration_raw.json")
                         else:
                             logger.info(f"[VideoGenService] narration_raw.json not found in S3 (this is OK if TTS needs to be regenerated)")
@@ -1062,12 +1062,12 @@ class VideoGenerationService:
                     # style_guide.json
                     _sg_local = run_dir / "style_guide.json"
                     if not _sg_local.exists():
-                        self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local)
+                        self.s3_service.download_file(f"{_ckpt_base_url}/style_guide.json", _sg_local, expected_missing=True)
 
                     # director_plan.json
                     _dp_local = run_dir / "director_plan.json"
                     if not _dp_local.exists():
-                        self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local)
+                        self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local, expected_missing=True)
 
                     # shot_plan.json (v3) — ShotPlanner+NarrationWriter output.
                     # On v3 resumes, the html-stage Director branch reads this
@@ -1077,7 +1077,7 @@ class VideoGenerationService:
                     # means the run was v2 (no shot_plan.json was ever written).
                     _sp_local = run_dir / "shot_plan.json"
                     if not _sp_local.exists():
-                        self.s3_service.download_file(f"{_ckpt_base_url}/shot_plan.json", _sp_local)
+                        self.s3_service.download_file(f"{_ckpt_base_url}/shot_plan.json", _sp_local, expected_missing=True)
 
                     # Per-shot cache files (shot_000.json … shot_NNN.json)
                     _shot_cache_local = run_dir / "shot_cache"
@@ -1089,7 +1089,7 @@ class VideoGenerationService:
                         if _sc_local.exists():
                             _downloaded_shots += 1
                             continue
-                        if not self.s3_service.download_file(_sc_key, _sc_local):
+                        if not self.s3_service.download_file(_sc_key, _sc_local, expected_missing=True):
                             break  # No more shot cache files
                         _downloaded_shots += 1
                     if _downloaded_shots:

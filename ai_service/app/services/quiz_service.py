@@ -688,7 +688,10 @@ Return as JSON:
                 user_id=user_id,
             )
             
-            content = response.get("content", "")
+            content = (response.get("content") or "").strip()
+            if not content:
+                logger.warning("Failed to generate AI feedback: empty LLM response; using default feedback")
+                return (self._get_default_feedback(percentage), [])
             json_content = self._extract_json(content)
             feedback_json = json.loads(json_content, strict=False)
             

@@ -2,7 +2,10 @@
 replicaCount: 2
 
 rollingUpdate:
-  maxSurge: 1
+  # maxSurge=2 = up to 2 new pods spin up in parallel during a rolling update;
+  # halves wall-clock for services with replicas >= 2 vs the old serialized=1.
+  # maxUnavailable=0 keeps full capacity during deploys (no live-traffic drop).
+  maxSurge: 2
   maxUnavailable: 0
 
 # ---------------------------------------------------------------------------

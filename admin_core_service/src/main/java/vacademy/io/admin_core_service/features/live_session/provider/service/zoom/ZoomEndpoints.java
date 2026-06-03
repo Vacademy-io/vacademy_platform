@@ -11,8 +11,11 @@ package vacademy.io.admin_core_service.features.live_session.provider.service.zo
  */
 public final class ZoomEndpoints {
 
-    /** Server-to-Server OAuth token endpoint (account_credentials grant). */
+    /** OAuth token endpoint — both account_credentials (S2S) and authorization_code/refresh_token (Connect-with-Zoom). */
     public static final String OAUTH_TOKEN_URL = "https://zoom.us/oauth/token";
+
+    /** Authorization-code consent screen for the "Connect with Zoom" onboarding flow. */
+    public static final String OAUTH_AUTHORIZE_URL = "https://zoom.us/oauth/authorize";
 
     /** Base for all Zoom REST API calls (meetings, recordings, users, etc.). */
     public static final String API_BASE_URL = "https://api.zoom.us/v2";

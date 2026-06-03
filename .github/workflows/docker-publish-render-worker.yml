@@ -1,0 +1,109 @@
+name: Deploy Render Worker to k3s
+
+# Builds the render-worker image on a GitHub-hosted runner, pushes to
+# ghcr.io/vacademy-io/render-worker, and rolls out the new tag to the
+# k3s cluster (Deployment render-worker in the default namespace).
+#
+# Triggers:
+#   - manual: workflow_dispatch (with an optional `tag` input)
+#   - automatic: push to main that touches render_worker or ai-video-gen-main
+#                code that gets baked into the image (see paths below)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to push (leave blank for auto: v<YYYYMMDD-HHMM>-<sha7>)"
+        required: false
+        default: ""
+  push:
+    branches:
+      - main
+    paths:
+      - "ai_service/render_worker/**"
+      - "ai_service/app/ai-video-gen-main/**"
+      - ".github/workflows/docker-publish-render-worker.yml"
+
+permissions:
+  contents: read
+  packages: write          # required to push to ghcr.io/vacademy-io/*
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          INPUT_TAG="${{ github.event.inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="v$(date -u +%Y%m%d-%H%M)-$(echo ${{ github.sha }} | cut -c1-7)"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building tag: $TAG"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}      # GITHUB_TOKEN has packages:write via permissions above
+
+      - name: Assemble build context
+        working-directory: ./ai_service
+        run: bash render_worker/build.sh --context-only
+
+      - name: Build + push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ai_service/render_worker/.build
+          file: ./ai_service/render_worker/.build/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/vacademy-io/render-worker:${{ env.TAG }}
+            ghcr.io/vacademy-io/render-worker:latest
+          # Use GitHub Actions cache (built into the runner). Avoids the GHCR
+          # auth dance the registry cache backend required and is typically
+          # a bit faster. 10 GB cache quota per repo, free.
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      - name: Connect to k3s
+        uses: Azure/k8s-set-context@v4.0.0
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG }}
+
+      - name: Roll out new image
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          kubectl -n default set image deployment/render-worker \
+            render-worker=ghcr.io/vacademy-io/render-worker:$TAG
+          kubectl -n default rollout status deployment/render-worker --timeout=300s
+
+      - name: Smoke test /health via cluster DNS
+        run: |
+          AI_POD=$(kubectl get pod -l app=ai-service -n default -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec -n default "$AI_POD" -- python3 -c "
+          import urllib.request, time
+          t0 = time.time()
+          r = urllib.request.urlopen('http://render-worker:8090/health', timeout=10)
+          print(f'HTTP {r.status} in {(time.time()-t0)*1000:.0f}ms  body={r.read().decode()}')"
+
+      - name: Print rollback command
+        if: always()
+        run: |
+          echo "::notice::Deployed ghcr.io/vacademy-io/render-worker:${{ env.TAG }}"
+          echo "::notice::To roll back one step:  kubectl -n default rollout undo deployment/render-worker"
+          echo "::notice::To roll back to a specific tag:  kubectl -n default set image deployment/render-worker render-worker=ghcr.io/vacademy-io/render-worker:<OLD_TAG>"

@@ -16,7 +16,10 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class GroupedSessionsByDateDTO {
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "UTC")
+    // Group key is a meeting DATE (java.sql.Date, midnight in the IST-forced JVM zone).
+    // Serialize in Asia/Kolkata; UTC would print the previous day and break the FE's
+    // date-grouped Upcoming/Past tabs (sessions silently dropped as "before today").
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd", timezone = "Asia/Kolkata")
     private Date date;
     private List<LiveSessionListDTO> sessions;
     private LiveSessionStep1RequestDTO.LearnerButtonConfigDTO learnerButtonConfig;

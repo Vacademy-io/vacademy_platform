@@ -72,6 +72,19 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
     const { loginMethod, accessToken, refreshToken, queryClient } = options;
 
     try {
+        // Drop any previous user's faculty cache BEFORE setting the new tokens.
+        // Without this, an abrupt prior session end (browser close, tab crash,
+        // expired refresh) leaves `faculty_access_data` + `selected_suborg_id` in
+        // localStorage — the sidebar then renders the previous user's sub-org
+        // branding (logo + "Powered by …") even after the new account logs in.
+        // Defensive — paired with the same removal in removeCookiesAndLogout.
+        try {
+            localStorage.removeItem('faculty_access_data');
+            localStorage.removeItem('selected_suborg_id');
+        } catch (_err) {
+            /* best-effort */
+        }
+
         // Set tokens in cookies
         setAuthorizationCookie(TokenKey.accessToken, accessToken);
         setAuthorizationCookie(TokenKey.refreshToken, refreshToken);

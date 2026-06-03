@@ -49,6 +49,58 @@ def _is_pipeline_cancelled(exc: BaseException) -> bool:
     return type(exc).__name__ == "PipelineCancelled"
 
 
+def _dominant_model_from_breakdown(
+    cost_breakdown: Optional[Dict[str, Any]], kind: str = "llm"
+) -> Optional[str]:
+    """Return the model that did the most work of a given ``kind``, or None.
+
+    Credit/usage rows should be attributed to the model that ACTUALLY executed
+    — i.e. the per-stage routing result (``ai_model_stage_assignments``) after
+    the caller's ``model_overrides`` are applied — not the legacy
+    ``resolved_model``. ``resolved_model`` is only the ``ai_model_defaults``
+    fallback that kicks in whenever a request omits a top-level ``model``
+    (always the case for Vimotion), so attributing to it makes every run read
+    as the system default (e.g. ``google/gemini-2.5-pro``) regardless of tier
+    or per-stage selection.
+
+    ``cost_breakdown["stages"]`` is the flat, per-call event log built by
+    ``CostEventTracker`` (see ``cost_event_tracker.py``); each event carries the
+    real model string and its ``kind`` — ``"llm"`` for shot-planner / narration
+    / per-shot-HTML, ``"image"`` for Seedream/Gemini image gen, etc. Because the
+    deduction fires per pipeline stage, the breakdown handed in here is scoped to
+    one stage's calls — so for ``kind="llm"`` on the html stage this resolves to
+    the per-shot-HTML model (the dominant token consumer) and for ``kind="image"``
+    to the image model that stage actually used.
+
+    We rank by prompt+completion tokens and return the heaviest, then fall back
+    to call count — the right signal for token-less kinds like ``image`` (where
+    every event reports zero tokens). Returns None when there is no breakdown or
+    no event of this kind, letting the caller fall back to ``resolved_model``.
+    """
+    if not cost_breakdown:
+        return None
+    stages = cost_breakdown.get("stages")
+    if not isinstance(stages, list):
+        return None
+    by_tokens: Dict[str, int] = {}
+    by_calls: Dict[str, int] = {}
+    for ev in stages:
+        if not isinstance(ev, dict) or ev.get("kind") != kind:
+            continue
+        model = ev.get("model")
+        if not isinstance(model, str) or not model:
+            continue
+        tokens = int(ev.get("prompt_tokens", 0) or 0) + int(ev.get("completion_tokens", 0) or 0)
+        by_tokens[model] = by_tokens.get(model, 0) + tokens
+        by_calls[model] = by_calls.get(model, 0) + 1
+    if not by_calls:
+        return None
+    heaviest_model, heaviest_tokens = max(by_tokens.items(), key=lambda kv: kv[1])
+    if heaviest_tokens > 0:
+        return heaviest_model
+    return max(by_calls.items(), key=lambda kv: kv[1])[0]
+
+
 def _get_run_state_aggregator():
     """Lazy import of the v3 live-progress aggregator. The aggregator lives
     in ``ai-video-gen-main/`` so we follow the same sys.path trick the
@@ -1989,11 +2041,58 @@ class VideoGenerationService:
                         has_tts = usage.get("tts_character_count", 0) > 0
                         has_stock = usage.get("stock_count", 0) > 0
 
+                        # Attribute the VIDEO credit/usage row to the model that
+                        # ACTUALLY executed this stage's LLM work (per-stage
+                        # routing + the caller's model_overrides), read from the
+                        # run's cost-event breakdown — NOT the legacy
+                        # `resolved_model`, which is only the ai_model_defaults
+                        # fallback whenever a request omits a top-level `model`
+                        # (always the case for Vimotion, so every run otherwise
+                        # reads as the system default e.g. google/gemini-2.5-pro
+                        # regardless of tier or per-stage choice). The deduction
+                        # fires per pipeline stage, so this resolves to the
+                        # per-shot-HTML model on the html stage and the
+                        # shot-planner / narration-writer model on the script
+                        # stage. Because `model` also drives the per-model credit
+                        # multiplier in CreditService.calculate_credits, this makes
+                        # the deducted amount reflect real execution too. Falls
+                        # back to resolved_model when no breakdown is present
+                        # (build failure / pre-cost-breakdown runs).
+                        _executed_model = _dominant_model_from_breakdown(
+                            outputs.get("cost_breakdown")
+                        )
+                        _attributed_model = (
+                            _executed_model or resolved_model or "video-gen-pipeline"
+                        )
+                        # Images are produced by a separate image model (Seedream /
+                        # Gemini-image), NOT the LLM — attribute the IMAGE rows to the
+                        # image model the breakdown actually recorded (same principle,
+                        # different kind). Falls back to resolved_model when absent.
+                        _image_model = _dominant_model_from_breakdown(
+                            outputs.get("cost_breakdown"), kind="image"
+                        )
+                        if has_tokens and not _executed_model:
+                            # Billing LLM tokens but the cost breakdown had no llm
+                            # model (build failure / pre-cost-breakdown run): both the
+                            # attribution AND the per-model multiplier fall back to
+                            # resolved_model. Surface it so a silently-degraded cost
+                            # tracker can't hide behind correct-looking bills.
+                            logger.warning(
+                                "[VideoGenService] No LLM model in cost_breakdown for "
+                                "video %s stage %s; attributing VIDEO credits to "
+                                "fallback %r",
+                                video_id, stage_pipeline_name, _attributed_model,
+                            )
+
                         if has_tokens or has_images or has_tts or has_stock:
                           with _fresh_db_session() as _fresh:
                             token_service = TokenUsageService(_fresh)
+                            # provider is an audit tag on the usage row only — it does
+                            # NOT feed CreditService (which bills by request_type +
+                            # model + tokens), so it never changes the deducted amount.
+                            # Aligned with the attributed model purely for log fidelity.
                             provider = ApiProvider.OPENAI
-                            if resolved_model and "gemini" in resolved_model.lower():
+                            if _attributed_model and "gemini" in _attributed_model.lower():
                                 provider = ApiProvider.GEMINI
                                 
                             # Deduct for LLM tokens (video request type)
@@ -2006,11 +2105,14 @@ class VideoGenerationService:
                                     request_type=RequestType.VIDEO,
                                     institute_id=institute_id,
                                     user_id=user_id,
-                                    model=resolved_model or "video-gen-pipeline",
+                                    model=_attributed_model,
                                     metadata={
                                         "video_id": video_id,
                                         "image_count": usage.get("image_count", 0),
-                                        "stage": stage_pipeline_name
+                                        "stage": stage_pipeline_name,
+                                        "attributed_model_source": (
+                                            "cost_breakdown" if _executed_model else "resolved_model"
+                                        ),
                                     },
                                     batch_id=video_id,
                                 )
@@ -2028,7 +2130,7 @@ class VideoGenerationService:
                                         request_type=RequestType.IMAGE,
                                         institute_id=institute_id,
                                         user_id=user_id,
-                                        model=resolved_model or "gemini-image-gen",
+                                        model=_image_model or resolved_model or "gemini-image-gen",
                                         metadata={"video_id": video_id, "stage": stage_pipeline_name},
                                         batch_id=video_id,
                                     )

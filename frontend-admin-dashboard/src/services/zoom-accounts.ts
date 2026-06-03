@@ -1,5 +1,5 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { ZOOM_ACCOUNTS_BASE } from '@/constants/urls';
+import { ZOOM_ACCOUNTS_BASE, ZOOM_OAUTH_INITIATE } from '@/constants/urls';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 
@@ -16,7 +16,8 @@ export interface ZoomAccountSummary {
     label: string;
     zoomAccountIdMasked: string;
     s2sClientIdMasked: string;
-    sdkClientKeyMasked: string;
+    /** Null when the account uses the platform-owned Meeting SDK app (no per-account SDK key). */
+    sdkClientKeyMasked: string | null;
     webhookConfigured: boolean;
     status: 'ACTIVE' | 'INVALID_CREDENTIALS' | 'DISABLED' | string;
     isDefault: boolean;
@@ -30,7 +31,8 @@ export interface ZoomAccountRequest {
     s2sClientId: string;
     /** Required on create; omit on edit to keep the existing secret. */
     s2sClientSecret?: string;
-    sdkClientKey: string;
+    /** Optional — omit to use the platform-owned Meeting SDK app (host-only / same-account). */
+    sdkClientKey?: string;
     sdkClientSecret?: string;
     webhookVerificationToken?: string | null;
     setAsDefault?: boolean;
@@ -58,6 +60,21 @@ export const listZoomAccounts = async (): Promise<ZoomAccountSummary[]> => {
         { params: { instituteId } }
     );
     return data ?? [];
+};
+
+/**
+ * Start "Connect with Zoom": returns the Zoom consent URL. The caller redirects the browser
+ * there; Zoom then bounces back to the server callback, which creates the account and lands
+ * the admin back on Settings (?zoom_connected=1 or ?zoom_error=...).
+ */
+export const initiateZoomOAuth = async (): Promise<{ oauth_url: string; session_key: string }> => {
+    const instituteId = getInstituteId();
+    const { data } = await authenticatedAxiosInstance.post<{ oauth_url: string; session_key: string }>(
+        ZOOM_OAUTH_INITIATE,
+        null,
+        { params: { instituteId } }
+    );
+    return data;
 };
 
 export const createZoomAccount = async (

@@ -2,13 +2,23 @@
 # =============================================================================
 # setup-pgbackrest.sh
 # -----------------------------------------------------------------------------
-# Configure pgBackRest on db-primary (10.0.0.4 / 5.223.55.54) with an SFTP
-# repository backed by a Hetzner Storage Box.
+# Configure pgBackRest on db-primary (10.0.0.4 / 5.223.55.54) with an S3
+# repository backed by Hetzner Object Storage.
 #
 # RUN ON: db-primary, as root.
 #
 # Idempotent: re-running will not break existing state. Where a step has
 # already been performed, the script logs and continues.
+#
+# History note: this script previously generated an SFTP repo against a
+# Hetzner Storage Box. That path was abandoned on 2026-06-03 because pgBackRest
+# 2.58's P00 orchestrator keeps an SFTP session idle for the full duration of
+# a backup upload (30-90 min) and Storage Box silently kills idle SFTP
+# sessions around 30 min in, which deterministically broke backup_label.zst
+# at the end of every full backup (libssh2 -43 / LIBSSH2_ERROR_SOCKET_RECV).
+# Object Storage uses HTTPS with fresh connections per PUT/GET so there is no
+# persistent session to die. See memory/pgbackrest-sftp-libssh2-43-bug.md if
+# anyone is ever tempted to try SFTP again.
 #
 # Conventions (see CLAUDE.md / migration plan):
 #   - Postgres 16.14, data dir /var/lib/postgresql/16/main
@@ -18,7 +28,7 @@
 #   - Cipher:                aes-256-cbc (passphrase persisted in secrets file)
 #   - Compression:           zstd level 3
 #   - Schedules:             daily full @ 02:00 UTC, diff every 6h
-#   - Repo path on storage:  /vacademy-prod
+#   - Repo path in bucket:   /vacademy-prod
 # =============================================================================
 
 set -euo pipefail
@@ -50,21 +60,24 @@ chmod 700 "${WORK_DIR}"
 
 if [[ ! -f "${TOPOLOGY_ENV}" ]]; then
   log_err "Missing topology env file at ${TOPOLOGY_ENV}"
-  log_err "Create it first (DB_PRIMARY_PRIVATE, STORAGE_BOX_HOST, STORAGE_BOX_USER, STORAGE_BOX_PASS, ...)"
+  log_err "Create it first (DB_PRIMARY_PRIVATE, STORAGE_S3_BUCKET, STORAGE_S3_ENDPOINT, STORAGE_S3_REGION, STORAGE_S3_ACCESS_KEY, STORAGE_S3_SECRET_KEY, ...)"
   exit 1
 fi
 
 # shellcheck disable=SC1090
 source "${TOPOLOGY_ENV}"
 
-: "${STORAGE_BOX_HOST:?STORAGE_BOX_HOST must be set in topology.env}"
-: "${STORAGE_BOX_USER:?STORAGE_BOX_USER must be set in topology.env}"
-# STORAGE_BOX_PASS is not used by pgBackRest (we use SSH key auth) - leave optional.
-STORAGE_BOX_PASS="${STORAGE_BOX_PASS:-}"
+: "${STORAGE_S3_BUCKET:?STORAGE_S3_BUCKET must be set in topology.env (e.g. vacademy-prod)}"
+: "${STORAGE_S3_ENDPOINT:?STORAGE_S3_ENDPOINT must be set in topology.env (e.g. fsn1.your-objectstorage.com)}"
+: "${STORAGE_S3_REGION:?STORAGE_S3_REGION must be set in topology.env (e.g. fsn1)}"
+: "${STORAGE_S3_ACCESS_KEY:?STORAGE_S3_ACCESS_KEY must be set in topology.env}"
+: "${STORAGE_S3_SECRET_KEY:?STORAGE_S3_SECRET_KEY must be set in topology.env}"
 
 log_info "Topology loaded:"
-log_info "  STORAGE_BOX_HOST = ${STORAGE_BOX_HOST}"
-log_info "  STORAGE_BOX_USER = ${STORAGE_BOX_USER}"
+log_info "  STORAGE_S3_BUCKET   = ${STORAGE_S3_BUCKET}"
+log_info "  STORAGE_S3_ENDPOINT = ${STORAGE_S3_ENDPOINT}"
+log_info "  STORAGE_S3_REGION   = ${STORAGE_S3_REGION}"
+log_info "  STORAGE_S3_ACCESS_KEY = ${STORAGE_S3_ACCESS_KEY:0:4}... (redacted)"
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -77,18 +90,15 @@ REPO_PATH="/vacademy-prod"
 PGBR_CONF_DIR="/etc/pgbackrest"
 PGBR_CONF="${PGBR_CONF_DIR}/pgbackrest.conf"
 PGBR_LOG_DIR="/var/log/pgbackrest"
-POSTGRES_HOME="$(getent passwd postgres | cut -d: -f6)"
-POSTGRES_SSH_DIR="${POSTGRES_HOME}/.ssh"
-POSTGRES_SSH_KEY="${POSTGRES_SSH_DIR}/id_ed25519"
 
 # ---------------------------------------------------------------------------
 # Step 1: apt install pgbackrest
 # ---------------------------------------------------------------------------
-log_info "Step 1/11: Installing pgbackrest (and ssh-client utilities)."
+log_info "Step 1/10: Installing pgbackrest."
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y >/dev/null
-apt-get install -y pgbackrest openssh-client ca-certificates >/dev/null
+apt-get install -y pgbackrest ca-certificates >/dev/null
 
 PGBR_VERSION="$(pgbackrest version 2>/dev/null || echo 'unknown')"
 log_ok "pgbackrest installed (${PGBR_VERSION})."
@@ -99,85 +109,9 @@ chown -R postgres:postgres "${PGBR_LOG_DIR}" /var/lib/pgbackrest /var/spool/pgba
 chmod 750 "${PGBR_LOG_DIR}" /var/lib/pgbackrest /var/spool/pgbackrest
 
 # ---------------------------------------------------------------------------
-# Step 2: postgres user SSH key (needed for SFTP auth to Storage Box)
+# Step 2: cipher passphrase (persisted in secrets file)
 # ---------------------------------------------------------------------------
-log_info "Step 2/11: Ensuring SSH key exists for the postgres OS user."
-
-install -d -m 700 -o postgres -g postgres "${POSTGRES_SSH_DIR}"
-
-if [[ ! -f "${POSTGRES_SSH_KEY}" ]]; then
-  log_info "  Generating new ed25519 keypair at ${POSTGRES_SSH_KEY}"
-  sudo -u postgres ssh-keygen -t ed25519 -N "" -C "pgbackrest@db-primary" -f "${POSTGRES_SSH_KEY}" >/dev/null
-  log_ok "  Generated."
-else
-  log_ok "  Existing key found at ${POSTGRES_SSH_KEY}, reusing."
-fi
-
-chown postgres:postgres "${POSTGRES_SSH_KEY}" "${POSTGRES_SSH_KEY}.pub"
-chmod 600 "${POSTGRES_SSH_KEY}"
-chmod 644 "${POSTGRES_SSH_KEY}.pub"
-
-POSTGRES_PUBKEY_CONTENT="$(cat "${POSTGRES_SSH_KEY}.pub")"
-
-# ---------------------------------------------------------------------------
-# Step 3: ssh-keyscan the Storage Box and compute SHA256 fingerprint
-# ---------------------------------------------------------------------------
-log_info "Step 3/11: Capturing SSH host fingerprint for ${STORAGE_BOX_HOST}."
-
-# Hetzner Storage Box listens for SFTP on port 23 as well as 22.
-# Most accounts have 22 open. We try 22 first, then 23 as fallback.
-KEYSCAN_TMP="$(mktemp)"
-trap 'rm -f "${KEYSCAN_TMP}"' EXIT
-
-if ssh-keyscan -t ed25519,rsa -T 10 -p 22 "${STORAGE_BOX_HOST}" >"${KEYSCAN_TMP}" 2>/dev/null && [[ -s "${KEYSCAN_TMP}" ]]; then
-  SFTP_PORT=22
-elif ssh-keyscan -t ed25519,rsa -T 10 -p 23 "${STORAGE_BOX_HOST}" >"${KEYSCAN_TMP}" 2>/dev/null && [[ -s "${KEYSCAN_TMP}" ]]; then
-  SFTP_PORT=23
-else
-  log_err "ssh-keyscan failed for ${STORAGE_BOX_HOST} on both port 22 and 23."
-  exit 1
-fi
-
-log_ok "  Got host keys from ${STORAGE_BOX_HOST}:${SFTP_PORT}"
-
-# Prefer ed25519, fallback to rsa.
-HOST_KEY_LINE="$(grep -E ' ssh-ed25519 ' "${KEYSCAN_TMP}" | head -n1 || true)"
-if [[ -z "${HOST_KEY_LINE}" ]]; then
-  HOST_KEY_LINE="$(grep -E ' ssh-rsa ' "${KEYSCAN_TMP}" | head -n1 || true)"
-fi
-if [[ -z "${HOST_KEY_LINE}" ]]; then
-  log_err "Could not extract a usable host key from ssh-keyscan output."
-  exit 1
-fi
-
-# pgBackRest 2.58+ expects the fingerprint as raw HEX sha256 of the wire-format
-# pubkey, NOT the base64 form that ssh-keygen prints (`SHA256:<base64>`). Compute
-# it directly: extract the base64 pubkey blob from the keyscan line, decode,
-# sha256, hex-encode.
-PUBKEY_BASE64="$(printf '%s\n' "${HOST_KEY_LINE}" | awk '{print $3}')"
-HOST_FINGERPRINT="$(printf '%s' "${PUBKEY_BASE64}" | openssl base64 -d -A | sha256sum | awk '{print $1}')"
-if [[ -z "${HOST_FINGERPRINT}" || ${#HOST_FINGERPRINT} -ne 64 ]]; then
-  log_err "Failed to derive SHA256 fingerprint (expected 64 hex chars, got '${HOST_FINGERPRINT}')."
-  exit 1
-fi
-log_ok "  Fingerprint (sha256 hex): ${HOST_FINGERPRINT}"
-
-# Pin the host key in postgres's known_hosts so non-pgbackrest sftp/ssh
-# attempts (e.g. operator restore-tests) also succeed without prompting.
-KNOWN_HOSTS="${POSTGRES_SSH_DIR}/known_hosts"
-touch "${KNOWN_HOSTS}"
-chown postgres:postgres "${KNOWN_HOSTS}"
-chmod 600 "${KNOWN_HOSTS}"
-# Remove any stale entries for this host, then add the fresh ones.
-sudo -u postgres ssh-keygen -R "${STORAGE_BOX_HOST}" -f "${KNOWN_HOSTS}" >/dev/null 2>&1 || true
-sudo -u postgres ssh-keygen -R "[${STORAGE_BOX_HOST}]:${SFTP_PORT}" -f "${KNOWN_HOSTS}" >/dev/null 2>&1 || true
-cat "${KEYSCAN_TMP}" >> "${KNOWN_HOSTS}"
-chown postgres:postgres "${KNOWN_HOSTS}"
-
-# ---------------------------------------------------------------------------
-# Step 4: cipher passphrase (persisted in secrets file)
-# ---------------------------------------------------------------------------
-log_info "Step 4/11: Resolving cipher passphrase."
+log_info "Step 2/10: Resolving cipher passphrase."
 
 if [[ -f "${SECRETS_FILE}" ]]; then
   # shellcheck disable=SC1090
@@ -199,7 +133,7 @@ cat >"${SECRETS_FILE}" <<EOF
 # Managed by setup-pgbackrest.sh - DO NOT COMMIT THIS FILE.
 # This file is rewritten on every run; the cipher pass is persisted here
 # FIRST (before stanza-create / first backup) so that a partial failure
-# does not orphan an encrypted backup on the Storage Box.
+# does not orphan an encrypted backup in Object Storage.
 PGBACKREST_CIPHER_PASS='${PGBACKREST_CIPHER_PASS}'
 EOF
 chmod 600 "${SECRETS_FILE}"
@@ -208,9 +142,9 @@ umask 022
 log_ok "  Cipher passphrase persisted to ${SECRETS_FILE}."
 
 # ---------------------------------------------------------------------------
-# Step 5: Write /etc/pgbackrest/pgbackrest.conf
+# Step 3: Write /etc/pgbackrest/pgbackrest.conf
 # ---------------------------------------------------------------------------
-log_info "Step 5/11: Writing ${PGBR_CONF}."
+log_info "Step 3/10: Writing ${PGBR_CONF}."
 
 install -d -m 750 -o postgres -g postgres "${PGBR_CONF_DIR}"
 
@@ -224,14 +158,14 @@ cat >"${PGBR_CONF}" <<EOF
 # Re-run setup-pgbackrest.sh to regenerate.
 
 [global]
-repo1-type=sftp
-repo1-sftp-host=${STORAGE_BOX_HOST}
-repo1-sftp-host-port=${SFTP_PORT}
-repo1-sftp-host-user=${STORAGE_BOX_USER}
-repo1-sftp-host-key-hash-type=sha256
-repo1-sftp-host-key-check-type=fingerprint
-repo1-sftp-host-fingerprint=${HOST_FINGERPRINT}
-repo1-sftp-private-key-file=${POSTGRES_SSH_KEY}
+repo1-type=s3
+repo1-s3-bucket=${STORAGE_S3_BUCKET}
+repo1-s3-endpoint=${STORAGE_S3_ENDPOINT}
+repo1-s3-region=${STORAGE_S3_REGION}
+repo1-s3-key=${STORAGE_S3_ACCESS_KEY}
+repo1-s3-key-secret=${STORAGE_S3_SECRET_KEY}
+repo1-s3-uri-style=path
+repo1-storage-verify-tls=y
 repo1-path=${REPO_PATH}
 # Retention policy (must match the convention documented in CLAUDE.md):
 #   - Keep all full backups taken in the last 90 days (time-based, NOT count-based).
@@ -251,7 +185,10 @@ log-level-console=info
 log-level-file=detail
 log-path=${PGBR_LOG_DIR}
 
-process-max=2
+# process-max=4: S3 uses fresh HTTPS connections per object, so we can safely
+# parallelise uploads. (Under the old SFTP repo we'd tried process-max=1 to
+# work around the idle-session bug — irrelevant here.)
+process-max=4
 compress-type=zstd
 compress-level=3
 
@@ -269,9 +206,9 @@ chmod 640 "${PGBR_CONF}"
 log_ok "  Wrote ${PGBR_CONF}."
 
 # ---------------------------------------------------------------------------
-# Step 6: Update postgresql.conf for WAL archiving
+# Step 4: Update postgresql.conf for WAL archiving
 # ---------------------------------------------------------------------------
-log_info "Step 6/11: Configuring archive_mode / archive_command in postgresql.conf."
+log_info "Step 4/10: Configuring archive_mode / archive_command in postgresql.conf."
 
 if [[ ! -f "${PG_CONF}" ]]; then
   log_err "Postgres config not found at ${PG_CONF}. Is Postgres ${PG_VERSION} installed?"
@@ -313,11 +250,11 @@ PG_CONF_CHANGED=0
 
 # wal_level must be replica or higher; archive_mode for archiving.
 # IMPORTANT: archive_command is intentionally left as '/bin/true' here.
-# The stanza does not exist on the Storage Box yet (Step 7 creates it).
+# The stanza does not exist in Object Storage yet (Step 5 creates it).
 # If we set the real pgbackrest archive_command now, every WAL archive
-# attempt would fail until Step 7 succeeds, pinning WAL in pg_wal and
+# attempt would fail until Step 5 succeeds, pinning WAL in pg_wal and
 # polluting the postgres log. We promote archive_command to the real
-# command after Step 7 (a SIGHUP reload, not a restart).
+# command after Step 5 (a SIGHUP reload, not a restart).
 # max_wal_senders left untouched here (the replication setup script owns it).
 pg_set_conf "archive_mode" "on"
 pg_set_conf "archive_command" "'/bin/true'"
@@ -373,9 +310,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 7: stanza-create
+# Step 5: stanza-create
 # ---------------------------------------------------------------------------
-log_info "Step 7/11: Creating stanza ${STANZA} (idempotent)."
+log_info "Step 5/10: Creating stanza ${STANZA} (idempotent)."
 
 # stanza-create is safe to re-run; pgBackRest will detect an existing stanza
 # and exit zero. We still tee output for the operator.
@@ -383,20 +320,15 @@ if sudo -u postgres pgbackrest --stanza="${STANZA}" stanza-create 2>&1 | tee -a 
   log_ok "  Stanza ready."
 else
   log_err "stanza-create failed. Most common causes:"
-  log_err "  - postgres SSH key has not been uploaded to the Storage Box yet."
+  log_err "  - STORAGE_S3_ACCESS_KEY / STORAGE_S3_SECRET_KEY are wrong or lack write perms on s3://${STORAGE_S3_BUCKET}."
+  log_err "  - STORAGE_S3_ENDPOINT / STORAGE_S3_REGION mismatch for the bucket's location."
   log_err "  - repo1-cipher-pass changed across runs (use the same one!)."
-  log_err "  - Storage Box SFTP is not reachable on port ${SFTP_PORT}."
-  log_err ""
-  log_err "Upload this public key to https://robot.hetzner.com -> Storage Box -> SSH keys:"
-  log_err ""
-  log_err "  ${POSTGRES_PUBKEY_CONTENT}"
-  log_err ""
-  log_err "Then re-run this script."
+  log_err "  - The bucket s3://${STORAGE_S3_BUCKET} does not exist yet — create it in the Hetzner Object Storage console."
   exit 1
 fi
 
-# Now that the stanza exists on the Storage Box, promote archive_command from
-# the temporary '/bin/true' (set in Step 6) to the real pgbackrest archive
+# Now that the stanza exists in Object Storage, promote archive_command from
+# the temporary '/bin/true' (set in Step 4) to the real pgbackrest archive
 # pusher. archive_command is SIGHUP-reloadable, so this does NOT require a
 # Postgres restart.
 DESIRED_ARCHIVE_CMD="'pgbackrest --stanza=${STANZA} archive-push %p'"
@@ -411,17 +343,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 8: check
+# Step 6: check
 # ---------------------------------------------------------------------------
-log_info "Step 8/11: Running pgbackrest check."
+log_info "Step 6/10: Running pgbackrest check."
 
 sudo -u postgres pgbackrest --stanza="${STANZA}" check 2>&1 | tee -a "${WORK_DIR}/pgbackrest-setup.log"
 log_ok "  Check passed - WAL archiving is wired up correctly."
 
 # ---------------------------------------------------------------------------
-# Step 9: First full backup
+# Step 7: First full backup
 # ---------------------------------------------------------------------------
-log_info "Step 9/11: Taking initial full backup (this can take a while)."
+log_info "Step 7/10: Taking initial full backup (this can take a while)."
 
 # Only force-take a full backup if we don't already have one.
 EXISTING_FULL="$(sudo -u postgres pgbackrest --stanza="${STANZA}" --output=json info 2>/dev/null \
@@ -435,9 +367,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 10: systemd timers (daily full @ 02:00 UTC, diff every 6h)
+# Step 8: systemd timers (daily full @ 02:00 UTC, diff every 6h)
 # ---------------------------------------------------------------------------
-log_info "Step 10/11: Installing systemd units for scheduled backups."
+log_info "Step 8/10: Installing systemd units for scheduled backups."
 
 cat >/etc/systemd/system/pgbackrest-full.service <<EOF
 [Unit]
@@ -509,19 +441,19 @@ log_ok "  Timers enabled:"
 systemctl list-timers --all --no-pager | grep -E 'pgbackrest-(full|diff)' || true
 
 # ---------------------------------------------------------------------------
-# Step 11: Append non-critical metadata to the secrets file.
-# The cipher pass was already persisted in Step 4 (BEFORE any operation that
+# Step 9: Append non-critical metadata to the secrets file.
+# The cipher pass was already persisted in Step 2 (BEFORE any operation that
 # could fail). Here we only append the additional metadata fields. We use
-# '>>' to avoid clobbering the cipher pass written early.
-# STORAGE_BOX_PASS is intentionally NOT persisted - pgBackRest uses SSH key
-# auth (repo1-sftp-private-key-file), so the password is never required and
-# storing it would be an unnecessary secret-on-disk.
+# '>>' to avoid clobbering the cipher pass written early. S3 access/secret
+# keys are deliberately NOT persisted here — they live in topology.env which
+# is already mode 600 on this host. Duplicating them would just multiply
+# blast radius.
 # ---------------------------------------------------------------------------
-log_info "Step 11/11: Appending metadata to ${SECRETS_FILE} (mode 600)."
+log_info "Step 9/10: Appending metadata to ${SECRETS_FILE} (mode 600)."
 
 # Strip any previously-appended metadata block so this step is idempotent:
 # remove everything after the marker line, then re-append fresh metadata.
-METADATA_MARKER="# --- metadata (appended by Step 11) ---"
+METADATA_MARKER="# --- metadata (appended by Step 9) ---"
 if grep -qF "${METADATA_MARKER}" "${SECRETS_FILE}" 2>/dev/null; then
   # Keep only the lines BEFORE the marker.
   sed -i "/^${METADATA_MARKER}$/,\$d" "${SECRETS_FILE}"
@@ -530,10 +462,9 @@ fi
 umask 077
 cat >>"${SECRETS_FILE}" <<EOF
 ${METADATA_MARKER}
-STORAGE_BOX_HOST='${STORAGE_BOX_HOST}'
-STORAGE_BOX_USER='${STORAGE_BOX_USER}'
-STORAGE_BOX_SFTP_PORT='${SFTP_PORT}'
-STORAGE_BOX_HOST_FINGERPRINT_SHA256='${HOST_FINGERPRINT}'
+STORAGE_S3_BUCKET='${STORAGE_S3_BUCKET}'
+STORAGE_S3_ENDPOINT='${STORAGE_S3_ENDPOINT}'
+STORAGE_S3_REGION='${STORAGE_S3_REGION}'
 PGBACKREST_STANZA='${STANZA}'
 PGBACKREST_REPO_PATH='${REPO_PATH}'
 EOF
@@ -544,23 +475,18 @@ umask 022
 log_ok "  Secrets saved."
 
 # ---------------------------------------------------------------------------
-# Summary
+# Step 10: Summary
 # ---------------------------------------------------------------------------
 echo
 log_ok "============================================================"
 log_ok "  pgBackRest is configured on db-primary."
 log_ok "  Stanza:      ${STANZA}"
-log_ok "  Repo:        sftp://${STORAGE_BOX_USER}@${STORAGE_BOX_HOST}:${SFTP_PORT}${REPO_PATH}"
-log_ok "  Compression: zstd-3   Cipher: aes-256-cbc"
+log_ok "  Repo:        s3://${STORAGE_S3_BUCKET}${REPO_PATH} (${STORAGE_S3_ENDPOINT}, region=${STORAGE_S3_REGION})"
+log_ok "  Compression: zstd-3   Cipher: aes-256-cbc   process-max: 4"
 log_ok "  Retention:   fulls kept 90 days (time-based) / 28 diffs / WAL pegged to diffs"
 log_ok "  Timers:      pgbackrest-full.timer (02:00 UTC daily)"
 log_ok "               pgbackrest-diff.timer (06, 12, 18 UTC)"
 log_ok "============================================================"
-echo
-log_info "If you have not already done so, upload this public key"
-log_info "to Hetzner Storage Box -> SSH keys (Robot console):"
-echo
-echo "  ${POSTGRES_PUBKEY_CONTENT}"
 echo
 log_info "Quick health check commands:"
 echo "  sudo -u postgres pgbackrest --stanza=${STANZA} info"

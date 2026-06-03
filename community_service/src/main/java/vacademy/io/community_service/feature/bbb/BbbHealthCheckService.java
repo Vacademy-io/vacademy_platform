@@ -18,10 +18,11 @@ import java.util.*;
  * Manages the BBB server pool lifecycle via scheduled tasks.
  *
  * Flow:
- * 1. scheduledStart()  — Reads "how many servers to start" from admin_core_service,
- *                         then triggers GitHub Actions workflow with server_count.
+ * 1. scheduledStart() — Reads "how many servers to start" from
+ * admin_core_service,
+ * then triggers GitHub Actions workflow with server_count.
  * 2. scheduledHealthCheck() — Pings each running server's BBB API.
- * 3. scheduledStop()   — Triggers GitHub Actions to stop ALL running servers.
+ * 3. scheduledStop() — Triggers GitHub Actions to stop ALL running servers.
  *
  * Pool config (which servers, their domains, max_meetings) is owned by
  * admin_core_service's bbb_server_pool table.
@@ -34,8 +35,7 @@ public class BbbHealthCheckService {
 
     private static final String META_API = "https://graph.facebook.com/v21.0";
     private static final String TEMPLATE_NAME = "vacademy_server_health_check_utility";
-    private static final DateTimeFormatter IST_FORMATTER =
-            DateTimeFormatter.ofPattern("dd MMM yyyy hh:mm a z");
+    private static final DateTimeFormatter IST_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy hh:mm a z");
 
     @Value("${WHATSAPP_ACCESS_TOKEN_VIDYAYATAN:}")
     private String waAccessToken;
@@ -72,11 +72,11 @@ public class BbbHealthCheckService {
     // -----------------------------------------------------------------------
 
     /**
-     * Scheduled start — Mon-Sat at 2:00 PM IST.
+     * Scheduled start — Mon-Sat at 10:45 am IST.
      * Reads servers_to_start from admin_core_service, then dispatches the
      * GitHub Actions workflow with server_count parameter.
      */
-    @Scheduled(cron = "0 00 14 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 45 10 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledStart() {
         log.info("[BBB Pool] Scheduled START triggered");
 
@@ -87,10 +87,10 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled health check — Mon-Sat at 2:50 PM IST.
+     * Scheduled health check — Mon-Sat at 10 55 am
      * Checks all running servers from the pool.
      */
-    @Scheduled(cron = "0 50 14 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 55 10 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledHealthCheck() {
         log.info("[BBB Pool HealthCheck] Scheduled check triggered");
         runPoolHealthCheck(true);
@@ -149,7 +149,8 @@ public class BbbHealthCheckService {
             String url = adminCoreBaseUrl + "/admin-core-service/bbb/pool/config/servers-to-start";
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     url, HttpMethod.GET, null,
-                    new ParameterizedTypeReference<>() {});
+                    new ParameterizedTypeReference<>() {
+                    });
 
             if (response.getBody() != null && response.getBody().containsKey("serversToStart")) {
                 return ((Number) response.getBody().get("serversToStart")).intValue();
@@ -168,7 +169,8 @@ public class BbbHealthCheckService {
             String url = adminCoreBaseUrl + "/admin-core-service/bbb/pool/servers/running";
             ResponseEntity<List<Map<String, Object>>> response = restTemplate.exchange(
                     url, HttpMethod.GET, null,
-                    new ParameterizedTypeReference<>() {});
+                    new ParameterizedTypeReference<>() {
+                    });
             return response.getBody() != null ? response.getBody() : List.of();
         } catch (Exception e) {
             log.warn("[BBB Pool] Failed to get running servers: {}", e.getMessage());
@@ -274,7 +276,8 @@ public class BbbHealthCheckService {
         } catch (Exception e) {
             status = "DOWN";
             details = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            if (details.length() > 200) details = details.substring(0, 200);
+            if (details.length() > 200)
+                details = details.substring(0, 200);
             log.error("[BBB HealthCheck] {} failed: {}", hostname, details);
         }
 
@@ -336,8 +339,10 @@ public class BbbHealthCheckService {
             restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
 
             result.put("status", "triggered");
-            result.put("message", "Pool workflow dispatched: " + action + " (slug=" + serverSlug + ", count=" + serverCount + ")");
-            log.info("[BBB Pool] GitHub Action triggered: action={}, slug={}, count={}", action, serverSlug, serverCount);
+            result.put("message",
+                    "Pool workflow dispatched: " + action + " (slug=" + serverSlug + ", count=" + serverCount + ")");
+            log.info("[BBB Pool] GitHub Action triggered: action={}, slug={}, count={}", action, serverSlug,
+                    serverCount);
         } catch (Exception e) {
             result.put("error", e.getMessage());
             log.error("[BBB Pool] GitHub Action trigger failed: {}", e.getMessage());
@@ -358,7 +363,7 @@ public class BbbHealthCheckService {
     // -----------------------------------------------------------------------
 
     private void sendWhatsApp(String status, String serverIp, String details,
-                               String timestamp, String hostname) {
+            String timestamp, String hostname) {
         if (waAccessToken == null || waAccessToken.isBlank()
                 || waPhoneNumberId == null || waPhoneNumberId.isBlank()
                 || notifyPhones == null || notifyPhones.isBlank()) {
@@ -374,30 +379,31 @@ public class BbbHealthCheckService {
 
         for (String phone : phones) {
             phone = phone.trim();
-            if (phone.isEmpty()) continue;
+            if (phone.isEmpty())
+                continue;
 
             String payload = String.format("""
-                {
-                    "messaging_product": "whatsapp",
-                    "to": "%s",
-                    "type": "template",
-                    "template": {
-                        "name": "%s",
-                        "language": { "code": "en" },
-                        "components": [
-                            {
-                                "type": "body",
-                                "parameters": [
-                                    { "type": "text", "text": "%s" },
-                                    { "type": "text", "text": "%s" },
-                                    { "type": "text", "text": "%s" },
-                                    { "type": "text", "text": "%s" },
-                                    { "type": "text", "text": "%s" }
-                                ]
-                            }
-                        ]
-                    }
-                }""",
+                    {
+                        "messaging_product": "whatsapp",
+                        "to": "%s",
+                        "type": "template",
+                        "template": {
+                            "name": "%s",
+                            "language": { "code": "en" },
+                            "components": [
+                                {
+                                    "type": "body",
+                                    "parameters": [
+                                        { "type": "text", "text": "%s" },
+                                        { "type": "text", "text": "%s" },
+                                        { "type": "text", "text": "%s" },
+                                        { "type": "text", "text": "%s" },
+                                        { "type": "text", "text": "%s" }
+                                    ]
+                                }
+                            ]
+                        }
+                    }""",
                     phone, TEMPLATE_NAME,
                     escapeJson(status),
                     escapeJson(hostname),
@@ -417,7 +423,8 @@ public class BbbHealthCheckService {
     }
 
     private static String escapeJson(String s) {
-        if (s == null) return "";
+        if (s == null)
+            return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
     }
 }

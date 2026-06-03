@@ -144,6 +144,9 @@ public class ZoomAccountStore {
                 .sdkClientKey((String) cfg.get("sdkClientKey"))
                 .sdkClientSecretEnc((String) cfg.get("sdkClientSecretEnc"))
                 .webhookVerificationTokenEnc((String) cfg.get("webhookVerificationTokenEnc"))
+                .authType((String) cfg.getOrDefault("authType", "S2S"))
+                .oauthRefreshTokenEnc((String) cfg.get("oauthRefreshTokenEnc"))
+                .zoomUserId((String) cfg.get("zoomUserId"))
                 .isDefault(Boolean.TRUE.equals(cfg.get("isDefault")))
                 .lastVerifiedAt(lastVerified instanceof Number n ? new Date(n.longValue()) : null)
                 .build();
@@ -158,6 +161,9 @@ public class ZoomAccountStore {
         cfg.put("sdkClientKey", a.getSdkClientKey());
         cfg.put("sdkClientSecretEnc", a.getSdkClientSecretEnc());
         cfg.put("webhookVerificationTokenEnc", a.getWebhookVerificationTokenEnc());
+        cfg.put("authType", a.getAuthType());
+        cfg.put("oauthRefreshTokenEnc", a.getOauthRefreshTokenEnc());
+        cfg.put("zoomUserId", a.getZoomUserId());
         cfg.put("isDefault", a.isDefault());
         if (a.getLastVerifiedAt() != null) {
             cfg.put("lastVerifiedAt", a.getLastVerifiedAt().getTime());

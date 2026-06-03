@@ -174,6 +174,51 @@ public class LiveSessionProviderController {
     }
 
     /**
+     * GET /admin-core-service/live-sessions/provider/meeting/provision-status?sessionId=xxx
+     *
+     * Reports how many of a session's occurrences have a provider meeting yet. The admin
+     * session view uses this to show a "Zoom: ready / N not set up" badge — surfacing the
+     * otherwise-silent async provisioning failures.
+     */
+    @GetMapping("/meeting/provision-status")
+    public ResponseEntity<Map<String, Object>> provisionStatus(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String sessionId) {
+        instituteAccessValidator.validateUserAccess(user, resolveSessionInstituteId(sessionId));
+        int total = providerMeetingBatchService.countTotal(sessionId);
+        int pending = providerMeetingBatchService.countPending(sessionId);
+        return ResponseEntity.ok(Map.of(
+                "sessionId", sessionId,
+                "total", total,
+                "pending", pending,
+                "provisioned", total - pending));
+    }
+
+    /**
+     * POST /admin-core-service/live-sessions/provider/meeting/provision-now?sessionId=xxx
+     *
+     * Admin "Provision now": synchronously (re)creates meetings for any still-pending
+     * occurrence from the session's stored Zoom config, so a failed/lagging provision can be
+     * fixed in one click instead of waiting on the 5-minute retry job. Returns the updated
+     * counts.
+     */
+    @PostMapping("/meeting/provision-now")
+    public ResponseEntity<Map<String, Object>> provisionNow(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam String sessionId) {
+        instituteAccessValidator.validateUserAccess(user, resolveSessionInstituteId(sessionId));
+        int created = providerMeetingBatchService.reprovisionSession(sessionId);
+        int total = providerMeetingBatchService.countTotal(sessionId);
+        int pending = providerMeetingBatchService.countPending(sessionId);
+        return ResponseEntity.ok(Map.of(
+                "sessionId", sessionId,
+                "created", created,
+                "total", total,
+                "pending", pending,
+                "provisioned", total - pending));
+    }
+
+    /**
      * GET /admin-core/live-session/provider/meeting/recordings
      * ?scheduleId=xxx&instituteId=yyy
      */

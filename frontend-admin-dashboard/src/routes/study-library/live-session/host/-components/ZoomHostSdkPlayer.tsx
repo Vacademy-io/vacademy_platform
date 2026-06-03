@@ -159,10 +159,51 @@ export default function ZoomHostSdkPlayer({
         retry: 1,
     });
 
+    // Surface the signature-fetch error (409 = meeting still being provisioned on Zoom)
+    // as a clear message rather than a blank spinner / generic failure.
+    useEffect(() => {
+        if (!error) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        const serverMsg = (error as { response?: { data?: { message?: string } } })?.response?.data
+            ?.message;
+        setErrorMsg(
+            status === 409
+                ? serverMsg ?? 'This Zoom meeting is still being set up. Try again in a moment, or use "Provision now" on the session page.'
+                : 'Could not load the Zoom meeting. Check your connection and try again.'
+        );
+        setPhase('error');
+    }, [error]);
+
     useEffect(() => {
         if (!data) return;
         // StrictMode / re-render guard — Client View init+join must run once.
         if (startedRef.current) return;
+        // The Zoom SDK calls meetingNumber.toString() unguarded, so a missing meeting number
+        // (the meeting was never provisioned → provider_meeting_id is null and the signature
+        // response omits it) crashes with an opaque "reading 'toString'" TypeError. Surface a
+        // clear message instead of booting the SDK with bad params.
+        if (!data.meetingNumber || !data.signature || !data.sdkKey) {
+            setErrorMsg(
+                'This Zoom meeting is not ready to host yet — it may still be getting set up on Zoom. Refresh in a moment, or re-check the Zoom account if it persists.'
+            );
+            setPhase('error');
+            return;
+        }
+        // Starting a meeting AS HOST (role 1) requires a ZAK. Without it the Zoom
+        // Client View SDK crashes internally on meetingNumber.toString() (its
+        // host-start path dereferences an undefined value) rather than calling the
+        // error callback. The ZAK is null when the connected Zoom account's OAuth
+        // token lacks the ZAK scope (classic: user_zak:read, granular: user:read:zak).
+        // Surface that as an actionable message instead of booting the SDK to crash.
+        if (data.role === 1 && !data.zakToken) {
+            setErrorMsg(
+                'Cannot start this meeting as host: Zoom did not issue a host start-token (ZAK). ' +
+                    'Reconnect Zoom in Settings → Live Session — remove the app in your Zoom account first so the ' +
+                    'consent screen reappears, then approve the ZAK scope (user_zak:read / user:read:zak).'
+            );
+            setPhase('error');
+            return;
+        }
         startedRef.current = true;
         let cancelled = false;
         const resolvedLeaveUrl = leaveUrl || window.location.origin;
@@ -184,15 +225,19 @@ export default function ZoomHostSdkPlayer({
                     leaveUrl: resolvedLeaveUrl,
                     patchJsMedia: true,
                     success: () => {
-                        ZoomMtg.join({
+                        // Build the join config WITHOUT optional keys whose value is absent.
+                        // The Zoom SDK does `"userEmail" in config ? config.userEmail.toString() : ""`
+                        // — `in` is true even for an explicit `userEmail: undefined`, so the SDK then
+                        // calls undefined.toString() and crashes (the opaque "reading 'toString'"
+                        // TypeError). Any host without an email in the DB hit this. Only attach
+                        // optional keys (userEmail, zak) when they actually have a value.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const joinConfig: Record<string, any> = {
                             sdkKey: data.sdkKey,
                             signature: data.signature,
                             meetingNumber: data.meetingNumber,
-                            passWord: data.passcode,
+                            passWord: data.passcode ?? '',
                             userName: data.userName,
-                            userEmail: data.userEmail,
-                            // ZAK (present only when the server grants HOST) starts the meeting.
-                            zak: data.zakToken ?? undefined,
                             success: () => {
                                 if (!cancelled) setPhase('joined');
                             },
@@ -204,7 +249,11 @@ export default function ZoomHostSdkPlayer({
                                     setPhase('error');
                                 }
                             },
-                        });
+                        };
+                        if (data.userEmail) joinConfig.userEmail = data.userEmail;
+                        // ZAK (present only when the server grants HOST) starts the meeting.
+                        if (data.zakToken) joinConfig.zak = data.zakToken;
+                        ZoomMtg.join(joinConfig);
                     },
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     error: (err: any) => {

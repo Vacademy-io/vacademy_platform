@@ -50,6 +50,112 @@ export const createLiveSessionsBulk = async (
     return response.data;
 };
 
+/**
+ * Tuning for chunked creation:
+ * - CHUNK_SIZE: rows per request.
+ * - CONCURRENCY: how many requests run at once (bounded pool). The dominant cost
+ *   is the backend's per-session creation time, which is sequential per request —
+ *   so overlapping a few requests is what actually speeds up large batches. Higher
+ *   concurrency = faster but more server load.
+ * - RETRY_BACKOFF_MS: pause before the single retry of a failed chunk.
+ */
+export const BULK_CREATE_CHUNK_SIZE = 5;
+export const BULK_CREATE_CONCURRENCY = 3;
+export const BULK_CREATE_RETRY_BACKOFF_MS = 500;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Creates a large set of live sessions in chunks over a bounded concurrency pool
+ * instead of one giant request, so the server isn't hit with everything at once
+ * yet large batches still finish quickly. Each chunk reuses the existing
+ * {@link createLiveSessionsBulk} endpoint; a failed chunk is retried once and (if
+ * it still fails) only that chunk's rows are marked failed so the rest are still
+ * created. Per-row `index`es are offset back to the original row order and results
+ * are merged + sorted into one {@link BulkLiveSessionResponse} identical in shape
+ * to the single-call path.
+ */
+export const createLiveSessionsChunked = async (
+    sessions: LiveSessionStep1RequestDTO[],
+    step2PerRow: LiveSessionStep2RequestDTO[],
+    opts?: {
+        chunkSize?: number;
+        concurrency?: number;
+        retryBackoffMs?: number;
+        onProgress?: (done: number, total: number) => void;
+    }
+): Promise<BulkLiveSessionResponse> => {
+    const chunkSize = opts?.chunkSize ?? BULK_CREATE_CHUNK_SIZE;
+    const concurrency = Math.max(1, opts?.concurrency ?? BULK_CREATE_CONCURRENCY);
+    const retryBackoffMs = opts?.retryBackoffMs ?? BULK_CREATE_RETRY_BACKOFF_MS;
+    const total = sessions.length;
+
+    // Chunk start offsets, processed by a bounded worker pool.
+    const starts: number[] = [];
+    for (let start = 0; start < total; start += chunkSize) starts.push(start);
+
+    const results: BulkLiveSessionRowResult[] = [];
+    let done = 0;
+    opts?.onProgress?.(0, total);
+
+    const runChunk = async (start: number): Promise<BulkLiveSessionRowResult[]> => {
+        const chunkSessions = sessions.slice(start, start + chunkSize);
+        const chunkStep2 = step2PerRow.slice(start, start + chunkSize);
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                const resp = await createLiveSessionsBulk({
+                    sessions: chunkSessions,
+                    step2_per_row: chunkStep2,
+                });
+                // Offset each row index back to its position in the full list.
+                return (resp.results ?? []).map((r) => ({ ...r, index: r.index + start }));
+            } catch (err) {
+                if (attempt === 0) {
+                    await sleep(retryBackoffMs); // one quick retry
+                    continue;
+                }
+                const message = err instanceof Error ? err.message : 'Request failed';
+                return chunkSessions.map((s, i) => ({
+                    index: start + i,
+                    success: false,
+                    title: (s as { title?: string }).title,
+                    error: message,
+                    step2_applied: false,
+                }));
+            }
+        }
+        return [];
+    };
+
+    // Bounded pool: keep up to `concurrency` requests in flight. Each worker
+    // pulls the next chunk offset from a shared cursor until they're exhausted.
+    let cursor = 0;
+    const worker = async () => {
+        while (cursor < starts.length) {
+            const start = starts[cursor++]!;
+            const chunkResults = await runChunk(start);
+            results.push(...chunkResults);
+            done += chunkResults.length;
+            opts?.onProgress?.(done, total);
+        }
+    };
+    await Promise.all(
+        Array.from({ length: Math.min(concurrency, starts.length) }, () => worker())
+    );
+
+    // Workers finish out of order — sort so the results dialog lists rows in
+    // their original sheet order.
+    results.sort((a, b) => a.index - b.index);
+
+    const total_created = results.filter((r) => r.success).length;
+    return {
+        total_requested: total,
+        total_created,
+        total_failed: total - total_created,
+        results,
+    };
+};
+
 export interface GetLiveSessionsRequest {
     instituteId?: string;
     session_id?: string;

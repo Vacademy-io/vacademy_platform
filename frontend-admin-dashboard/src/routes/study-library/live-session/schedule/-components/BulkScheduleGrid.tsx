@@ -27,7 +27,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { WAITING_ROOM_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
-import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch } from '@phosphor-icons/react';
+import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +63,7 @@ import { cn } from '@/lib/utils';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 
-import { bulkSessionFormSchema, type BulkSessionForm } from '../-schema/bulkSchema';
+import { bulkSessionFormSchema, type BulkSessionForm, type BulkSessionRow } from '../-schema/bulkSchema';
 import { TIMEZONE_OPTIONS, STREAMING_OPTIONS } from '../-constants/options';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import type { PlatformKey } from '@/services/live-session-settings';
@@ -71,10 +71,12 @@ import { transformFormToDTOStep1, transformFormToDTOStep2 } from '../../-constan
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { sessionFormSchema } from '../-schema/schema';
 import { RecurringType, SessionPlatform, SessionType } from '../../-constants/enums';
-import { createLiveSessionsBulk } from '../-services/utils';
+import { createLiveSessionsChunked, type BulkLiveSessionRowResult } from '../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { LiveSessionPreviewDialog } from './LiveSessionPreviewDialog';
+import { BulkCsvImportDialog } from './BulkCsvImportDialog';
+import { downloadScheduleTemplate, downloadBatchReference, downloadResultsCsv } from '../-utils/bulkCsv';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -259,7 +261,13 @@ export function BulkScheduleGrid() {
         open: boolean;
         created: number;
         failed: number;
-        failures: { index: number; title?: string; error?: string }[];
+        results: BulkLiveSessionRowResult[];
+    } | null>(null);
+    const [csvImportOpen, setCsvImportOpen] = useState(false);
+    // Live "Creating X/Y…" progress while the throttled chunks run.
+    const [createProgress, setCreateProgress] = useState<{
+        done: number;
+        total: number;
     } | null>(null);
 
     const browserTz = useMemo(() => {
@@ -500,6 +508,22 @@ export function BulkScheduleGrid() {
         toast.success(`Pasted ${parsed.length} row${parsed.length === 1 ? '' : 's'}`);
     };
 
+    // Imported CSV rows replace a lone empty starter row, otherwise append —
+    // same rule as paste, so admins can stack imports onto manual rows.
+    const applyImportedRows = (rows: BulkSessionRow[]) => {
+        if (rows.length === 0) return;
+        const isStarter =
+            fields.length === 1 &&
+            !form.getValues('rows.0.title') &&
+            !form.getValues('rows.0.link');
+        if (isStarter) {
+            form.setValue('rows', rows as never, { shouldValidate: true });
+        } else {
+            for (const row of rows) append(row as never);
+        }
+        toast.success(`Imported ${rows.length} row${rows.length === 1 ? '' : 's'}`);
+    };
+
     const onSubmit = async (data: BulkSessionForm) => {
         if (!INSTITUTE_ID) {
             toast.error('Could not resolve institute. Please re-login.');
@@ -692,9 +716,14 @@ export function BulkScheduleGrid() {
                 );
             });
 
-            const response = await createLiveSessionsBulk({
-                sessions,
-                step2_per_row: step2PerRow,
+            // Throttled creation: send rows in small chunks with a short pause
+            // between each so the server isn't hit with everything at once.
+            const response = await createLiveSessionsChunked(sessions, step2PerRow, {
+                // One session per request so the UI can count progress per class
+                // ("Scheduling 1/200…"). Total time is backend-bound, so this
+                // doesn't slow things down meaningfully vs larger chunks.
+                chunkSize: 1,
+                onProgress: (done, total) => setCreateProgress({ done, total }),
             });
 
             const successfulResults = response.results.filter(
@@ -743,26 +772,28 @@ export function BulkScheduleGrid() {
                 });
             }
 
+            // Always show the results dialog so the admin gets a row-wise
+            // outcome and can download the Success/Failed + remarks report,
+            // whether or not anything failed. Navigation is via its Done button.
+            setResultDialog({
+                open: true,
+                created: createdIds.length,
+                failed: failures.length,
+                results: response.results,
+            });
             if (failures.length === 0) {
                 toast.success(
                     `${createdIds.length} ${
                         createdIds.length === 1 ? 'session' : 'sessions'
                     } created`
                 );
-                navigate({ to: '/study-library/live-session' });
-            } else {
-                setResultDialog({
-                    open: true,
-                    created: createdIds.length,
-                    failed: failures.length,
-                    failures,
-                });
             }
         } catch (err) {
             console.error('Bulk create failed', err);
             toast.error('Failed to create sessions. Please try again.');
         } finally {
             setSubmitting(false);
+            setCreateProgress(null);
         }
     };
 
@@ -1438,17 +1469,54 @@ export function BulkScheduleGrid() {
                     </Table>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 bg-neutral-50/60 px-4 py-2.5">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={addRow}
-                            className="h-8 gap-1.5"
-                        >
-                            <Plus size={14} /> Add row
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={addRow}
+                                className="h-8 gap-1.5"
+                            >
+                                <Plus size={14} /> Add row
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCsvImportOpen(true)}
+                                className="h-8 gap-1.5"
+                            >
+                                <UploadSimple size={14} /> Import CSV
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                    downloadScheduleTemplate(
+                                        instituteDetails?.batches_for_sessions ?? []
+                                    )
+                                }
+                                className="h-8 gap-1.5"
+                            >
+                                <DownloadSimple size={14} /> Template
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                    downloadBatchReference(
+                                        instituteDetails?.batches_for_sessions ?? []
+                                    )
+                                }
+                                className="h-8 gap-1.5"
+                            >
+                                <DownloadSimple size={14} /> Batch reference
+                            </Button>
+                        </div>
                         <span className="hidden text-xs text-neutral-500 sm:inline">
-                            Tip: paste tab-separated rows directly into the table.
+                            Tip: paste tab-separated rows, or import a CSV.
                         </span>
                     </div>
                 </div>
@@ -1671,14 +1739,31 @@ export function BulkScheduleGrid() {
                     )}
                     disable={submitting}
                 >
-                    {submitting ? 'Creating…' : 'Preview & create'}
+                    {submitting
+                        ? createProgress
+                            ? `Scheduling ${createProgress.done}/${createProgress.total}…`
+                            : 'Scheduling…'
+                        : 'Preview & create'}
                 </MyButton>
             </div>
+
+            <BulkCsvImportDialog
+                open={csvImportOpen}
+                onOpenChange={setCsvImportOpen}
+                batches={instituteDetails?.batches_for_sessions ?? []}
+                allowedPlatforms={filteredStreamingOptions.map((o) => o.value)}
+                onImport={applyImportedRows}
+            />
 
             <LiveSessionPreviewDialog
                 open={previewOpen}
                 onOpenChange={setPreviewOpen}
                 submitting={submitting}
+                submittingLabel={
+                    createProgress
+                        ? `Scheduling ${createProgress.done}/${createProgress.total}…`
+                        : 'Scheduling…'
+                }
                 onConfirm={async () => {
                     await form.handleSubmit(onSubmit, () =>
                         toast.error('Some rows have errors. Please fix them.')
@@ -1720,41 +1805,63 @@ export function BulkScheduleGrid() {
             >
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Bulk creation finished with errors</DialogTitle>
+                        <DialogTitle>
+                            {resultDialog && resultDialog.failed > 0
+                                ? 'Bulk creation finished with errors'
+                                : 'Bulk scheduling complete'}
+                        </DialogTitle>
                         <DialogDescription>
-                            {resultDialog?.created} created · {resultDialog?.failed} failed.
-                            Successful sessions already have participants & notifications
-                            applied. Fix the failed rows and retry, or close this dialog.
+                            {resultDialog?.created} created · {resultDialog?.failed} failed.{' '}
+                            {resultDialog && resultDialog.failed > 0
+                                ? 'Successful sessions already have participants & notifications applied. Download the report for a row-wise status, fix the failed rows, and retry.'
+                                : 'Download the report for a row-wise record of every session.'}
                         </DialogDescription>
                     </DialogHeader>
-                    <ScrollArea className="max-h-72 rounded border border-neutral-200">
-                        <ul className="divide-y divide-neutral-100 text-sm">
-                            {resultDialog?.failures.map((f) => (
-                                <li key={f.index} className="px-3 py-2">
-                                    <div className="font-medium text-neutral-800">
-                                        Row {f.index + 1}
-                                        {f.title ? `: ${f.title}` : ''}
-                                    </div>
-                                    <div className="text-xs text-danger-600">
-                                        {f.error || 'Unknown error'}
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    </ScrollArea>
+                    {resultDialog && resultDialog.failed > 0 && (
+                        <ScrollArea className="max-h-60 w-full overflow-x-hidden rounded border border-neutral-200 sm:max-h-72">
+                            <ul className="divide-y divide-neutral-100 text-sm">
+                                {resultDialog.results
+                                    .filter((r) => !r.success)
+                                    .map((f) => (
+                                        <li key={f.index} className="px-3 py-2">
+                                            <div className="break-words font-medium text-neutral-800">
+                                                Row {f.index + 1}
+                                                {f.title ? `: ${f.title}` : ''}
+                                            </div>
+                                            <div className="whitespace-pre-wrap break-words text-xs text-danger-600">
+                                                {f.error || 'Unknown error'}
+                                            </div>
+                                        </li>
+                                    ))}
+                            </ul>
+                        </ScrollArea>
+                    )}
                     <DialogFooter className="gap-2">
                         <Button
                             variant="outline"
-                            onClick={() => setResultDialog(null)}
+                            className="w-full sm:w-auto"
+                            onClick={() =>
+                                resultDialog && downloadResultsCsv(resultDialog.results)
+                            }
                         >
-                            Stay & retry
+                            <DownloadSimple size={16} className="mr-1.5" />
+                            Download results (CSV)
                         </Button>
+                        {resultDialog && resultDialog.failed > 0 && (
+                            <Button
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => setResultDialog(null)}
+                            >
+                                Stay & retry
+                            </Button>
+                        )}
                         <Button
                             onClick={() =>
                                 navigate({ to: '/study-library/live-session' })
                             }
                             disabled={!resultDialog || resultDialog.created === 0}
-                            className="bg-primary-500 hover:bg-primary-600"
+                            className="w-full bg-primary-500 hover:bg-primary-600 sm:w-auto"
                         >
                             Done — view sessions
                         </Button>

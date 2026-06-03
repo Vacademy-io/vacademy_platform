@@ -20971,7 +20971,11 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 return None
             key = f"VISION_REVIEW/{vid}/shot{idx:03d}/{kind}_{ts_idx}.png"
             try:
-                s3.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png", ACL="public-read")
+                # No ACL — the bucket has Object Ownership = bucket-owner-enforced
+                # (ACLs disabled); public read is granted via the bucket policy,
+                # the same way the shared S3Service uploads (which pass no ACL).
+                # Passing ACL="public-read" here triggers AccessControlListNotSupported.
+                s3.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png")
                 return f"https://{bucket}.s3.amazonaws.com/{key}"
             except Exception as exc:
                 print(f"   ⚠️ vision-review S3 upload failed ({key}): {exc}")
@@ -20984,7 +20988,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             try:
                 s3.put_object(
                     Bucket=bucket, Key=key, Body=html_str.encode("utf-8"),
-                    ContentType="text/html; charset=utf-8", ACL="public-read",
+                    ContentType="text/html; charset=utf-8",  # no ACL — bucket-owner-enforced
                 )
                 return f"https://{bucket}.s3.amazonaws.com/{key}"
             except Exception as exc:
@@ -22401,18 +22405,40 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         key = f"SUBJECT_REFS/{run_id}/{safe_sid}.png"
 
         try:
+            # Prefer Pydantic settings (case-insensitive, .env-aware) over bare
+            # os.environ — the latter dropped to boto3's default cred chain (no
+            # IAM role here) and failed with "Unable to locate credentials".
+            try:
+                from app.config import get_settings as _get_settings_subj
+            except ModuleNotFoundError:
+                from ai_service.app.config import get_settings as _get_settings_subj
+            try:
+                _st_subj = _get_settings_subj()
+            except Exception:
+                _st_subj = None
+            _ak_subj = (getattr(_st_subj, "s3_aws_access_key", None)
+                        or _os_subj.environ.get("S3_AWS_ACCESS_KEY")
+                        or _os_subj.environ.get("AWS_ACCESS_KEY_ID") or None)
+            _sk_subj = (getattr(_st_subj, "s3_aws_access_secret", None)
+                        or _os_subj.environ.get("S3_AWS_ACCESS_SECRET")
+                        or _os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None)
+            _rg_subj = (getattr(_st_subj, "s3_aws_region", None)
+                        or _os_subj.environ.get("S3_AWS_REGION")
+                        or _os_subj.environ.get("AWS_REGION") or "ap-south-1")
+            bucket = (getattr(_st_subj, "aws_bucket_name", None)
+                      or getattr(_st_subj, "aws_s3_public_bucket", None)
+                      or bucket)
             client = _boto3_subj.client(
                 "s3",
-                aws_access_key_id=_os_subj.environ.get("S3_AWS_ACCESS_KEY") or _os_subj.environ.get("AWS_ACCESS_KEY_ID") or None,
-                aws_secret_access_key=_os_subj.environ.get("S3_AWS_ACCESS_SECRET") or _os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                region_name=_os_subj.environ.get("S3_AWS_REGION") or _os_subj.environ.get("AWS_REGION", "ap-south-1"),
+                aws_access_key_id=_ak_subj,
+                aws_secret_access_key=_sk_subj,
+                region_name=_rg_subj,
             )
             client.put_object(
                 Bucket=bucket,
                 Key=key,
                 Body=image_bytes,
-                ContentType="image/png",
-                ACL="public-read",
+                ContentType="image/png",  # no ACL — bucket-owner-enforced (ACLs disabled)
             )
         except Exception as _up_err:
             print(f"    ⚠️ subject_ref S3 upload failed for '{subject_id}': {_up_err}")

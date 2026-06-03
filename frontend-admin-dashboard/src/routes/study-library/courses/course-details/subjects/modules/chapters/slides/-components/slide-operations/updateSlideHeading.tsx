@@ -4,6 +4,7 @@ import {
     DocumentSlidePayload,
     Slide,
     VideoSlidePayload,
+    VideoQuestion,
     QuizSlidePayload,
 } from '../../-hooks/use-slides';
 import { UseMutateAsyncFunction } from '@tanstack/react-query';
@@ -11,6 +12,7 @@ import { createQuizSlidePayload } from '../quiz/utils/api-helpers';
 import {
     converDataToAssignmentFormat,
     convertToQuestionBackendSlideFormat,
+    convertStudyLibraryQuestion,
 } from '../../-helper/helper';
 
 type SlideResponse = {
@@ -63,7 +65,14 @@ export const updateHeading = async (
                     // Preserve embedded fields for split-screen slides
                     embedded_type: activeItem?.video_slide?.embedded_type || '',
                     embedded_data: activeItem?.video_slide?.embedded_data || null,
-                    questions: activeItem?.video_slide?.questions || [],
+                    // Convert MyQuestion-shaped questions to the backend
+                    // VideoSlideQuestionDTO shape; sending them raw made the
+                    // backend silently drop them on a heading rename.
+                    questions: (activeItem?.video_slide?.questions || []).map((q) =>
+                        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                        // @ts-expect-error - in-memory questions are MyQuestion shaped at runtime
+                        convertStudyLibraryQuestion(q)
+                    ) as unknown as VideoQuestion[],
                 },
                 status: status,
                 new_slide: false,

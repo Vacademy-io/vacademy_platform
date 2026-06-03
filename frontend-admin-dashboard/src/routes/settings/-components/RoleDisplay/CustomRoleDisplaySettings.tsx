@@ -593,6 +593,8 @@ export default function CustomRoleDisplaySettings({
                             ['showCopyTo', 'Can copy slide'],
                             ['showMoveTo', 'Can move slide'],
                             ['showDelete', 'Can delete slide'],
+                            ['showAddVideoQuestion', 'Can add questions to video slides'],
+                            ['showConvertToSplitScreen', 'Can convert video to split screen'],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -609,6 +611,10 @@ export default function CustomRoleDisplaySettings({
                                             showCopyTo: prev.slideView?.showCopyTo ?? true,
                                             showMoveTo: prev.slideView?.showMoveTo ?? true,
                                             showDelete: prev.slideView?.showDelete ?? true,
+                                            showAddVideoQuestion:
+                                                prev.slideView?.showAddVideoQuestion ?? true,
+                                            showConvertToSplitScreen:
+                                                prev.slideView?.showConvertToSplitScreen ?? true,
                                             [key]: checked,
                                         },
                                     }))

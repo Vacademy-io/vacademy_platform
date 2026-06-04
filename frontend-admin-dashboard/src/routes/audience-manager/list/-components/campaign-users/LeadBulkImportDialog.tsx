@@ -20,29 +20,73 @@ import {
     ChevronDown,
     ChevronUp,
 } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_INSTITUTE_USERS } from '@/constants/urls';
+import { fetchLeadStatuses } from '@/hooks/use-lead-statuses';
 import {
     submitBulkAudienceLead,
     type BulkSubmitLeadResponse,
+    type BulkSubmitLeadResultItem,
 } from '../../-services/bulk-submit-audience-lead';
 import { type SubmitLeadRequest } from '../../-services/submit-audience-lead';
 import {
     type CustomFieldConfig,
+    type CounsellorOption,
+    type OwnerResolution,
+    type StatusResolution,
     parseCustomFieldsFromJson,
     generateCsvTemplate,
     buildHeaderToFieldIdMap,
     extractUserInfoFromRow,
     validateRow,
     getMissingMandatoryColumns,
+    detectOwnerHeader,
+    detectStatusHeader,
+    buildCounsellorResolver,
+    buildStatusResolver,
+    resolveOwner,
+    resolveStatus,
 } from '../../-utils/lead-bulk-import-utils';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
+
+const BATCH_SIZE = 1000;
+
+/** Institute counsellors/admins, including email so owners resolve by email or name. */
+async function fetchCounsellorOptions(instituteId: string): Promise<CounsellorOption[]> {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: GET_INSTITUTE_USERS,
+        params: { instituteId, pageNumber: 0, pageSize: 500 },
+        data: { roles: ['COUNSELLOR', 'ADMIN', 'TEACHER'], status: ['ACTIVE'] },
+    });
+    const raw = Array.isArray(response.data) ? response.data : response.data?.content || [];
+    return raw.map((u: Record<string, unknown>) => ({
+        id: u.id as string,
+        full_name: (u.full_name as string) || '',
+        email: (u.email as string) || undefined,
+    }));
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+}
 
 type Step = 'upload' | 'preview' | 'results';
 
 interface ParsedRow {
     raw: Record<string, string>;
-    errors: string[];
+    /** Custom-field validation errors. Owner/status errors are merged in at resolve time. */
+    baseErrors: string[];
     isDuplicate: boolean;
+}
+
+interface ResolvedRow extends ParsedRow {
+    owner: OwnerResolution;
+    status: StatusResolution;
+    errors: string[];
 }
 
 interface LeadBulkImportDialogProps {
@@ -55,7 +99,9 @@ interface LeadBulkImportDialogProps {
     onSuccess?: () => void;
 }
 
-const MAX_ROWS = 500;
+// Large cap to support migrations (e.g. tens of thousands of leads). Rows are submitted
+// to the backend in batches of BATCH_SIZE rather than one giant request.
+const MAX_ROWS = 100000;
 
 export function LeadBulkImportDialog({
     open,
@@ -88,20 +134,68 @@ export function LeadBulkImportDialog({
     const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
     const [headerToFieldId, setHeaderToFieldId] = useState<Map<string, string>>(new Map());
     const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+    const [ownerHeader, setOwnerHeader] = useState<string | null>(null);
+    const [statusHeader, setStatusHeader] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitProgress, setSubmitProgress] = useState<{ done: number; total: number } | null>(null);
     const [result, setResult] = useState<BulkSubmitLeadResponse | null>(null);
     const [showErrors, setShowErrors] = useState(false);
 
-    const validRows = useMemo(() => parsedRows.filter((r) => r.errors.length === 0 && !r.isDuplicate), [parsedRows]);
-    const errorRows = useMemo(() => parsedRows.filter((r) => r.errors.length > 0), [parsedRows]);
-    const duplicateRows = useMemo(() => parsedRows.filter((r) => r.isDuplicate), [parsedRows]);
+    // Counsellor + lead-status catalogs, fetched once the dialog opens, used to resolve the
+    // optional Lead Owner / Lead Status CSV columns to ids the backend understands.
+    const { data: counsellors = [] } = useQuery({
+        queryKey: ['bulk-import-counsellors', instituteId],
+        queryFn: () => fetchCounsellorOptions(instituteId),
+        enabled: open && !!instituteId,
+        staleTime: 5 * 60 * 1000,
+    });
+    const { data: leadStatuses = [] } = useQuery({
+        queryKey: ['bulk-import-lead-statuses', instituteId],
+        queryFn: fetchLeadStatuses,
+        enabled: open,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const counsellorResolver = useMemo(() => buildCounsellorResolver(counsellors), [counsellors]);
+    const statusResolver = useMemo(() => buildStatusResolver(leadStatuses), [leadStatuses]);
+    const defaultStatusLabel = useMemo(
+        () => leadStatuses.find((s) => s.is_default)?.label,
+        [leadStatuses]
+    );
+
+    // Re-resolve owner/status whenever the parsed rows or the catalogs change, so resolution
+    // is correct even if the file was uploaded before the catalogs finished loading.
+    const resolvedRows = useMemo<ResolvedRow[]>(() => {
+        return parsedRows.map((pr) => {
+            const owner: OwnerResolution = ownerHeader
+                ? resolveOwner(pr.raw[ownerHeader] || '', counsellorResolver)
+                : {};
+            const status: StatusResolution = statusHeader
+                ? resolveStatus(pr.raw[statusHeader] || '', statusResolver)
+                : {};
+            const errors = [...pr.baseErrors];
+            if (owner.error) errors.push(owner.error);
+            if (status.error) errors.push(status.error);
+            return { ...pr, owner, status, errors };
+        });
+    }, [parsedRows, ownerHeader, statusHeader, counsellorResolver, statusResolver]);
+
+    const validRows = useMemo(
+        () => resolvedRows.filter((r) => r.errors.length === 0 && !r.isDuplicate),
+        [resolvedRows]
+    );
+    const errorRows = useMemo(() => resolvedRows.filter((r) => r.errors.length > 0), [resolvedRows]);
+    const duplicateRows = useMemo(() => resolvedRows.filter((r) => r.isDuplicate), [resolvedRows]);
 
     const resetState = useCallback(() => {
         setStep('upload');
         setParsedRows([]);
         setHeaderToFieldId(new Map());
         setCsvHeaders([]);
+        setOwnerHeader(null);
+        setStatusHeader(null);
         setIsSubmitting(false);
+        setSubmitProgress(null);
         setResult(null);
         setShowErrors(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -114,7 +208,7 @@ export function LeadBulkImportDialog({
 
     // --- Step 1: Download Template ---
     const handleDownloadTemplate = useCallback(() => {
-        const csv = generateCsvTemplate(customFields);
+        const csv = generateCsvTemplate(customFields, { statusSample: defaultStatusLabel });
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -122,7 +216,7 @@ export function LeadBulkImportDialog({
         link.download = `${campaignName.replace(/[^a-zA-Z0-9]/g, '_')}_template.csv`;
         link.click();
         URL.revokeObjectURL(url);
-    }, [customFields, campaignName]);
+    }, [customFields, campaignName, defaultStatusLabel]);
 
     // --- Step 1: Parse CSV ---
     const handleFileChange = useCallback(
@@ -152,6 +246,10 @@ export function LeadBulkImportDialog({
                     const fieldMap = buildHeaderToFieldIdMap(headers, customFields);
                     setHeaderToFieldId(fieldMap);
 
+                    // Detect the optional Lead Owner / Lead Status columns (resolved later).
+                    setOwnerHeader(detectOwnerHeader(headers));
+                    setStatusHeader(detectStatusHeader(headers));
+
                     // Check for missing mandatory columns
                     const missingCols = getMissingMandatoryColumns(fieldMap, customFields);
                     if (missingCols.length > 0) {
@@ -160,10 +258,10 @@ export function LeadBulkImportDialog({
                         );
                     }
 
-                    // Validate rows and detect duplicates
+                    // Validate rows and detect duplicates (owner/status resolution happens in a memo)
                     const seenEmails = new Set<string>();
                     const parsed: ParsedRow[] = data.map((row) => {
-                        const errors = validateRow(row, fieldMap, customFields);
+                        const baseErrors = validateRow(row, fieldMap, customFields);
 
                         // Deduplicate by email
                         const { email } = extractUserInfoFromRow(row, fieldMap, customFields);
@@ -175,7 +273,7 @@ export function LeadBulkImportDialog({
                             seenEmails.add(emailKey);
                         }
 
-                        return { raw: row, errors, isDuplicate };
+                        return { raw: row, baseErrors, isDuplicate };
                     });
 
                     setParsedRows(parsed);
@@ -215,7 +313,7 @@ export function LeadBulkImportDialog({
                     customFields
                 );
 
-                return {
+                const row: SubmitLeadRequest = {
                     audience_id: campaignId,
                     source_type: 'AUDIENCE_CAMPAIGN',
                     source_id: campaignId,
@@ -234,17 +332,42 @@ export function LeadBulkImportDialog({
                         root_user: false,
                     },
                 };
+                if (pr.owner.counsellorId) {
+                    row.counsellor_id = pr.owner.counsellorId;
+                    row.counsellor_name = pr.owner.counsellorName;
+                }
+                if (pr.status.leadStatusKey) {
+                    row.lead_status_key = pr.status.leadStatusKey;
+                }
+                return row;
             });
 
-            const response = await submitBulkAudienceLead({
-                audience_id: campaignId,
-                rows,
-            });
+            // Submit in batches so very large imports don't hit a single huge request.
+            const batches = chunk(rows, BATCH_SIZE);
+            setSubmitProgress({ done: 0, total: batches.length });
 
-            setResult(response);
+            const summary = { total_requested: 0, successful: 0, failed: 0, skipped: 0 };
+            const results: BulkSubmitLeadResultItem[] = [];
+
+            for (let b = 0; b < batches.length; b++) {
+                const resp = await submitBulkAudienceLead({
+                    audience_id: campaignId,
+                    rows: batches[b]!,
+                });
+                summary.total_requested += resp.summary.total_requested;
+                summary.successful += resp.summary.successful;
+                summary.failed += resp.summary.failed;
+                summary.skipped += resp.summary.skipped;
+                const offset = b * BATCH_SIZE;
+                for (const r of resp.results) {
+                    results.push({ ...r, index: r.index + offset });
+                }
+                setSubmitProgress({ done: b + 1, total: batches.length });
+            }
+
+            setResult({ summary, results });
             setStep('results');
 
-            const { summary } = response;
             if (summary.failed === 0 && summary.skipped === 0) {
                 toast.success(`All ${summary.successful} leads imported successfully!`);
             } else {
@@ -337,7 +460,27 @@ export function LeadBulkImportDialog({
                                         )}
                                     </span>
                                 ))}
+                                <span className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                    Lead Owner (Counsellor Email)
+                                </span>
+                                <span className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                                    Lead Status
+                                </span>
                             </div>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                                <span className="font-medium">Lead Owner</span> and{' '}
+                                <span className="font-medium">Lead Status</span> are optional.
+                                Owner accepts a counsellor email (or unique name); status accepts a
+                                label like{' '}
+                                {leadStatuses.length > 0
+                                    ? leadStatuses
+                                          .slice(0, 4)
+                                          .map((s) => s.label)
+                                          .join(', ')
+                                    : 'New, Contacted, Interested'}
+                                . Blank status defaults to{' '}
+                                {defaultStatusLabel || 'your default status'}.
+                            </p>
                         </div>
                     </div>
                 )}
@@ -375,14 +518,17 @@ export function LeadBulkImportDialog({
                             </p>
                             <div className="flex flex-wrap gap-1">
                                 {csvHeaders.map((h) => {
-                                    const mapped = headerToFieldId.has(h);
+                                    const isSpecial = h === ownerHeader || h === statusHeader;
+                                    const mapped = headerToFieldId.has(h) || isSpecial;
                                     return (
                                         <span
                                             key={h}
                                             className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${
-                                                mapped
-                                                    ? 'bg-green-50 text-green-700'
-                                                    : 'bg-red-50 text-red-700'
+                                                isSpecial
+                                                    ? 'bg-blue-50 text-blue-700'
+                                                    : mapped
+                                                      ? 'bg-green-50 text-green-700'
+                                                      : 'bg-red-50 text-red-700'
                                             }`}
                                         >
                                             {h} {mapped ? '✓' : '✗'}
@@ -406,10 +552,20 @@ export function LeadBulkImportDialog({
                                                     {h}
                                                 </th>
                                             ))}
+                                        {ownerHeader && (
+                                            <th className="px-2 py-1 text-left text-blue-700">
+                                                Owner →
+                                            </th>
+                                        )}
+                                        {statusHeader && (
+                                            <th className="px-2 py-1 text-left text-blue-700">
+                                                Status →
+                                            </th>
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {parsedRows.slice(0, 100).map((pr, i) => {
+                                    {resolvedRows.slice(0, 100).map((pr, i) => {
                                         const hasError = pr.errors.length > 0;
                                         const rowClass = hasError
                                             ? 'bg-red-50'
@@ -445,14 +601,46 @@ export function LeadBulkImportDialog({
                                                             {pr.raw[h] || ''}
                                                         </td>
                                                     ))}
+                                                {ownerHeader && (
+                                                    <td className="max-w-40 truncate px-2 py-1">
+                                                        {pr.owner.error ? (
+                                                            <span
+                                                                className="cursor-help text-red-600"
+                                                                title={pr.owner.error}
+                                                            >
+                                                                {pr.raw[ownerHeader] || ''} ✗
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-neutral-700">
+                                                                {pr.owner.counsellorName || '—'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                )}
+                                                {statusHeader && (
+                                                    <td className="max-w-40 truncate px-2 py-1">
+                                                        {pr.status.error ? (
+                                                            <span
+                                                                className="cursor-help text-red-600"
+                                                                title={pr.status.error}
+                                                            >
+                                                                {pr.raw[statusHeader] || ''} ✗
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-neutral-700">
+                                                                {pr.status.leadStatusKey || '—'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                )}
                                             </tr>
                                         );
                                     })}
                                 </tbody>
                             </table>
-                            {parsedRows.length > 100 && (
+                            {resolvedRows.length > 100 && (
                                 <p className="px-2 py-1 text-center text-xs text-muted-foreground">
-                                    Showing first 100 of {parsedRows.length} rows
+                                    Showing first 100 of {resolvedRows.length} rows
                                 </p>
                             )}
                         </div>
@@ -470,7 +658,9 @@ export function LeadBulkImportDialog({
                                 {isSubmitting ? (
                                     <>
                                         <Loader2 className="mr-2 size-4 animate-spin" />
-                                        Submitting {validRows.length} rows...
+                                        {submitProgress && submitProgress.total > 1
+                                            ? `Submitting… batch ${submitProgress.done}/${submitProgress.total}`
+                                            : `Submitting ${validRows.length} rows...`}
                                     </>
                                 ) : (
                                     <>

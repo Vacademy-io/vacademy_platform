@@ -453,12 +453,17 @@ public class AudienceService {
                     return "You have already submitted your response for this campaign";
                 }
 
-                // 2. Create audience response with user_id
+                // 2. Create audience response with user_id.
+                // Optional CSV/bulk-supplied pipeline status -> lead_status_id (the status
+                // chip). Null when not supplied or unrecognised, preserving prior behaviour.
+                String resolvedLeadStatusId = resolveLeadStatusId(
+                        instituteId, requestDTO.getLeadStatusKey());
                 AudienceResponse response = AudienceResponse.builder()
                         .audienceId(requestDTO.getAudienceId())
                         .sourceType(requestDTO.getSourceType())
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId) // Set user_id if created successfully
+                        .leadStatusId(resolvedLeadStatusId)
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
                         .build();
@@ -495,37 +500,50 @@ public class AudienceService {
                     // Non-blocking — lead is still saved even if scoring fails
                 }
 
-                // 3c. Counselor pool auto-assignment. If the audience belongs to a pool, the
-                // pool's mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this
-                // lead and writes that to user_lead_profile.assigned_counselor_id. MANUAL pools
-                // and audiences not in any pool return Optional.empty() and we leave the lead
-                // unassigned. The full_name lookup mirrors what the manual-assign UI does so
-                // the Counsellor column on lead-list pages renders the name (the UI checks
+                // 3c. Counselor assignment. A manually supplied counsellor (e.g. a CSV bulk
+                // import that carries a lead owner per row) takes precedence and is written
+                // straight to user_lead_profile.assigned_counselor_id/name. Otherwise we fall
+                // back to pool auto-assignment: if the audience belongs to a pool, the pool's
+                // mode (ROUND_ROBIN / TIME_BASED) decides which counselor handles this lead.
+                // MANUAL pools and audiences not in any pool return Optional.empty() and we
+                // leave the lead unassigned. The full_name lookup mirrors what the manual-assign
+                // UI does so the Counsellor column renders the name (the UI checks
                 // assigned_counselor_name; an id-without-name shows up as Unassigned).
                 // Non-blocking — submission still succeeds if routing fails.
                 final String leadUserIdForAssignment = userId;
                 final String instituteIdForAssignment = instituteId;
-                try {
-                    counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
-                            .ifPresent(counselorUserId -> {
-                                String counselorName = null;
-                                try {
-                                    List<UserDTO> fetched = authService
-                                            .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
-                                    if (!fetched.isEmpty() && fetched.get(0) != null) {
-                                        counselorName = fetched.get(0).getFullName();
+                if (StringUtils.hasText(requestDTO.getCounsellorId())) {
+                    try {
+                        assignManualCounsellor(
+                                leadUserIdForAssignment, instituteIdForAssignment,
+                                requestDTO.getCounsellorId(), requestDTO.getCounsellorName());
+                    } catch (Exception e) {
+                        logger.error("Failed to assign manual counsellor for response {}: {}",
+                                savedResponse.getId(), e.getMessage());
+                    }
+                } else {
+                    try {
+                        counselorAssignmentService.assignCounselorForLead(savedResponse.getAudienceId())
+                                .ifPresent(counselorUserId -> {
+                                    String counselorName = null;
+                                    try {
+                                        List<UserDTO> fetched = authService
+                                                .getUsersFromAuthServiceByUserIds(List.of(counselorUserId));
+                                        if (!fetched.isEmpty() && fetched.get(0) != null) {
+                                            counselorName = fetched.get(0).getFullName();
+                                        }
+                                    } catch (Exception nameLookupFailure) {
+                                        logger.warn("Could not fetch counselor name for {}: {}",
+                                                counselorUserId, nameLookupFailure.getMessage());
                                     }
-                                } catch (Exception nameLookupFailure) {
-                                    logger.warn("Could not fetch counselor name for {}: {}",
-                                            counselorUserId, nameLookupFailure.getMessage());
-                                }
-                                userLeadProfileService.assignCounselor(
-                                        leadUserIdForAssignment, instituteIdForAssignment,
-                                        counselorUserId, counselorName);
-                            });
-                } catch (Exception e) {
-                    logger.error("Failed to auto-assign counselor for response {}: {}",
-                            savedResponse.getId(), e.getMessage());
+                                    userLeadProfileService.assignCounselor(
+                                            leadUserIdForAssignment, instituteIdForAssignment,
+                                            counselorUserId, counselorName);
+                                });
+                    } catch (Exception e) {
+                        logger.error("Failed to auto-assign counselor for response {}: {}",
+                                savedResponse.getId(), e.getMessage());
+                    }
                 }
 
                 // 4. Build custom field map for email
@@ -751,6 +769,52 @@ public class AudienceService {
         }
         return "Error in submitting the response";
 
+    }
+
+    /**
+     * Manual counsellor (lead owner) assignment for a lead — used by CSV/bulk import
+     * where each row may carry its own owner. Writes user_lead_profile.assigned_counselor_id
+     * and assigned_counselor_name (the fields the leads table renders) via the same service
+     * the manual-assign UI uses. Looks the display name up from auth_service when the caller
+     * didn't supply one, so the Counsellor column shows a name rather than "Unassigned".
+     */
+    private void assignManualCounsellor(String leadUserId, String instituteId,
+            String counsellorId, String counsellorName) {
+        if (!StringUtils.hasText(leadUserId) || !StringUtils.hasText(counsellorId)) {
+            return;
+        }
+        String name = counsellorName;
+        if (!StringUtils.hasText(name)) {
+            try {
+                List<UserDTO> fetched = authService
+                        .getUsersFromAuthServiceByUserIds(List.of(counsellorId));
+                if (!fetched.isEmpty() && fetched.get(0) != null) {
+                    name = fetched.get(0).getFullName();
+                }
+            } catch (Exception e) {
+                logger.warn("Could not fetch counsellor name for {}: {}", counsellorId, e.getMessage());
+            }
+        }
+        userLeadProfileService.assignCounselor(leadUserId, instituteId, counsellorId, name);
+    }
+
+    /**
+     * Resolve an optional pipeline lead status key to a lead_status.id within the institute.
+     * Returns null when the key is blank or no matching status exists for the institute, in
+     * which case the lead is created without a pipeline status (unchanged prior behaviour).
+     */
+    private String resolveLeadStatusId(String instituteId, String leadStatusKey) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(leadStatusKey)) {
+            return null;
+        }
+        return leadStatusRepository
+                .findByInstituteIdAndStatusKey(instituteId, leadStatusKey.trim())
+                .map(s -> s.getId())
+                .orElseGet(() -> {
+                    logger.warn("Lead status key '{}' not found for institute {}; leaving lead status unset",
+                            leadStatusKey, instituteId);
+                    return null;
+                });
     }
 
     /**

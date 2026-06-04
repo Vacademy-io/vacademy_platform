@@ -233,7 +233,7 @@ export const StudentSidebar = ({
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 !p-0 border-b border-neutral-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-2 px-4 pb-2 pt-2">
+                    <div className="flex flex-col gap-2 px-4 pb-2 pt-0">
                         {/* Identity row: avatar + name/status + actions */}
                         <div className="flex items-center gap-2.5">
                             <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-1 ring-primary-100">

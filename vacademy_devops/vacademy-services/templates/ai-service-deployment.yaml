@@ -54,32 +54,36 @@ spec:
               cpu: "1500m"
               memory: "3Gi"
             {{- end }}
-          livenessProbe:
-            httpGet:
-              path: /ai-service/health
-              port: {{ .Values.services.ai_service.port }}
-              scheme: HTTP
-            initialDelaySeconds: 180
-            periodSeconds: 30
-            timeoutSeconds: 15
-            failureThreshold: 5
-            successThreshold: 1
+          # See PR #1847 era — startupProbe at initialDelaySeconds=30 lets the rollout
+          # complete in ~2-3 min instead of waiting 5 min before the first probe even fires.
+          # liveness/readiness initialDelay=0 is safe because k8s won't run them until
+          # startupProbe succeeds; failureThreshold=60 × periodSeconds=30 = 30 min grace.
           startupProbe:
             httpGet:
               path: /ai-service/health
               port: {{ .Values.services.ai_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 60
-            periodSeconds: 10
+            initialDelaySeconds: 30
+            periodSeconds: 30
             timeoutSeconds: 15
             failureThreshold: 60
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /ai-service/health
+              port: {{ .Values.services.ai_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
             successThreshold: 1
           readinessProbe:
             httpGet:
               path: /ai-service/health
               port: {{ .Values.services.ai_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 180
+            initialDelaySeconds: 0
             periodSeconds: 30
             timeoutSeconds: 15
             failureThreshold: 5

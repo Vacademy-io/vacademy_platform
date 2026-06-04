@@ -414,31 +414,33 @@ export const StudentTestRecord = ({
                 )}
             </ProfileHero>
 
-            {/* ── Stat row ──────────────────────────────────────────────────── */}
-            <div className="flex gap-2">
-                <ProfileHeroStat
-                    label="Attempted"
-                    value={attemptedCount}
-                    tone="primary"
-                    icon={CheckCircle}
-                />
-                <ProfileHeroStat
-                    label="Pending"
-                    value={pendingCount}
-                    tone={pendingCount > 0 ? 'warning' : 'neutral'}
-                    icon={Clock}
-                />
-                <ProfileHeroStat
-                    label="Avg Score"
-                    value={attemptedCount > 0 ? `${avgScore.toFixed(1)} pts` : '—'}
-                    tone={
-                        attemptedCount > 0
-                            ? (scoreTone(avgScore) as 'success' | 'primary' | 'warning' | 'danger')
-                            : 'neutral'
-                    }
-                    icon={ChartBar}
-                />
-            </div>
+            {/* ── Stat row (hidden when all-zero per Phase 0.5b) ────────────── */}
+            {(attemptedCount > 0 || pendingCount > 0) && (
+                <div className="flex gap-2">
+                    <ProfileHeroStat
+                        label="Attempted"
+                        value={attemptedCount}
+                        tone="primary"
+                        icon={CheckCircle}
+                    />
+                    <ProfileHeroStat
+                        label="Pending"
+                        value={pendingCount}
+                        tone={pendingCount > 0 ? 'warning' : 'neutral'}
+                        icon={Clock}
+                    />
+                    <ProfileHeroStat
+                        label="Avg Score"
+                        value={attemptedCount > 0 ? `${avgScore.toFixed(1)} pts` : '—'}
+                        tone={
+                            attemptedCount > 0
+                                ? (scoreTone(avgScore) as 'success' | 'primary' | 'warning' | 'danger')
+                                : 'neutral'
+                        }
+                        icon={ChartBar}
+                    />
+                </div>
+            )}
 
             {/* ── Filter chips + search ──────────────────────────────────────── */}
             <div className="flex flex-wrap items-center justify-between gap-2">

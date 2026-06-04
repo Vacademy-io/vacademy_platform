@@ -766,27 +766,29 @@ export const StudentFiles = () => {
 
     return (
         <div className="flex flex-col gap-4 p-4">
-            {/* ── Hero stats row ─────────────────────────────────────────────── */}
-            <div className="flex gap-3">
-                <ProfileHeroStat
-                    label="Total Files"
-                    value={totalFiles}
-                    tone="primary"
-                    icon={File}
-                />
-                <ProfileHeroStat
-                    label="Folders"
-                    value={totalFolders}
-                    tone="neutral"
-                    icon={FolderOpen}
-                />
-                <ProfileHeroStat
-                    label="Recent (7d)"
-                    value={recentCount}
-                    tone={recentCount > 0 ? 'success' : 'neutral'}
-                    icon={CalendarBlank}
-                />
-            </div>
+            {/* ── Hero stats row (hidden when all-zero per Phase 0.5b) ───────── */}
+            {(totalFiles > 0 || totalFolders > 0 || recentCount > 0) && (
+                <div className="flex gap-3">
+                    <ProfileHeroStat
+                        label="Total Files"
+                        value={totalFiles}
+                        tone="primary"
+                        icon={File}
+                    />
+                    <ProfileHeroStat
+                        label="Folders"
+                        value={totalFolders}
+                        tone="neutral"
+                        icon={FolderOpen}
+                    />
+                    <ProfileHeroStat
+                        label="Recent (7d)"
+                        value={recentCount}
+                        tone={recentCount > 0 ? 'success' : 'neutral'}
+                        icon={CalendarBlank}
+                    />
+                </div>
+            )}
 
             {/* ── Primary action bar ─────────────────────────────────────────── */}
             <ProfileActionBar>

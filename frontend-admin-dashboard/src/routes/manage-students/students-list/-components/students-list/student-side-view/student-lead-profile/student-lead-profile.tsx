@@ -1288,33 +1288,38 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 </MyButton>
             </ProfileActionBar>
 
-            {/* ── 4-stat grid ── */}
-            <div className="grid grid-cols-2 gap-2">
-                <ProfileHeroStat
-                    label="Campaigns"
-                    value={profile.campaign_count}
-                    icon={Megaphone}
-                    tone={profile.campaign_count > 0 ? 'primary' : 'neutral'}
-                />
-                <ProfileHeroStat
-                    label="Timeline Events"
-                    value={profile.total_timeline_events}
-                    icon={Lightning}
-                    tone={profile.total_timeline_events > 0 ? 'primary' : 'neutral'}
-                />
-                <ProfileHeroStat
-                    label="Demo Attendance"
-                    value={profile.demo_attendance_count}
-                    icon={CalendarCheck}
-                    tone={profile.demo_attendance_count > 0 ? 'primary' : 'neutral'}
-                />
-                <ProfileHeroStat
-                    label="Best Source"
-                    value={sourceLabel(profile.best_source_type)}
-                    icon={Fire}
-                    tone={profile.best_source_type ? 'primary' : 'neutral'}
-                />
-            </div>
+            {/* ── 4-stat grid (hidden when all-zero per Phase 0.5b) ── */}
+            {(profile.campaign_count > 0 ||
+                profile.total_timeline_events > 0 ||
+                profile.demo_attendance_count > 0 ||
+                !!profile.best_source_type) && (
+                <div className="grid grid-cols-2 gap-2">
+                    <ProfileHeroStat
+                        label="Campaigns"
+                        value={profile.campaign_count}
+                        icon={Megaphone}
+                        tone={profile.campaign_count > 0 ? 'primary' : 'neutral'}
+                    />
+                    <ProfileHeroStat
+                        label="Timeline Events"
+                        value={profile.total_timeline_events}
+                        icon={Lightning}
+                        tone={profile.total_timeline_events > 0 ? 'primary' : 'neutral'}
+                    />
+                    <ProfileHeroStat
+                        label="Demo Attendance"
+                        value={profile.demo_attendance_count}
+                        icon={CalendarCheck}
+                        tone={profile.demo_attendance_count > 0 ? 'primary' : 'neutral'}
+                    />
+                    <ProfileHeroStat
+                        label="Best Source"
+                        value={sourceLabel(profile.best_source_type)}
+                        icon={Fire}
+                        tone={profile.best_source_type ? 'primary' : 'neutral'}
+                    />
+                </div>
+            )}
 
             {/* ── Key Dates ── */}
             <ProfileSectionCard heading="Key Dates">

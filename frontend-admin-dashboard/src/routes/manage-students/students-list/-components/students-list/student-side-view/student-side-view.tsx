@@ -236,7 +236,7 @@ export const StudentSidebar = ({
             )}
         >
             <SidebarContent
-                className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
+                className={`sidebar-content flex flex-col border-l border-t border-neutral-200 bg-white text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-2 px-4 pb-2 pt-0">

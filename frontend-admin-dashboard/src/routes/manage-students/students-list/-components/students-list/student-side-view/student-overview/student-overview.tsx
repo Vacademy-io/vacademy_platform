@@ -1,14 +1,15 @@
 import {
-    Key,
     User,
     GraduationCap,
     Phone,
-    Envelope,
     MapPin,
     Users,
-    Copy,
-    Check,
     HandCoinsIcon,
+    Tag,
+    Folders,
+    FileText,
+    DownloadSimple,
+    MonitorPlay,
 } from '@phosphor-icons/react';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useEffect, useState } from 'react';
@@ -24,8 +25,7 @@ import { getFieldsForLocation, type FieldForLocation } from '@/lib/custom-fields
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
-import { Tag, Folders, FileText, DownloadSimple } from '@phosphor-icons/react';
-import { MonitorPlay } from '@phosphor-icons/react';
+import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -188,377 +188,182 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
         return <div>Error fetching student details</div>;
     }
 
+    const SECTION_ICONS: Record<number, typeof User> = {
+        1: GraduationCap,
+        2: MonitorPlay,
+        3: HandCoinsIcon,
+        4: Phone,
+        5: MapPin,
+        6: Users,
+    };
+
     return (
-        <div className="animate-fadeIn relative flex flex-col gap-3 text-neutral-600">
-            {/* Compact Edit Button */}
-            <div className="flex justify-center">
-                <EditStudentDetails />
-            </div>
+        <div className="flex flex-col gap-3 text-card-foreground">
+            {/* Overview sections (key 0 is Account Credentials — moved to Portal Access tab) */}
+            {selectedStudent != null ? (
+                overviewData?.map((studentDetail, key) => {
+                    if (key === 0) return null;
+                    const SectionIcon = SECTION_ICONS[key] ?? User;
+                    const isPrimary = key === 1; // hosts Edit Details button
 
-            {/* Compact overview sections */}
-            <div className="space-y-2.5">
-                {selectedStudent != null ? (
-                    overviewData?.map((studentDetail, key) => {
-                        // Skip Account Credentials (key === 0) as it's moved to Portal Access tab
-                        if (key === 0) return null;
-
-                        // Define icons and colors for each section
-                        const sectionConfig = {
-                            0: {
-                                icon: Key,
-                                color: 'primary',
-                                bg: 'from-primary-50 to-primary-100',
-                            },
-                            1: {
-                                icon: GraduationCap,
-                                color: 'blue',
-                                bg: 'from-blue-50 to-blue-100',
-                            },
-                            2: {
-                                icon: MonitorPlay,
-                                color: 'blue',
-                                bg: 'from-blue-50 to-blue-100',
-                            },
-                            3: {
-                                icon: HandCoinsIcon,
-                                color: 'blue',
-                                bg: 'from-blue-50 to-blue-100',
-                            },
-                            4: {
-                                icon: Phone,
-                                color: 'emerald',
-                                bg: 'from-emerald-50 to-emerald-100',
-                            },
-                            5: {
-                                icon: MapPin,
-                                color: 'orange',
-                                bg: 'from-orange-50 to-orange-100',
-                            },
-                            6: { icon: Users, color: 'purple', bg: 'from-purple-50 to-purple-100' },
-                        }[key] || {
-                            icon: User,
-                            color: 'neutral',
-                            bg: 'from-neutral-50 to-neutral-100',
-                        };
-
-                        const IconComponent = sectionConfig.icon;
-
-                        return (
-                            <div key={key} className="group">
-                                <div
-                                    className={`hover:border- rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-neutral-50/30 p-2.5 transition-all duration-200 hover:scale-[1.01] hover:shadow-md${sectionConfig.color}-200/50`}
-                                >
-                                    {/* Compact section header */}
-                                    <div className="mb-2 flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <div
-                                                className={`rounded-md bg-gradient-to-br p-1 ${sectionConfig.bg} transition-transform duration-200 group-hover:scale-105`}
-                                            >
-                                                <IconComponent
-                                                    className={`text- size-3.5${sectionConfig.color}-600`}
-                                                />
-                                            </div>
-                                            <h3
-                                                className={`group-hover:text- text-xs font-semibold text-neutral-700 transition-colors duration-200${sectionConfig.color}-700`}
-                                            >
-                                                {studentDetail.heading}
-                                            </h3>
-                                        </div>
-                                    </div>
-
-                                    {/* Compact content grid */}
-                                    <div className="space-y-1">
-                                        {studentDetail.content &&
-                                            studentDetail.content.length > 0 ? (
-                                            studentDetail.content.map((obj, key2) => {
-                                                if (!obj) {
-                                                    return (
-                                                        <div
-                                                            key={key2}
-                                                            className="group/item flex items-start gap-2 rounded-md px-1.5 py-1"
-                                                        >
-                                                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                                                            <p className="text-xs italic text-primary-500">
-                                                                No data available
-                                                            </p>
-                                                        </div>
-                                                    );
-                                                }
-
-                                                const parts = obj.split(':');
-                                                const fieldName = parts[0]?.trim();
-                                                const value = parts.slice(1).join(':').trim();
-                                                const canCopy =
-                                                    value &&
-                                                    value !== 'N/A' &&
-                                                    value !== 'password not found' &&
-                                                    value !== 'undefined';
-
-                                                return (
-                                                    <div
-                                                        key={key2}
-                                                        className="flex items-start gap-2 rounded-md px-1.5 py-1"
-                                                    >
-                                                        <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                                                        <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                                            <span className="font-medium text-neutral-600">
-                                                                {fieldName}:{' '}
-                                                            </span>
-                                                            <span className="group/value relative inline-flex items-center text-neutral-800">
-                                                                <span>{value}</span>
-                                                                {canCopy && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            if (fieldName) {
-                                                                                handleCopy(
-                                                                                    value,
-                                                                                    fieldName
-                                                                                );
-                                                                            }
-                                                                        }}
-                                                                        className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                                                        style={{
-                                                                            pointerEvents: 'auto',
-                                                                        }}
-                                                                    >
-                                                                        {copiedField ===
-                                                                            fieldName ? (
-                                                                            <Check className="size-3 text-green-600" />
-                                                                        ) : (
-                                                                            <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                                                        )}
-                                                                    </button>
-                                                                )}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        ) : (
-                                            <div className="py-3 text-center">
-                                                <div className="mb-1 text-neutral-400">
-                                                    <IconComponent className="mx-auto size-5 opacity-50" />
-                                                </div>
-                                                <p className="text-xs italic text-neutral-500">
-                                                    No details available
+                    return (
+                        <ProfileSectionCard
+                            key={key}
+                            icon={SectionIcon}
+                            heading={studentDetail.heading}
+                            action={isPrimary ? <EditStudentDetails /> : undefined}
+                        >
+                            {studentDetail.content && studentDetail.content.length > 0 ? (
+                                <dl className="divide-y divide-border">
+                                    {studentDetail.content.map((obj, key2) => {
+                                        if (!obj) {
+                                            return (
+                                                <p
+                                                    key={key2}
+                                                    className="py-2.5 text-caption italic text-muted-foreground"
+                                                >
+                                                    No data available
                                                 </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Minimal separator */}
-                                {key < (overviewData?.length || 0) - 1 && (
-                                    <div className="flex items-center justify-center py-1">
-                                        <div className="h-px w-6 bg-gradient-to-r from-transparent via-neutral-200 to-transparent"></div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })
-                ) : (
-                    <div className="py-6 text-center">
-                        <div className="mb-2 text-neutral-400">
-                            <User className="mx-auto size-8 opacity-50" />
-                        </div>
-                        <p className="text-xs text-neutral-500">No overview data available</p>
-                    </div>
-                )}
-            </div>
-
-            {/* Custom Fields Section */}
-            {(customFields.length > 0 || fieldGroups.length > 0) && (
-                <div className="space-y-2.5">
-                    {/* Field Groups */}
-                    {fieldGroups.map((group) => (
-                        <div key={group.id} className="group">
-                            <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-blue-50/20 p-2.5 transition-all duration-200 hover:scale-[1.01] hover:border-blue-200/50 hover:shadow-md">
-                                {/* Group header */}
-                                <div className="mb-2 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <div className="rounded-md bg-gradient-to-br from-blue-50 to-blue-100 p-1 transition-transform duration-200 group-hover:scale-105">
-                                            <Folders className="size-3.5 text-blue-600" />
-                                        </div>
-                                        <h3 className="text-xs font-semibold text-neutral-700 ">
-                                            {group.name}
-                                        </h3>
-                                    </div>
-                                </div>
-
-                                {/* Group fields content */}
-                                <div className="space-y-1">
-                                    {group.fields.map((field) => {
+                                            );
+                                        }
+                                        const colonIdx = obj.indexOf(':');
+                                        const fieldName =
+                                            colonIdx >= 0
+                                                ? obj.slice(0, colonIdx).trim()
+                                                : obj.trim();
                                         const value =
-                                            selectedStudent?.custom_fields?.[field.id] || 'N/A';
+                                            colonIdx >= 0 ? obj.slice(colonIdx + 1).trim() : '';
                                         const canCopy =
-                                            value &&
+                                            !!value &&
                                             value !== 'N/A' &&
-                                            value !== 'null' &&
-                                            value !== '';
-
+                                            value !== 'password not found' &&
+                                            value !== 'undefined';
                                         return (
-                                            <div
-                                                key={field.id}
-                                                className="flex items-start gap-2 rounded-md px-1.5 py-1"
-                                            >
-                                                <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                                                <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                                    <span className="font-medium text-neutral-600">
-                                                        {field.name}:{' '}
-                                                    </span>
-                                                    <span className="group/value relative inline-flex items-center text-neutral-800">
-                                                        <span>{value}</span>
-                                                        {canCopy && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    handleCopy(value, field.name)
-                                                                }
-                                                                className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                                                style={{
-                                                                    pointerEvents: 'auto',
-                                                                }}
-                                                            >
-                                                                {copiedField === field.name ? (
-                                                                    <Check className="size-3 text-green-600" />
-                                                                ) : (
-                                                                    <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                                                )}
-                                                            </button>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                            </div>
+                                            <ProfileFieldRow
+                                                key={key2}
+                                                label={fieldName}
+                                                value={value}
+                                                copied={copiedField === fieldName}
+                                                onCopy={
+                                                    canCopy
+                                                        ? () => handleCopy(value, fieldName)
+                                                        : undefined
+                                                }
+                                            />
                                         );
                                     })}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-
-                    {/* Individual Custom Fields */}
-                    {customFields.length > 0 && (
-                        <div className="group">
-                            <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-neutral-50/30 p-2.5 transition-all duration-200 hover:scale-[1.01] hover:border-purple-200/50 hover:shadow-md">
-                                {/* Section header */}
-                                <div className="mb-2 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <div className="rounded-md bg-gradient-to-br from-purple-50 to-purple-100 p-1 transition-transform duration-200 group-hover:scale-105">
-                                            <Tag className="size-3.5 text-purple-600" />
-                                        </div>
-                                        <h3 className="text-xs font-semibold text-neutral-700 transition-colors duration-200 group-hover:text-purple-700">
-                                            Custom Fields
-                                        </h3>
-                                    </div>
-                                </div>
-
-                                {/* Custom fields content */}
-                                <div className="space-y-1">
-                                    {customFields.map((field) => {
-                                        // Get the value from student's custom_fields object
-                                        const value =
-                                            selectedStudent?.custom_fields?.[field.id] || 'N/A';
-                                        const canCopy =
-                                            value &&
-                                            value !== 'N/A' &&
-                                            value !== 'null' &&
-                                            value !== '';
-
-                                        return (
-                                            <div
-                                                key={field.id}
-                                                className="flex items-start gap-2 rounded-md px-1.5 py-1"
-                                            >
-                                                <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                                                <div className="min-w-0 flex-1 text-xs leading-relaxed text-neutral-700">
-                                                    <span className="font-medium text-neutral-600">
-                                                        {field.name}:{' '}
-                                                    </span>
-                                                    <span className="group/value relative inline-flex items-center text-neutral-800">
-                                                        <span>{value}</span>
-                                                        {canCopy && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() =>
-                                                                    handleCopy(value, field.name)
-                                                                }
-                                                                className="ml-2 cursor-pointer rounded-md p-1 hover:bg-neutral-200"
-                                                                style={{
-                                                                    pointerEvents: 'auto',
-                                                                }}
-                                                            >
-                                                                {copiedField === field.name ? (
-                                                                    <Check className="size-3 text-green-600" />
-                                                                ) : (
-                                                                    <Copy className="size-3 text-neutral-500 hover:text-neutral-700" />
-                                                                )}
-                                                            </button>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                                </dl>
+                            ) : (
+                                <p className="text-caption italic text-muted-foreground">
+                                    No details available
+                                </p>
+                            )}
+                        </ProfileSectionCard>
+                    );
+                })
+            ) : (
+                <ProfileEmpty icon={User} title="No overview data available" />
             )}
 
-            {/* Terms & Conditions Status */}
-            <div className="group">
-                <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-teal-50/20 p-2.5 transition-all duration-200 hover:scale-[1.01] hover:border-teal-200/50 hover:shadow-md">
-                    <div className="mb-2 flex items-center gap-2">
-                        <div className="rounded-md bg-gradient-to-br from-teal-50 to-teal-100 p-1 transition-transform duration-200 group-hover:scale-105">
-                            <FileText className="size-3.5 text-teal-600" />
-                        </div>
-                        <h3 className="text-xs font-semibold text-neutral-700">Terms &amp; Conditions</h3>
-                    </div>
+            {/* Custom field groups */}
+            {fieldGroups.map((group) => (
+                <ProfileSectionCard key={group.id} icon={Folders} heading={group.name}>
+                    <dl className="divide-y divide-border">
+                        {group.fields.map((field) => {
+                            const value =
+                                selectedStudent?.custom_fields?.[field.id] || 'N/A';
+                            const canCopy =
+                                !!value &&
+                                value !== 'N/A' &&
+                                value !== 'null' &&
+                                value !== '';
+                            return (
+                                <ProfileFieldRow
+                                    key={field.id}
+                                    label={field.name}
+                                    value={value}
+                                    copied={copiedField === field.name}
+                                    onCopy={
+                                        canCopy ? () => handleCopy(value, field.name) : undefined
+                                    }
+                                />
+                            );
+                        })}
+                    </dl>
+                </ProfileSectionCard>
+            ))}
 
-                    <div className="space-y-1.5 px-1.5">
-                        <div className="flex items-center gap-2">
-                            <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                            <span className="text-xs font-medium text-neutral-600">Status: </span>
-                            {selectedStudent?.tnc_accepted ? (
-                                <span className="inline-flex items-center rounded-full bg-success-50 px-2 py-0.5 text-xs font-semibold text-success-700 ring-1 ring-success-200">
+            {/* Individual custom fields */}
+            {customFields.length > 0 && (
+                <ProfileSectionCard icon={Tag} heading="Custom Fields">
+                    <dl className="divide-y divide-border">
+                        {customFields.map((field) => {
+                            const value =
+                                selectedStudent?.custom_fields?.[field.id] || 'N/A';
+                            const canCopy =
+                                !!value &&
+                                value !== 'N/A' &&
+                                value !== 'null' &&
+                                value !== '';
+                            return (
+                                <ProfileFieldRow
+                                    key={field.id}
+                                    label={field.name}
+                                    value={value}
+                                    copied={copiedField === field.name}
+                                    onCopy={
+                                        canCopy ? () => handleCopy(value, field.name) : undefined
+                                    }
+                                />
+                            );
+                        })}
+                    </dl>
+                </ProfileSectionCard>
+            )}
+
+            {/* Terms & Conditions */}
+            <ProfileSectionCard icon={FileText} heading="Terms & Conditions">
+                <dl className="divide-y divide-border">
+                    <ProfileFieldRow
+                        label="Status"
+                        value={
+                            selectedStudent?.tnc_accepted ? (
+                                <span className="inline-flex items-center rounded-full bg-success-50 px-2 py-0.5 text-caption font-semibold text-success-700 ring-1 ring-success-200">
                                     Signed
                                 </span>
                             ) : (
-                                <span className="inline-flex items-center rounded-full bg-warning-50 px-2 py-0.5 text-xs font-semibold text-warning-700 ring-1 ring-warning-200">
+                                <span className="inline-flex items-center rounded-full bg-warning-50 px-2 py-0.5 text-caption font-semibold text-warning-700 ring-1 ring-warning-200">
                                     Not Signed
                                 </span>
-                            )}
-                        </div>
-
-                        {selectedStudent?.tnc_accepted && selectedStudent?.tnc_accepted_date && (
-                            <div className="flex items-start gap-2">
-                                <div className="mt-1.5 size-1 shrink-0 rounded-full bg-neutral-300"></div>
-                                <p className="text-xs text-neutral-700">
-                                    <span className="font-medium text-neutral-600">Signed on: </span>
-                                    {new Date(selectedStudent.tnc_accepted_date).toLocaleDateString()}
-                                </p>
-                            </div>
-                        )}
-
-                        {selectedStudent?.tnc_accepted && tncFileUrl && (
-                            <div className="flex items-center gap-2 pt-0.5">
-                                <div className="size-1 shrink-0 rounded-full bg-neutral-300"></div>
+                            )
+                        }
+                    />
+                    {selectedStudent?.tnc_accepted && selectedStudent?.tnc_accepted_date && (
+                        <ProfileFieldRow
+                            label="Signed on"
+                            value={new Date(
+                                selectedStudent.tnc_accepted_date
+                            ).toLocaleDateString()}
+                        />
+                    )}
+                    {selectedStudent?.tnc_accepted && tncFileUrl && (
+                        <ProfileFieldRow
+                            label="Signed PDF"
+                            value={
                                 <a
                                     href={tncFileUrl}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-800 hover:underline"
+                                    className="inline-flex items-center gap-1 text-body font-medium text-primary-600 hover:text-primary-800 hover:underline"
                                 >
-                                    <DownloadSimple className="size-3" />
-                                    Download Signed PDF
+                                    <DownloadSimple className="size-3.5" />
+                                    Download
                                 </a>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+                            }
+                        />
+                    )}
+                </dl>
+            </ProfileSectionCard>
         </div>
     );
 };

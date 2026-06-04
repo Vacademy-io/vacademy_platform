@@ -233,15 +233,12 @@ export const StudentSidebar = ({
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 border-b border-neutral-200 bg-white shadow-sm">
-                    {/* Primary accent bar — premium-feel cue at the very top of the drawer. */}
-                    <div className="h-1 w-full bg-gradient-to-r from-primary-500 via-primary-400 to-primary-300" />
-
-                    <div className="flex flex-col gap-4 px-5 pb-4 pt-4">
-                        {/* Identity row: hero avatar + name/role + status + close */}
-                        <div className="flex items-start gap-3">
-                            <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-2 ring-primary-100">
+                    <div className="flex flex-col gap-2.5 px-4 pb-3 pt-3">
+                        {/* Identity row: avatar + name/status + actions */}
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-1 ring-primary-100">
                                 {faceLoader ? (
-                                    <div className="size-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                    <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
                                 ) : imageUrl ? (
                                     <img
                                         src={imageUrl}
@@ -249,17 +246,14 @@ export const StudentSidebar = ({
                                         className="size-full object-cover"
                                     />
                                 ) : (
-                                    <DummyProfile className="size-8 text-neutral-400" />
+                                    <DummyProfile className="size-6 text-neutral-400" />
                                 )}
                             </div>
 
-                            <div className="flex min-w-0 flex-1 flex-col gap-1">
-                                <span className="text-xs font-semibold uppercase tracking-widest text-primary-500">
-                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
-                                </span>
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <h2
                                     className={cn(
-                                        'truncate text-lg font-bold leading-tight',
+                                        'truncate text-base font-semibold leading-tight',
                                         selectedStudent?.full_name
                                             ? 'text-neutral-900'
                                             : 'text-neutral-400'
@@ -269,9 +263,7 @@ export const StudentSidebar = ({
                                     {selectedStudent?.full_name || 'Unknown'}
                                 </h2>
                                 {selectedStudent?.status && (
-                                    <div className="mt-1">
-                                        <StatusChips status={selectedStudent.status} />
-                                    </div>
+                                    <StatusChips status={selectedStudent.status} />
                                 )}
                             </div>
 

@@ -1,7 +1,7 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
-import { X } from '@phosphor-icons/react';
+import { X, ArrowsOutSimple } from '@phosphor-icons/react';
 import { useState, useEffect, useRef } from 'react';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
@@ -42,6 +42,7 @@ import {
     TAB_ID_TO_VISIBILITY_KEY,
     STUDENT_SIDE_VIEW_TAB_LABELS as TAB_LABELS,
 } from '@/constants/display-settings/student-side-view-tabs';
+import { ProfileQuickContact, ProfileContextStrip, type ContextStripItem } from './profile-ui';
 
 // Resolve which tab should open when the side view first renders. Honours
 // the saved default tab when it's still visible, otherwise falls back to
@@ -123,7 +124,7 @@ export const StudentSidebar = ({
     };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
-    const { selectedStudent } = useStudentSidebar();
+    const { selectedStudent, openOverlay } = useStudentSidebar();
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
@@ -231,101 +232,115 @@ export const StudentSidebar = ({
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
             >
-                <SidebarHeader className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 shadow-sm backdrop-blur-sm">
-                    <div className="flex flex-col gap-2 px-3 pb-2 pt-0">
-                        {/* Compact title row: label + avatar + name + status + close */}
-                        <div className="flex items-center gap-2">
-                            <div className="h-5 w-0.5 shrink-0 rounded-full bg-gradient-to-b from-primary-500 to-primary-400"></div>
+                <SidebarHeader className="sticky top-0 z-10 border-b border-neutral-200 bg-white shadow-sm">
+                    {/* Primary accent bar — premium-feel cue at the very top of the drawer. */}
+                    <div className="h-1 w-full bg-gradient-to-r from-primary-500 via-primary-400 to-primary-300" />
 
-                            <div className="group relative shrink-0">
-                                <div className="relative flex size-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-primary-500/20 transition-all duration-300 group-hover:ring-primary-500/40">
-                                    {faceLoader ? (
-                                        <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                                    ) : imageUrl ? (
-                                        <img
-                                            src={imageUrl}
-                                            alt="Profile"
-                                            className="size-full object-cover"
-                                        />
-                                    ) : (
-                                        <DummyProfile className="size-5 text-neutral-400" />
-                                    )}
-                                </div>
-                                <div className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-white bg-green-500"></div>
-                            </div>
-
-                            <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                                <span className="truncate text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
-                                </span>
-                                {selectedStudent?.full_name && (
-                                    <h2 className="truncate bg-gradient-to-r from-neutral-800 to-neutral-600 bg-clip-text text-sm font-semibold text-transparent">
-                                        {selectedStudent.full_name}
-                                    </h2>
+                    <div className="flex flex-col gap-4 px-5 pb-4 pt-4">
+                        {/* Identity row: hero avatar + name/role + status + close */}
+                        <div className="flex items-start gap-3">
+                            <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-2 ring-primary-100">
+                                {faceLoader ? (
+                                    <div className="size-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                ) : imageUrl ? (
+                                    <img
+                                        src={imageUrl}
+                                        alt={selectedStudent?.full_name || 'Profile'}
+                                        className="size-full object-cover"
+                                    />
+                                ) : (
+                                    <DummyProfile className="size-8 text-neutral-400" />
                                 )}
                             </div>
 
-                            {selectedStudent?.status && (
-                                <div className="shrink-0">
-                                    <StatusChips status={selectedStudent.status} />
-                                </div>
-                            )}
+                            <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-widest text-primary-500">
+                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
+                                </span>
+                                <h2
+                                    className={cn(
+                                        'truncate text-lg font-bold leading-tight',
+                                        selectedStudent?.full_name
+                                            ? 'text-neutral-900'
+                                            : 'text-neutral-400'
+                                    )}
+                                    title={selectedStudent?.full_name}
+                                >
+                                    {selectedStudent?.full_name || 'Unknown'}
+                                </h2>
+                                {selectedStudent?.status && (
+                                    <div className="mt-1">
+                                        <StatusChips status={selectedStudent.status} />
+                                    </div>
+                                )}
+                            </div>
 
                             <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    closeSidebar();
-                                }}
-                                className="group shrink-0 rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
-                                aria-label="Close"
+                                onClick={() => openOverlay()}
+                                className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                aria-label="Open full profile"
+                                title="Open full profile"
                             >
-                                <X className="size-4 text-neutral-500 transition-colors duration-200 group-hover:text-red-500" />
+                                <ArrowsOutSimple className="size-5" />
+                            </button>
+                            <button
+                                onClick={closeSidebar}
+                                className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                aria-label="Close panel"
+                            >
+                                <X className="size-5" />
                             </button>
                         </div>
+
+                        {/* Quick contact — mailto / tel / wa.me. Renders nothing when no
+                            usable contact data exists, so it stays out of the way for
+                            unlinked entries (e.g. submission-only respondents). */}
+                        <ProfileQuickContact
+                            email={selectedStudent?.email}
+                            phone={selectedStudent?.mobile_number}
+                        />
 
                         {/* Sub Organization and Roles Badges */}
                         {(selectedStudent?.sub_org_name ||
                             selectedStudent?.comma_separated_org_roles) && (
                             <div className="flex flex-wrap items-center gap-1.5">
                                 {selectedStudent?.sub_org_name && (
-                                    <div className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                        <span>{selectedStudent.sub_org_name}</span>
-                                    </div>
+                                    <span className="rounded-full bg-info-50 px-2 py-0.5 text-xs font-medium text-info-600">
+                                        {selectedStudent.sub_org_name}
+                                    </span>
                                 )}
-                                {selectedStudent?.comma_separated_org_roles && (
-                                    <>
-                                        {selectedStudent.comma_separated_org_roles
-                                            .split(',')
-                                            .map((role, index) => {
-                                                const r = role.trim().toUpperCase();
-                                                const label =
-                                                    r === 'ADMIN'
-                                                        ? 'Practice Admin'
-                                                        : r === 'LEARNER'
-                                                          ? 'Practice Staff'
-                                                          : role.trim();
-                                                return (
-                                                    <div
-                                                        key={index}
-                                                        className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                                                    >
-                                                        {label}
-                                                    </div>
-                                                );
-                                            })}
-                                    </>
-                                )}
+                                {selectedStudent?.comma_separated_org_roles &&
+                                    selectedStudent.comma_separated_org_roles
+                                        .split(',')
+                                        .map((role, index) => {
+                                            const r = role.trim().toUpperCase();
+                                            const label =
+                                                r === 'ADMIN'
+                                                    ? 'Practice Admin'
+                                                    : r === 'LEARNER'
+                                                      ? 'Practice Staff'
+                                                      : role.trim().toLowerCase().replace(/_/g, ' ');
+                                            return (
+                                                <span
+                                                    key={index}
+                                                    className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
+                                                >
+                                                    {label}
+                                                </span>
+                                            );
+                                        })}
                             </div>
                         )}
 
-                        {/* Enhanced tab navigation with modern design */}
+                        {/* Tab navigation — flat segmented, horizontally scrollable.
+                            The right-edge fade hints that more tabs exist off-screen. */}
                         {!isEnrollRequestStudentList && tabSettings && (
-                            <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-neutral-50 to-neutral-100 p-0.5 shadow-inner">
-                                {/* Scrollable tabs container */}
+                            <div className="relative">
                                 <div
                                     ref={tabContainerRef}
-                                    className="scrollbar-hide flex gap-0.5 overflow-x-auto scroll-smooth"
+                                    role="tablist"
+                                    aria-label="Profile sections"
+                                    className="scrollbar-hide flex gap-1 overflow-x-auto scroll-smooth pr-6"
                                 >
                                     {orderedVisibleTabIds(tabSettings).map((tabId) => {
                                         // lead/fullHistory require the lead system to be enabled
@@ -342,20 +357,20 @@ export const StudentSidebar = ({
                                                       SystemTerms.Course
                                                   )
                                                 : TAB_LABELS[tabId];
+                                        const isActive = category === tabId;
                                         return (
                                             <button
                                                 key={tabId}
-                                                type="button"
-                                                ref={category === tabId ? activeTabRef : null}
-                                                className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
-                                                    category === tabId
-                                                        ? 'bg-white text-primary-500 shadow-sm'
-                                                        : 'text-neutral-600 hover:text-neutral-800'
-                                                }`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setCategory(tabId);
-                                                }}
+                                                role="tab"
+                                                aria-selected={isActive}
+                                                ref={isActive ? activeTabRef : null}
+                                                className={cn(
+                                                    'shrink-0 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                                                    isActive
+                                                        ? 'bg-primary-500 text-white shadow-sm'
+                                                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-800'
+                                                )}
+                                                onClick={() => setCategory(tabId)}
                                             >
                                                 {label}
                                             </button>
@@ -366,24 +381,52 @@ export const StudentSidebar = ({
                                         student belongs to one — it has no settings flag of its own. */}
                                     {selectedStudent?.sub_org_name && (
                                         <button
-                                            type="button"
+                                            role="tab"
+                                            aria-selected={category === 'subOrg'}
                                             ref={category === 'subOrg' ? activeTabRef : null}
-                                            className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
+                                            className={cn(
+                                                'shrink-0 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                                                 category === 'subOrg'
-                                                    ? 'bg-white text-primary-500 shadow-sm'
-                                                    : 'text-neutral-600 hover:text-neutral-800'
-                                            }`}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setCategory('subOrg');
-                                            }}
+                                                    ? 'bg-primary-500 text-white shadow-sm'
+                                                    : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-800'
+                                            )}
+                                            onClick={() => setCategory('subOrg')}
                                         >
                                             SubOrg
                                         </button>
                                     )}
                                 </div>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-white to-transparent" />
                             </div>
                         )}
+
+                        {/* Context strip — at-a-glance learner context that stays visible
+                            on every tab. Items that lack data are filtered inside the
+                            primitive, so the strip self-hides on minimal entries. */}
+                        <ProfileContextStrip
+                            items={
+                                [
+                                    selectedStudent?.institute_enrollment_number && {
+                                        label: 'ID',
+                                        value: selectedStudent.institute_enrollment_number,
+                                    },
+                                    selectedStudent?.created_at && {
+                                        label: 'Joined',
+                                        value: new Date(
+                                            selectedStudent.created_at
+                                        ).toLocaleDateString(undefined, {
+                                            day: 'numeric',
+                                            month: 'short',
+                                            year: 'numeric',
+                                        }),
+                                    },
+                                    selectedStudent?.city && {
+                                        label: 'City',
+                                        value: selectedStudent.city,
+                                    },
+                                ] as Array<ContextStripItem | false | null | undefined>
+                            }
+                        />
                     </div>
                 </SidebarHeader>
 

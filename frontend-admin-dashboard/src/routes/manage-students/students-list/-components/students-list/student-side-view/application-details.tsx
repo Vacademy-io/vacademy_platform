@@ -2,25 +2,25 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchApplicantList } from '@/routes/admissions/-services/applicant-services';
 import { format } from 'date-fns';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-
-const InfoRow = ({ label, value }: { label: string; value: string | null | undefined }) => (
-    <div className="flex flex-col gap-0.5 border-b border-neutral-100 py-2 last:border-0">
-        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            {label}
-        </span>
-        <span className="text-sm text-neutral-800">{value || '—'}</span>
-    </div>
-);
-
-const SectionCard = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
-        <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-700">
-            <div className="h-3.5 w-1 rounded-full bg-primary-500" />
-            {title}
-        </h4>
-        {children}
-    </div>
-);
+import {
+    ClipboardText,
+    Student,
+    Users,
+    CheckCircle,
+    Clock,
+    XCircle,
+    Spinner,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import {
+    ProfileSectionCard,
+    ProfileFieldRow,
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileHero,
+} from './profile-ui';
 
 interface ApplicationDetailsProps {
     applicantId: string | null;
@@ -35,27 +35,190 @@ const formatDate = (dateStr: string | null | undefined) => {
     }
 };
 
-const getStatusColor = (status: string) => {
-    switch (status) {
-        case 'SUBMITTED':
-            return 'bg-blue-100 text-blue-800';
-        case 'ADMITTED':
-        case 'APPROVED':
-            return 'bg-green-100 text-green-800';
-        case 'PENDING':
-            return 'bg-orange-100 text-orange-800';
-        case 'REJECTED':
-            return 'bg-red-100 text-red-800';
-        default:
-            return 'bg-neutral-100 text-neutral-800';
+const formatDateTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '—';
+    try {
+        return format(new Date(dateStr), 'd MMM yyyy, h:mm a');
+    } catch {
+        return dateStr ?? '—';
     }
 };
+
+// Derive the hero tone and display label from the raw overall_status value.
+type StatusConfig = {
+    tone: 'success' | 'danger' | 'warning' | 'neutral';
+    label: string;
+    icon: PhosphorIcon;
+    pillBg: string;
+    pillText: string;
+    pillRing: string;
+};
+
+const getStatusConfig = (status: string): StatusConfig => {
+    switch (status) {
+        case 'ADMITTED':
+        case 'APPROVED':
+            return {
+                tone: 'success',
+                label: status === 'ADMITTED' ? 'Admitted' : 'Approved',
+                icon: CheckCircle,
+                pillBg: 'bg-success-50',
+                pillText: 'text-success-700',
+                pillRing: 'ring-success-200',
+            };
+        case 'REJECTED':
+            return {
+                tone: 'danger',
+                label: 'Rejected',
+                icon: XCircle,
+                pillBg: 'bg-danger-50',
+                pillText: 'text-danger-700',
+                pillRing: 'ring-danger-200',
+            };
+        case 'PENDING':
+            return {
+                tone: 'warning',
+                label: 'Pending',
+                icon: Clock,
+                pillBg: 'bg-warning-50',
+                pillText: 'text-warning-700',
+                pillRing: 'ring-warning-200',
+            };
+        case 'UNDER_REVIEW':
+        case 'SUBMITTED':
+            return {
+                tone: 'warning',
+                label: status === 'UNDER_REVIEW' ? 'Under Review' : 'Submitted',
+                icon: Spinner,
+                pillBg: 'bg-warning-50',
+                pillText: 'text-warning-700',
+                pillRing: 'ring-warning-200',
+            };
+        default:
+            return {
+                tone: 'neutral',
+                label: status || '—',
+                icon: ClipboardText,
+                pillBg: 'bg-neutral-100',
+                pillText: 'text-neutral-700',
+                pillRing: 'ring-neutral-200',
+            };
+    }
+};
+
+// ── Stage progress indicator ──────────────────────────────────────────────────
+//
+// Derives a 3-step funnel from the raw overall_status: Submitted → Under Review
+// → terminal (Approved / Rejected / Admitted). "current" step is highlighted with
+// the tone colour; prior steps show success; future steps are muted neutral.
+
+type StepState = 'done' | 'current' | 'upcoming';
+
+interface Step {
+    key: string;
+    label: string;
+}
+
+const STAGE_STEPS: Step[] = [
+    { key: 'submitted', label: 'Submitted' },
+    { key: 'review', label: 'Under Review' },
+    { key: 'terminal', label: 'Decision' },
+];
+
+const deriveStepIndex = (status: string): number => {
+    switch (status) {
+        case 'SUBMITTED':
+            return 0;
+        case 'UNDER_REVIEW':
+        case 'PENDING':
+            return 1;
+        case 'APPROVED':
+        case 'ADMITTED':
+        case 'REJECTED':
+            return 2;
+        default:
+            return 0;
+    }
+};
+
+const ApplicationStageProgress = ({
+    status,
+}: {
+    status: string;
+}) => {
+    const currentIdx = deriveStepIndex(status);
+    const isRejected = status === 'REJECTED';
+
+    return (
+        <div className="flex items-center gap-0">
+            {STAGE_STEPS.map((step, i) => {
+                const state: StepState =
+                    i < currentIdx ? 'done' : i === currentIdx ? 'current' : 'upcoming';
+
+                // Terminal step label: show actual decision text instead of generic "Decision"
+                const label =
+                    i === STAGE_STEPS.length - 1 && state === 'current'
+                        ? status === 'REJECTED'
+                            ? 'Rejected'
+                            : status === 'APPROVED'
+                              ? 'Approved'
+                              : status === 'ADMITTED'
+                                ? 'Admitted'
+                                : step.label
+                        : step.label;
+
+                const dotCn = cn(
+                    'size-3 shrink-0 rounded-full ring-2',
+                    state === 'done'
+                        ? 'bg-success-500 ring-success-200'
+                        : state === 'current' && isRejected
+                          ? 'bg-danger-500 ring-danger-200'
+                          : state === 'current'
+                            ? 'bg-primary-500 ring-primary-200'
+                            : 'bg-neutral-200 ring-neutral-100'
+                );
+
+                const labelCn = cn(
+                    'text-xs font-medium',
+                    state === 'done'
+                        ? 'text-success-600'
+                        : state === 'current' && isRejected
+                          ? 'text-danger-600'
+                          : state === 'current'
+                            ? 'text-primary-600'
+                            : 'text-neutral-400'
+                );
+
+                const connectorCn = cn(
+                    'h-px flex-1 mx-1',
+                    i < currentIdx ? 'bg-success-300' : 'bg-neutral-200'
+                );
+
+                return (
+                    <div key={step.key} className="flex min-w-0 flex-1 items-center">
+                        {/* Step node */}
+                        <div className="flex shrink-0 flex-col items-center gap-1">
+                            <span className={dotCn} />
+                            <span className={labelCn}>{label}</span>
+                        </div>
+                        {/* Connector line — not after last step */}
+                        {i < STAGE_STEPS.length - 1 && (
+                            <div className={connectorCn} />
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export const ApplicationDetails = ({ applicantId }: ApplicationDetailsProps) => {
     const { instituteDetails } = useInstituteDetailsStore();
     const instituteId = instituteDetails?.id || '';
 
-    const { data, isLoading, error } = useQuery({
+    const { data, isLoading, isError, refetch } = useQuery({
         queryKey: ['applicant-details', applicantId, instituteId],
         queryFn: async () => {
             const response = await fetchApplicantList(
@@ -75,128 +238,155 @@ export const ApplicationDetails = ({ applicantId }: ApplicationDetailsProps) => 
 
     if (!applicantId) {
         return (
-            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-200 bg-neutral-50/50 p-6 text-center">
-                <svg
-                    className="mb-2 size-10 text-neutral-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                >
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M9 12l2 2 4-4m0 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                </svg>
-                <p className="text-sm text-neutral-600">No application found</p>
-            </div>
+            <ProfileEmpty
+                icon={ClipboardText}
+                title="No application found"
+                hint="No application is linked to this learner yet."
+            />
         );
     }
 
     if (isLoading) {
+        return <ProfileSkeleton blocks={4} />;
+    }
+
+    if (isError || !data) {
         return (
-            <div className="flex items-center justify-center p-6">
-                <div className="text-neutral-500">Loading application details...</div>
-            </div>
+            <ProfileError
+                title="Couldn't load application details"
+                hint="Something went wrong while fetching the application. Please try again."
+                onRetry={() => refetch()}
+            />
         );
     }
 
-    if (error || !data) {
-        return (
-            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-200 bg-neutral-50/50 p-6 text-center">
-                <svg
-                    className="mb-2 size-10 text-neutral-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                >
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M9 12l2 2 4-4m0 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                </svg>
-                <p className="text-sm text-neutral-600">Failed to load application details</p>
-            </div>
-        );
-    }
+    const cfg = getStatusConfig(data.overall_status);
+    const stageName = data.application_stage?.stage_name;
+    const heroSubtitle = [
+        data.tracking_id ? `Tracking ID: ${data.tracking_id}` : null,
+        stageName ? `Stage: ${stageName}` : null,
+    ]
+        .filter(Boolean)
+        .join(' · ');
 
     return (
-        <div className="space-y-4">
-            {/* Status Badge */}
-            <SectionCard title="Status">
-                <div className="flex items-center gap-3">
-                    <span className="text-sm text-neutral-600">Overall Status:</span>
+        <div className="flex flex-col gap-3">
+            {/* Hero — status at a glance */}
+            <ProfileHero
+                eyebrow="ADMISSION APPLICATION"
+                title={
                     <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(
-                            data.overall_status
-                        )}`}
+                        className={cn(
+                            'inline-flex items-center gap-2 rounded-full px-3 py-1 text-lg font-bold ring-1',
+                            cfg.pillBg,
+                            cfg.pillText,
+                            cfg.pillRing
+                        )}
                     >
-                        {data.overall_status}
+                        <cfg.icon className="size-5" weight="duotone" />
+                        {cfg.label}
                     </span>
-                </div>
-            </SectionCard>
+                }
+                subtitle={heroSubtitle || undefined}
+                icon={ClipboardText}
+                tone={cfg.tone}
+            >
+                {/* Stage progress steps */}
+                <ApplicationStageProgress status={data.overall_status} />
+            </ProfileHero>
 
             {/* Student Information */}
-            <SectionCard title="Student Information">
-                <InfoRow label="Full Name" value={data.student_data?.full_name || 'N/A'} />
-                <InfoRow
-                    label="Date of Birth"
-                    value={formatDate(data.student_data?.date_of_birth) || 'N/A'}
-                />
-                <InfoRow label="Gender" value={data.student_data?.gender || 'N/A'} />
-                <InfoRow
-                    label="Class Applied For"
-                    value={data.package_session?.level_name || 'N/A'}
-                />
-                {data.student_data?.father_name && (
-                    <InfoRow label="Father Name" value={data.student_data.father_name} />
-                )}
-                {data.student_data?.mother_name && (
-                    <InfoRow label="Mother Name" value={data.student_data.mother_name} />
-                )}
-                {data.student_data?.applying_for_class && (
-                    <InfoRow
-                        label="Applying For Class"
-                        value={data.student_data.applying_for_class}
+            <ProfileSectionCard icon={Student} heading="Student Information">
+                <dl className="divide-y divide-neutral-100">
+                    <ProfileFieldRow
+                        label="Full Name"
+                        value={data.student_data?.full_name || 'N/A'}
                     />
-                )}
-                {data.student_data?.academic_year && (
-                    <InfoRow label="Academic Year" value={data.student_data.academic_year} />
-                )}
-            </SectionCard>
+                    <ProfileFieldRow
+                        label="Date of Birth"
+                        value={formatDate(data.student_data?.date_of_birth) || 'N/A'}
+                    />
+                    <ProfileFieldRow
+                        label="Gender"
+                        value={data.student_data?.gender || 'N/A'}
+                    />
+                    <ProfileFieldRow
+                        label="Class Applied For"
+                        value={data.package_session?.level_name || 'N/A'}
+                    />
+                    {data.student_data?.father_name && (
+                        <ProfileFieldRow
+                            label="Father Name"
+                            value={data.student_data.father_name}
+                        />
+                    )}
+                    {data.student_data?.mother_name && (
+                        <ProfileFieldRow
+                            label="Mother Name"
+                            value={data.student_data.mother_name}
+                        />
+                    )}
+                    {data.student_data?.applying_for_class && (
+                        <ProfileFieldRow
+                            label="Applying For Class"
+                            value={data.student_data.applying_for_class}
+                        />
+                    )}
+                    {data.student_data?.academic_year && (
+                        <ProfileFieldRow
+                            label="Academic Year"
+                            value={data.student_data.academic_year}
+                        />
+                    )}
+                </dl>
+            </ProfileSectionCard>
 
             {/* Parent Information */}
-            <SectionCard title="Parent Information">
-                <InfoRow label="Full Name" value={data.parent_data?.full_name || 'N/A'} />
-                <InfoRow label="Email" value={data.parent_data?.email || 'N/A'} />
-                <InfoRow label="Mobile Number" value={data.parent_data?.mobile_number || 'N/A'} />
-                {data.parent_data?.address_line && (
-                    <InfoRow label="Address" value={data.parent_data.address_line} />
-                )}
-            </SectionCard>
+            <ProfileSectionCard icon={Users} heading="Parent Information">
+                <dl className="divide-y divide-neutral-100">
+                    <ProfileFieldRow
+                        label="Full Name"
+                        value={data.parent_data?.full_name || 'N/A'}
+                    />
+                    <ProfileFieldRow
+                        label="Email"
+                        value={data.parent_data?.email || 'N/A'}
+                    />
+                    <ProfileFieldRow
+                        label="Mobile Number"
+                        value={data.parent_data?.mobile_number || 'N/A'}
+                    />
+                    {data.parent_data?.address_line && (
+                        <ProfileFieldRow
+                            label="Address"
+                            value={data.parent_data.address_line}
+                        />
+                    )}
+                </dl>
+            </ProfileSectionCard>
 
             {/* Application Timeline */}
-            <SectionCard title="Application Timeline">
-                <div className="space-y-2">
-                    <InfoRow label="Tracking ID" value={data.tracking_id} />
-                    <InfoRow
+            <ProfileSectionCard icon={ClipboardText} heading="Application Timeline">
+                <dl className="divide-y divide-neutral-100">
+                    <ProfileFieldRow label="Tracking ID" value={data.tracking_id} />
+                    <ProfileFieldRow
                         label="Current Stage"
                         value={data.application_stage?.stage_name || 'N/A'}
                     />
-                    <InfoRow label="Stage Status" value={data.application_stage_status || 'N/A'} />
-                    <InfoRow
+                    <ProfileFieldRow
+                        label="Stage Status"
+                        value={data.application_stage_status || 'N/A'}
+                    />
+                    <ProfileFieldRow
                         label="Created At"
-                        value={format(new Date(data.created_at), 'd MMM yyyy, h:mm a')}
+                        value={formatDateTime(data.created_at)}
                     />
-                    <InfoRow
+                    <ProfileFieldRow
                         label="Last Updated"
-                        value={format(new Date(data.updated_at), 'd MMM yyyy, h:mm a')}
+                        value={formatDateTime(data.updated_at)}
                     />
-                </div>
-            </SectionCard>
+                </dl>
+            </ProfileSectionCard>
         </div>
     );
 };

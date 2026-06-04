@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
-import { StatusChips } from '@/components/design-system/chips';
+import { ChipToggleGroup, StatusChips } from '@/components/design-system/chips';
 import { TestReportDialog } from './test-report-dialog';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -10,7 +10,6 @@ import {
     handleStudentReportData,
     viewStudentReport,
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyPagination } from '@/components/design-system/pagination';
 import { AssessmentDetailsSearchComponent } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-components/SearchComponent';
 import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
@@ -19,112 +18,66 @@ import { AssessmentReportStudentInterface } from '@/types/assessments/assessment
 import { getAssessmentDetailsData } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { Steps } from '@/types/assessments/assessment-data-type';
 import {
-    Shield,
-    Warning,
-    X,
-    ArrowClockwise,
-    FileX,
-    ShieldCheck,
-    Info,
+    Exam,
+    ChartBar,
+    Bell,
+    CheckCircle,
+    Clock,
+    Radio,
 } from '@phosphor-icons/react';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { cn } from '@/lib/utils';
+import {
+    ProfileSectionCard,
+    ProfileFieldRow,
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileHero,
+    ProfileHeroStat,
+    ProfileMiniBar,
+} from '../profile-ui';
 
 export interface StudentReportFilterInterface {
     name: string;
     status: string[];
-    sort_columns: Record<string, string>; // Assuming it can have dynamic keys with any value
+    sort_columns: Record<string, string>;
 }
 
-// Enhanced Error Component
-const ErrorDisplay = ({
-    error,
-    onRetry,
-    context = 'data',
-}: {
-    // eslint-disable-next-line
-    error: any;
-    onRetry: () => void;
-    context?: string;
-}) => {
-    const isUnauthorized = error?.response?.status === 403;
-    const isServerError = error?.response?.status >= 500;
+// ── Score-tone helper ─────────────────────────────────────────────────────────
+// Derives a tone class from the raw score percentage.
+// >=80 → success, >=50 → primary, >=30 → warning, else → danger
+type ScoreTone = 'success' | 'primary' | 'warning' | 'danger';
 
-    return (
-        <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-            <div
-                className={`mb-4 rounded-full p-4 ${
-                    isUnauthorized ? 'bg-orange-100' : isServerError ? 'bg-red-100' : 'bg-gray-100'
-                }`}
-            >
-                {isUnauthorized ? (
-                    <Shield className="size-8 text-orange-600" />
-                ) : isServerError ? (
-                    <X className="size-8 text-red-600" />
-                ) : (
-                    <Warning className="size-8 text-gray-600" />
-                )}
-            </div>
+function scoreTone(pct: number): ScoreTone {
+    if (pct >= 80) return 'success';
+    if (pct >= 50) return 'primary';
+    if (pct >= 30) return 'warning';
+    return 'danger';
+}
 
-            <h3 className="mb-2 text-lg font-semibold text-neutral-800">
-                {isUnauthorized
-                    ? 'Access Restricted'
-                    : isServerError
-                      ? 'Server Error'
-                      : 'Unable to Load Data'}
-            </h3>
-
-            <p className="mb-4 max-w-md text-sm text-neutral-600">
-                {isUnauthorized
-                    ? `You don't have permission to view ${context}. Please contact your administrator for access.`
-                    : isServerError
-                      ? `There's a problem with our servers. Please try again later.`
-                      : `We're having trouble loading the ${context}. Please check your connection and try again.`}
-            </p>
-
-            {!isUnauthorized && (
-                <MyButton
-                    onClick={onRetry}
-                    buttonType="secondary"
-                    scale="medium"
-                    className="flex items-center gap-2"
-                >
-                    <ArrowClockwise className="size-4" />
-                    Try Again
-                </MyButton>
-            )}
-
-            {isUnauthorized && (
-                <div className="mt-4 max-w-md rounded-lg border border-orange-200 bg-orange-50 p-3">
-                    <div className="flex items-start gap-2">
-                        <Info className="mt-0.5 size-4 shrink-0 text-orange-600" />
-                        <div className="text-xs text-orange-700">
-                            <p className="mb-1 font-medium">Need access?</p>
-                            <p>
-                                Contact your system administrator to grant permissions for viewing
-                                test records.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
+const TONE_CHIP_CLASS: Record<ScoreTone, string> = {
+    success: 'bg-success-50 text-success-700 border border-success-200',
+    primary: 'bg-primary-50 text-primary-700 border border-primary-200',
+    warning: 'bg-warning-50 text-warning-700 border border-warning-200',
+    danger: 'bg-danger-50 text-danger-700 border border-danger-200',
 };
 
-// Empty State Component
-const EmptyState = () => (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="mb-4 rounded-full bg-neutral-100 p-4">
-            <FileX className="size-8 text-neutral-400" />
-        </div>
-        <h3 className="mb-2 text-lg font-semibold text-neutral-700">No Test Records</h3>
-        <p className="max-w-md text-sm text-neutral-500">
-            This student hasn&apos;t taken any assessments yet, or the test records are not
-            available.
-        </p>
-    </div>
-);
+// Filter chip definitions — drives the secondary control bar.
+type FilterKey = 'ALL' | 'ENDED' | 'PENDING' | 'LIVE';
+
+const FILTER_CHIPS: {
+    key: FilterKey;
+    label: string;
+    statuses: string[];
+    icon?: React.ComponentType<{ className?: string }>;
+}[] = [
+    { key: 'ALL', label: 'All', statuses: [] },
+    { key: 'ENDED', label: 'Completed', statuses: ['ENDED'], icon: CheckCircle },
+    { key: 'PENDING', label: 'Pending', statuses: ['PENDING'], icon: Clock },
+    { key: 'LIVE', label: 'Live', statuses: ['LIVE'], icon: Radio },
+];
 
 export const StudentTestRecord = ({
     selectedTab,
@@ -162,6 +115,12 @@ export const StudentTestRecord = ({
     const [pageNo, setPageNo] = useState(0);
     const instituteId = getInstituteId();
 
+    // Active filter chip — drives filter chip bar; updates mutation on change
+    const [activeFilter, setActiveFilter] = useState<FilterKey>('ALL');
+
+    // Expanded test row — stores the assessment_id of the currently expanded row
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+
     // Student report data with error handling
     const {
         data,
@@ -178,9 +137,7 @@ export const StudentTestRecord = ({
         }),
         // eslint-disable-next-line
         retry: (failureCount, error: any) => {
-            // Don't retry on 403 errors
             if (error?.response?.status === 403) return false;
-            // Retry up to 2 times for other errors
             return failureCount < 2;
         },
         retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -225,7 +182,6 @@ export const StudentTestRecord = ({
                 setAssessmentDetails(assessData);
             } catch (error) {
                 console.error('Failed to fetch assessment details:', error);
-                // Continue with partial data instead of failing completely
             }
         },
         // eslint-disable-next-line
@@ -303,12 +259,25 @@ export const StudentTestRecord = ({
         });
     };
 
-    const handleRetryReport = () => {
-        refetchReport();
-    };
-
-    const handleRetryInstitute = () => {
-        refetchInstitute();
+    // Apply filter chip selection — re-fetches with the chosen status array
+    const handleFilterChip = (chipKey: FilterKey) => {
+        setActiveFilter(chipKey);
+        const chip = FILTER_CHIPS.find((c) => c.key === chipKey)!;
+        const statusFilter = chip.statuses.length
+            ? chip.statuses
+            : selectedFilter.status;
+        getStudentReportMutation.mutate({
+            studentId: selectedStudent?.id,
+            instituteId,
+            pageNo: 0,
+            pageSize: 10,
+            selectedFilter: {
+                ...selectedFilter,
+                status: statusFilter,
+                name: searchText,
+            },
+        });
+        setPageNo(0);
     };
 
     useEffect(() => {
@@ -317,37 +286,175 @@ export const StudentTestRecord = ({
         }
     }, [data]);
 
-    // Show loading state
+    // ── Four-state guards ──────────────────────────────────────────────────────
+
     if (isLoading || instituteLoading || viewStudentTestReportMutation.status === 'pending') {
-        return <DashboardLoader />;
+        return <ProfileSkeleton blocks={4} />;
     }
 
-    // Show institute error
     if (instituteError) {
+        // eslint-disable-next-line
+        const err = instituteError as any;
+        const isUnauthorized = err?.response?.status === 403;
         return (
-            <ErrorDisplay
-                error={instituteError}
-                onRetry={handleRetryInstitute}
-                context="institute details"
+            <ProfileError
+                title={isUnauthorized ? 'Access Restricted' : "Couldn't load institute details"}
+                hint={
+                    isUnauthorized
+                        ? "You don't have permission to view institute details. Contact your administrator."
+                        : 'Something went wrong fetching institute details. Please try again.'
+                }
+                onRetry={isUnauthorized ? undefined : () => refetchInstitute()}
             />
         );
     }
 
-    // Show report error
     if (reportError) {
+        // eslint-disable-next-line
+        const err = reportError as any;
+        const isUnauthorized = err?.response?.status === 403;
         return (
-            <ErrorDisplay error={reportError} onRetry={handleRetryReport} context="test records" />
+            <ProfileError
+                title={isUnauthorized ? 'Access Restricted' : "Couldn't load test records"}
+                hint={
+                    isUnauthorized
+                        ? "You don't have permission to view test records. Contact your administrator."
+                        : 'Something went wrong fetching test records. Please try again.'
+                }
+                onRetry={isUnauthorized ? undefined : () => refetchReport()}
+            />
         );
     }
 
+    const allRecords: AssessmentReportStudentInterface[] = studentReportData.content ?? [];
+
+    // ── Derived stat values ────────────────────────────────────────────────────
+    const attemptedRecords = allRecords.filter((r) => r.attempt_status === 'ENDED');
+    const pendingRecords = allRecords.filter((r) => r.attempt_status === 'PENDING');
+    const attemptedCount = attemptedRecords.length;
+    const pendingCount = pendingRecords.length;
+
+    // Avg score: mean of (total_marks) across completed records.
+    // total_marks is the raw score; we display it as "X pts avg" since max isn't known per row.
+    const avgScore =
+        attemptedCount > 0
+            ? attemptedRecords.reduce((sum, r) => sum + r.total_marks, 0) / attemptedCount
+            : 0;
+
+    // Latest attempt: most-recent ENDED record (sorted by attempt_date desc)
+    const latestAttempt =
+        attemptedRecords.length > 0
+            ? attemptedRecords.slice().sort(
+                  (a, b) =>
+                      new Date(b.attempt_date).getTime() - new Date(a.attempt_date).getTime()
+              )[0]
+            : null;
+
+    // Hero tone derived from latest score; neutral when no attempts
+    const heroTone = latestAttempt
+        ? scoreTone(latestAttempt.total_marks)
+        : 'neutral';
+
+    // Apply active filter chip client-side for the visible list
+    const records: AssessmentReportStudentInterface[] =
+        activeFilter === 'ALL'
+            ? allRecords
+            : allRecords.filter((r) => r.attempt_status === activeFilter);
+
     return (
-        <div className="animate-fadeIn flex flex-col gap-6">
-            {/* Enhanced header with better styling */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <ShieldCheck className="text-primary-600 size-5" />
-                    <h3 className="text-lg font-semibold text-neutral-800">Test Records</h3>
-                </div>
+        <div className="flex flex-col gap-3">
+            {/* ── Hero zone ─────────────────────────────────────────────────── */}
+            <ProfileHero
+                eyebrow={latestAttempt ? 'LATEST RESULT' : 'TEST PERFORMANCE'}
+                icon={Exam}
+                tone={heroTone as 'success' | 'primary' | 'warning' | 'danger' | 'neutral'}
+                title={
+                    latestAttempt ? (
+                        <span className="text-h2 font-semibold leading-none text-card-foreground">
+                            {latestAttempt.total_marks.toFixed(2)}&nbsp;pts
+                        </span>
+                    ) : (
+                        <span className="text-h3 font-semibold leading-none text-muted-foreground">
+                            No attempts yet
+                        </span>
+                    )
+                }
+                subtitle={
+                    latestAttempt
+                        ? `${latestAttempt.assessment_name} · ${extractDateTime(convertToLocalDateTime(latestAttempt.attempt_date)).date}`
+                        : 'Tests assigned to this learner will appear below.'
+                }
+                action={
+                    latestAttempt ? (
+                        <MyButton
+                            buttonType="secondary"
+                            layoutVariant="default"
+                            scale="small"
+                            onClick={() =>
+                                handleViewReport(
+                                    latestAttempt.assessment_id,
+                                    latestAttempt.attempt_id,
+                                    latestAttempt
+                                )
+                            }
+                        >
+                            <ChartBar className="size-4" />
+                            View Report
+                        </MyButton>
+                    ) : undefined
+                }
+            >
+                {/* Mini score bar for visual reinforcement — only when an attempt exists */}
+                {latestAttempt && (
+                    <ProfileMiniBar
+                        value={Math.min(100, latestAttempt.total_marks)}
+                        tone={heroTone as 'success' | 'primary' | 'warning' | 'danger'}
+                        label={`${latestAttempt.total_marks.toFixed(1)} pts`}
+                    />
+                )}
+            </ProfileHero>
+
+            {/* ── Stat row ──────────────────────────────────────────────────── */}
+            <div className="flex gap-2">
+                <ProfileHeroStat
+                    label="Attempted"
+                    value={attemptedCount}
+                    tone="primary"
+                    icon={CheckCircle}
+                />
+                <ProfileHeroStat
+                    label="Pending"
+                    value={pendingCount}
+                    tone={pendingCount > 0 ? 'warning' : 'neutral'}
+                    icon={Clock}
+                />
+                <ProfileHeroStat
+                    label="Avg Score"
+                    value={attemptedCount > 0 ? `${avgScore.toFixed(1)} pts` : '—'}
+                    tone={
+                        attemptedCount > 0
+                            ? (scoreTone(avgScore) as 'success' | 'primary' | 'warning' | 'danger')
+                            : 'neutral'
+                    }
+                    icon={ChartBar}
+                />
+            </div>
+
+            {/* ── Filter chips + search ──────────────────────────────────────── */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                {/* Filter toggle pills */}
+                <ChipToggleGroup<FilterKey>
+                    value={activeFilter}
+                    onChange={handleFilterChip}
+                    options={FILTER_CHIPS.map((c) => ({
+                        value: c.key,
+                        label: c.label,
+                        icon: c.icon,
+                    }))}
+                    ariaLabel="Filter test attempts by status"
+                />
+
+                {/* Search */}
                 <AssessmentDetailsSearchComponent
                     onSearch={handleSearch}
                     searchText={searchText}
@@ -357,162 +464,202 @@ export const StudentTestRecord = ({
                 />
             </div>
 
-            {/* Content area */}
-            <div className="flex flex-col gap-6">
-                {studentReportData.content && studentReportData.content.length > 0 ? (
-                    studentReportData.content.map(
-                        (studentReport: AssessmentReportStudentInterface, index: number) => (
-                            <div
-                                className="group flex w-full flex-col gap-4 rounded-xl border border-neutral-200 bg-gradient-to-br from-white to-neutral-50/30 p-4 transition-all duration-300 hover:border-primary-200 hover:shadow-lg"
-                                key={index}
-                            >
-                                <div className="flex w-full items-start gap-4">
-                                    <div className="group-hover:text-primary-700 flex-1 text-base font-medium text-neutral-800 transition-colors duration-300">
-                                        {studentReport.assessment_name}
-                                    </div>
-                                    <div className="transition-all duration-300 group-hover:scale-105">
-                                        <StatusChips
-                                            status={
-                                                studentReport.attempt_status === 'PENDING'
-                                                    ? 'pending'
-                                                    : studentReport.attempt_status === 'ENDED'
-                                                      ? 'Attempted'
-                                                      : 'Not Attempted'
-                                            }
-                                        />
-                                    </div>
-                                </div>
+            {/* ── Body ──────────────────────────────────────────────────────── */}
+            {records.length === 0 ? (
+                <ProfileEmpty
+                    icon={Exam}
+                    title="No tests yet"
+                    hint="This student hasn't taken any assessments yet, or records aren't available for the selected filter."
+                />
+            ) : (
+                <ProfileSectionCard heading="Test History" icon={Exam}>
+                    <div className="flex flex-col divide-y divide-neutral-100">
+                        {records.map((studentReport: AssessmentReportStudentInterface, index: number) => {
+                            const isEnded = studentReport.attempt_status === 'ENDED';
+                            const isPending = studentReport.attempt_status === 'PENDING';
+                            const isExpanded = expandedId === studentReport.assessment_id;
 
-                                {studentReport.attempt_status === 'ENDED' ? (
-                                    <div className="flex w-full flex-col gap-4">
-                                        <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Subject:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {getSubjectNameById(
-                                                        instituteDetails?.subjects || [],
-                                                        studentReport.subject_id
-                                                    ) || 'N/A'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Attempted:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {
-                                                        extractDateTime(
+                            const subjectName =
+                                getSubjectNameById(
+                                    instituteDetails?.subjects || [],
+                                    studentReport.subject_id
+                                ) || 'N/A';
+
+                            // Score tone for chip (only meaningful when ENDED)
+                            const tone = isEnded
+                                ? scoreTone(studentReport.total_marks)
+                                : 'neutral';
+
+                            return (
+                                <div key={index} className="py-3 first:pt-0 last:pb-0">
+                                    {/* ── Row header: name + status + score chip ── */}
+                                    <button
+                                        type="button"
+                                        className="flex w-full items-start justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-1 rounded-sm"
+                                        onClick={() =>
+                                            setExpandedId(isExpanded ? null : studentReport.assessment_id)
+                                        }
+                                        aria-expanded={isExpanded}
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <span
+                                                className="block text-sm font-semibold text-neutral-800 leading-snug truncate"
+                                                title={studentReport.assessment_name}
+                                            >
+                                                {studentReport.assessment_name}
+                                            </span>
+                                            <span className="mt-0.5 block text-xs text-neutral-500">
+                                                {subjectName}
+                                                {isEnded && studentReport.attempt_date && (
+                                                    <>
+                                                        {' · '}
+                                                        {extractDateTime(
                                                             convertToLocalDateTime(
                                                                 studentReport.attempt_date
                                                             )
-                                                        ).date
-                                                    }
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Marks:</span>
-                                                <span className="text-primary-600 font-semibold">
-                                                    {studentReport.total_marks.toFixed(2)}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Duration:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {Math.floor(
-                                                        studentReport.duration_in_seconds / 60
-                                                    )}{' '}
-                                                    min{' '}
-                                                    {(
-                                                        studentReport.duration_in_seconds % 60
-                                                    ).toFixed(0)}{' '}
-                                                    sec
-                                                </span>
-                                            </div>
+                                                        ).date}
+                                                    </>
+                                                )}
+                                            </span>
                                         </div>
-                                        <div className="flex w-full justify-end">
-                                            <MyButton
-                                                buttonType="secondary"
-                                                layoutVariant="default"
-                                                scale="medium"
-                                                onClick={() =>
-                                                    handleViewReport(
-                                                        studentReport.assessment_id,
-                                                        studentReport.attempt_id,
-                                                        studentReport
-                                                    )
+
+                                        {/* Right side: score chip + status pill */}
+                                        <div className="flex shrink-0 items-center gap-2">
+                                            {isEnded && (
+                                                <span
+                                                    className={cn(
+                                                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
+                                                        TONE_CHIP_CLASS[tone as ScoreTone]
+                                                    )}
+                                                >
+                                                    {studentReport.total_marks.toFixed(1)} pts
+                                                </span>
+                                            )}
+                                            <StatusChips
+                                                status={
+                                                    isPending
+                                                        ? 'pending'
+                                                        : isEnded
+                                                          ? 'Attempted'
+                                                          : 'Not Attempted'
                                                 }
-                                                className="transition-transform duration-200 hover:scale-105"
-                                            >
-                                                📊 View Report
-                                            </MyButton>
-                                        </div>
-                                        {selectedTest && selectedStudentReport && (
-                                            <TestReportDialog
-                                                isOpen={!!selectedTest}
-                                                onClose={() => {
-                                                    setSelectedTest(null);
-                                                    setSelectedStudentReport(null);
-                                                }}
-                                                testReport={selectedTest}
-                                                studentReport={selectedStudentReport}
-                                                assessmentDetails={assessmentDetails!}
                                             />
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="flex w-full flex-col gap-4">
-                                        <div className="grid grid-cols-1 gap-3 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">
-                                                    {getTerminology(
+                                        </div>
+                                    </button>
+
+                                    {/* ── Expanded detail ────────────────────────── */}
+                                    {isExpanded && (
+                                        <div className="mt-3 border-t border-neutral-100 pt-3">
+                                            <dl className="divide-y divide-neutral-100">
+                                                <ProfileFieldRow
+                                                    label={getTerminology(
                                                         ContentTerms.Subjects,
                                                         SystemTerms.Subjects
                                                     )}
-                                                    :
-                                                </span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {getSubjectNameById(
-                                                        instituteDetails?.subjects || [],
-                                                        studentReport.subject_id
-                                                    ) || 'N/A'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Schedule:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {convertToLocalDateTime(
-                                                        studentReport.start_time
-                                                    )}
-                                                    <span className="mx-2 text-neutral-500">
-                                                        to
-                                                    </span>
-                                                    {convertToLocalDateTime(studentReport.end_time)}
-                                                </span>
+                                                    value={subjectName}
+                                                />
+
+                                                {isEnded ? (
+                                                    <>
+                                                        <ProfileFieldRow
+                                                            label="Attempted on"
+                                                            value={
+                                                                extractDateTime(
+                                                                    convertToLocalDateTime(
+                                                                        studentReport.attempt_date
+                                                                    )
+                                                                ).date
+                                                            }
+                                                        />
+                                                        <ProfileFieldRow
+                                                            label="Marks"
+                                                            value={
+                                                                <span className="font-semibold text-primary-600">
+                                                                    {studentReport.total_marks.toFixed(2)}
+                                                                </span>
+                                                            }
+                                                        />
+                                                        <ProfileFieldRow
+                                                            label="Duration"
+                                                            value={`${Math.floor(studentReport.duration_in_seconds / 60)} min ${(studentReport.duration_in_seconds % 60).toFixed(0)} sec`}
+                                                        />
+                                                    </>
+                                                ) : (
+                                                    <ProfileFieldRow
+                                                        label="Schedule"
+                                                        value={
+                                                            <span className="text-right">
+                                                                {convertToLocalDateTime(
+                                                                    studentReport.start_time
+                                                                )}
+                                                                <span className="mx-1 text-neutral-400">
+                                                                    –
+                                                                </span>
+                                                                {convertToLocalDateTime(
+                                                                    studentReport.end_time
+                                                                )}
+                                                            </span>
+                                                        }
+                                                    />
+                                                )}
+                                            </dl>
+
+                                            {/* Row actions */}
+                                            <div className="mt-3 flex justify-end gap-2">
+                                                {isEnded && (
+                                                    <MyButton
+                                                        buttonType="secondary"
+                                                        layoutVariant="default"
+                                                        scale="small"
+                                                        onClick={() =>
+                                                            handleViewReport(
+                                                                studentReport.assessment_id,
+                                                                studentReport.attempt_id,
+                                                                studentReport
+                                                            )
+                                                        }
+                                                    >
+                                                        <ChartBar className="size-4" />
+                                                        View Report
+                                                    </MyButton>
+                                                )}
+                                                {isPending && (
+                                                    <MyButton
+                                                        scale="small"
+                                                        buttonType="secondary"
+                                                        layoutVariant="default"
+                                                    >
+                                                        <Bell className="size-4" />
+                                                        Send Reminder
+                                                    </MyButton>
+                                                )}
                                             </div>
                                         </div>
-                                        {studentReport.attempt_status === 'PENDING' && (
-                                            <div className="flex w-full justify-end">
-                                                <MyButton
-                                                    scale="medium"
-                                                    buttonType="secondary"
-                                                    layoutVariant="default"
-                                                    className="transition-transform duration-200 hover:scale-105"
-                                                >
-                                                    🔔 Send Reminder
-                                                </MyButton>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )
-                    )
-                ) : (
-                    <EmptyState />
-                )}
-            </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </ProfileSectionCard>
+            )}
 
-            {/* Enhanced pagination */}
+            {/* Report dialog — hoisted outside the list so only one instance renders */}
+            {selectedTest && selectedStudentReport && (
+                <TestReportDialog
+                    isOpen={!!selectedTest}
+                    onClose={() => {
+                        setSelectedTest(null);
+                        setSelectedStudentReport(null);
+                    }}
+                    testReport={selectedTest}
+                    studentReport={selectedStudentReport}
+                    assessmentDetails={assessmentDetails!}
+                />
+            )}
+
+            {/* ── Pagination ────────────────────────────────────────────────── */}
             {studentReportData.total_pages > 1 && (
-                <div className="flex justify-center pt-4">
+                <div className="flex justify-center pt-2">
                     <MyPagination
                         currentPage={pageNo}
                         totalPages={studentReportData.total_pages}

@@ -18,14 +18,15 @@ interface PieChartProps {
 export function PieChart({ data, width, height }: PieChartProps) {
     return (
         <div className="flex flex-col items-center gap-10">
+            {/* Width/height are caller-supplied numeric props — must use inline style. */}
             <div style={{ width, height }}>
-                <Suspense fallback={<div className="h-full w-full animate-pulse bg-gray-100 rounded-full opacity-20" />}>
+                <Suspense fallback={<div className="h-full w-full animate-pulse rounded-full bg-neutral-100 opacity-20" />}>
                     <ResponsiveContainer>
                         <RechartsPieChart>
                             <Pie
                                 data={data}
                                 cx="50%"
-                                cy="40%" // Adjusted to center the pie chart vertically
+                                cy="40%"
                                 innerRadius={48}
                                 outerRadius={80}
                                 dataKey="value"
@@ -42,10 +43,11 @@ export function PieChart({ data, width, height }: PieChartProps) {
                 {data && data.length > 0 ? (
                     data.map((obj, key) => (
                         <div key={key} className="flex items-center gap-4">
+                            {/* backgroundColor is a data-driven color string from the caller — inline style required. */}
                             <div
                                 style={{ backgroundColor: obj.color }}
                                 className="size-6 rounded-full"
-                            ></div>
+                            />
                             <div className="flex items-center gap-2 text-subtitle">
                                 <div>{obj.name}:</div>
                                 <div>

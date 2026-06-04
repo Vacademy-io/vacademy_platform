@@ -1,6 +1,7 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
+import { useCompactMode } from '@/hooks/use-compact-mode';
 import { X, ArrowsOutSimple } from '@phosphor-icons/react';
 import { useState, useEffect, useRef } from 'react';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
@@ -114,6 +115,7 @@ export const StudentSidebar = ({
     defaultLeadProfile?: boolean;
 }) => {
     const { state, setOpen, setOpenMobile } = useSidebar();
+    const { isCompact } = useCompactMode();
     const [category, setCategory] = useState('overview');
     // Explicitly close both desktop + mobile sidebar state. Using `toggleSidebar`
     // hit a stale-closure case where `isMobile` could be wrong post-hydration,
@@ -227,7 +229,11 @@ export const StudentSidebar = ({
         <Sidebar
             side="right"
             preventOutsideClose
-            className={cn('!top-14 md:!top-20', className)}
+            // Align sidebar top to navbar bottom (compact 48px / default 56px mobile / 72px desktop, see top-navbar.tsx).
+            className={cn(
+                isCompact ? '!top-12' : '!top-14 md:!top-[72px]', // design-lint-ignore: mirrors navbar's md:h-[72px]
+                className
+            )}
         >
             <SidebarContent
                 className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}

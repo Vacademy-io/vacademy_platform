@@ -101,14 +101,22 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
 const DetailsCell = ({ row }: { row: Row<ContactUser> }) => {
     const { setSelectedStudent } = useStudentSidebar();
 
-    const handleClick = async () => {
+    const handleOpenDrawer = () => {
         setSelectedStudent(mapContactToStudent(row.original));
     };
 
     return (
-        <SidebarTrigger onClick={handleClick}>
-            <ArrowSquareOut className="size-10 cursor-pointer text-neutral-600" />
-        </SidebarTrigger>
+        <div className="flex items-center gap-1">
+            <SidebarTrigger onClick={handleOpenDrawer}>
+                <span
+                    className="flex size-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
+                    title="Open side panel"
+                    aria-label="Open side panel"
+                >
+                    <ArrowSquareOut className="size-4" />
+                </span>
+            </SidebarTrigger>
+        </div>
     );
 };
 

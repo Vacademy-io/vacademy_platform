@@ -30,5 +30,19 @@ public class SubmitLeadRequestDTO {
 
     // Optional direct user payload; if provided, it takes precedence over custom fields
     private UserDTO userDTO;
+
+    // Optional manual counsellor (lead owner) assignment. When set, this user_id is
+    // written to user_lead_profile.assigned_counselor_id/name (the field the leads
+    // table renders) and pool auto-assignment is skipped for this lead.
+    private String counsellorId;
+
+    // Optional display name for the manual counsellor. If blank, it is looked up from
+    // auth_service so the Counsellor column renders a name rather than "Unassigned".
+    private String counsellorName;
+
+    // Optional pipeline lead status. Maps to a lead_status row (by status_key) within
+    // the audience's institute and sets audience_response.lead_status_id (the status
+    // chip). Ignored if blank or if no matching status exists for the institute.
+    private String leadStatusKey;
 }
 

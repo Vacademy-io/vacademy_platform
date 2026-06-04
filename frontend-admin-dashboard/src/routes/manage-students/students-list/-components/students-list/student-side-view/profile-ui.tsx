@@ -46,12 +46,12 @@ export const ProfileSectionCard = ({
 }) => (
     <section
         className={cn(
-            'rounded-lg border border-border bg-card p-5 shadow-sm',
+            'rounded-lg border border-border bg-card p-3 shadow-sm',
             className
         )}
     >
         {(heading || action) && (
-            <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
                     {Icon && (
                         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -87,7 +87,7 @@ export const ProfileFieldRow = ({
     const isEmpty =
         value === null || value === undefined || value === '' || value === 'N/A';
     return (
-        <div className="group flex items-center justify-between gap-3 rounded-md py-2.5 transition-colors hover:bg-muted/40">
+        <div className="group flex items-center justify-between gap-3 rounded-md py-1.5 transition-colors hover:bg-muted/40">
             <dt className="shrink-0 text-caption text-muted-foreground">{label}</dt>
             <dd
                 className={cn(

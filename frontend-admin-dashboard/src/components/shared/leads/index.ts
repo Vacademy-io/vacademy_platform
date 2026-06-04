@@ -28,3 +28,17 @@ export { DEFAULT_BOARD_COLUMNS, type LeadBoardColumnConfig } from './lead-board-
 export { LeadViewToggle, type LeadView } from './lead-view-toggle';
 export { useUpdateLeadTier } from './use-update-lead-tier';
 export { useUpdateLeadStatus } from './use-update-lead-status';
+export { usePlaceCall } from './use-place-call';
+export { LeadCallHistory } from './lead-call-history';
+export {
+    fetchCallHistory,
+    fetchCallRecordingUrl,
+    type CallLogItem,
+    type PagedCallLog,
+} from './services/call-history';
+export { CallPickerPopover } from './call-picker-popover';
+export {
+    fetchCallOptions,
+    type CallOptionsResponse,
+    type NumberChoice,
+} from './services/call-options';

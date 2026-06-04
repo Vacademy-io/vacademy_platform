@@ -95,6 +95,41 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+
+// Telephony — provider-agnostic click-to-call + recording surface.
+// Connect:   POST   /v1/telephony/calls/connect  -> { callLogId, eventsStreamUrl, ... }
+// Events:    SSE    /v1/telephony/calls/{id}/events  (public; capability via UUID)
+// History:   GET    /v1/telephony/calls?userId=
+// Recording: GET    /v1/telephony/calls/{id}/recording  -> { url }
+// Admin:     PUT    /v1/telephony/config/{instituteId}
+//            POST   /v1/telephony/numbers
+//
+// Pointed at LOCAL_ADMIN_CORE_BASE (localhost:8072) for local testing, per the
+// sub-org-style convention for endpoints we want to hit on the locally-running
+// admin_core_service. Flip back to BASE_URL before merging if/when this should
+// go to staging/prod.
+export const TELEPHONY_CONNECT_CALL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/calls/connect`;
+// Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
+// picker on the Call button when an institute has multiple ExoPhones.
+export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
+// userId + instituteId are both required — the backend rejects cross-institute lookups.
+export const TELEPHONY_CALLS_BY_USER = (
+    userId: string,
+    instituteId: string,
+    page = 0,
+    size = 20
+) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/calls?userId=${encodeURIComponent(userId)}&instituteId=${encodeURIComponent(instituteId)}&page=${page}&size=${size}`;
+export const TELEPHONY_CALL_RECORDING = (callLogId: string, instituteId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/recording?instituteId=${encodeURIComponent(instituteId)}`;
+export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
+export const TELEPHONY_CONFIG = (instituteId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/config/${instituteId}`;
+export const TELEPHONY_NUMBERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/numbers`;
+export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/telephony/numbers/${id}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;

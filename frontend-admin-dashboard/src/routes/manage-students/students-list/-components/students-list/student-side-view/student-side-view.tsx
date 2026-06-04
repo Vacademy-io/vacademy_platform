@@ -236,13 +236,13 @@ export const StudentSidebar = ({
             )}
         >
             <SidebarContent
-                className={`sidebar-content flex flex-col border-l border-t border-neutral-200 bg-white text-neutral-700`}
+                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white text-neutral-700`}
             >
-                <SidebarHeader className="sticky top-0 z-10 !p-0 border-b border-neutral-200 bg-white shadow-sm">
-                    <div className="flex flex-col gap-2 px-4 pb-2 pt-0">
+                <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">
                         {/* Identity row: avatar + name/status + actions */}
-                        <div className="flex items-center gap-2.5">
-                            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-1 ring-primary-100">
+                        <div className="flex items-center gap-2">
+                            <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-1 ring-primary-100">
                                 {faceLoader ? (
                                     <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
                                 ) : imageUrl ? (

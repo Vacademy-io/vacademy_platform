@@ -26,6 +26,7 @@ import { getCustomFieldSettingsFromCache } from '@/services/custom-field-setting
 import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
+import { SnapshotHero } from './snapshot-hero';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -199,6 +200,9 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
 
     return (
         <div className="flex flex-col gap-3 text-card-foreground">
+            {/* Snapshot Hero — at-a-glance identity card */}
+            <SnapshotHero student={selectedStudent} />
+
             {/* Overview sections (key 0 is Account Credentials — moved to Portal Access tab) */}
             {selectedStudent != null ? (
                 overviewData?.map((studentDetail, key) => {

@@ -151,8 +151,12 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             }
         }
 
+        // Land on the full Course Details page (layout sidebar + course
+        // header / tabs), the same experience users get when opening a course
+        // from the study-library list — not the stripped `/subjects`
+        // deep-link.
         navigate({
-            to: '/study-library/courses/course-details/subjects',
+            to: '/study-library/courses/course-details',
             search: { courseId, levelId, sessionId },
         });
     };

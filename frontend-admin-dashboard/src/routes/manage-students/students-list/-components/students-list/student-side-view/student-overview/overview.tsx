@@ -21,17 +21,11 @@ export const OverViewData = ({
 
     const na = (value: any) => (value ? value : 'N/A');
 
+    // Course / Level / Session / Enrollment# are now surfaced in the rich
+    // OverviewHeader card at the top of the tab, so they're omitted here to
+    // avoid duplication. General Details now holds only the demographic-style
+    // rows that the header doesn't show.
     const generalDetailsContent = [
-        `${getTerminology(ContentTerms.Course, SystemTerms.Course)}: ${na(
-            packageSessionDetails?.package_dto.package_name
-        )}`,
-        `${getTerminology(ContentTerms.Level, SystemTerms.Level)}: ${na(
-            packageSessionDetails?.level.level_name
-        )}`,
-        `${getTerminology(ContentTerms.Session, SystemTerms.Session)}: ${na(
-            packageSessionDetails?.session.session_name
-        )}`,
-        `Enrollment No: ${na(selectedStudent.institute_enrollment_number)}`,
         `Gender: ${na(selectedStudent.gender)}`,
         `School: ${na(selectedStudent.linked_institute_name)}`,
     ];
@@ -53,10 +47,9 @@ export const OverViewData = ({
             heading: `General Details`,
             content: generalDetailsContent,
         },
-        {
-            heading: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}`,
-            content: [`Attendance: ${na(selectedStudent.attendance_percent)}`],
-        },
+        // Attendance is now the first stat tile in OverviewHeader — dropping
+        // the redundant Live Session card here.
+        // Referral count is filtered out by the empty-row helper unless > 0.
         {
             heading: `Referral Details`,
             content: [`Count: ${na(selectedStudent.referral_count)}`],

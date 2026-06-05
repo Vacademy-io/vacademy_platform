@@ -191,11 +191,24 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
 
     const SECTION_ICONS: Record<number, typeof User> = {
         1: GraduationCap,
-        2: MonitorPlay,
-        3: HandCoinsIcon,
-        4: Phone,
-        5: MapPin,
-        6: Users,
+        2: HandCoinsIcon,
+        3: Phone,
+        4: MapPin,
+        5: Users,
+    };
+
+    // Helper: a row is meaningful if its value isn't empty/N/A/0 — keeps the
+    // Overview tab signal-only, never showing a wall of em-dashes.
+    const isMeaningfulRow = (row: string | null | undefined): boolean => {
+        if (!row) return false;
+        const colonIdx = row.indexOf(':');
+        const rawValue = colonIdx >= 0 ? row.slice(colonIdx + 1).trim() : row.trim();
+        if (!rawValue) return false;
+        const lower = rawValue.toLowerCase();
+        if (lower === 'n/a' || lower === 'undefined' || lower === 'null') return false;
+        // For "Count: 0" type rows — drop when numeric value is 0.
+        if (rawValue === '0' || rawValue === '0.0' || rawValue === '0%') return false;
+        return true;
     };
 
     // Pull Course/Level/Session for the rich OverviewHeader. The same call powers
@@ -223,12 +236,19 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 }
             />
 
-            {/* Overview sections (key 0 is Account Credentials — moved to Portal Access tab) */}
+            {/* Overview sections — hide-when-empty + row-level filtering. */}
             {selectedStudent != null ? (
                 overviewData?.map((studentDetail, key) => {
-                    if (key === 0) return null;
+                    if (key === 0) return null; // Account Credentials → Portal Access tab
                     const SectionIcon = SECTION_ICONS[key] ?? User;
                     const isPrimary = key === 1; // hosts Edit Details button
+                    const meaningfulRows = (studentDetail.content || []).filter(
+                        isMeaningfulRow
+                    );
+
+                    // Hide empty non-primary sections entirely. The primary
+                    // (General Details) stays visible because it holds Edit.
+                    if (meaningfulRows.length === 0 && !isPrimary) return null;
 
                     return (
                         <ProfileSectionCard
@@ -237,19 +257,9 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                             heading={studentDetail.heading}
                             action={isPrimary ? <EditStudentDetails /> : undefined}
                         >
-                            {studentDetail.content && studentDetail.content.length > 0 ? (
+                            {meaningfulRows.length > 0 ? (
                                 <dl className="divide-y divide-border">
-                                    {studentDetail.content.map((obj, key2) => {
-                                        if (!obj) {
-                                            return (
-                                                <p
-                                                    key={key2}
-                                                    className="py-2.5 text-caption italic text-muted-foreground"
-                                                >
-                                                    No data available
-                                                </p>
-                                            );
-                                        }
+                                    {meaningfulRows.map((obj, key2) => {
                                         const colonIdx = obj.indexOf(':');
                                         const fieldName =
                                             colonIdx >= 0
@@ -257,11 +267,7 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                                                 : obj.trim();
                                         const value =
                                             colonIdx >= 0 ? obj.slice(colonIdx + 1).trim() : '';
-                                        const canCopy =
-                                            !!value &&
-                                            value !== 'N/A' &&
-                                            value !== 'password not found' &&
-                                            value !== 'undefined';
+                                        const canCopy = !!value;
                                         return (
                                             <ProfileFieldRow
                                                 key={key2}
@@ -279,7 +285,11 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                                 </dl>
                             ) : (
                                 <p className="text-caption italic text-muted-foreground">
-                                    No details available
+                                    No demographic details yet. Click{' '}
+                                    <span className="font-medium text-card-foreground">
+                                        Edit Details
+                                    </span>{' '}
+                                    to add gender, school, etc.
                                 </p>
                             )}
                         </ProfileSectionCard>

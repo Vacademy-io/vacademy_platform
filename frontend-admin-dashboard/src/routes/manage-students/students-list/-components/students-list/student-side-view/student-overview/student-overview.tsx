@@ -12,7 +12,7 @@ import {
     MonitorPlay,
 } from '@phosphor-icons/react';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { OverViewData, OverviewDetailsType } from './overview';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -29,7 +29,12 @@ import { OverviewHeader } from './overview-header';
 import { OverviewNeedsAttention } from './overview-needs-attention';
 import { OverviewQuickActions } from './overview-quick-actions';
 import { OverviewBottomGrid } from './overview-bottom-grid';
+import { OverviewContinueLearning } from './overview-continue-learning';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
+import { useQuery } from '@tanstack/react-query';
+import { fetchUserInvoices } from '@/services/invoice-service';
+import { useLearnerPackagesQuery } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
+import { getInstituteId } from '@/constants/helper';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -45,6 +50,55 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
     // tables don't refetch when Overview opens. Skips when no user is selected.
     const { profiles: leadProfiles } = useLeadProfiles(userId ? [userId] : [], !!userId);
     const leadProfile = userId ? leadProfiles[userId] : undefined;
+
+    // Outstanding amount — sum of unpaid invoices. Same key + service the
+    // Payment History tab uses, so opening Overview reuses the cached result.
+    const { data: invoicesData } = useQuery({
+        queryKey: ['user-invoices', userId],
+        queryFn: () => fetchUserInvoices(userId || ''),
+        staleTime: 60000,
+        enabled: !!userId,
+    });
+    const outstandingAmount = useMemo(() => {
+        const invoices = (invoicesData as { content?: Array<{ status: string; total_amount: number }> } | undefined)?.content;
+        if (!invoices) return undefined;
+        return invoices
+            .filter((inv) => {
+                const s = inv.status?.toUpperCase();
+                return s === 'UNPAID' || s === 'OVERDUE' || s === 'PARTIAL';
+            })
+            .reduce((sum, inv) => sum + (inv.total_amount || 0), 0);
+    }, [invoicesData]);
+
+    // Active courses / progress — same query the Courses tab uses, page 0,
+    // small size. percentage_completed averaged across in-progress packages.
+    const { data: progressPackagesData } = useLearnerPackagesQuery({
+        instituteId: getInstituteId() || '',
+        userId: userId || '',
+        page: 0,
+        size: 10,
+        type: 'PROGRESS',
+    });
+    const progressInfo = useMemo(() => {
+        const packages = progressPackagesData?.content;
+        if (!packages || packages.length === 0) return undefined;
+        const avg =
+            packages.reduce((s, p) => s + (p.percentage_completed || 0), 0) /
+            packages.length;
+        // "Behind" = active courses with <25% progress (handoff doesn't define
+        // a threshold per-subject without a deeper API; mirror the value the
+        // Lead Profile inactivity rule uses).
+        const behindCount = packages.filter(
+            (p) => (p.percentage_completed || 0) < 25
+        ).length;
+        // First in-progress course = "Continue Learning" anchor.
+        const firstActive = packages[0];
+        return {
+            averagePercent: avg,
+            behindCount,
+            primary: firstActive,
+        };
+    }, [progressPackagesData]);
 
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
     const { getCredentials } = useStudentCredentialsStore();
@@ -241,6 +295,8 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 attendancePercent={
                     typeof headerAttendance === 'number' ? headerAttendance : undefined
                 }
+                progressPercent={progressInfo?.averagePercent}
+                outstandingAmount={outstandingAmount}
                 leadScore={
                     typeof leadProfile?.best_score === 'number'
                         ? leadProfile.best_score
@@ -252,10 +308,23 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             <OverviewNeedsAttention
                 student={selectedStudent}
                 tncAccepted={selectedStudent?.tnc_accepted ?? undefined}
+                outstandingAmount={outstandingAmount}
+                behindCount={progressInfo?.behindCount}
             />
 
             {/* Quick Actions: every common admin action 1-click from Overview. */}
             <OverviewQuickActions student={selectedStudent} />
+
+            {/* Continue Learning card — shows only when the learner has active courses. */}
+            {progressInfo && (
+                <OverviewContinueLearning
+                    averagePercent={progressInfo.averagePercent}
+                    primaryCourseName={progressInfo.primary?.package_name}
+                    primaryLevel={progressInfo.primary?.level_name}
+                    primarySession={headerDetails?.session?.session_name}
+                    behindCount={progressInfo.behindCount}
+                />
+            )}
 
             {/* 2-col bottom grid: Enrolment Details (left) + Contact (right). */}
             <OverviewBottomGrid

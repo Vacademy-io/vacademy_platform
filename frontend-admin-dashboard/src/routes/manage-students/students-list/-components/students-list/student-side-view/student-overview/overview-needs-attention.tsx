@@ -5,6 +5,10 @@ import {
     CheckCircle,
     FileX,
     PaperPlaneTilt,
+    CurrencyInr,
+    Wallet,
+    TrendUp,
+    CaretRight,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -49,12 +53,24 @@ const TONE_CHIP_CLASSES: Record<Tone, string> = {
 export const OverviewNeedsAttention = ({
     student,
     tncAccepted,
+    outstandingAmount,
+    behindCount,
     onSendTncReminder,
+    onCollect,
+    onReviewProgress,
 }: {
     student: StudentTable | null;
     tncAccepted: boolean | undefined;
-    /** Optional callback for the "Send" action on the T&C row. */
+    /** Sum of unpaid invoices in INR. Undefined when not yet loaded. */
+    outstandingAmount?: number;
+    /** Number of active courses where the learner is behind (handoff #3). */
+    behindCount?: number;
+    /** Callback for the "Send" T&C reminder action. */
     onSendTncReminder?: () => void;
+    /** Callback for the "Collect" outstanding action — jumps to Payment tab. */
+    onCollect?: () => void;
+    /** Callback for the "Review" behind action — jumps to Progress tab. */
+    onReviewProgress?: () => void;
 }) => {
     if (!student) return null;
 
@@ -74,7 +90,38 @@ export const OverviewNeedsAttention = ({
         });
     }
 
-    // TODO (Phase A-2): outstanding > 0, behindSubjects > 0, lead inactivity.
+    // Condition 2: outstanding > 0 → "Collect" — top priority for admins.
+    if (outstandingAmount && outstandingAmount > 0) {
+        items.push({
+            id: 'outstanding',
+            tone: 'danger',
+            icon: CurrencyInr,
+            title: `₹${outstandingAmount.toLocaleString('en-IN')} outstanding`,
+            description: 'Unpaid invoices on file',
+            actionLabel: 'Collect',
+            actionIcon: Wallet,
+            onAction: onCollect,
+        });
+    }
+
+    // Condition 3: behindSubjects > 0 → "Review" → Progress tab.
+    if (behindCount && behindCount > 0) {
+        items.push({
+            id: 'behind',
+            tone: 'warning',
+            icon: TrendUp,
+            title:
+                behindCount === 1
+                    ? 'Behind on 1 course'
+                    : `Behind on ${behindCount} courses`,
+            description: 'Active enrolments below 25% progress',
+            actionLabel: 'Review',
+            actionIcon: CaretRight,
+            onAction: onReviewProgress,
+        });
+    }
+
+    // TODO (later): lead inactivityNote -> "Schedule" -> Lead tab.
 
     // Empty state — green "all clear" bar.
     if (items.length === 0) {

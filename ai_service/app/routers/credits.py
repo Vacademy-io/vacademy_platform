@@ -274,6 +274,38 @@ def get_usage_by_user(
 
 
 @router.get(
+    "/institutes/{institute_id}/users/{user_id}/usage",
+    summary="A single user's own credit usage (for the 'your usage' widget stat)",
+    description=(
+        "Net credits a user consumed over the last N days. Scoped: the caller "
+        "must be that user, or an institute ROOT_ADMIN. Net of refunds, and "
+        "attributes work-done-on-a-learner to the learner."
+    ),
+)
+def get_user_usage(
+    institute_id: str,
+    user_id: str,
+    days: int = Query(7, ge=1, le=365),
+    service: CreditService = Depends(get_credit_service),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """A single user's own credit usage total."""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
+        )
+    caller_id = getattr(current_user, "user_id", None)
+    if caller_id is None and isinstance(current_user, dict):
+        caller_id = current_user.get("user_id")
+    if not check_root_admin(current_user) and str(caller_id) != str(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own usage.",
+        )
+    return service.get_user_usage_total(institute_id, user_id, days)
+
+
+@router.get(
     "/institutes/{institute_id}/forecast",
     response_model=UsageForecastResponse,
     summary="Get usage forecast",

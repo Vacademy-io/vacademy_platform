@@ -271,6 +271,34 @@ export const fetchToolEstimate = async (
     return response.data;
 };
 
+// ---- Per-user self usage (widget "your usage" stat) ----
+
+export interface UserUsage {
+    institute_id: string;
+    user_id: string;
+    period_days: number;
+    total_credits: number;
+    request_count: number;
+}
+
+export const fetchUserAiUsage = async (userId: string, days = 7): Promise<UserUsage> => {
+    const INSTITUTE_ID = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance.get<UserUsage>(
+        `${AI_SERVICE_BASE_URL}/credits/v1/institutes/${INSTITUTE_ID}/users/${userId}/usage?days=${days}`
+    );
+    return response.data;
+};
+
+export const useUserAiUsageQuery = (userId: string, days = 7, enabled = true) => {
+    return useQuery({
+        queryKey: ['GET_USER_AI_USAGE', userId, days],
+        queryFn: () => fetchUserAiUsage(userId, days),
+        enabled: enabled && !!userId,
+        staleTime: 60000,
+        retry: false,
+    });
+};
+
 export const useToolPricingQuery = (enabled = true) => {
     return useQuery({
         queryKey: ['GET_TOOL_PRICING'],

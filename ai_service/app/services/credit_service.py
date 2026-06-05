@@ -1358,6 +1358,31 @@ class CreditService:
         ]
         return {"institute_id": institute_id, "period_days": days, "by_user": by_user}
 
+    def get_user_usage_total(self, institute_id: str, user_id: str, days: int = 7) -> dict:
+        """One user's own net credit usage over a window (for the widget's
+        'your usage' stat). Net of refunds; attributes work-done-on-a-learner to
+        the learner via COALESCE(subject_user_id, user_id)."""
+        since = datetime.utcnow() - timedelta(days=days)
+        query = text("""
+            SELECT COALESCE(SUM(
+                       CASE WHEN transaction_type = 'USAGE_DEDUCTION' THEN ABS(amount)
+                            WHEN transaction_type = 'REFUND' THEN -ABS(amount)
+                            ELSE 0 END), 0) AS net,
+                   COUNT(*) FILTER (WHERE transaction_type = 'USAGE_DEDUCTION') AS req
+            FROM credit_transactions
+            WHERE institute_id = :inst
+              AND COALESCE(subject_user_id, user_id) = :uid
+              AND created_at >= :since
+        """)
+        row = self.db.execute(query, {"inst": institute_id, "uid": user_id, "since": since}).fetchone()
+        return {
+            "institute_id": institute_id,
+            "user_id": user_id,
+            "period_days": days,
+            "total_credits": float(row.net or 0) if row else 0.0,
+            "request_count": int(row.req or 0) if row else 0,
+        }
+
     # ========================================================================
     # Transaction History
     # ========================================================================

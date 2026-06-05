@@ -198,6 +198,7 @@ export const StudentListHeader = ({
     currentSession,
     titleSize,
     packageSessionId,
+    showCounts = true,
     total,
     active,
     inactive,
@@ -206,6 +207,7 @@ export const StudentListHeader = ({
     currentSession?: DropdownItemType;
     titleSize?: string;
     packageSessionId?: string;
+    showCounts?: boolean;
     total?: number;
     active?: number;
     inactive?: number;
@@ -241,15 +243,16 @@ export const StudentListHeader = ({
                 >
                     {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Management
                 </h1>
-                {countsLoading ? (
-                    <span className="h-4 w-28 animate-pulse rounded-full bg-neutral-100" />
-                ) : (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        <CountBadge label="Total" value={total ?? 0} tone="total" isCompact={isCompact} />
-                        <CountBadge label="Active" value={active ?? 0} tone="active" isCompact={isCompact} />
-                        <CountBadge label="Inactive" value={inactive ?? 0} tone="inactive" isCompact={isCompact} />
-                    </div>
-                )}
+                {showCounts &&
+                    (countsLoading ? (
+                        <span className="h-4 w-28 animate-pulse rounded-full bg-neutral-100" />
+                    ) : (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <CountBadge label="Total" value={total ?? 0} tone="total" isCompact={isCompact} />
+                            <CountBadge label="Active" value={active ?? 0} tone="active" isCompact={isCompact} />
+                            <CountBadge label="Inactive" value={inactive ?? 0} tone="inactive" isCompact={isCompact} />
+                        </div>
+                    ))}
             </div>
 
             {/* Compact professional action buttons */}

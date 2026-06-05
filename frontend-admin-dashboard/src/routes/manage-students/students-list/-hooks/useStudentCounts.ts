@@ -21,14 +21,26 @@ const fetchCount = (filters: StudentFilterRequest) =>
 
 export const useStudentCounts = (
     appliedFilters: StudentFilterRequest,
-    enabled = true
+    enabled = true,
+    packageSessionIds?: string[] | null
 ): StudentCounts => {
     // Strip the status filter so the badges always reflect the full breakdown.
     const baseFilters = useMemo(() => {
         const rest = { ...appliedFilters };
         delete rest.statuses;
+        // Mirror useStudentTable: when no batch filter is applied but the view is
+        // pinned to a package session (e.g. Course Details → Learner tab), scope the
+        // counts to that batch so the badges match the table instead of querying
+        // institute-wide (which returns 0 for batch/sub-org-only learners).
+        if (
+            (rest.package_session_ids?.length ?? 0) === 0 &&
+            packageSessionIds &&
+            packageSessionIds.length > 0
+        ) {
+            rest.package_session_ids = packageSessionIds;
+        }
         return rest;
-    }, [appliedFilters]);
+    }, [appliedFilters, packageSessionIds]);
 
     const baseKey = useMemo(() => JSON.stringify(baseFilters), [baseFilters]);
 

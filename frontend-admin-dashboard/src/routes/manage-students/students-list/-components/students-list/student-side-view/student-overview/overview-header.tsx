@@ -64,6 +64,55 @@ export const OverviewHeader = ({
     const enrollmentNo = student.institute_enrollment_number;
     const hasMetadata = !!(course || level || session || enrollmentNo || joinedDate);
 
+    // Only show stat tiles we actually have data for. An empty/all-undefined
+    // strip is removed entirely — no walls of em-dashes for unloaded data.
+    const tiles: Array<{ label: string; icon: typeof Clock; value: string; tone: Tone }> = [];
+    if (attendancePercent != null) {
+        tiles.push({
+            label: 'Attendance',
+            icon: Clock,
+            value: `${Math.round(attendancePercent)}%`,
+            tone:
+                attendancePercent >= 75
+                    ? 'success'
+                    : attendancePercent >= 50
+                      ? 'warning'
+                      : 'danger',
+        });
+    }
+    if (progressPercent != null) {
+        tiles.push({
+            label: 'Progress',
+            icon: GraduationCap,
+            value: `${Math.round(progressPercent)}%`,
+            tone:
+                progressPercent >= 75
+                    ? 'success'
+                    : progressPercent >= 25
+                      ? 'warning'
+                      : 'danger',
+        });
+    }
+    if (testsAttempted) {
+        tiles.push({
+            label: 'Tests',
+            icon: Exam,
+            value: `${testsAttempted.attempted}/${testsAttempted.total}`,
+            tone: 'neutral',
+        });
+    }
+    if (outstandingAmount != null) {
+        tiles.push({
+            label: 'Outstanding',
+            icon: Wallet,
+            value:
+                outstandingAmount > 0
+                    ? `₹${outstandingAmount.toLocaleString('en-IN')}`
+                    : '₹0',
+            tone: outstandingAmount > 0 ? 'danger' : 'success',
+        });
+    }
+
     return (
         <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-sm">
             {/* Enrollment chip line (Course / Level / Session) — the #1 question */}
@@ -108,73 +157,28 @@ export const OverviewHeader = ({
                 </div>
             )}
 
-            {/* 4-stat health strip — the #2 question */}
-            <div className="grid grid-cols-4 gap-1 border-t border-border pt-3">
-                <StatTile
-                    label="Attendance"
-                    icon={Clock}
-                    value={
-                        attendancePercent != null
-                            ? `${Math.round(attendancePercent)}%`
-                            : '—'
-                    }
-                    tone={
-                        attendancePercent == null
-                            ? 'neutral'
-                            : attendancePercent >= 75
-                              ? 'success'
-                              : attendancePercent >= 50
-                                ? 'warning'
-                                : 'danger'
-                    }
-                />
-                <StatTile
-                    label="Progress"
-                    icon={GraduationCap}
-                    value={
-                        progressPercent != null
-                            ? `${Math.round(progressPercent)}%`
-                            : '—'
-                    }
-                    tone={
-                        progressPercent == null
-                            ? 'neutral'
-                            : progressPercent >= 75
-                              ? 'success'
-                              : progressPercent >= 25
-                                ? 'warning'
-                                : 'danger'
-                    }
-                />
-                <StatTile
-                    label="Tests"
-                    icon={Exam}
-                    value={
-                        testsAttempted
-                            ? `${testsAttempted.attempted}/${testsAttempted.total}`
-                            : '—'
-                    }
-                    tone="neutral"
-                />
-                <StatTile
-                    label="Outstanding"
-                    icon={Wallet}
-                    value={
-                        outstandingAmount != null
-                            ? outstandingAmount > 0
-                                ? `₹${outstandingAmount.toLocaleString('en-IN')}`
-                                : '₹0'
-                            : '—'
-                    }
-                    tone={
-                        outstandingAmount == null
-                            ? 'neutral'
-                            : outstandingAmount > 0
-                              ? 'danger'
-                              : 'success'
-                    }
-                />
-            </div>
+            {/* Health-stat strip — only renders the tiles we have data for. */}
+            {tiles.length > 0 && (
+                <div
+                    className={cn(
+                        'grid gap-1 border-t border-border pt-3',
+                        tiles.length === 1 && 'grid-cols-1',
+                        tiles.length === 2 && 'grid-cols-2',
+                        tiles.length === 3 && 'grid-cols-3',
+                        tiles.length === 4 && 'grid-cols-4'
+                    )}
+                >
+                    {tiles.map((t) => (
+                        <StatTile
+                            key={t.label}
+                            label={t.label}
+                            icon={t.icon}
+                            value={t.value}
+                            tone={t.tone}
+                        />
+                    ))}
+                </div>
+            )}
         </section>
     );
 };

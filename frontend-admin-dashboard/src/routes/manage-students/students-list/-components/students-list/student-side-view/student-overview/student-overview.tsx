@@ -354,49 +354,47 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 </ProfileSectionCard>
             )}
 
-            {/* Terms & Conditions */}
-            <ProfileSectionCard icon={FileText} heading="Terms & Conditions">
-                <dl className="divide-y divide-border">
-                    <ProfileFieldRow
-                        label="Status"
-                        value={
-                            selectedStudent?.tnc_accepted ? (
+            {/* Terms & Conditions — only render the card when SIGNED (compact
+                proof + PDF link). When unsigned, the OverviewAlerts strip at
+                top already shows the warning chip, so this card is redundant. */}
+            {selectedStudent?.tnc_accepted && (
+                <ProfileSectionCard icon={FileText} heading="Terms & Conditions">
+                    <dl className="divide-y divide-border">
+                        <ProfileFieldRow
+                            label="Status"
+                            value={
                                 <span className="inline-flex items-center rounded-full bg-success-50 px-2 py-0.5 text-caption font-semibold text-success-700 ring-1 ring-success-200">
                                     Signed
                                 </span>
-                            ) : (
-                                <span className="inline-flex items-center rounded-full bg-warning-50 px-2 py-0.5 text-caption font-semibold text-warning-700 ring-1 ring-warning-200">
-                                    Not Signed
-                                </span>
-                            )
-                        }
-                    />
-                    {selectedStudent?.tnc_accepted && selectedStudent?.tnc_accepted_date && (
-                        <ProfileFieldRow
-                            label="Signed on"
-                            value={new Date(
-                                selectedStudent.tnc_accepted_date
-                            ).toLocaleDateString()}
-                        />
-                    )}
-                    {selectedStudent?.tnc_accepted && tncFileUrl && (
-                        <ProfileFieldRow
-                            label="Signed PDF"
-                            value={
-                                <a
-                                    href={tncFileUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-body font-medium text-primary-600 hover:text-primary-800 hover:underline"
-                                >
-                                    <DownloadSimple className="size-3.5" />
-                                    Download
-                                </a>
                             }
                         />
-                    )}
-                </dl>
-            </ProfileSectionCard>
+                        {selectedStudent?.tnc_accepted_date && (
+                            <ProfileFieldRow
+                                label="Signed on"
+                                value={new Date(
+                                    selectedStudent.tnc_accepted_date
+                                ).toLocaleDateString()}
+                            />
+                        )}
+                        {tncFileUrl && (
+                            <ProfileFieldRow
+                                label="Signed PDF"
+                                value={
+                                    <a
+                                        href={tncFileUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 text-body font-medium text-primary-600 hover:text-primary-800 hover:underline"
+                                    >
+                                        <DownloadSimple className="size-3.5" />
+                                        Download
+                                    </a>
+                                }
+                            />
+                        )}
+                    </dl>
+                </ProfileSectionCard>
+            )}
         </div>
     );
 };

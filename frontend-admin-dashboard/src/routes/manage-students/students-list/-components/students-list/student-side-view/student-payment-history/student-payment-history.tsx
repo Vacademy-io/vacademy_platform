@@ -4,11 +4,21 @@ import { useStudentSidebar } from '../../../../-context/selected-student-sidebar
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchUserInvoices, getInvoiceDownloadUrl } from '@/services/invoice-service';
 import type { InvoiceDTO } from '@/services/invoice-service';
-import { FileText, Wallet, Plus, DownloadSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import {
+    FileText,
+    Wallet,
+    Plus,
+    DownloadSimple,
+    CaretLeft,
+    CaretRight,
+    Receipt,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
 import { CreateInvoiceDialog } from './create-invoice-dialog';
-import { ProfileSectionCard, ProfileEmpty } from '../profile-ui';
+import { ProfileSectionCard, ProfileEmpty, ProfileMiniBar } from '../profile-ui';
+import { useUserCpoUserPlans } from '../../../../-services/cpoSideViewService';
+import type { CpoUserPlanSummary } from '../../../../-types/cpo-side-view-types';
 
 const INVOICES_PER_PAGE = 10;
 
@@ -62,6 +72,45 @@ function getStatusBadge(status: string) {
         </span>
     );
 }
+
+/**
+ * Read-only Fee Plan headline card — mirrors PaymentSection in the design
+ * handoff: plan name + installment count on the left, "Outstanding" eyebrow
+ * + danger-toned amount on the right, success-toned paid/net progress bar
+ * along the bottom. One card per CPO UserPlan so multi-plan learners keep
+ * plan identity (matches the per-plan card pattern in CpoInstallmentsEditor).
+ */
+const FeePlanSummaryCard = ({ summary }: { summary: CpoUserPlanSummary }) => {
+    const net = summary.net_total ?? 0;
+    const paid = summary.paid_total ?? 0;
+    const pct = net > 0 ? Math.round((paid / net) * 100) : 0;
+    const planLabel = summary.cpo_name || summary.payment_option_name || 'Fee Plan';
+    return (
+        <ProfileSectionCard icon={Wallet} heading="Fee Plan">
+            <div className="flex flex-wrap items-center gap-4">
+                <div className="min-w-0 flex-1">
+                    <div className="text-subtitle font-bold text-card-foreground">
+                        {planLabel} · {summary.installment_count} installments
+                    </div>
+                    <div className="mt-0.5 text-caption text-muted-foreground">
+                        Net {formatCurrency(net)} · Paid {formatCurrency(paid)}
+                    </div>
+                </div>
+                <div className="text-right">
+                    <div className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                        Outstanding
+                    </div>
+                    <div className="text-h2 font-bold leading-tight text-danger-600">
+                        {formatCurrency(summary.outstanding_total ?? 0)}
+                    </div>
+                </div>
+            </div>
+            <div className="mt-3">
+                <ProfileMiniBar value={pct} tone="success" label={`${pct}%`} />
+            </div>
+        </ProfileSectionCard>
+    );
+};
 
 /** Invoice list with client-side pagination */
 const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
@@ -186,6 +235,12 @@ export const StudentPaymentHistory = () => {
         enabled: Boolean(selectedStudent?.user_id),
     });
 
+    // CPO summaries power the read-only Fee Plan headline card(s) above the
+    // installments editor. We render one card per UserPlan (handoff assumes a
+    // single plan; multi-plan learners get one card per plan to preserve plan
+    // identity, mirroring the per-plan card pattern in CpoInstallmentsEditor).
+    const { data: cpoUserPlans } = useUserCpoUserPlans(selectedStudent?.user_id);
+
     if (!selectedStudent?.user_id) {
         return (
             <ProfileEmpty
@@ -198,10 +253,19 @@ export const StudentPaymentHistory = () => {
 
     return (
         <div className="flex flex-col gap-3">
-            {/* CPO Installments — self-hides when the learner has no CPO plan.
-                Wrapped in a SectionCard per handoff PaymentHistorySection so
-                the Fee Plan / installments surface frames the whole section. */}
-            <ProfileSectionCard icon={Wallet} heading="Fee Plan & Installments">
+            {/* Fee Plan summary card(s) — read-only headline mirroring the
+                handoff PaymentSection. Hidden when the learner has no CPO
+                UserPlan; one card per plan otherwise. */}
+            {cpoUserPlans?.map((summary) => (
+                <FeePlanSummaryCard key={summary.user_plan_id} summary={summary} />
+            ))}
+
+            {/* CPO Installments editor — keeps the per-installment edit
+                surface, CPO discount controls, and offline payment form.
+                Renamed from 'Fee Plan & Installments' so the new Fee Plan
+                summary card above owns plan-level identity, and given the
+                Receipt icon to differentiate from the wallet headline. */}
+            <ProfileSectionCard icon={Receipt} heading="Installments">
                 <CpoInstallmentsEditor userId={selectedStudent.user_id} />
             </ProfileSectionCard>
 

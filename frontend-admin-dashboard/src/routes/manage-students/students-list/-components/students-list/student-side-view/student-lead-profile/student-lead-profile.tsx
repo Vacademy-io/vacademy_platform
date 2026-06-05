@@ -419,8 +419,20 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
     );
 }
 
-function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
-    const [open, setOpen] = useState(false);
+function ScoreBreakdownPanel({
+    responseId,
+    hideToggle = false,
+}: {
+    responseId: string;
+    /**
+     * When true, the internal toggle button is hidden and the breakdown is
+     * always rendered. Use this when the disclosure is controlled at a
+     * higher level (e.g. the parent ProfileSectionCard's action slot).
+     */
+    hideToggle?: boolean;
+}) {
+    const [internalOpen, setInternalOpen] = useState(false);
+    const open = hideToggle ? true : internalOpen;
 
     const { data, isLoading } = useQuery<LeadScoreDetail>({
         queryKey: ['lead-score-breakdown', responseId],
@@ -436,17 +448,24 @@ function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
     const isManualData = data?.is_manual_override ?? false;
 
     return (
-        <div className="mt-2">
-            <button
-                onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
-            >
-                <ChartBar size={13} weight="bold" />
-                {open ? 'Hide breakdown' : 'Score breakdown'}
-            </button>
+        <div className={hideToggle ? '' : 'mt-2'}>
+            {!hideToggle && (
+                <button
+                    onClick={() => setInternalOpen((v) => !v)}
+                    className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
+                >
+                    <ChartBar size={13} weight="bold" />
+                    {open ? 'Hide breakdown' : 'Score breakdown'}
+                </button>
+            )}
 
             {open && (
-                <div className="mt-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-xs">
+                <div
+                    className={cn(
+                        'rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-xs',
+                        !hideToggle && 'mt-2'
+                    )}
+                >
                     {isLoading && (
                         <div className="flex items-center gap-2 text-neutral-400">
                             <div className="size-3 animate-spin rounded-full border border-neutral-400 border-t-transparent" />
@@ -1094,6 +1113,10 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
     const [showAssignCounselor, setShowAssignCounselor] = useState(false);
+    // Score Details disclosure — default to the compact view (badge + tier only).
+    // The manual override editor + score breakdown live behind a single
+    // "Show details" affordance wired into the SectionCard action slot.
+    const [showScoreDetails, setShowScoreDetails] = useState(false);
 
     // Hero action bar — which note form action type to pre-select when user
     // clicks one of the 3 hero action buttons. Null = no pre-selection (default collapse).
@@ -1420,55 +1443,97 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 </ProfileSectionCard>
             </div>
 
-            {/* ── Lead Score detail (manual override + breakdown) ── */}
-            <ProfileSectionCard icon={ChartBar} heading="Score Details">
-                <div className="flex flex-col gap-3">
-                    <div>
+            {/* ── Score Details + Assigned Counselor side-by-side ───
+                Per design handoff: these two cards sit BELOW the Key Dates +
+                Lead Status grid in their own 2-col row. Score Details defaults
+                to a compact view (badge + tier) with the manual override
+                editor and breakdown hidden behind a single card-level
+                "Show details" disclosure (wired into the action slot).
+                Assigned Counselor wires its Reassign control into the
+                SectionCard action slot so the body holds only the avatar +
+                name + role stack. items-stretch + h-full keep the card
+                frames equalised when their bodies have different heights. */}
+            <div className="grid items-stretch gap-3 md:grid-cols-2">
+                <ProfileSectionCard
+                    icon={ChartBar}
+                    heading="Score Details"
+                    className="h-full"
+                    action={
+                        profile.best_score_response_id ? (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                className="!min-w-0"
+                                onClick={() => setShowScoreDetails((v) => !v)}
+                            >
+                                {showScoreDetails ? 'Hide details' : 'Show details'}
+                            </MyButton>
+                        ) : undefined
+                    }
+                >
+                    <div className="flex flex-col gap-3">
                         <LeadScoreBadge
                             score={profile.best_score}
                             tier={profile.lead_tier}
                             size="md"
                         />
-                        {profile.best_score_response_id && (
-                            <>
-                                <ManualScoreEditor responseId={profile.best_score_response_id} />
-                                <ScoreBreakdownPanel responseId={profile.best_score_response_id} />
-                            </>
+                        {profile.best_score_response_id && showScoreDetails && (
+                            <div className="flex flex-col gap-3">
+                                <ManualScoreEditor
+                                    responseId={profile.best_score_response_id}
+                                />
+                                <ScoreBreakdownPanel
+                                    responseId={profile.best_score_response_id}
+                                    hideToggle
+                                />
+                            </div>
                         )}
                     </div>
-                </div>
-            </ProfileSectionCard>
+                </ProfileSectionCard>
 
-            {/* ── Assigned Counselor ── */}
-            <ProfileSectionCard icon={User} heading="Assigned Counselor">
-                {profile.assigned_counselor_name ? (
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className="flex size-7 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700">
+                <ProfileSectionCard
+                    icon={User}
+                    heading="Assigned Counselor"
+                    className="h-full"
+                    action={
+                        profile.assigned_counselor_name ? (
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                className="!min-w-0"
+                                onClick={() => setShowAssignCounselor(true)}
+                            >
+                                Reassign
+                            </MyButton>
+                        ) : undefined
+                    }
+                >
+                    {profile.assigned_counselor_name ? (
+                        <div className="flex items-center gap-2.5">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-body font-semibold text-primary-700">
                                 {profile.assigned_counselor_name[0]?.toUpperCase()}
                             </div>
-                            <span className="text-sm font-medium text-neutral-800">
-                                {profile.assigned_counselor_name}
-                            </span>
+                            <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-body font-medium text-card-foreground">
+                                    {profile.assigned_counselor_name}
+                                </span>
+                                <span className="text-caption text-muted-foreground">
+                                    Counsellor
+                                </span>
+                            </div>
                         </div>
+                    ) : (
                         <button
+                            type="button"
                             onClick={() => setShowAssignCounselor(true)}
-                            className="text-caption text-neutral-400 hover:text-primary-600"
+                            className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border py-2 text-caption text-muted-foreground transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                         >
-                            Reassign
+                            <Plus className="size-3.5" />
+                            Assign a Counselor
                         </button>
-                    </div>
-                ) : (
-                    <button
-                        type="button"
-                        onClick={() => setShowAssignCounselor(true)}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border py-2 text-caption text-muted-foreground transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                    >
-                        <Plus className="size-3.5" />
-                        Assign a Counselor
-                    </button>
-                )}
-            </ProfileSectionCard>
+                    )}
+                </ProfileSectionCard>
+            </div>
 
             {showAssignCounselor && (
                 <AssignCounselorToLeadDialog

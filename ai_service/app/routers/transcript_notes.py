@@ -13,10 +13,31 @@ import re
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..core.security import get_current_user
+from ..db import db_dependency
+from ..models.ai_token_usage import RequestType
+from ..services.ai_billing import preflight_tool_credits, record_tool_billing
+
+
+def _role_from_user(user) -> str:
+    """Map an authenticated user to a ledger user_role. Treats any staff member
+    as TEACHER vs ADMIN by their roles/authorities; defaults to ADMIN."""
+    if user is None:
+        return "ADMIN"
+    raw = getattr(user, "roles", None) or getattr(user, "authorities", None)
+    if raw is None and isinstance(user, dict):
+        raw = user.get("roles") or user.get("authorities")
+    roles = {str(r).upper() for r in (raw or [])}
+    if "ADMIN" in roles or any("ADMIN" in r for r in roles):
+        return "ADMIN"
+    if "TEACHER" in roles or any("TEACHER" in r for r in roles):
+        return "TEACHER"
+    return "ADMIN"
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +53,23 @@ class GenerateNotesRequest(BaseModel):
     target_language: str = Field(
         default="en",
         description="ISO code. Output notes will be in this language.",
+    )
+    institute_id: Optional[str] = Field(
+        None,
+        description=(
+            "Institute to charge for these notes (academy-credits). When "
+            "omitted, generation still runs but no credits are deducted."
+        ),
+    )
+    user_id: Optional[str] = Field(
+        None,
+        description="DEPRECATED for attribution — the actor is now derived from "
+                    "the authenticated JWT, not this field. Kept for back-compat.",
+    )
+    idempotency_key: Optional[str] = Field(
+        None,
+        description="Dedup key so a retry can't double-charge. FE sends "
+                    "'notes:{recordingId}'.",
     )
 
 
@@ -320,7 +358,30 @@ def _strip_outer_markdown_fence(text: str) -> str:
 
 
 @router.post("/generate-notes", response_model=GenerateNotesResponse)
-async def generate_notes(body: GenerateNotesRequest) -> GenerateNotesResponse:
+async def generate_notes(
+    body: GenerateNotesRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> GenerateNotesResponse:
+    # Require a verified user (this endpoint runs billable LLM calls and deducts
+    # credits). Without auth a caller could drain any institute's credits and run
+    # an unauthenticated LLM proxy.
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required.",
+        )
+    actor_user_id = getattr(current_user, "user_id", None)
+    if actor_user_id is None and isinstance(current_user, dict):
+        actor_user_id = current_user.get("user_id")
+    # Trust the institute from the verified token; fall back to the body only when
+    # the token doesn't carry one (e.g. a service-to-service caller).
+    token_institute = getattr(current_user, "institute_id", None)
+    if token_institute is None and isinstance(current_user, dict):
+        token_institute = current_user.get("institute_id")
+    institute_id = token_institute or body.institute_id
+    actor_role = _role_from_user(current_user)
+
     settings = get_settings()
     openrouter_key: Optional[str] = getattr(settings, "openrouter_api_key", None)
     gemini_key: Optional[str] = getattr(settings, "gemini_api_key", None)
@@ -331,6 +392,21 @@ async def generate_notes(body: GenerateNotesRequest) -> GenerateNotesResponse:
         raise HTTPException(
             status_code=503,
             detail="No LLM provider configured. Set OPENROUTER_API_KEY (preferred) or GEMINI_API_KEY on ai-service.",
+        )
+
+    # Pre-flight credit gate (academy-credits). notes cost is parametric on
+    # transcript length. Only gates when an institute_id is resolved.
+    notes_params = {"transcript_chars": len(body.transcript_text or "")}
+    estimate = preflight_tool_credits(
+        db, tool_key="notes", tool_params=notes_params, institute_id=institute_id
+    )
+    if estimate.get("sufficient") is False:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: these notes need ~{estimate['estimated_credits']} "
+                f"credits but the balance is {estimate.get('current_balance')}."
+            ),
         )
 
     prompt = _build_prompt(
@@ -382,6 +458,20 @@ async def generate_notes(body: GenerateNotesRequest) -> GenerateNotesResponse:
     # LLM emitted with real Serper hits. Silently strips placeholders when
     # Serper isn't configured so the notes still render cleanly.
     enriched_markdown = _enrich_with_images(cleaned_markdown)
+
+    # Charge credits (parametric on transcript length). Best-effort — notes are
+    # already generated. No token usage is surfaced by the provider helpers, so
+    # this is parametric-only (charge = parametric).
+    record_tool_billing(
+        tool_key="notes",
+        tool_params=notes_params,
+        request_type=RequestType.NOTES,
+        model=used_model or _OPENROUTER_MODEL,
+        institute_id=institute_id,
+        user_id=actor_user_id,
+        user_role=actor_role if actor_user_id else None,
+        idempotency_key=body.idempotency_key,
+    )
 
     return GenerateNotesResponse(
         markdown=enriched_markdown,

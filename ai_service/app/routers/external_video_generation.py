@@ -533,11 +533,25 @@ async def cancel_generation_external(
     # 1. Cooperative stop signal — the pipeline checks this at safe points.
     signaled = cancellation_registry.signal_stop(video_id)
 
-    # 2. Asyncio task backstop — closes the SSE stream cleanly even if the
-    #    pipeline hasn't yet hit a checkpoint that can raise PipelineCancelled.
+    # 2. Do NOT cancel the asyncio task as a backstop. The task is suspended
+    #    inside `generate_till_stage` at `await asyncio.sleep(0.25)`, which is
+    #    INSIDE a `with ThreadPoolExecutor() as executor:` block that owns the
+    #    running pipeline thread. Cancelling unwinds that `with`, and its
+    #    `__exit__` calls `executor.shutdown(wait=True)` — a SYNCHRONOUS join
+    #    that blocks the event-loop thread until the multi-minute render thread
+    #    returns. That thread only stops at sparse cooperative `stop_event`
+    #    checkpoints, and an already-running future can't be cancelled, so the
+    #    loop can freeze for minutes. A frozen loop fails the liveness probe
+    #    (5×30s) and kubelet SIGKILLs the pod (Exit 137) — which looks like a
+    #    spurious service restart immediately after a cancel.
+    #
+    #    Instead we rely on (1) the cooperative `stop_event` above to unwind the
+    #    pipeline at its next checkpoint, and (5) the SSE sentinel below to close
+    #    the stream right away. The drain loop in `generate_till_stage`
+    #    (`while not _pipeline_future.done(): await asyncio.sleep(0.25)`) keeps
+    #    the event loop responsive the whole time the orphaned thread winds down,
+    #    and its `finally` block clears the registry + task maps on exit.
     task = _generation_tasks.get(video_id)
-    if task and not task.done():
-        task.cancel()
 
     # 3. Persist CANCELLED state right now so /status reflects it.
     try:

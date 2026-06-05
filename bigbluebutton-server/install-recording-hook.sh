@@ -336,12 +336,44 @@ echo "  ✓ bbb-recording-drain.sh installed"
 cp "$SCRIPT_DIR/systemd/bbb-recording-drain.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/systemd/bbb-recording-drain.timer"   /etc/systemd/system/
 
+# (d) rap-worker auto-tune — flips CPUWeight up/down based on live meeting count
+install -m 755 "$SCRIPT_DIR/bbb-rap-autotune.sh" /usr/local/bin/bbb-rap-autotune.sh
+cp "$SCRIPT_DIR/systemd/bbb-rap-autotune.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/systemd/bbb-rap-autotune.timer"   /etc/systemd/system/
+install -m 644 /dev/null /var/log/bigbluebutton/vacademy-rap-autotune.log 2>/dev/null
+chown bigbluebutton:bigbluebutton /var/log/bigbluebutton/vacademy-rap-autotune.log 2>/dev/null || true
+echo "  ✓ bbb-rap-autotune.sh installed"
+
+# (e) One-time baseline patch to BBB's video.rb — keep original at -threads 2,
+# but also keep a known-good backup. The autotune timer flips it to 0 within
+# 60s if the box has no live meetings, so initial state doesn't really matter
+# — this step exists mainly to (i) take the .autotune-original snapshot and
+# (ii) make sure the line we expect to sed is actually there.
+VIDEO_RB="/usr/local/bigbluebutton/core/lib/recordandplayback/edl/video.rb"
+if [ -f "$VIDEO_RB" ]; then
+    if grep -q "'-threads', '[02]'" "$VIDEO_RB"; then
+        if [ ! -f "${VIDEO_RB}.autotune-original" ]; then
+            cp "$VIDEO_RB" "${VIDEO_RB}.autotune-original"
+            echo "  ✓ video.rb backup saved: ${VIDEO_RB}.autotune-original"
+        else
+            echo "  ✓ video.rb backup already present"
+        fi
+    else
+        echo "  WARN: video.rb has no '-threads' line in the expected form."
+        echo "        Autotune will be a no-op for ffmpeg threads. Check the file."
+    fi
+else
+    echo "  WARN: $VIDEO_RB not found — autotune ffmpeg-threads logic will be a no-op."
+fi
+
 systemctl daemon-reload
 systemctl enable --now bbb-recording-drain.timer
+systemctl enable --now bbb-rap-autotune.timer
+systemctl start bbb-rap-autotune.service   # fire once immediately so weight is set
 systemctl restart bbb-rap-resque-worker 2>/dev/null || true
 systemctl restart freeswitch            2>/dev/null || true
 systemctl restart bbb-webrtc-sfu        2>/dev/null || true
-echo "  ✓ drain timer enabled (fires Mon-Sat 19,20:*:00 IST)"
+echo "  ✓ drain + auto-tune timers enabled"
 
 # ── 10. Install daily cleanup cron (recordings older than 4 days) ──
 # Ensure any previous stalled-recording hourly cron is removed — we no longer

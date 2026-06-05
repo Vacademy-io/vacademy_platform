@@ -91,13 +91,16 @@ async def generate_plan(
             primary_model=primary_model,
             fallback_models=fallback_models,
         )
-        # Log token usage + deduct institute credits (best-effort, off-loop).
+        # Charge institute credits via the parametric tool path so the charge
+        # matches the previewed price (best-effort, off-loop).
         await asyncio.to_thread(
             lecture_planner_service.record_lecture_billing,
             institute_id=instituteId,
             user_id=user_id,
             task_id=task.id,
             result=result,
+            generate_questions=bool(isQuestionGenerated),
+            generate_homework=bool(isAssignmentHomeworkGenerated),
         )
         return result.content_json
 

@@ -393,10 +393,11 @@ def review_shot(
     # net for callers that haven't been migrated to per-stage routing yet.
     model: Optional[str] = "google/gemini-2.5-pro",
     # Pro on OpenRouter consumes tokens on internal reasoning before emitting
-    # JSON. With a verbose rubric, 1200 was occasionally truncated. Output
-    # cost on 2400 tokens at $5/M is ~$0.012 per shot — small on top of the
-    # input-token cost which dominates with 3 PNGs.
-    max_tokens: int = 2400,
+    # JSON. 1200 then 2400 were BOTH still occasionally truncated (review came
+    # back as cut-off/unparseable JSON → the gate silently no-ops and ships the
+    # shot un-reviewed). 6000 gives headroom; output cost at $5/M is ~$0.03 per
+    # shot — small on top of the input-token cost which dominates with 3 PNGs.
+    max_tokens: int = 6000,
     temperature: float = 0.0,
     input_cost_per_m: float = _DEFAULT_INPUT_COST_PER_M,
     output_cost_per_m: float = _DEFAULT_OUTPUT_COST_PER_M,

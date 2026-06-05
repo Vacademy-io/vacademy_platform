@@ -268,14 +268,14 @@ export const Step2CourseSelector = ({
                             <FunnelSimple size={13} />
                             {levelTerm}
                             {selectedLevelIds.length > 0 && (
-                                <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-[10px] leading-none">
+                                <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-caption leading-none">
                                     {selectedLevelIds.length}
                                 </Badge>
                             )}
                             <CaretDown size={11} className="text-neutral-400" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="max-h-60 w-48 overflow-y-auto">
+                    <DropdownMenuContent align="start" className="z-popover-above-modal max-h-60 w-48 overflow-y-auto">
                         <DropdownMenuLabel className="text-xs text-neutral-500">
                             Filter by {levelTerm}
                         </DropdownMenuLabel>
@@ -324,14 +324,14 @@ export const Step2CourseSelector = ({
                             <FunnelSimple size={13} />
                             {sessionTerm}
                             {selectedSessionIds.length > 0 && (
-                                <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-[10px] leading-none">
+                                <Badge className="ml-0.5 h-4 min-w-4 rounded-full px-1 py-0 text-caption leading-none">
                                     {selectedSessionIds.length}
                                 </Badge>
                             )}
                             <CaretDown size={11} className="text-neutral-400" />
                         </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="max-h-60 w-48 overflow-y-auto">
+                    <DropdownMenuContent align="start" className="z-popover-above-modal max-h-60 w-48 overflow-y-auto">
                         <DropdownMenuLabel className="text-xs text-neutral-500">
                             Filter by {sessionTerm}
                         </DropdownMenuLabel>

@@ -65,6 +65,7 @@ import { MyButton } from '../design-system/button';
 // Import service functions and types
 import {
     getCustomFieldSettings,
+    getSystemFieldDefaultLabel,
     saveCustomFieldSettings,
     createTempCustomField,
     CUSTOM_FIELD_TYPES,
@@ -1396,7 +1397,10 @@ const CustomFieldsSettings: React.FC = () => {
                                                     <td className="p-4">
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-sm font-medium text-gray-700">
-                                                                {field.defaultValue}
+                                                                {getSystemFieldDefaultLabel(
+                                                                    field.key,
+                                                                    field.defaultValue
+                                                                )}
                                                             </span>
                                                         </div>
                                                     </td>
@@ -1410,7 +1414,10 @@ const CustomFieldsSettings: React.FC = () => {
                                                                     e.target.value
                                                                 )
                                                             }
-                                                            placeholder={field.defaultValue}
+                                                            placeholder={getSystemFieldDefaultLabel(
+                                                                field.key,
+                                                                field.defaultValue
+                                                            )}
                                                             className="max-w-md"
                                                         />
                                                     </td>

@@ -30,6 +30,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.media.service.FileService;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -368,6 +369,64 @@ public class RecordingTranscriptionService {
         // NotificationService.createSystemAlertAnnouncement already swallows downstream
         // failures, so a notification-service blip can't fail the row update.
         dispatchTerminalAlert(row);
+
+        // Charge academy-credits for the transcription on the measured duration.
+        // Idempotent on the extraction id, so the callback + reconciliation watchdog
+        // (both routed through this method) can't double-bill.
+        if ("COMPLETED".equals(row.getStatus())) {
+            chargeTranscriptionCredits(row);
+        }
+    }
+
+    /**
+     * Charge academy-credits for a completed transcription, priced per audio-minute
+     * by the ai-service parametric estimator. Idempotent on the extraction id so the
+     * callback and the watchdog can both call this safely. Best-effort: never throws —
+     * the transcript row has already been saved.
+     */
+    private void chargeTranscriptionCredits(AiContentExtraction row) {
+        try {
+            Optional<AiContentSource> maybeSource = sourceRepo.findById(row.getSourceId());
+            if (maybeSource.isEmpty()) {
+                return;
+            }
+            AiContentSource source = maybeSource.get();
+            String instituteId = source.getInstituteId();
+            Double durationSeconds = row.getDurationSeconds();
+            if (instituteId == null || instituteId.isBlank()
+                    || durationSeconds == null || durationSeconds <= 0) {
+                return;
+            }
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("duration_seconds", durationSeconds);
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("tool_key", "transcription");
+            body.put("request_type", "transcription");
+            body.put("params", params);
+            body.put("model", "system");
+            body.put("idempotency_key", "transcription:" + row.getId());
+            if (source.getCreatedBy() != null && !source.getCreatedBy().isBlank()) {
+                body.put("user_id", source.getCreatedBy());
+                body.put("user_role", "ADMIN");
+            }
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (internalServiceToken != null && !internalServiceToken.isBlank()) {
+                headers.set("X-Internal-Service-Token", internalServiceToken);
+            }
+
+            String url = aiServiceUrl + "/ai-service/credits/v1/internal/charge-tool";
+            restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
+            log.info("[transcription-billing] charged institute={} jobId={} duration={}s",
+                    instituteId, row.getJobId(), durationSeconds);
+        } catch (Exception e) {
+            log.warn("[transcription-billing] charge failed for jobId={}: {}",
+                    row.getJobId(), e.getMessage());
+        }
     }
 
     /**

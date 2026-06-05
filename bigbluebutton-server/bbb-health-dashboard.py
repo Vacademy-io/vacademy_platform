@@ -14,6 +14,7 @@ Endpoints:
 
 import os
 import re
+import glob
 import hmac
 import hashlib
 import json
@@ -78,19 +79,103 @@ def get_memory_info():
     return info
 
 
+# Map /proc/<pid> comm -> friendly label for the per-process CPU breakdown.
+_CPU_PROC_LABELS = {
+    'freeswitch': 'FreeSWITCH (audio)',
+    'node': 'WebRTC SFU / graphql',
+    'java': 'akka / bbb-web',
+    'ruby': 'recording (rap)',
+    'ffmpeg': 'recording ffmpeg',
+    'mongod': 'mongo',
+    'postgres': 'postgres',
+}
+
+
+def _cpu_total_jiffies():
+    """Return (total, idle_incl_iowait, iowait) jiffies from /proc/stat's aggregate line."""
+    with open('/proc/stat', 'r') as f:
+        line = f.readline()
+    parts = [int(x) for x in line.split()[1:]]
+    # user nice system idle iowait irq softirq steal guest guest_nice
+    idle = parts[3] + (parts[4] if len(parts) > 4 else 0)
+    iowait = parts[4] if len(parts) > 4 else 0
+    # guest (idx 8) and guest_nice (idx 9) are already counted within user/nice,
+    # so subtract them from the total to avoid double-counting on a VM host.
+    guest = (parts[8] if len(parts) > 8 else 0) + (parts[9] if len(parts) > 9 else 0)
+    return sum(parts) - guest, idle, iowait
+
+
+def _proc_jiffies_by_comm():
+    """Sum utime+stime jiffies per process comm, across all PIDs (one sample)."""
+    out = {}
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f'/proc/{pid}/stat', 'r') as f:
+                data = f.read()
+            # comm is wrapped in parens and may itself contain spaces/parens.
+            rparen = data.rfind(')')
+            comm = data[data.find('(') + 1:rparen]
+            fields = data[rparen + 2:].split()
+            # After comm: state(0) ppid(1) ... utime is overall field 14 => index 11 here.
+            out[comm] = out.get(comm, 0) + int(fields[11]) + int(fields[12])
+        except Exception:
+            continue
+    return out
+
+
 def get_cpu_info():
+    """Actual CPU utilisation sampled over a short window (NOT load average).
+
+    Load average counts runnable + uninterruptible-IO tasks and is inflated by
+    disk wait (e.g. the recording pipeline), so it overstates real CPU pressure.
+    Here we sample /proc/stat twice to get the true busy %, the iowait %, and a
+    per-service breakdown (top-style: 100% = one core)."""
+    cpu_count = os.cpu_count() or 1
     try:
         with open('/proc/loadavg', 'r') as f:
-            parts = f.read().split()
-        load_1, load_5, load_15 = float(parts[0]), float(parts[1]), float(parts[2])
-        cpu_count = os.cpu_count() or 1
-        return {
-            'load_1': load_1, 'load_5': load_5, 'load_15': load_15,
-            'cpu_count': cpu_count,
-            'percent': round(load_1 / cpu_count * 100, 1),
-        }
+            p = f.read().split()
+        load_1, load_5, load_15 = float(p[0]), float(p[1]), float(p[2])
     except Exception:
-        return {'load_1': 0, 'load_5': 0, 'load_15': 0, 'cpu_count': 1, 'percent': 0}
+        load_1 = load_5 = load_15 = 0.0
+
+    usage_percent = 0.0
+    iowait_percent = 0.0
+    top_processes = []
+    try:
+        t0 = _cpu_total_jiffies()
+        p0 = _proc_jiffies_by_comm()
+        time.sleep(0.3)
+        t1 = _cpu_total_jiffies()
+        p1 = _proc_jiffies_by_comm()
+        dtotal = t1[0] - t0[0]
+        if dtotal > 0:
+            didle = t1[1] - t0[1]
+            usage_percent = round(max(0.0, 100.0 * (dtotal - didle) / dtotal), 1)
+            iowait_percent = round(max(0.0, 100.0 * (t1[2] - t0[2]) / dtotal), 1)
+            rows = []
+            for comm, j1 in p1.items():
+                dj = j1 - p0.get(comm, 0)
+                if dj <= 0:
+                    continue
+                core_pct = round(cpu_count * 100.0 * dj / dtotal, 1)  # 100% = one core
+                if core_pct >= 1.0:
+                    rows.append({'name': _CPU_PROC_LABELS.get(comm, comm),
+                                 'comm': comm, 'cpu_percent': core_pct})
+            rows.sort(key=lambda r: r['cpu_percent'], reverse=True)
+            top_processes = rows[:6]
+    except Exception:
+        pass
+
+    return {
+        'load_1': load_1, 'load_5': load_5, 'load_15': load_15,
+        'cpu_count': cpu_count,
+        'usage_percent': usage_percent,      # real busy %, 0-100 across all cores
+        'iowait_percent': iowait_percent,    # real disk-wait %, 0-100
+        'percent': usage_percent,            # back-compat: bar now reflects REAL usage
+        'top_processes': top_processes,
+    }
 
 
 def get_service_statuses():
@@ -181,6 +266,30 @@ def _is_uploaded(record_id):
     return os.path.isfile(os.path.join(UPLOADED_DIR, record_id))
 
 
+def _read_uploaded_fileids(record_id):
+    """Read the per-recording upload marker. The post-publish hook writes it as
+    'type=fileId' lines (content/webcams/presenter), one per uploaded variant.
+    Older recordings have an EMPTY marker (the hook used to just `touch` it) and
+    return [] — only recordings uploaded after the hook change carry file IDs.
+    Used by the dashboard to surface/copy the S3 file id."""
+    out = []
+    seen = set()
+    try:
+        with open(os.path.join(UPLOADED_DIR, record_id), 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or '=' not in line:
+                    continue
+                typ, _, fid = line.partition('=')
+                typ, fid = typ.strip(), fid.strip()
+                if fid and fid not in seen:
+                    seen.add(fid)
+                    out.append({'type': typ or 'recording', 'fileId': fid})
+    except OSError:
+        pass
+    return out
+
+
 def _parse_metadata_xml(path):
     """Extract meetingName, start_time (ms), end_time (ms) from a BBB metadata.xml.
     Falls back to None for any field we can't find."""
@@ -223,28 +332,62 @@ _DONE_FILE_RE = re.compile(r'^([a-f0-9]{40}-[0-9]{13})(?:-[^.]+)?\.done$')
 _STAGE_ORDER = {'sanity': 0, 'recorded': 1, 'archived': 2, 'processed': 3, 'published': 4}
 
 
+def _latest_done_event(record_id):
+    """Across all pipeline stages, find the most-recently-modified .done file
+    for this recording. Returns (stage_name, mtime_unix) or None.
+
+    Critical for UX: when a recording sits at 'Awaiting Process' the badge
+    doesn't change but the pipeline IS moving (rap-worker rewrites sanity.done,
+    then archive runs, etc). Surfacing the latest .done timestamp gives users
+    concrete proof that progress is happening — without it the dashboard
+    looks frozen between major status transitions."""
+    latest = None
+    # Include captions which is part of the rap workflow and frequently the
+    # most-recently-touched marker for a recording.
+    stages_to_check = list(PIPELINE_STAGES) + ['captions']
+    for stage in stages_to_check:
+        for pattern in (
+            os.path.join(STATUS_DIR, stage, record_id + '.done'),
+            os.path.join(STATUS_DIR, stage, record_id + '-*.done'),
+        ):
+            paths = glob.glob(pattern) if '*' in pattern else (
+                [pattern] if os.path.exists(pattern) else []
+            )
+            for path in paths:
+                try:
+                    mtime = os.path.getmtime(path)
+                    if latest is None or mtime > latest[1]:
+                        latest = (stage, mtime)
+                except OSError:
+                    pass
+    return latest
+
+
 def _stage_done_exists(record_id, stage):
     """Returns True if either '<id>.done' or '<id>-*.done' is present in the given stage dir."""
     plain = os.path.join(STATUS_DIR, stage, record_id + '.done')
     if os.path.exists(plain):
         return True
-    # Fall back to glob for the suffixed variant.
-    import glob as _glob
-    return bool(_glob.glob(os.path.join(STATUS_DIR, stage, record_id + '-*.done')))
+    return bool(glob.glob(os.path.join(STATUS_DIR, stage, record_id + '-*.done')))
 
 
 def _pipeline_stage(record_id):
     """Return the furthest BBB recording-pipeline stage reached:
        'published' > 'processed' > 'recorded'/'archived' > 'sanity' > 'raw_only' > 'unpublished' > None
 
-    Important: a presentation directory in /var/bigbluebutton/published/presentation/<id>
-    means the recording finished the publish step — even if its .done flag was
-    later deleted by the 4-day cleanup cron. Check that FIRST."""
-    if os.path.isdir(os.path.join(PUBLISHED_DIR, record_id)):
-        return 'published'
+    Check .done flags FIRST — they reflect actual pipeline progress and get
+    invalidated correctly by `bbb-record --rebuild`. Only fall back to
+    directory existence when NO flags are present (covers the 4-day cleanup
+    cron case where .done files are gone but presentation/<id>/ survives).
+
+    Previously this checked the directory first — which incorrectly reported
+    'published' on a freshly-rebuilt recording whose .done files had been
+    removed but whose stale presentation/<id>/ directory was still on disk."""
     for stage in PIPELINE_STAGES:
         if _stage_done_exists(record_id, stage):
             return stage
+    if os.path.isdir(os.path.join(PUBLISHED_DIR, record_id)):
+        return 'published'   # legacy publish whose .done was cleaned by cron
     if os.path.isdir(os.path.join(RAW_DIR, record_id)):
         return 'raw_only'
     if os.path.isdir(os.path.join(UNPUBLISHED_DIR, record_id)):
@@ -442,6 +585,19 @@ def list_recordings(page=1, page_size=25):
         duration_sec = None
         if meta['startTimeMs'] and meta['endTimeMs']:
             duration_sec = max(0, (meta['endTimeMs'] - meta['startTimeMs']) // 1000)
+        latest = _latest_done_event(record_id)
+        latest_ago = int(time.time() - latest[1]) if latest else None
+        # Stall detection: an unprocessed recording whose latest pipeline event
+        # is more than 5 minutes old AND is not currently active/queued is
+        # likely stuck (BBB workflow forgot to enqueue the next stage). Flag
+        # it so the user can spot which rows actually need a rebuild vs which
+        # are just waiting their turn behind a healthy queue.
+        is_stalled = (
+            status in ('Recording', 'Awaiting Archive', 'Awaiting Process', 'Awaiting Publish')
+            and not already_queued
+            and latest_ago is not None
+            and latest_ago > 300
+        )
         rows.append({
             'recordId': record_id,
             'externalMeetingId': meta['externalMeetingId'],
@@ -449,10 +605,15 @@ def list_recordings(page=1, page_size=25):
             'startTimeMs': meta['startTimeMs'],
             'durationSeconds': duration_sec,
             'status': status,
+            'isStalled': is_stalled,
             'activeStage': active['stage'] if active else None,
             'queuedInStage': queue_info['queue'] if queue_info else None,
             'queuePosition': queue_info['positionOverall'] if queue_info else None,
+            'duplicateQueueCount': queue_info['duplicateCount'] if queue_info else 0,
             'alreadyQueued': already_queued,
+            'latestStage': latest[0] if latest else None,
+            'latestStageAgoSec': latest_ago,
+            'fileIds': _read_uploaded_fileids(record_id) if status == 'Uploaded' else [],
             'canDelete': status == 'Uploaded',
             'canUpload': can_upload,
             'canRebuild': can_rebuild,
@@ -512,14 +673,27 @@ def rebuild_recording_pipeline(record_id):
         return False, 'invalid recordId'
     # Ensure something for this recordId actually exists on disk before we
     # spawn the BBB CLI — refuse fast otherwise.
+    has_done = any(
+        os.path.exists(os.path.join(STATUS_DIR, s, record_id + '.done'))
+        for s in PIPELINE_STAGES
+    ) or _stage_done_exists(record_id, 'processed') or _stage_done_exists(record_id, 'published')
     if not (
         os.path.isdir(os.path.join(RAW_DIR, record_id))
         or os.path.isdir(os.path.join(PUBLISHED_DIR, record_id))
         or os.path.isdir(os.path.join(UNPUBLISHED_DIR, record_id))
-        or any(os.path.exists(os.path.join(STATUS_DIR, s, record_id + '.done'))
-               for s in PIPELINE_STAGES)
+        or has_done
     ):
         return False, 'recording not found on this BBB host'
+    # Refuse if the recording is already in a rap-worker queue OR being processed,
+    # so a direct curl can't pile up duplicate sanity jobs even if the UI's
+    # disabled-button protection is bypassed.
+    if {j['recordingId'] for j in get_rap_worker_active_jobs()} & {record_id}:
+        return False, 'recording is currently being processed — rebuild already in flight'
+    queue_contents = get_rap_worker_queue_contents()
+    for q_name, q_ids in queue_contents.items():
+        if record_id in q_ids:
+            pos = q_ids.index(record_id) + 1
+            return False, f'recording is already queued (position #{pos} in rap:{q_name}) — no new rebuild needed'
     try:
         result = subprocess.run(
             ['bbb-record', '--rebuild', record_id],
@@ -602,6 +776,33 @@ def delete_recording_from_bbb(record_id):
         return False, str(e)
 
 
+def delete_recordings_bulk(record_ids):
+    """Delete several recordings from BBB disk in one request. Each id goes
+    through delete_recording_from_bbb, which enforces the same guards as the
+    single-row delete (must already be uploaded to S3; not mid-upload). Returns
+    a per-id summary so the UI can report partial success."""
+    if not isinstance(record_ids, list):
+        return {'deletedCount': 0, 'failedCount': 0, 'deleted': [],
+                'failed': [], 'error': 'recordIds must be a list'}
+    # De-dupe, preserve order, and cap to avoid a pathological request.
+    seen = set()
+    ordered = []
+    for rid in record_ids:
+        if isinstance(rid, str) and rid not in seen:
+            seen.add(rid)
+            ordered.append(rid)
+    deleted, failed = [], []
+    for rid in ordered[:200]:
+        ok, output = delete_recording_from_bbb(rid)
+        if ok:
+            deleted.append(rid)
+        else:
+            failed.append({'recordId': rid, 'reason': (output or '').strip()[:300]})
+    log(f"ACTION: bulk-delete requested={len(ordered)} deleted={len(deleted)} failed={len(failed)}")
+    return {'deletedCount': len(deleted), 'failedCount': len(failed),
+            'deleted': deleted, 'failed': failed}
+
+
 def get_rap_worker_active_jobs():
     """Inspect redis for rap-worker(s) currently mid-job. Returns a list:
        [{ 'recordingId': '...', 'stage': 'sanity'|'archive'|'process'|'publish'|'post_publish',
@@ -615,7 +816,7 @@ def get_rap_worker_active_jobs():
     active = []
     try:
         result = subprocess.run(
-            ['redis-cli', 'SMEMBERS', 'resque:workers'],
+            ['redis-cli', '--raw', 'SMEMBERS', 'resque:workers'],
             capture_output=True, text=True, timeout=3,
         )
         if result.returncode != 0:
@@ -623,7 +824,7 @@ def get_rap_worker_active_jobs():
         worker_ids = [w.strip() for w in result.stdout.split('\n') if w.strip()]
         for wid in worker_ids:
             r = subprocess.run(
-                ['redis-cli', 'GET', f'resque:worker:{wid}'],
+                ['redis-cli', '--raw', 'GET', f'resque:worker:{wid}'],
                 capture_output=True, text=True, timeout=2,
             )
             body = r.stdout.strip()
@@ -632,7 +833,10 @@ def get_rap_worker_active_jobs():
             try:
                 payload = json.loads(body)
             except (ValueError, json.JSONDecodeError):
-                continue
+                try:
+                    payload = json.loads(json.loads(body))
+                except Exception:
+                    continue
             queue = payload.get('queue', '')
             # rap-worker queues are named 'rap:sanity', 'rap:archive', etc.
             stage = queue.split(':', 1)[1] if ':' in queue else queue
@@ -659,13 +863,20 @@ def get_rap_worker_active_jobs():
 def get_rap_worker_queue_contents():
     """For each rap-worker queue, return the ordered list of recordIds in line.
     Used to (a) tell users their queue position and (b) suppress double-rebuilds
-    when a recording is already pending in any rap-worker queue."""
-    queues = ['sanity', 'archive', 'process', 'publish', 'post_publish']
+    when a recording is already pending in any rap-worker queue.
+
+    Includes 'captions' and 'events' because some BBB versions route through
+    'sanity → captions → process → publish'; ignoring captions would make
+    captions-queued recordings appear stalled when they're actually just waiting."""
+    queues = ['sanity', 'archive', 'process', 'publish', 'post_publish', 'captions', 'events']
     contents = {q: [] for q in queues}
     for q in queues:
         try:
+            # `--raw` makes redis-cli output the raw byte content of each value
+            # (one per line), no outer quoting or escape processing — easier to
+            # parse than the default which may double-quote-encode strings.
             r = subprocess.run(
-                ['redis-cli', 'LRANGE', f'resque:queue:rap:{q}', '0', '-1'],
+                ['redis-cli', '--raw', 'LRANGE', f'resque:queue:rap:{q}', '0', '-1'],
                 capture_output=True, text=True, timeout=5,
             )
             if r.returncode != 0:
@@ -674,14 +885,15 @@ def get_rap_worker_queue_contents():
                 line = raw_line.strip()
                 if not line:
                     continue
-                # redis-cli output may double-quote-escape values; strip the outer
-                # quotes if present and unescape.
-                if line.startswith('"') and line.endswith('"'):
-                    line = line[1:-1].encode('utf-8').decode('unicode_escape')
                 try:
                     data = json.loads(line)
                 except (ValueError, json.JSONDecodeError):
-                    continue
+                    # Fall back: try treating it as JSON-quoted string (default
+                    # redis-cli mode for binary-unsafe values).
+                    try:
+                        data = json.loads(json.loads(line))
+                    except Exception:
+                        continue
                 args = data.get('args') or []
                 rid = None
                 if args and isinstance(args[0], dict):
@@ -695,19 +907,32 @@ def get_rap_worker_queue_contents():
 
 def _queue_position_map(queue_contents):
     """Given queue contents, return a dict:
-       recordId -> { queue, positionInQueue (1-indexed), positionOverall (1-indexed) }
-    Overall position considers worker priority: archive > publish > process >
-    sanity > post_publish (same order the worker pulls jobs in)."""
-    priority = ('archive', 'publish', 'process', 'sanity', 'post_publish')
+       recordId -> { queue, positionInQueue (1-indexed), positionOverall (1-indexed),
+                      duplicateCount (total appearances across all queues) }
+    Overall position uses the actual rap-worker subscription priority:
+       archive > publish > process > sanity > captions > events > post_publish.
+    Higher-priority jobs get pulled first; recordings in low-priority queues
+    can stall indefinitely behind a busy high-priority queue.
+
+    duplicateCount surfaces accidental over-rebuilds — every rebuild enqueues
+    a fresh sanity job which eventually enqueues a captions job, so a
+    rebuilt-3-times recording sits in the queue 3+ times."""
+    priority = ('archive', 'publish', 'process', 'sanity', 'captions', 'events', 'post_publish')
+    # Count appearances across ALL queues first
+    appearances = {}
+    for q in priority:
+        for rid in queue_contents.get(q, []):
+            appearances[rid] = appearances.get(rid, 0) + 1
     result = {}
     cumulative = 0
     for q in priority:
         for i, rid in enumerate(queue_contents.get(q, [])):
-            if rid not in result:  # first occurrence wins
+            if rid not in result:  # first occurrence (highest priority queue) wins
                 result[rid] = {
                     'queue': q,
                     'positionInQueue': i + 1,
                     'positionOverall': cumulative + i + 1,
+                    'duplicateCount': appearances.get(rid, 1),
                 }
         cumulative += len(queue_contents.get(q, []))
     return result
@@ -720,7 +945,7 @@ def get_rap_worker_queue_stats():
     queue (which only fills *after* a recording reaches 'published').
 
     Returns a dict like {'sanity': 3, 'archive': 0, ...} and a total."""
-    queues = ['sanity', 'archive', 'process', 'publish', 'post_publish']
+    queues = ['sanity', 'archive', 'process', 'publish', 'post_publish', 'captions', 'events']
     stats = {}
     total = 0
     for q in queues:
@@ -948,6 +1173,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .badge-unpublished { background: rgba(148,163,184,0.18); color: var(--muted); }
   .badge-unknown { background: rgba(239,68,68,0.18); color: var(--red); }
   .stage-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 0.65rem; background: rgba(168,85,247,0.15); color: #a855f7; font-weight: 500; }
+  .stalled-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 0.65rem; background: rgba(239,68,68,0.18); color: var(--red); font-weight: 600; }
   .size-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
   .size-btn:hover { color: var(--text); border-color: var(--accent); }
   .row-delete { background: transparent; border: 1px solid var(--red); color: var(--red); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
@@ -968,6 +1194,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
   .pagination button:not(:disabled):hover { border-color: var(--accent); }
   .recid { font-family: monospace; font-size: 0.7rem; color: var(--muted); }
+  .chk-col { width: 30px; text-align: center; }
+  .chk-col input { cursor: pointer; }
+  .bulk-bar { display: none; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 12px; background: rgba(239,68,68,0.08); border: 1px solid var(--red); border-radius: 8px; font-size: 0.85rem; flex-wrap: wrap; }
+  .bulk-bar.visible { display: flex; }
+  .bulk-bar #bulkCount { font-weight: 600; }
   @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } body { padding: 10px; } table.recordings { font-size: 0.75rem; } table.recordings th, table.recordings td { padding: 6px 4px; } }
 </style>
 </head>
@@ -1040,6 +1271,12 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       <span class="timestamp" id="recordingsMeta">Click Refresh to load.</span>
       <button class="refresh-btn" onclick="loadRecordings(1)">Refresh</button>
     </div>
+    <div class="bulk-bar" id="bulkBar">
+      <span id="bulkCount">0 selected</span>
+      <button class="row-delete" onclick="deleteSelected()">Delete selected from BBB</button>
+      <button class="refresh-btn" onclick="clearSelection()">Clear</button>
+      <span style="color:var(--muted);font-size:0.75rem">Only uploaded recordings are selectable — S3 keeps the copy.</span>
+    </div>
     <div id="recordingsTableWrap"></div>
     <div class="pagination" id="recordingsPagination" style="display:none">
       <span id="paginationInfo"></span>
@@ -1075,6 +1312,28 @@ function metricBlock(label, value, pct) {
     <div style="height:8px"></div>`;
 }
 
+function cpuBlock(cpu) {
+  const usage = cpu.usage_percent != null ? cpu.usage_percent : (cpu.percent || 0);
+  const iowait = cpu.iowait_percent != null ? cpu.iowait_percent : 0;
+  let procs = '';
+  if (cpu.top_processes && cpu.top_processes.length) {
+    procs = '<div style="margin-top:6px;font-size:0.72rem;color:var(--muted)">' +
+      cpu.top_processes.map(p =>
+        `<div style="display:flex;justify-content:space-between"><span>${escapeHtml(p.name)}</span><span>${p.cpu_percent}%</span></div>`
+      ).join('') +
+      '<div style="opacity:0.6;margin-top:2px">per-process: 100% = 1 core</div></div>';
+  }
+  return `
+    <div class="metric-row">
+      <span class="metric-label">CPU usage</span>
+      <span class="metric-value">${usage}% <span style="color:var(--muted);font-weight:400">· iowait ${iowait}%</span></span>
+    </div>
+    <div class="bar-bg"><div class="bar-fill ${barClass(usage)}" style="width:${Math.min(usage,100)}%"></div></div>
+    <div style="margin-top:4px;font-size:0.72rem;color:var(--muted)">load avg ${cpu.load_1} / ${cpu.load_5} / ${cpu.load_15} · ${cpu.cpu_count} cores</div>
+    ${procs}
+    <div style="height:8px"></div>`;
+}
+
 async function loadMetrics() {
   try {
     const res = await fetch(apiUrl('/api/metrics'));
@@ -1086,7 +1345,7 @@ async function loadMetrics() {
     document.getElementById('metricsContent').innerHTML =
       metricBlock('Disk', `${disk.used_gb} / ${disk.total_gb} GB (${disk.free_gb} GB free)`, disk.percent) +
       metricBlock('Memory', `${mem.used_mb} / ${mem.total_mb} MB`, mem.percent) +
-      metricBlock('CPU Load', `${cpu.load_1} / ${cpu.load_5} / ${cpu.load_15} (${cpu.cpu_count} cores)`, cpu.percent);
+      cpuBlock(cpu);
 
     // Services
     let html = '<ul class="svc-list">';
@@ -1111,11 +1370,11 @@ async function loadMetrics() {
       for (const m of mtg.meetings) {
         const recDot = m.recording ? ' 🔴' : '';
         const elapsed = m.start_time > 0 ? Math.round((Date.now() - parseInt(m.start_time)) / 60000) + ' min' : '';
-        mtgHtml += `<li class="svc-item"><span class="dot dot-active"></span><span class="svc-name">${m.name}${recDot}</span><span class="svc-status">${m.participants} users · ${elapsed}</span></li>`;
+        mtgHtml += `<li class="svc-item"><span class="dot dot-active"></span><span class="svc-name">${escapeHtml(m.name)}${recDot}</span><span class="svc-status">${m.participants} users · ${elapsed}</span></li>`;
       }
       mtgHtml += '</ul>';
     }
-    if (mtg.error) { mtgHtml += `<div style="color:var(--red);font-size:0.8rem;margin-top:8px">${mtg.error}</div>`; }
+    if (mtg.error) { mtgHtml += `<div style="color:var(--red);font-size:0.8rem;margin-top:8px">${escapeHtml(mtg.error)}</div>`; }
     document.getElementById('meetingsContent').innerHTML = mtgHtml;
 
     // Recordings
@@ -1185,6 +1444,7 @@ function switchTab(name) {
 // ── Recordings tab ────────────────────────────────────────
 let currentPage = 1;
 let recordingsLoadedOnce = false;
+let selectedRecordings = new Set();
 
 function badgeClass(status) {
   // Strip spaces so "Awaiting Process" -> "awaitingprocess" matches CSS.
@@ -1203,6 +1463,14 @@ function fmtDuration(sec) {
   return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
 }
 
+function fmtAgo(s) {
+  if (s == null) return '';
+  if (s < 60) return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
 function fmtBytes(bytes) {
   if (bytes == null) return '—';
   if (bytes < 1024) return bytes + ' B';
@@ -1214,6 +1482,8 @@ function fmtBytes(bytes) {
 async function loadRecordings(page) {
   if (!page || page < 1) return;
   currentPage = page;
+  selectedRecordings.clear();
+  updateBulkBar();
   const wrap = document.getElementById('recordingsTableWrap');
   wrap.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)"><span class="spinner"></span> Loading recordings...</div>';
   document.getElementById('recordingsPagination').style.display = 'none';
@@ -1230,17 +1500,37 @@ async function loadRecordings(page) {
     // Rough per-stage averages (seconds). The 'process' stage is the ffmpeg-heavy
     // one and dominates wait time; other stages are negligible by comparison.
     // Under CPUWeight=10 during class hours, multiply mentally by ~3x.
-    const AVG_SEC = {sanity: 15, archive: 30, process: 600, publish: 30, post_publish: 60};
+    // Avg DOWNSTREAM seconds per queued item — i.e. how long until that item
+    // is fully through the pipeline, NOT just how long its own stage takes.
+    // A captions job will trigger a process job on completion (the slow ffmpeg
+    // step), so its true contribution is captions+process+publish time.
+    //
+    // Process stage time (~350s on 8-core box w/ -threads 0; decoder is the
+    // real bottleneck, not encoder) is the dominant factor — every other
+    // stage is fast. Adjust this single constant as your box's actual
+    // ffmpeg throughput shifts.
+    const PROCESS_SEC = 350;
+    const AVG_DOWNSTREAM_SEC = {
+      sanity:       15 + 10 + PROCESS_SEC + 30 + 60,
+      archive:           10 + PROCESS_SEC + 30 + 60,
+      captions:          10 + PROCESS_SEC + 30 + 60,
+      process:                PROCESS_SEC + 30 + 60,
+      publish:                              30 + 60,
+      post_publish:                              60,
+      events:                                    10,
+    };
     let etaSec = 0;
-    for (const [q, n] of Object.entries(rap.stages || {})) etaSec += (AVG_SEC[q] || 60) * n;
+    for (const [q, n] of Object.entries(rap.stages || {})) etaSec += (AVG_DOWNSTREAM_SEC[q] || 60) * n;
     const etaLabel = etaSec >= 3600 ? `~${(etaSec/3600).toFixed(1)}h` : `~${Math.ceil(etaSec/60)}m`;
 
-    document.getElementById('recordingsMeta').textContent =
+    const stalled = d.recordings.filter(r => r.isStalled).length;
+    document.getElementById('recordingsMeta').innerHTML =
       `${d.total} recording(s) on disk · ` +
       `BBB pipeline: ${rap.total} pending${stagesDetail ? ' (' + stagesDetail + ')' : ''}` +
       `${rap.total > 0 ? ' · est. clear: ' + etaLabel : ''} · ` +
       `S3 upload: ${d.queued_count} queued · ` +
-      (d.current_drainer ? `uploading ${d.current_drainer.slice(0, 12)}…` : 'idle');
+      (d.current_drainer ? `uploading ${d.current_drainer.slice(0, 12)}…` : 'idle') +
+      (stalled > 0 ? ` · <span style="color:var(--red);font-weight:600">⚠ ${stalled} stalled on this page</span>` : '');
 
     // Prominent banner when something is mid-upload — much more obvious than
     // a one-line counter, and animates so users notice without polling.
@@ -1268,6 +1558,7 @@ async function loadRecordings(page) {
     }
 
     let html = `<table class="recordings"><thead><tr>
+      <th class="chk-col"><input type="checkbox" id="selectAllRecs" title="Select all uploaded on this page" onclick="toggleSelectAll(this)"></th>
       <th>Meeting</th><th>Started</th><th>Duration</th><th>Status</th><th>Size</th><th>Actions</th>
     </tr></thead><tbody>`;
     for (const r of d.recordings) {
@@ -1276,16 +1567,30 @@ async function loadRecordings(page) {
       // path ever surfaces an unvalidated id, this still blocks XSS.
       const safeId = r.recordId.replace(/[^a-z0-9-]/gi, '');
       const ridAttr = escapeHtml(r.recordId);
-      const ridJs = escapeJs(r.recordId);
-      const nameJs = escapeJs(r.meetingName || '');
+      // These are interpolated into double-quoted onclick="" attributes, so they
+      // need BOTH JS-string escaping (escapeJs) AND HTML-attribute escaping
+      // (escapeHtml). escapeJs alone backslash-escapes a " but leaves it literal,
+      // which closes the attribute and allows handler injection — stored XSS via
+      // a crafted meeting name. escapeHtml encodes the " (and < > &) so it can't
+      // break out; the JS string still round-trips to the original value.
+      const ridJs = escapeHtml(escapeJs(r.recordId));
+      const nameJs = escapeHtml(escapeJs(r.meetingName || ''));
       const extId = r.externalMeetingId ? escapeHtml(r.externalMeetingId) : '';
       // Highlight row when rap-worker is actively processing it or our drainer is uploading it.
       const rowClass = (r.status === 'Uploading' || r.status === 'Processing') ? 'row-active' : '';
-      const stageTag = r.activeStage
-        ? `<span class="stage-tag">${escapeHtml(r.activeStage)}</span>`
-        : (r.queuedInStage
-            ? `<span class="stage-tag" style="background:rgba(56,189,248,0.15);color:var(--accent)">#${r.queuePosition} · ${escapeHtml(r.queuedInStage)}</span>`
-            : '');
+      let stageTag = '';
+      if (r.activeStage) {
+        stageTag = `<span class="stage-tag">${escapeHtml(r.activeStage)}</span>`;
+      } else if (r.queuedInStage) {
+        const dupNote = r.duplicateQueueCount > 1
+          ? ` <span style="color:var(--yellow);font-weight:700" title="Enqueued ${r.duplicateQueueCount} times — duplicate rebuilds. Wasted work but not harmful.">×${r.duplicateQueueCount}</span>`
+          : '';
+        stageTag = `<span class="stage-tag" style="background:rgba(56,189,248,0.15);color:var(--accent)">#${r.queuePosition} · ${escapeHtml(r.queuedInStage)}${dupNote}</span>`;
+      } else if (r.isStalled) {
+        // No active worker, not queued, but stage hasn't progressed in 5+ min.
+        // Almost certainly BBB workflow lost track — click Rebuild to retry.
+        stageTag = `<span class="stalled-tag" title="No progress for 5+ minutes — pipeline likely lost track of this recording. Click Rebuild to retry.">stalled</span>`;
+      }
 
       // Action buttons are state-aware; the server is the source of truth and
       // will reject inappropriate requests regardless of what the UI shows.
@@ -1309,21 +1614,33 @@ async function loadRecordings(page) {
         actions.push(`<button class="row-upload" disabled title="Already uploaded">Uploaded ✓</button>`);
       }
       actions.push(`<button class="row-delete" ${r.canDelete ? '' : 'disabled title="Only available once uploaded to S3"'} onclick="deleteRecording('${ridJs}', '${nameJs}')">Delete from BBB</button>`);
+      if (r.status === 'Uploaded' && r.fileIds && r.fileIds.length) {
+        for (const f of r.fileIds) {
+          actions.push(`<button class="size-btn" title="Copy ${escapeHtml(f.type)} S3 file ID: ${escapeHtml(f.fileId)}" onclick="copyText('${escapeHtml(escapeJs(f.fileId))}', this)">⧉ ${escapeHtml(f.type)} id</button>`);
+        }
+      }
 
       html += `<tr id="rec-${safeId}" class="${rowClass}">
+        <td class="chk-col">${r.canDelete
+          ? `<input type="checkbox" class="rec-check" data-rid="${ridAttr}" ${selectedRecordings.has(r.recordId) ? 'checked' : ''} onclick="toggleRec('${ridJs}', this)">`
+          : `<input type="checkbox" disabled title="Only uploaded recordings can be deleted">`}</td>
         <td>
           <div>${escapeHtml(r.meetingName)}</div>
           <div class="recid" title="${ridAttr}">${ridAttr}${extId ? '<br><span style="opacity:0.7">ext: ' + extId + '</span>' : ''}</div>
         </td>
         <td>${fmtTime(r.startTimeMs)}</td>
         <td>${fmtDuration(r.durationSeconds)}</td>
-        <td><span class="${badgeClass(r.status)}">${r.status}</span>${stageTag}</td>
+        <td>
+          <span class="${badgeClass(r.status)}">${r.status}</span>${stageTag}
+          ${r.latestStage ? `<div style="font-size:0.7rem;color:var(--muted);margin-top:3px">✓ ${escapeHtml(r.latestStage)} ${fmtAgo(r.latestStageAgoSec)}</div>` : ''}
+        </td>
         <td><button class="size-btn" onclick="loadSize('${ridJs}', this)">Show</button></td>
         <td>${actions.join(' ')}</td>
       </tr>`;
     }
     html += '</tbody></table>';
     wrap.innerHTML = bannerHtml + html;
+    updateBulkBar();
 
     const pag = document.getElementById('recordingsPagination');
     pag.style.display = 'flex';
@@ -1409,6 +1726,79 @@ async function deleteRecording(recordId, name) {
   }
 }
 
+// ── Bulk selection + delete ───────────────────────────────
+function toggleRec(recordId, cb) {
+  if (cb.checked) selectedRecordings.add(recordId);
+  else selectedRecordings.delete(recordId);
+  const sa = document.getElementById('selectAllRecs');
+  if (sa && !cb.checked) sa.checked = false;
+  updateBulkBar();
+}
+
+function toggleSelectAll(cb) {
+  selectedRecordings.clear();
+  document.querySelectorAll('.rec-check').forEach(box => {
+    box.checked = cb.checked;
+    const rid = box.getAttribute('data-rid');
+    if (cb.checked && rid) selectedRecordings.add(rid);
+  });
+  updateBulkBar();
+}
+
+function clearSelection() {
+  selectedRecordings.clear();
+  document.querySelectorAll('.rec-check').forEach(box => { box.checked = false; });
+  const sa = document.getElementById('selectAllRecs');
+  if (sa) sa.checked = false;
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkBar');
+  if (!bar) return;
+  const n = selectedRecordings.size;
+  const c = document.getElementById('bulkCount');
+  if (c) c.textContent = n + ' selected';
+  bar.classList.toggle('visible', n > 0);
+}
+
+async function deleteSelected() {
+  const ids = Array.from(selectedRecordings);
+  if (ids.length === 0) return;
+  if (!confirm(`Delete ${ids.length} recording(s) from BBB?\n\nThis removes the BBB-local copy ONLY — the S3 copy is untouched. Only recordings already uploaded to S3 are deleted; any others are skipped.`)) {
+    return;
+  }
+  const c = document.getElementById('bulkCount');
+  if (c) c.textContent = 'Deleting ' + ids.length + '…';
+  try {
+    const res = await fetch(apiUrl('/api/recordings/delete-bulk'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recordIds: ids }),
+    });
+    const d = await res.json();
+    let msg = `Deleted ${d.deletedCount || 0} of ${ids.length}.`;
+    if (d.failedCount) {
+      msg += `\n\nSkipped/failed ${d.failedCount}:\n` +
+        (d.failed || []).slice(0, 10).map(f => `• ${String(f.recordId).slice(0, 12)}…: ${f.reason}`).join('\n');
+    }
+    alert(msg);
+  } catch (e) {
+    alert('Bulk delete failed: ' + e.message);
+  } finally {
+    loadRecordings(currentPage);   // clears selection + refreshes the table
+  }
+}
+
+function copyText(text, btn) {
+  const done = () => { const o = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = o; }, 1200); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => window.prompt('Copy the file ID:', text));
+  } else {
+    window.prompt('Copy the file ID:', text);
+  }
+}
+
 function escapeHtml(s) {
   if (!s) return '';
   return String(s).replace(/[&<>"']/g, c =>
@@ -1464,6 +1854,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def _path(self):
         return urlparse(self.path).path.rstrip('/')
+
+    def _read_json_body(self):
+        try:
+            length = int(self.headers.get('Content-Length', 0) or 0)
+            if length <= 0 or length > 1_000_000:
+                return {}
+            obj = json.loads(self.rfile.read(length).decode('utf-8'))
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
 
     def do_GET(self):
         if not self._auth_ok():
@@ -1532,6 +1932,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             ok, output = run_restart_bbb()
             log(f"ACTION: restart-bbb result={'ok' if ok else 'fail'}")
             return self._respond(200, {"success": ok, "output": output})
+
+        # POST /api/recordings/delete-bulk  → delete several at once (body: {recordIds:[...]})
+        if path == '/api/recordings/delete-bulk':
+            body = self._read_json_body()
+            result = delete_recordings_bulk(body.get('recordIds') or [])
+            return self._respond(200, result)
 
         # POST /api/recordings/<recordId>/delete  → bbb-record --delete (BBB only)
         if path.startswith('/api/recordings/') and path.endswith('/delete'):

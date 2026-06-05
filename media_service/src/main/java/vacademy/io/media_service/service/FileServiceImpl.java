@@ -28,6 +28,7 @@ import vacademy.io.media_service.exceptions.FileUploadException;
 import vacademy.io.media_service.repository.FileMetadataRepository;
 import vacademy.io.media_service.repository.UserToFileRepository;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -428,6 +429,13 @@ public class FileServiceImpl implements FileService {
      * Percent-encodes an S3 object key for safe use in a URL path while keeping
      * the '/' separators intact. URLEncoder targets form encoding, so spaces come
      * back as '+'; we convert those to '%20' for a valid path segment.
+     *
+     * <p>Each segment is first percent-decoded once (see {@link #safePercentDecode})
+     * and then encoded once. This makes the method idempotent: legacy keys that were
+     * stored already URL-encoded (e.g. a file name "(90%_mgp_b3)" persisted as
+     * "(90%25_mgp_b3)") collapse back to the real S3 object key before re-encoding,
+     * so we no longer double-encode '%' into '%2525' and produce a 404 URL. A clean,
+     * unencoded key passes through unchanged.
      */
     private String encodeS3Key(String objectKey) {
         if (!StringUtils.hasText(objectKey)) {
@@ -439,10 +447,42 @@ public class FileServiceImpl implements FileService {
             if (i > 0) {
                 encoded.append("/");
             }
-            encoded.append(URLEncoder.encode(segments[i], StandardCharsets.UTF_8)
+            encoded.append(URLEncoder.encode(safePercentDecode(segments[i]), StandardCharsets.UTF_8)
                     .replace("+", "%20"));
         }
         return encoded.toString();
+    }
+
+    /**
+     * Percent-decodes a single path segment, decoding only valid {@code %XX} hex
+     * escapes (UTF-8 multibyte sequences included). Unlike {@link java.net.URLDecoder},
+     * a literal '+' is preserved instead of becoming a space, and a stray '%' that is
+     * not followed by two hex digits is kept verbatim instead of throwing. This lets
+     * {@link #encodeS3Key} safely run decode-then-encode on keys that may or may not
+     * already be encoded.
+     */
+    private String safePercentDecode(String segment) {
+        if (segment == null || segment.indexOf('%') < 0) {
+            return segment; // nothing to decode; keep '+' and everything else verbatim
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream(segment.length());
+        for (int i = 0; i < segment.length(); i++) {
+            char ch = segment.charAt(i);
+            if (ch == '%' && i + 2 < segment.length()
+                    && isHex(segment.charAt(i + 1)) && isHex(segment.charAt(i + 2))) {
+                out.write((Character.digit(segment.charAt(i + 1), 16) << 4)
+                        + Character.digit(segment.charAt(i + 2), 16));
+                i += 2;
+            } else {
+                byte[] bytes = String.valueOf(ch).getBytes(StandardCharsets.UTF_8);
+                out.write(bytes, 0, bytes.length);
+            }
+        }
+        return new String(out.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    private boolean isHex(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
     }
 
     public void copyFileToPublicBucket(String objectKey) {

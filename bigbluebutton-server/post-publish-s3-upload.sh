@@ -53,6 +53,14 @@ elif [ "$QUEUE_MODE" = "1" ]; then
         echo "Usage: $0 <recordId>" >&2
         exit 1
     fi
+    # Skip enqueue if this recording is already uploaded — avoids waking up
+    # the drainer unnecessarily for duplicate rap-worker pipeline runs.
+    # (See full idempotency guard below for force-override semantics.)
+    if [ -f "/var/spool/bbb-recording-uploaded/${INTERNAL_MEETING_ID}" ] \
+       && [ "${BBB_RECORDING_FORCE:-0}" != "1" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Skip enqueue: $INTERNAL_MEETING_ID already in S3" >> "$LOG_FILE"
+        exit 0
+    fi
     mkdir -p "$(dirname "$QUEUE_FILE")"
     # flock-protected append so concurrent rap-worker invocations don't garble the file
     (flock 9; echo "$INTERNAL_MEETING_ID" >> "$QUEUE_FILE") 9>>"$QUEUE_FILE.lock"
@@ -70,6 +78,17 @@ fi
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
+
+# Idempotency guard: if this recording already has its S3 marker, skip the
+# whole upload work. Duplicate rap-worker pipeline runs (left over from
+# repeated rebuilds) would otherwise re-encode and re-upload the same
+# recording every time their captions/process/publish chain replays.
+# Set BBB_RECORDING_FORCE=1 to override (e.g. to genuinely re-upload).
+UPLOADED_MARKER="/var/spool/bbb-recording-uploaded/${INTERNAL_MEETING_ID}"
+if [ -f "$UPLOADED_MARKER" ] && [ "${BBB_RECORDING_FORCE:-0}" != "1" ]; then
+    log "Already uploaded to S3 (marker present) — skipping duplicate post-publish for $INTERNAL_MEETING_ID"
+    exit 0
+fi
 
 log "=========================================="
 log "Post-publish started for internal meeting: $INTERNAL_MEETING_ID"
@@ -325,7 +344,13 @@ upload_recording() {
         # recordId — once ANY rec_type (content/webcams/presenter) has
         # registered we consider the recording present in S3.
         mkdir -p /var/spool/bbb-recording-uploaded 2>/dev/null
-        touch "/var/spool/bbb-recording-uploaded/${INTERNAL_MEETING_ID}" 2>/dev/null
+        # Record "type=fileId" so the health dashboard can surface/copy the S3
+        # file id for this recording. Marker existence still signals "uploaded";
+        # each variant (content/webcams/presenter) appends its own line.
+        MARKER="/var/spool/bbb-recording-uploaded/${INTERNAL_MEETING_ID}"
+        if ! printf '%s=%s\n' "$rec_type" "$file_id" >> "$MARKER" 2>/dev/null; then
+            touch "$MARKER" 2>/dev/null || true
+        fi
     fi
 
     return 0

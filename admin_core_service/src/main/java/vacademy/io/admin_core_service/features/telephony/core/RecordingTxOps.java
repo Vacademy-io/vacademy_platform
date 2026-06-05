@@ -136,6 +136,8 @@ public class RecordingTxOps {
     }
 
     private void writeTimelineEvent(TelephonyCallLog row) {
+        boolean isInbound = "INBOUND".equalsIgnoreCase(row.getDirection());
+
         Map<String, Object> meta = new HashMap<>();
         meta.put("provider_call_id", row.getProviderCallId());
         meta.put("recording_storage_key", row.getRecordingStorageKey());
@@ -143,12 +145,24 @@ public class RecordingTxOps {
         meta.put("duration_seconds", row.getDurationSeconds());
         meta.put("call_log_id", row.getId());
         meta.put("caller_id", row.getCallerId());
+        // Direction is the source of truth for "did the lead call us or did we
+        // call the lead?" — frontend renderers (icon, accent colour, label)
+        // read this off the metadata so a single timeline-event renderer can
+        // handle both directions without duplicating logic.
+        meta.put("direction", row.getDirection());
 
-        // Resolve the counsellor's display name via auth_service so the
-        // timeline shows "by <Name>" instead of an empty actor line.
+        // Actor: for OUTBOUND the counsellor placed the call → show their name.
+        // For INBOUND the LEAD initiated; the counsellor still answered, so
+        // we keep their name on the "by" line so it's clear who picked up.
         String actorName = userMobileResolver
                 .findDisplayName(row.getCounsellorUserId())
                 .orElse(null);
+
+        // Title needs to reflect direction so the timeline doesn't mislabel
+        // inbound callbacks as outbound calls. action_type stays as CALL_MADE
+        // for both — the existing timeline renderer keys on this and we don't
+        // want to break it. Direction-specific styling reads `meta.direction`.
+        String title = isInbound ? "Inbound call from lead" : "Outbound call";
 
         try {
             // Use the 10-arg overload so the event row carries student_user_id
@@ -161,7 +175,7 @@ public class RecordingTxOps {
                     "USER",
                     row.getCounsellorUserId(),
                     actorName,
-                    "Outbound call",
+                    title,
                     describeOutcome(row),
                     meta,
                     row.getUserId());

@@ -47,6 +47,8 @@ export function TelephonyConfigCard() {
     const [recordCalls, setRecordCalls] = useState(true);
     const [defaultSelectorKey, setDefaultSelectorKey] = useState<SelectorKey>('STICKY_PER_LEAD');
     const [enabled, setEnabled] = useState(true);
+    const [voicemailNumber, setVoicemailNumber] = useState('');
+    const [flowSid, setFlowSid] = useState('');
 
     // Hydrate form once config arrives. Secret fields are intentionally blank —
     // backend treats blank as "leave unchanged" so admins don't accidentally
@@ -59,6 +61,8 @@ export function TelephonyConfigCard() {
         setRecordCalls(c.recordCalls !== false);
         setDefaultSelectorKey((c.defaultSelectorKey as SelectorKey) ?? 'STICKY_PER_LEAD');
         setEnabled(c.enabled !== false);
+        setVoicemailNumber(c.inboundVoicemailNumber ?? '');
+        setFlowSid(c.flowSid ?? '');
     }, [configQuery.data]);
 
     const saveMutation = useMutation({
@@ -91,6 +95,10 @@ export function TelephonyConfigCard() {
             recordCalls,
             defaultSelectorKey,
             enabled,
+            // Always send the voicemail number — empty string explicitly
+            // clears the saved value (vs. undefined which would skip it).
+            inboundVoicemailNumber: voicemailNumber.trim(),
+            flowSid: flowSid.trim(),
         });
 
     const cfg = configQuery.data;
@@ -206,6 +214,35 @@ export function TelephonyConfigCard() {
                     <p className="text-xs text-neutral-500">
                         Decides which of your numbers (added below) is used for an
                         outgoing call. You can still override per call when dialling.
+                    </p>
+                </div>
+
+                <div className="space-y-1.5">
+                    <Label>Voicemail / fallback number</Label>
+                    <Input
+                        value={voicemailNumber}
+                        onChange={(e) => setVoicemailNumber(e.target.value)}
+                        placeholder="+91xxxxxxxxxx"
+                    />
+                    <p className="text-xs text-neutral-500">
+                        When a lead calls back and no counsellor is available, the
+                        call is forwarded here instead of being dropped. Leave blank
+                        to let the provider play its default “no agents available”
+                        message.
+                    </p>
+                </div>
+
+                <div className="space-y-1.5">
+                    <Label>Inbound flow id</Label>
+                    <Input
+                        value={flowSid}
+                        onChange={(e) => setFlowSid(e.target.value)}
+                        placeholder="e.g. 1234567"
+                    />
+                    <p className="text-xs text-neutral-500">
+                        Paste the flow id from your App Bazaar flow once — every
+                        ExoPhone you add will be wired to that flow automatically.
+                        See the setup guide below for the one-time steps.
                     </p>
                 </div>
 

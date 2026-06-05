@@ -61,6 +61,30 @@ public class InstituteTelephonyConfig {
     @Builder.Default
     private Boolean enabled = true;
 
+    /**
+     * Optional fallback number dialled as the last leg of the inbound routing
+     * waterfall when no counsellor is reachable. Null = no fallback dial; the
+     * Connect applet returns an empty number list and the call drops to the
+     * provider's default "no agents available" handling. We still log a
+     * missed-call timeline event either way.
+     */
+    @Column(name = "inbound_voicemail_number", length = 32)
+    private String inboundVoicemailNumber;
+
+    /**
+     * App Bazaar flow id (the alphanumeric trailing part of the App Bazaar
+     * editor URL — Exotel sometimes calls it the AppSid, the dashboard just
+     * shows it as the flow id). When set, every new/edited ExoPhone is
+     * auto-attached to this flow via {@code PUT /IncomingPhoneNumbers/<sid>}
+     * so the admin never has to click into the Exotel dashboard again.
+     *
+     * The flow itself must be created in App Bazaar once — Exotel does not
+     * expose flow creation via API. The UI walks the admin through that one-
+     * time step with the Connect-applet URL pre-filled.
+     */
+    @Column(name = "flow_sid", length = 64)
+    private String flowSid;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

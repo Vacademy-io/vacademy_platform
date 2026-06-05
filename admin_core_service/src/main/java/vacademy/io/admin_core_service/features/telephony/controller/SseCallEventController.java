@@ -41,7 +41,10 @@ public class SseCallEventController {
         // If JWT made it through (path may or may not be public), enforce ownership.
         // If no user attribute is present, treat the UUID as the capability token —
         // browsers can subscribe but only when they already have the id from /connect.
-        if (user != null && !row.getCounsellorUserId().equals(user.getUserId())) {
+        // counsellor_user_id is nullable for inbound rows (V320) — null-safe compare.
+        if (user != null
+                && row.getCounsellorUserId() != null
+                && !row.getCounsellorUserId().equals(user.getUserId())) {
             throw new ResponseStatusException(FORBIDDEN);
         }
         return eventBus.subscribe(callLogId);

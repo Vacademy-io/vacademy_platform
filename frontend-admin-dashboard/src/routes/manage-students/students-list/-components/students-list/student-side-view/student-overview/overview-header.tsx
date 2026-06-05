@@ -49,7 +49,32 @@ export const OverviewHeader = ({
 
     // Only show stat tiles we actually have data for. An empty/all-undefined
     // strip is removed entirely — no walls of em-dashes for unloaded data.
-    const tiles: Array<{ label: string; icon: PhosphorIcon; value: string; tone: Tone }> = [];
+    const tiles: Array<{
+        label: string;
+        icon: PhosphorIcon;
+        value: string;
+        tone: Tone;
+        hint?: string;
+    }> = [];
+    if (progressPercent != null) {
+        tiles.push({
+            label: 'Course Progress',
+            icon: GraduationCap,
+            value: `${Math.round(progressPercent)}%`,
+            tone:
+                progressPercent >= 75
+                    ? 'success'
+                    : progressPercent >= 25
+                      ? 'warning'
+                      : 'danger',
+            hint:
+                progressPercent >= 75
+                    ? 'On track'
+                    : progressPercent >= 25
+                      ? 'Pace check needed'
+                      : 'Behind schedule',
+        });
+    }
     if (attendancePercent != null) {
         tiles.push({
             label: 'Attendance',
@@ -61,19 +86,12 @@ export const OverviewHeader = ({
                     : attendancePercent >= 50
                       ? 'warning'
                       : 'danger',
-        });
-    }
-    if (progressPercent != null) {
-        tiles.push({
-            label: 'Progress',
-            icon: GraduationCap,
-            value: `${Math.round(progressPercent)}%`,
-            tone:
-                progressPercent >= 75
-                    ? 'success'
-                    : progressPercent >= 25
-                      ? 'warning'
-                      : 'danger',
+            hint:
+                attendancePercent >= 75
+                    ? 'Above target'
+                    : attendancePercent >= 50
+                      ? 'Watch list'
+                      : 'Below target',
         });
     }
     if (testsAttempted) {
@@ -82,6 +100,10 @@ export const OverviewHeader = ({
             icon: Exam,
             value: `${testsAttempted.attempted}/${testsAttempted.total}`,
             tone: 'neutral',
+            hint:
+                testsAttempted.total > 0 && testsAttempted.attempted < testsAttempted.total
+                    ? `${testsAttempted.total - testsAttempted.attempted} pending`
+                    : undefined,
         });
     }
     if (outstandingAmount != null) {
@@ -93,6 +115,7 @@ export const OverviewHeader = ({
                     ? `₹${outstandingAmount.toLocaleString('en-IN')}`
                     : '₹0',
             tone: outstandingAmount > 0 ? 'danger' : 'success',
+            hint: outstandingAmount > 0 ? 'Action required' : 'Paid in full',
         });
     }
     if (leadScore != null) {
@@ -106,6 +129,8 @@ export const OverviewHeader = ({
                     : leadScore >= 40
                       ? 'warning'
                       : 'danger',
+            hint:
+                leadScore >= 70 ? 'Hot lead' : leadScore >= 40 ? 'Nurture' : 'Cold',
         });
     }
 
@@ -117,7 +142,7 @@ export const OverviewHeader = ({
     return (
         <div
             className={cn(
-                'grid gap-2',
+                'grid gap-3',
                 tiles.length === 1 && 'grid-cols-1',
                 tiles.length === 2 && 'grid-cols-2',
                 tiles.length === 3 && 'grid-cols-3',
@@ -131,6 +156,7 @@ export const OverviewHeader = ({
                     icon={t.icon}
                     value={t.value}
                     tone={t.tone}
+                    hint={t.hint}
                 />
             ))}
         </div>
@@ -139,8 +165,11 @@ export const OverviewHeader = ({
 
 type Tone = 'neutral' | 'success' | 'warning' | 'danger';
 
-// StatTile maps to the handoff's StatTile primitive — a bordered card with
-// a tinted icon chip on the left, an uppercase label, and a large value.
+// StatTile maps to the handoff's StatTile primitive: bordered card with
+// uppercase LABEL + bold VALUE on the LEFT and a tone-tinted icon CHIP on
+// the RIGHT, optionally followed by a single-line hint below the value.
+// Mirrors the handoff snapshot tile layout where the metric leads and the
+// icon is a decorative tone marker, not the primary read.
 const TONE_CLASSES: Record<
     Tone,
     { value: string; iconBg: string; iconFg: string }
@@ -151,12 +180,12 @@ const TONE_CLASSES: Record<
         iconFg: 'text-muted-foreground',
     },
     success: {
-        value: 'text-success-700',
+        value: 'text-card-foreground',
         iconBg: 'bg-success-50',
         iconFg: 'text-success-600',
     },
     warning: {
-        value: 'text-warning-700',
+        value: 'text-card-foreground',
         iconBg: 'bg-warning-50',
         iconFg: 'text-warning-600',
     },
@@ -172,32 +201,40 @@ const StatTile = ({
     icon: Icon,
     value,
     tone,
+    hint,
 }: {
     label: string;
     icon: PhosphorIcon;
     value: string;
     tone: Tone;
+    /** Optional single-line caption rendered below the value (handoff hint). */
+    hint?: string;
 }) => {
     const c = TONE_CLASSES[tone];
     return (
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 shadow-sm">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                    {label}
+                </span>
+                <span className={cn('truncate text-h3 font-bold leading-tight', c.value)}>
+                    {value}
+                </span>
+                {hint && (
+                    <span className="mt-0.5 truncate text-caption text-muted-foreground">
+                        {hint}
+                    </span>
+                )}
+            </div>
             <span
                 className={cn(
-                    'flex size-9 shrink-0 items-center justify-center rounded-md',
+                    'flex size-10 shrink-0 items-center justify-center rounded-md',
                     c.iconBg,
                     c.iconFg
                 )}
             >
                 <Icon className="size-5" weight="duotone" />
             </span>
-            <div className="flex min-w-0 flex-col">
-                <span className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                    {label}
-                </span>
-                <span className={cn('truncate text-h4 font-bold leading-tight', c.value)}>
-                    {value}
-                </span>
-            </div>
         </div>
     );
 };

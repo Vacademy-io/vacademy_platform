@@ -128,6 +128,31 @@ class CreditDeductRequest(BaseModel):
             "Defaults to '{request_type} using {model}'."
         ),
     )
+    idempotency_key: Optional[str] = Field(
+        None,
+        max_length=255,
+        description=(
+            "Dedup key written to credit_transactions.external_reference_id "
+            "(partial UNIQUE index, V243). When a row with this key already "
+            "exists the deduction is a no-op. Used for split/async charges "
+            "such as transcription (key='transcription:{extractionId}') where "
+            "a callback and a reconciliation watchdog can both fire."
+        ),
+    )
+    # Per-user attribution (academy-credits Phase 3).
+    user_id: Optional[str] = Field(None, max_length=255, description="Verified actor who triggered the spend")
+    user_role: Optional[str] = Field(None, max_length=32, description="ADMIN|TEACHER|LEARNER|SYSTEM|PLATFORM_BILLING|UNVERIFIED")
+    subject_user_id: Optional[str] = Field(None, max_length=255, description="Who the work was about, when != actor (e.g. evaluated learner)")
+    allow_negative: bool = Field(
+        False,
+        description=(
+            "When True, deduct even if it drives the balance negative (no "
+            "current_balance >= amount guard). Used for post-paid tool charges "
+            "where the work was already delivered — better a small negative "
+            "balance than a silently-dropped charge. The pre-flight 402 still "
+            "gates affordability at request start."
+        ),
+    )
 
 
 class CreditDeductResponse(BaseModel):
@@ -154,6 +179,10 @@ class CreditTransactionResponse(BaseModel):
     request_type: Optional[str]
     model_name: Optional[str]
     granted_by: Optional[str]
+    # Per-user attribution (Phase 3) — NULL on rows written before V323.
+    user_id: Optional[str] = None
+    user_role: Optional[str] = None
+    subject_user_id: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -337,6 +366,8 @@ class InternalGrantFromPaymentRequest(BaseModel):
     platform_payment_id: Optional[UUID] = None
     pack_code: Optional[str] = None
     description: Optional[str] = None
+    # Verified buyer (Phase 3 attribution). admin_core has this at order time.
+    buyer_user_id: Optional[str] = Field(None, max_length=255)
 
 
 class InternalRefundFromPaymentRequest(BaseModel):
@@ -348,6 +379,7 @@ class InternalRefundFromPaymentRequest(BaseModel):
     platform_payment_id: Optional[UUID] = None
     pack_code: Optional[str] = None
     description: Optional[str] = None
+    buyer_user_id: Optional[str] = Field(None, max_length=255)
 
 
 class InternalGrantOrRefundResponse(BaseModel):
@@ -360,3 +392,51 @@ class InternalGrantOrRefundResponse(BaseModel):
     # the operation was a no-op. The webhook can safely retry on errors.
     already_processed: bool = False
     message: str
+
+
+# ============================================================================
+# Tool Cost Preview Schemas (parametric, predictable "≈ N credits" estimates)
+# Backed by ToolCostEstimator + the DB-tunable `ai_tool_pricing` table.
+# ============================================================================
+
+class InternalChargeToolRequest(BaseModel):
+    """Internal (service-to-service) charge for a metered AI tool.
+
+    Used by admin_core to bill transcription from `applyTerminalState` on the
+    measured audio duration. The idempotency_key makes the callback + watchdog
+    paths safe to both fire. Charge = max(parametric, actual token cost).
+    """
+    institute_id: str
+    tool_key: str = Field(..., description="assessment | transcription | notes | lecture")
+    request_type: str = Field(..., description="credit_transactions.request_type bucket")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Tool cost drivers, e.g. {'duration_seconds': 3300}")
+    model: Optional[str] = Field("system", description="Model attribution; 'system' for non-LLM tools like transcription")
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    user_id: Optional[str] = None
+    user_role: Optional[str] = Field(None, description="ADMIN|TEACHER|LEARNER|SYSTEM|UNVERIFIED")
+    subject_user_id: Optional[str] = Field(None, description="Who the work was about, when != actor")
+    idempotency_key: Optional[str] = Field(None, description="Dedup key, e.g. 'transcription:{extractionId}'")
+
+
+class InternalChargeToolResponse(BaseModel):
+    success: bool
+    institute_id: str
+    credits_charged: Decimal
+    message: str
+
+
+class ToolEstimateRequest(BaseModel):
+    """Estimate the credit cost of one AI-tool invocation.
+
+    `params` carries the tool-specific cost drivers, e.g.:
+      - assessment:    {"num_questions": 10, "include_images": true}
+      - transcription: {"duration_seconds": 3300}  (or {"audio_minutes": 55})
+      - notes:         {"transcript_chars": 8200}
+      - lecture:       {"generate_questions": true, "generate_homework": false}
+    """
+    tool_key: str = Field(..., description="One of: assessment, transcription, notes, lecture")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Tool-specific cost drivers")
+    institute_id: Optional[str] = Field(
+        None, description="When supplied, the response includes balance + affordability"
+    )

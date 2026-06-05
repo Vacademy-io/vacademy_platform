@@ -36,6 +36,9 @@ from ..schemas.credits import (
     InternalGrantFromPaymentRequest,
     InternalRefundFromPaymentRequest,
     InternalGrantOrRefundResponse,
+    InternalChargeToolRequest,
+    InternalChargeToolResponse,
+    ToolEstimateRequest,
     TransactionHistoryRequest,
     TransactionHistoryResponse,
     UsageAnalyticsResponse,
@@ -236,6 +239,41 @@ def get_usage_analytics(
 
 
 @router.get(
+    "/institutes/{institute_id}/usage-by-user",
+    summary="Per-user credit usage breakdown",
+    description=(
+        "Credits consumed grouped by user (academy-credits Phase 3). Splits "
+        "admin/teacher vs learner consumption via user_role, attributes "
+        "work-done-on-a-learner to the learner via COALESCE(subject_user_id, "
+        "user_id), and is net of refunds. Forward-only — pre-V323 rows are "
+        "institute-level (no user) and excluded."
+    ),
+)
+def get_usage_by_user(
+    institute_id: str,
+    days: int = Query(30, ge=1, le=365),
+    service: CreditService = Depends(get_credit_service),
+    current_user: Optional[dict] = Depends(get_current_user),
+):
+    """Per-user credit usage breakdown for an institute (caller's own institute)."""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required."
+        )
+    # Tenant isolation: a non-root user may only read their own institute's data.
+    if not check_root_admin(current_user):
+        user_inst = getattr(current_user, "institute_id", None)
+        if user_inst is None and isinstance(current_user, dict):
+            user_inst = current_user.get("institute_id")
+        if not user_inst or str(user_inst) != str(institute_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own institute's usage.",
+            )
+    return service.get_usage_by_user(institute_id, days)
+
+
+@router.get(
     "/institutes/{institute_id}/forecast",
     response_model=UsageForecastResponse,
     summary="Get usage forecast",
@@ -380,6 +418,69 @@ def estimate_cost(
 
 
 # ============================================================================
+# Tool Cost Preview (parametric, predictable "≈ N credits" estimates)
+#
+# These power the admin-facing cost preview on the AI tools. Unlike `/estimate`
+# above (token-based), these use the DB-tunable `ai_tool_pricing` rates so the
+# previewed number is stable and explainable ("10 questions = 10 credits").
+# Both endpoints are READ-ONLY — they never deduct.
+# ============================================================================
+
+def get_tool_estimator(db: Session = Depends(db_dependency)):
+    """Dependency to get a tool cost estimator instance."""
+    from ..services.tool_cost_estimator import ToolCostEstimator
+    return ToolCostEstimator(db)
+
+
+@router.get(
+    "/tool-pricing",
+    summary="Get parametric AI-tool credit rates",
+    description=(
+        "Returns the active parametric rate rows the frontend caches to render "
+        "a live '≈ N credits' badge locally (no per-keystroke network call)."
+    ),
+)
+def get_tool_pricing(
+    estimator=Depends(get_tool_estimator),
+):
+    """List the active parametric tool pricing rows (for FE local computation)."""
+    pricing = estimator.get_tool_pricing()
+    tools = []
+    for tool_key, cfg in pricing.items():
+        tools.append({
+            "tool_key": tool_key,
+            "request_type": cfg["request_type"],
+            "flat_base_credits": float(cfg["flat_base_credits"]),
+            "per_unit_credits": float(cfg["per_unit_credits"]),
+            "unit_field": cfg["unit_field"],
+            "params": cfg.get("params", {}),
+        })
+    return {"tools": tools}
+
+
+@router.post(
+    "/estimate-tool",
+    summary="Estimate the credit cost of an AI-tool invocation",
+    description=(
+        "Authoritative parametric estimate for one tool run (used by the "
+        "confirm dialog). Pass `institute_id` to also get balance + "
+        "affordability. Read-only — never deducts."
+    ),
+)
+def estimate_tool_cost(
+    request: ToolEstimateRequest,
+    estimator=Depends(get_tool_estimator),
+):
+    """Estimate the parametric credit cost of a tool invocation."""
+    try:
+        return estimator.estimate_with_balance(
+            request.tool_key, request.params, request.institute_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+# ============================================================================
 # Rate Config (V252 — DB-driven USD↔credits ratio + margin)
 #
 # Read endpoint is public so the FE can render rate footnotes / convert
@@ -506,3 +607,65 @@ def refund_from_payment(
     _: None = Depends(require_internal_service_token),
 ):
     return service.refund_from_purchase(request)
+
+
+@router.post(
+    "/internal/charge-tool",
+    response_model=InternalChargeToolResponse,
+    summary="Charge credits for a metered AI tool (internal)",
+    description=(
+        "Service-to-service endpoint for charging a parametric tool from another "
+        "service (e.g. admin_core billing transcription in applyTerminalState). "
+        "Charge = max(parametric estimate, actual token cost). Idempotent on "
+        "idempotency_key so a callback + reconciliation watchdog can't double-charge. "
+        "Requires X-Internal-Service-Token."
+    ),
+)
+def charge_tool_internal(
+    request: InternalChargeToolRequest,
+    db: Session = Depends(db_dependency),
+    _: None = Depends(require_internal_service_token),
+):
+    from ..services.ai_billing import charge_tool
+    from ..models.ai_token_usage import RequestType
+    from decimal import Decimal as _Decimal
+
+    try:
+        request_type = RequestType(request.request_type)
+    except ValueError:
+        request_type = request.request_type  # charge_tool accepts a raw string too
+
+    try:
+        charged = charge_tool(
+            db,
+            tool_key=request.tool_key,
+            tool_params=request.params,
+            request_type=request_type,
+            model=request.model or "system",
+            prompt_tokens=request.prompt_tokens,
+            completion_tokens=request.completion_tokens,
+            institute_id=request.institute_id,
+            user_id=request.user_id,
+            user_role=request.user_role,
+            subject_user_id=request.subject_user_id,
+            idempotency_key=request.idempotency_key,
+        )
+    except ValueError as exc:
+        # Unknown tool_key / unpriceable request from an internal caller. Surface
+        # as 5xx (retryable) + ERROR log so a dropped internal charge is
+        # observable, rather than a silent 400 the caller logs and forgets.
+        logger.error(
+            "charge-tool DROPPED for institute %s tool_key=%s: %s",
+            request.institute_id, request.tool_key, exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not price tool '{request.tool_key}': {exc}",
+        )
+
+    return InternalChargeToolResponse(
+        success=True,
+        institute_id=request.institute_id,
+        credits_charged=charged if charged is not None else _Decimal("0"),
+        message="Charged",
+    )

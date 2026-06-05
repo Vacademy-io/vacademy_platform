@@ -130,6 +130,16 @@ DEFAULT_PRICING = {
     # bypassing calculate_credits. This entry exists so usage analytics
     # group "ai_video" deductions correctly (by_request_type breakdown).
     "ai_video": {"base_cost": Decimal("0"), "token_rate": Decimal("0"), "min_charge": Decimal("0"), "unit": "none"},
+    # Metered AI tools (academy-credits Phase 2). The real charge is parametric
+    # (see ToolCostEstimator / ai_tool_pricing) and passed via precomputed_credits;
+    # these token-based rows only price the *overage* leg max(parametric, actual)
+    # and keep usage analytics bucketed instead of falling back to `content`.
+    "assessment": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "notes": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    "lecture": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    # Transcription cost is purely per-audio-minute (parametric); no LLM token
+    # leg, so the fallback math contributes nothing — charge is always precomputed.
+    "transcription": {"base_cost": Decimal("0"), "token_rate": Decimal("0"), "min_charge": Decimal("0"), "unit": "none"},
 }
 
 
@@ -255,8 +265,8 @@ class CreditService:
         # Record transaction
         insert_txn = text("""
             INSERT INTO credit_transactions (id, institute_id, transaction_type, amount, balance_after,
-                                             description, granted_by, created_at)
-            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :granted_by, :now)
+                                             description, granted_by, user_id, user_role, created_at)
+            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :granted_by, :user_id, :user_role, :now)
         """)
         self.db.execute(insert_txn, {
             "id": transaction_id,
@@ -265,6 +275,8 @@ class CreditService:
             "amount": request.amount,
             "balance": new_balance,
             "desc": request.description or "Admin credit grant",
+            "user_id": granted_by,
+            "user_role": "ADMIN",
             "granted_by": granted_by,
             "now": now,
         })
@@ -330,8 +342,8 @@ class CreditService:
         # Record transaction
         insert_txn = text("""
             INSERT INTO credit_transactions (id, institute_id, transaction_type, amount, balance_after,
-                                             description, granted_by, created_at)
-            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :granted_by, :now)
+                                             description, granted_by, user_id, user_role, created_at)
+            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :granted_by, :user_id, :user_role, :now)
         """)
         self.db.execute(insert_txn, {
             "id": transaction_id,
@@ -341,13 +353,18 @@ class CreditService:
             "balance": new_balance,
             "desc": request.description or "Admin credit deduction",
             "granted_by": deducted_by,
+            "user_id": deducted_by,
+            "user_role": "ADMIN",
             "now": now,
         })
 
         self.db.commit()
 
-        # Check and create alerts if needed
-        self._check_and_create_alerts(institute_id, new_balance)
+        # Check and create alerts if needed. (Bugfix: _check_and_create_alerts
+        # requires a threshold arg — the prior 2-arg call raised TypeError on
+        # every admin deduction after the commit.)
+        threshold = balance.low_balance_threshold if balance else DEFAULT_LOW_BALANCE_THRESHOLD
+        self._check_and_create_alerts(institute_id, new_balance, threshold)
 
         logger.info(f"Deducted {request.amount} credits from institute {institute_id} by {deducted_by}")
 
@@ -410,10 +427,10 @@ class CreditService:
                     INSERT INTO credit_transactions
                         (id, institute_id, transaction_type, amount, balance_after,
                          description, reference_id, external_reference_id,
-                         granted_by, created_at)
+                         granted_by, user_id, user_role, created_at)
                     VALUES
                         (:id, :institute_id, :type, :amount, :balance,
-                         :desc, :ref_id, :ext_ref, :granted_by, :now)
+                         :desc, :ref_id, :ext_ref, :granted_by, :user_id, :user_role, :now)
                 """),
                 {
                     "id": transaction_id,
@@ -428,6 +445,8 @@ class CreditService:
                     else None,
                     "ext_ref": request.external_reference_id,
                     "granted_by": "platform_billing",
+                    "user_id": getattr(request, "buyer_user_id", None),
+                    "user_role": "ADMIN" if getattr(request, "buyer_user_id", None) else None,
                     "now": now,
                 },
             )
@@ -519,10 +538,10 @@ class CreditService:
                     INSERT INTO credit_transactions
                         (id, institute_id, transaction_type, amount, balance_after,
                          description, reference_id, external_reference_id,
-                         granted_by, created_at)
+                         granted_by, user_id, user_role, created_at)
                     VALUES
                         (:id, :institute_id, :type, :amount, :balance,
-                         :desc, :ref_id, :ext_ref, :granted_by, :now)
+                         :desc, :ref_id, :ext_ref, :granted_by, :user_id, :user_role, :now)
                 """),
                 {
                     "id": transaction_id,
@@ -537,6 +556,8 @@ class CreditService:
                     else None,
                     "ext_ref": request.external_reference_id,
                     "granted_by": "platform_billing",
+                    "user_id": getattr(request, "buyer_user_id", None),
+                    "user_role": "ADMIN" if getattr(request, "buyer_user_id", None) else None,
                     "now": now,
                 },
             )
@@ -753,6 +774,28 @@ class CreditService:
 
     def deduct_credits(self, request: CreditDeductRequest) -> CreditDeductResponse:
         """Deduct credits after an AI operation."""
+        # Idempotency short-circuit: if a transaction with this dedup key already
+        # exists, this is a duplicate (e.g. transcription callback + watchdog both
+        # firing) — return a no-op success instead of double-charging.
+        idem_key = getattr(request, "idempotency_key", None)
+        if idem_key:
+            existing = self.db.execute(
+                text(
+                    "SELECT balance_after FROM credit_transactions "
+                    "WHERE external_reference_id = :k LIMIT 1"
+                ),
+                {"k": idem_key},
+            ).fetchone()
+            if existing:
+                logger.info(f"Idempotent deduct no-op for key {idem_key}")
+                return CreditDeductResponse(
+                    success=True,
+                    credits_deducted=Decimal("0"),
+                    new_balance=existing.balance_after,
+                    transaction_id="",
+                    message="Already processed (idempotent no-op)",
+                )
+
         # Calculate actual credits — bypassed when `precomputed_credits` is set
         # (Veo path: pricing lives in fal_veo_client.py rather than ai_models).
         precomputed = getattr(request, "precomputed_credits", None)
@@ -776,13 +819,18 @@ class CreditService:
         # Ensure credits exist
         self.ensure_credits_exist(request.institute_id)
         
-        # Update balance atomically — guard against negative balance
-        update_query = text("""
+        # Update balance atomically. Normally guarded against going negative;
+        # post-paid tool charges (allow_negative) drop the guard so a charge for
+        # already-delivered work is never silently lost when a concurrent spend
+        # slipped the balance below the pre-flight estimate.
+        allow_negative = getattr(request, "allow_negative", False)
+        guard = "" if allow_negative else "AND current_balance >= :amount"
+        update_query = text(f"""
             UPDATE institute_credits
             SET used_credits = used_credits + :amount,
                 current_balance = current_balance - :amount,
                 updated_at = :now
-            WHERE institute_id = :institute_id AND current_balance >= :amount
+            WHERE institute_id = :institute_id {guard}
             RETURNING current_balance, low_balance_threshold
         """)
         result = self.db.execute(update_query, {
@@ -792,10 +840,13 @@ class CreditService:
         })
         row = result.fetchone()
         if not row:
-            # Insufficient balance — log warning but don't block (deduction already happened upstream)
-            logger.warning(
-                f"Insufficient credits for institute {request.institute_id}: "
-                f"tried to deduct {credits_to_deduct} credits"
+            # Insufficient balance (guarded path only) — log loudly. allow_negative
+            # callers never reach here (the row always matches when the institute
+            # row exists, which ensure_credits_exist guaranteed above).
+            logger.error(
+                f"[credits] DROPPED CHARGE: insufficient balance for institute "
+                f"{request.institute_id}, tried to deduct {credits_to_deduct} "
+                f"({request.request_type}). Work may have been delivered unbilled."
             )
             return CreditDeductResponse(
                 success=False,
@@ -807,11 +858,15 @@ class CreditService:
         new_balance = row.current_balance
         threshold = row.low_balance_threshold if row else DEFAULT_LOW_BALANCE_THRESHOLD
         
-        # Record transaction
+        # Record transaction. external_reference_id carries the optional
+        # idempotency key — the V243 partial UNIQUE index makes a concurrent
+        # duplicate INSERT fail rather than double-charge.
         insert_txn = text("""
             INSERT INTO credit_transactions (id, institute_id, transaction_type, amount, balance_after,
-                                             description, reference_id, request_type, model_name, batch_id, created_at)
-            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :ref_id, :req_type, :model, :batch_id, :now)
+                                             description, reference_id, request_type, model_name, batch_id,
+                                             external_reference_id, user_id, user_role, subject_user_id, created_at)
+            VALUES (:id, :institute_id, :type, :amount, :balance, :desc, :ref_id, :req_type, :model, :batch_id,
+                    :ext_ref, :user_id, :user_role, :subject_user_id, :now)
         """)
 
         # Handle reference_id conversion
@@ -823,19 +878,38 @@ class CreditService:
                 pass
 
         desc_override = getattr(request, "description", None)
-        self.db.execute(insert_txn, {
-            "id": transaction_id,
-            "institute_id": request.institute_id,
-            "type": TransactionType.USAGE_DEDUCTION.value,
-            "amount": -credits_to_deduct,  # Negative for deductions
-            "balance": new_balance,
-            "desc": desc_override or f"{request.request_type} using {request.model}",
-            "ref_id": ref_id,
-            "req_type": request.request_type,
-            "model": request.model,
-            "batch_id": request.batch_id,
-            "now": now,
-        })
+        try:
+            self.db.execute(insert_txn, {
+                "id": transaction_id,
+                "institute_id": request.institute_id,
+                "type": TransactionType.USAGE_DEDUCTION.value,
+                "amount": -credits_to_deduct,  # Negative for deductions
+                "balance": new_balance,
+                "desc": desc_override or f"{request.request_type} using {request.model}",
+                "ref_id": ref_id,
+                "req_type": request.request_type,
+                "model": request.model,
+                "batch_id": request.batch_id,
+                "ext_ref": idem_key,
+                "user_id": getattr(request, "user_id", None),
+                "user_role": getattr(request, "user_role", None),
+                "subject_user_id": getattr(request, "subject_user_id", None),
+                "now": now,
+            })
+        except IntegrityError:
+            # Lost the race on the idempotency key — another concurrent call
+            # already recorded this charge. Roll back our balance decrement
+            # (same uncommitted transaction) and return the no-op result.
+            self.db.rollback()
+            logger.info(f"Idempotent deduct race resolved for key {idem_key}")
+            bal = self.get_balance(request.institute_id)
+            return CreditDeductResponse(
+                success=True,
+                credits_deducted=Decimal("0"),
+                new_balance=bal.current_balance if bal else Decimal("0"),
+                transaction_id="",
+                message="Already processed (idempotent no-op)",
+            )
         
         # Update ai_token_usage with credits used
         if request.usage_log_id:
@@ -1243,6 +1317,48 @@ class CreditService:
         return True
 
     # ========================================================================
+    # Per-user usage (Phase 3 attribution read side)
+    # ========================================================================
+
+    def get_usage_by_user(self, institute_id: str, days: int = 30) -> dict:
+        """Per-user credit consumption for an institute (admin + learner).
+
+        Net of refunds via SUM(USAGE_DEDUCTION) - SUM(REFUND) so the legacy
+        mixed REFUND sign convention can't skew the totals. Uses
+        COALESCE(subject_user_id, user_id) so credits spent ON a learner
+        (e.g. evaluating their paper, where the actor is the teacher) attribute
+        to the learner. Only rows written since V323 carry user_id.
+        """
+        since = datetime.utcnow() - timedelta(days=days)
+        query = text("""
+            SELECT COALESCE(subject_user_id, user_id) AS uid,
+                   (array_agg(user_role ORDER BY created_at DESC)
+                        FILTER (WHERE user_role IS NOT NULL))[1] AS user_role,
+                   COUNT(*) FILTER (WHERE transaction_type = 'USAGE_DEDUCTION') AS request_count,
+                   COALESCE(SUM(
+                       CASE WHEN transaction_type = 'USAGE_DEDUCTION' THEN ABS(amount)
+                            WHEN transaction_type = 'REFUND' THEN -ABS(amount)
+                            ELSE 0 END), 0) AS net_credits
+            FROM credit_transactions
+            WHERE institute_id = :institute_id
+              AND COALESCE(subject_user_id, user_id) IS NOT NULL
+              AND created_at >= :since
+            GROUP BY COALESCE(subject_user_id, user_id)
+            ORDER BY net_credits DESC
+        """)
+        rows = self.db.execute(query, {"institute_id": institute_id, "since": since}).fetchall()
+        by_user = [
+            {
+                "user_id": row.uid,
+                "user_role": row.user_role,
+                "request_count": int(row.request_count or 0),
+                "total_credits": float(row.net_credits or 0),
+            }
+            for row in rows
+        ]
+        return {"institute_id": institute_id, "period_days": days, "by_user": by_user}
+
+    # ========================================================================
     # Transaction History
     # ========================================================================
 
@@ -1265,20 +1381,21 @@ class CreditService:
         # Get page of transactions
         select_query = text("""
             SELECT id, institute_id, transaction_type, amount, balance_after,
-                   description, request_type, model_name, granted_by, created_at
+                   description, request_type, model_name, granted_by,
+                   user_id, user_role, subject_user_id, created_at
             FROM credit_transactions
             WHERE institute_id = :institute_id
             ORDER BY created_at DESC
             LIMIT :limit OFFSET :offset
         """)
-        
+
         result = self.db.execute(select_query, {
             "institute_id": institute_id,
             "limit": request.page_size,
             "offset": offset,
         })
         rows = result.fetchall()
-        
+
         transactions = [
             CreditTransactionResponse(
                 id=str(row.id),
@@ -1290,6 +1407,9 @@ class CreditService:
                 request_type=row.request_type,
                 model_name=row.model_name,
                 granted_by=row.granted_by,
+                user_id=getattr(row, "user_id", None),
+                user_role=getattr(row, "user_role", None),
+                subject_user_id=getattr(row, "subject_user_id", None),
                 created_at=row.created_at,
             )
             for row in rows

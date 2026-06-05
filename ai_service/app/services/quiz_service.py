@@ -265,6 +265,12 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
                 user_id=user_id,
             )
             content = response.get("content", "") or ""
+            # Capture token usage for credit billing (the overage leg of
+            # max(parametric, actual)). Provider shapes differ: OpenRouter uses
+            # prompt_tokens/completion_tokens; Gemini uses *TokenCount.
+            _usage = response.get("usage") or {}
+            _prompt_toks = int(_usage.get("prompt_tokens") or _usage.get("promptTokenCount") or 0)
+            _completion_toks = int(_usage.get("completion_tokens") or _usage.get("candidatesTokenCount") or 0)
             json_content = self._extract_json(content)
             if not json_content or not json_content.strip():
                 # Empty LLM output is the single most common cause of the
@@ -342,7 +348,17 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
                     e,
                 )
 
-        return {"title": title, "questions": questions}
+        # Count images actually embedded (enrichment only appends <img> on
+        # success, and only for LLM-tagged questions) so billing charges for
+        # delivered images, not the requested upper bound.
+        images_generated = sum(1 for q in questions if "<img" in (q.get("question") or ""))
+
+        return {
+            "title": title,
+            "questions": questions,
+            "usage": {"prompt_tokens": _prompt_toks, "completion_tokens": _completion_toks},
+            "images_generated": images_generated,
+        }
 
     async def _enrich_questions_with_images(self, questions: List[Dict[str, Any]]) -> None:
         """

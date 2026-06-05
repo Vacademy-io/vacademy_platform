@@ -26,7 +26,7 @@ import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
 import { OverviewHeader } from './overview-header';
-import { OverviewAlerts } from './overview-alerts';
+import { OverviewNeedsAttention } from './overview-needs-attention';
 import { OverviewQuickActions } from './overview-quick-actions';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
@@ -237,8 +237,8 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 }
             />
 
-            {/* Alerts: T&C unsigned, payment overdue, no contact. Silent green path. */}
-            <OverviewAlerts
+            {/* Needs Attention card — action-first triage strip per design handoff. */}
+            <OverviewNeedsAttention
                 student={selectedStudent}
                 tncAccepted={selectedStudent?.tnc_accepted ?? undefined}
             />

@@ -13,27 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import {
-    X,
-    ArrowsInSimple,
-    User,
-    BookOpen,
-    ChartLineUp,
-    Exam,
-    Receipt,
-    Key,
-    EnvelopeSimple,
-    Tag,
-    Folder,
-    Buildings,
-    FileMagnifyingGlass,
-    UserSwitch,
-    ClipboardText,
-    Crosshair,
-    ClockCounterClockwise,
-    Crown,
-    type Icon as PhosphorIcon,
-} from '@phosphor-icons/react';
+import { X } from '@phosphor-icons/react';
 import { StatusChips } from '@/components/design-system/chips';
 import { cn } from '@/lib/utils';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
@@ -43,18 +23,14 @@ import {
     getDisplaySettingsFromCache,
 } from '@/services/display-settings';
 import { type StudentSideViewSettings, type StudentSideViewTabId } from '@/types/display-settings';
-import {
-    TAB_ID_TO_VISIBILITY_KEY,
-    STUDENT_SIDE_VIEW_TAB_LABELS as TAB_LABELS,
-} from '@/constants/display-settings/student-side-view-tabs';
+import { TAB_ID_TO_VISIBILITY_KEY } from '@/constants/display-settings/student-side-view-tabs';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
-import {
-    getTerminology,
-    getTerminologyPlural,
-} from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { ProfileQuickContact, ProfileContextStrip, type ContextStripItem } from './profile-ui';
+import { GroupedNavRail } from './grouped-nav-rail';
+import { SECTION_REGISTRY } from './nav-groups';
 
 // Tab body components — same source of truth used by the drawer.
 import { StudentOverview } from './student-overview/student-overview';
@@ -77,26 +53,9 @@ import { StudentFullHistory } from './student-full-history/student-full-history'
 
 type SectionId = StudentSideViewTabId | 'subOrg';
 
-// Icon per section — duotone in nav, plain elsewhere.
-const SECTION_ICONS: Record<SectionId, PhosphorIcon> = {
-    overview: User,
-    courses: BookOpen,
-    learningProgress: ChartLineUp,
-    testRecord: Exam,
-    notifications: EnvelopeSimple,
-    membership: Crown,
-    paymentHistory: Receipt,
-    userTagging: Tag,
-    files: Folder,
-    portalAccess: Key,
-    reports: FileMagnifyingGlass,
-    enrollDeroll: UserSwitch,
-    enquiry: ClipboardText,
-    application: ClipboardText,
-    lead: Crosshair,
-    fullHistory: ClockCounterClockwise,
-    subOrg: Buildings,
-};
+// Per-section icon + label resolution lives inside the shared GroupedNavRail
+// + SECTION_REGISTRY (see ./nav-groups) so the overlay nav stays in lockstep
+// with the side-drawer's grouped nav and tenant tab-renaming settings.
 
 // Stable section order — mirrors the drawer's orderedVisibleTabIds but kept
 // local so the overlay nav order is predictable.
@@ -244,31 +203,34 @@ export const StudentProfileOverlay = () => {
         }
     };
 
-    const sectionLabel = (id: SectionId): string => {
-        if (id === 'subOrg') return 'Sub-Org';
-        if (id === 'courses') return getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-        return TAB_LABELS[id];
-    };
-
     return (
         <Dialog open={isOverlayOpen} onOpenChange={(open) => !open && closeOverlay()}>
             <DialogContent
                 /* `dialog-no-close-icon` suppresses the primitive's built-in X
-                   (we render our own in the hero band). */
-                className="dialog-no-close-icon flex flex-col gap-0 overflow-hidden rounded-xl border border-neutral-200 p-0 shadow-2xl sm:max-w-none"
-                /* Modal must claim ~90vw × 90vh of the viewport — viewport-relative
-                   sizing isn't tokenizable; isolated inline style with comment. */
-                style={{ width: '90vw', maxWidth: '90vw', height: '90vh' }}
+                   (we render our own in the hero band). All corners rounded
+                   per the design handoff fullscreen card (--r-2xl ≈
+                   rounded-2xl). The dim background is owned by the Dialog
+                   primitive (DialogOverlay). */
+                className="dialog-no-close-icon flex flex-col gap-0 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-0 shadow-2xl sm:max-w-none"
+                /* Viewport-relative sizing isn't tokenizable. Handoff spec:
+                   100% width / height with a 22px gutter around the card,
+                   capped at 1240px wide so the layout stays readable on
+                   ultrawide displays. Isolated inline style with comment. */
+                style={{
+                    width: 'calc(100vw - 44px)',
+                    maxWidth: '1240px',
+                    height: 'calc(100vh - 44px)',
+                }}
             >
-                {/* HERO BAND */}
+                {/* HERO BAND — handoff identity row + meta strip pattern.
+                    No leading accent gradient (the eyebrow + name carry the
+                    brand voice on their own per LearnerProfile.jsx). */}
                 <header className="relative shrink-0 border-b border-neutral-200 bg-white">
-                    {/* Primary accent strip */}
-                    <div className="h-1 w-full bg-gradient-to-r from-primary-500 via-primary-400 to-primary-300" />
-
-                    <div className="flex flex-col gap-3 px-6 py-4">
+                    <div className="flex flex-col gap-3 px-6 pt-5">
                         <div className="flex items-start gap-4">
-                            {/* Avatar */}
-                            <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-2 ring-primary-100">
+                            {/* Avatar ~52px with accent ring per handoff
+                                (size-12 = 48px is the closest design token). */}
+                            <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-2 ring-primary-200">
                                 {faceLoader ? (
                                     <div className="size-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
                                 ) : imageUrl ? (
@@ -278,27 +240,27 @@ export const StudentProfileOverlay = () => {
                                         className="size-full object-cover"
                                     />
                                 ) : (
-                                    <DummyProfile className="size-10 text-neutral-400" />
+                                    <DummyProfile className="size-8 text-neutral-400" />
                                 )}
                             </div>
 
-                            {/* Identity */}
+                            {/* Identity — eyebrow + name + status pills inline. */}
                             <div className="flex min-w-0 flex-1 flex-col gap-1">
-                                <span className="text-xs font-semibold uppercase tracking-widest text-primary-500">
+                                <span className="text-xs font-bold uppercase tracking-widest text-primary-700">
                                     {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
                                 </span>
-                                <h1
-                                    className={cn(
-                                        'truncate text-2xl font-bold leading-tight',
-                                        selectedStudent.full_name
-                                            ? 'text-neutral-900'
-                                            : 'text-neutral-400'
-                                    )}
-                                    title={selectedStudent.full_name || undefined}
-                                >
-                                    {selectedStudent.full_name || 'Unknown'}
-                                </h1>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h1
+                                        className={cn(
+                                            'truncate text-h2 font-bold leading-tight',
+                                            selectedStudent.full_name
+                                                ? 'text-neutral-900'
+                                                : 'text-neutral-400'
+                                        )}
+                                        title={selectedStudent.full_name || undefined}
+                                    >
+                                        {selectedStudent.full_name || 'Unknown'}
+                                    </h1>
                                     {selectedStudent.status && (
                                         <StatusChips status={selectedStudent.status} />
                                     )}
@@ -310,26 +272,22 @@ export const StudentProfileOverlay = () => {
                                 </div>
                             </div>
 
-                            {/* Right controls — Quick contact + collapse + close */}
+                            {/* Right controls — Email/Call/WhatsApp + divider + Close.
+                                Collapse-to-drawer button removed — the overlay IS the
+                                design's primary surface; we don't push users back to
+                                the cramped right-side drawer. */}
                             <div className="flex shrink-0 items-center gap-2">
                                 <ProfileQuickContact
                                     email={selectedStudent.email}
                                     phone={selectedStudent.mobile_number}
                                 />
+                                <span className="mx-1 h-7 w-px bg-neutral-200" />
                                 <button
                                     type="button"
                                     onClick={closeOverlay}
                                     className="flex size-9 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                                    aria-label="Collapse to side panel"
-                                    title="Collapse to side panel"
-                                >
-                                    <ArrowsInSimple className="size-5" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={closeOverlay}
-                                    className="flex size-9 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                                    aria-label="Close"
+                                    aria-label="Close (Esc)"
+                                    title="Close (Esc)"
                                 >
                                     <X className="size-5" />
                                 </button>
@@ -372,86 +330,47 @@ export const StudentProfileOverlay = () => {
                     </div>
                 </header>
 
-                {/* BODY — left section nav + main content */}
-                <div className="flex min-h-0 flex-1">
-                    {/* LEFT NAV */}
-                    <nav
-                        aria-label="Profile sections"
-                        className="hidden w-60 shrink-0 overflow-y-auto border-r border-neutral-200 bg-neutral-50/40 p-3 md:block"
-                    >
-                        <ul className="flex flex-col gap-0.5">
-                            {visibleIds.map((id) => {
-                                // lead/fullHistory require the lead system to be enabled
-                                if (
-                                    (id === 'lead' || id === 'fullHistory') &&
-                                    (leadSettings.isLoading || !leadSettings.enabled)
-                                ) {
-                                    return null;
-                                }
-                                const Icon = SECTION_ICONS[id] ?? User;
-                                const isActive = activeSection === id;
-                                return (
-                                    <li key={id}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveSection(id)}
-                                            aria-current={isActive ? 'page' : undefined}
-                                            className={cn(
-                                                'group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-                                                isActive
-                                                    ? 'bg-primary-50 text-primary-700'
-                                                    : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
-                                            )}
-                                        >
-                                            <Icon
-                                                className={cn(
-                                                    'size-4 shrink-0',
-                                                    isActive
-                                                        ? 'text-primary-600'
-                                                        : 'text-neutral-400 group-hover:text-neutral-600'
-                                                )}
-                                                weight={isActive ? 'duotone' : 'regular'}
-                                            />
-                                            <span className="truncate">{sectionLabel(id)}</span>
-                                        </button>
-                                    </li>
-                                );
-                            })}
-                            {selectedStudent.sub_org_name && (
-                                <li>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveSection('subOrg')}
-                                        aria-current={
-                                            activeSection === 'subOrg' ? 'page' : undefined
+                {/* BODY — grouped left rail + scrollable content panel,
+                    matching the handoff fullscreen LearnerProfile layout. */}
+                <div className="flex min-h-0 flex-1 border-t border-neutral-200">
+                    {/* LEFT RAIL — same primitive used by the side-drawer
+                        navStyle === 'grouped' branch, so behavior + tenant
+                        gating + visual style stay in lockstep. */}
+                    <div className="hidden md:flex">
+                        <GroupedNavRail
+                            activeId={activeSection}
+                            onSelect={(id) => setActiveSection(id as SectionId)}
+                            visibleIds={
+                                new Set<string>([
+                                    ...visibleIds.filter((id) => {
+                                        // lead/fullHistory require the lead system to be enabled
+                                        if (
+                                            (id === 'lead' || id === 'fullHistory') &&
+                                            (leadSettings.isLoading || !leadSettings.enabled)
+                                        ) {
+                                            return false;
                                         }
-                                        className={cn(
-                                            'group flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-                                            activeSection === 'subOrg'
-                                                ? 'bg-primary-50 text-primary-700'
-                                                : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900'
-                                        )}
-                                    >
-                                        <Buildings
-                                            className={cn(
-                                                'size-4 shrink-0',
-                                                activeSection === 'subOrg'
-                                                    ? 'text-primary-600'
-                                                    : 'text-neutral-400 group-hover:text-neutral-600'
-                                            )}
-                                            weight={activeSection === 'subOrg' ? 'duotone' : 'regular'}
-                                        />
-                                        <span className="truncate">Sub-Org</span>
-                                    </button>
-                                </li>
-                            )}
-                        </ul>
-                    </nav>
+                                        // Only registry-known IDs render in the rail.
+                                        return SECTION_REGISTRY.some((s) => s.id === id);
+                                    }),
+                                    ...(selectedStudent.sub_org_name ? ['subOrg'] : []),
+                                ])
+                            }
+                            enabledModules={{
+                                learning: true,
+                                finance: true,
+                                crm: !!(leadSettings && leadSettings.enabled),
+                                account: true,
+                                records: true,
+                            }}
+                        />
+                    </div>
 
-                    {/* MAIN CONTENT */}
+                    {/* MAIN CONTENT — warm cream surface so the white cards
+                        inside each section get visible elevation. */}
                     <main
                         ref={contentScrollRef}
-                        className="min-w-0 flex-1 overflow-y-auto bg-neutral-50/30"
+                        className="min-w-0 flex-1 overflow-y-auto bg-neutral-50"
                     >
                         <div className="mx-auto flex max-w-4xl flex-col gap-4 p-6">
                             {renderSection(activeSection)}

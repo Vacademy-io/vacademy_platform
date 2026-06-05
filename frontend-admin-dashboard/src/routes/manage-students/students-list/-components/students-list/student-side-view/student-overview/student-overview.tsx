@@ -26,7 +26,7 @@ import { getCustomFieldSettingsFromCache } from '@/services/custom-field-setting
 import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
-import { SnapshotHero } from './snapshot-hero';
+import { OverviewHeader } from './overview-header';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -198,10 +198,30 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
         6: Users,
     };
 
+    // Pull Course/Level/Session for the rich OverviewHeader. The same call powers
+    // the General Details card body below — react-query/Zustand both stay stable.
+    const headerDetails = getDetailsFromPackageSessionId({
+        packageSessionId: isSubmissionTab
+            ? selectedStudent?.package_id || ''
+            : selectedStudent?.package_session_id || '',
+    });
+    const headerAttendance =
+        studentDetails?.attendance_percentage ??
+        studentDetails?.attendance_percent ??
+        selectedStudent?.attendance_percent;
+
     return (
         <div className="flex flex-col gap-3 text-card-foreground">
-            {/* Snapshot Hero — at-a-glance identity card */}
-            <SnapshotHero student={selectedStudent} />
+            {/* Rich Overview Header — Course chip + 4-stat health strip */}
+            <OverviewHeader
+                student={selectedStudent}
+                course={headerDetails?.package_dto?.package_name}
+                level={headerDetails?.level?.level_name}
+                session={headerDetails?.session?.session_name}
+                attendancePercent={
+                    typeof headerAttendance === 'number' ? headerAttendance : undefined
+                }
+            />
 
             {/* Overview sections (key 0 is Account Credentials — moved to Portal Access tab) */}
             {selectedStudent != null ? (

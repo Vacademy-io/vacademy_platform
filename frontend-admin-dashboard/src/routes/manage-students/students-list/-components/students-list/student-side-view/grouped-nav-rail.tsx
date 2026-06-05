@@ -80,7 +80,7 @@ export const GroupedNavRail = ({
                                 // Active = accent bg + on-accent fg.
                                 // Hover  = accent-soft bg + accent-text fg.
                                 className={cn(
-                                    'flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-body font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                                    'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                                     isActive
                                         ? 'bg-primary-500 text-white shadow-sm'
                                         : 'text-card-foreground hover:bg-primary-50 hover:text-primary-700'

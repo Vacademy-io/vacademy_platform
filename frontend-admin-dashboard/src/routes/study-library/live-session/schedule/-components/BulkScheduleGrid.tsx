@@ -755,6 +755,7 @@ export function BulkScheduleGrid() {
                     title: data.rows[0]?.title ?? '',
                     subject: data.rows[0]?.subject ?? '',
                     openWaitingRoomBefore: '',
+                    waitingRoomType: WaitingRoomType.WAITING_ROOM,
                     sessionType: SessionType.LIVE,
                     sessionPlatform: data.rows[0]?.platform || 'other',
                     enableWaitingRoom: false,
@@ -2791,7 +2792,7 @@ const RowEditor = memo(function RowEditor({
                         if ('waitingRoomType' in patch) {
                             form.setValue(
                                 `rows.${index}.waitingRoomType` as const,
-                                patch.waitingRoomType,
+                                patch.waitingRoomType as WaitingRoomType | undefined,
                                 { shouldDirty: true }
                             );
                         }

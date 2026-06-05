@@ -27,7 +27,7 @@ import { useQuery } from '@tanstack/react-query';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
-import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
+import { getCustomFieldSettingsFromCache, getCustomFieldSettings } from '@/services/custom-field-settings';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
 import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -90,6 +90,17 @@ export const StudentsListSection = () => {
         setNavHeading(
             <h1 className="text-lg">{getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}</h1>
         );
+    }, []);
+
+    // Ensure the custom-field settings cache is populated/fresh. After saving a
+    // toggle the cache is cleared, and the column-visibility readers fail open
+    // (show everything) on an empty cache. Fetch on mount, then force a re-render
+    // so the inline column-visibility recomputes with the fresh data.
+    const [, bumpCustomFieldsVersion] = useState(0);
+    useEffect(() => {
+        getCustomFieldSettings()
+            .then(() => bumpCustomFieldsVersion((v) => v + 1))
+            .catch(() => {});
     }, []);
 
     const {

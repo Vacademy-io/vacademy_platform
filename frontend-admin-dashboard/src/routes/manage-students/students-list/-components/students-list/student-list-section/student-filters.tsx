@@ -119,8 +119,8 @@ export const StudentFilters = ({
         setIsExportDialogOpen(true);
     };
 
-    const handleExportAccountDetails = () => {
-        exportAccountDetails({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
+    const handleExportAccountDetails = async () => {
+        await exportAccountDetails({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
     };
 
     return (
@@ -179,7 +179,8 @@ export const StudentFilters = ({
                         scale="medium"
                         buttonType="secondary"
                         layoutVariant="default"
-                        onClick={handleExportAccountDetails}
+                        onAsyncClick={handleExportAccountDetails}
+                        loadingText="Exporting..."
                         className={cn(
                             "hover:scale-102 group flex items-center justify-center gap-1.5 bg-gradient-to-r from-neutral-50 to-neutral-100 transition-all duration-200 hover:from-neutral-100 hover:to-neutral-200",
                             isCompact ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"

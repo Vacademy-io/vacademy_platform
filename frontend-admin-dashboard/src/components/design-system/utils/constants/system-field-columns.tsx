@@ -1,5 +1,5 @@
 import { ColumnDef } from '@tanstack/react-table';
-import { SystemField } from '@/services/custom-field-settings';
+import type { SystemField } from '@/services/custom-field-settings';
 
 /**
  * Map system field keys to their corresponding column accessorKeys in myColumns

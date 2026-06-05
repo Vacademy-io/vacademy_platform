@@ -23,8 +23,15 @@ import {
 import { GeneratingState } from '@/routes/ai-center/-components/GeneratingState';
 import AIQuestionsPreview from '@/routes/ai-center/-components/AIQuestionsPreview';
 import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPanel';
+import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
+import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 
 const QUESTION_TYPES = ['MCQ', 'True/False', 'Numeric', 'Short answer', 'Mixed'];
+
+// Above this estimated credit cost (or if the balance would go low), we surface a
+// confirmation step before spending. Preview-only in Phase 1 (nothing is deducted).
+const CONFIRM_COST_THRESHOLD = 20;
 
 const formSchema = z.object({
     taskName: z.string().min(1),
@@ -78,6 +85,12 @@ export const GenerateQuestionsFromText = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialTopic]);
 
+    // Live "≈ N credits" preview driven by the number-of-questions field.
+    const numQuestions = form.watch('num');
+    const costPreview = useToolCostPreview('assessment', { num_questions: numQuestions });
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingValues, setPendingValues] = useState<QuestionsFromTextData | null>(null);
+
     const generateMutation = useMutation({
         mutationFn: async ({ data, taskId }: { data: QuestionsFromTextData; taskId: string }) => {
             setLoader(true);
@@ -112,7 +125,7 @@ export const GenerateQuestionsFromText = ({
         },
     });
 
-    const onSubmit = (values: QuestionsFromTextData) => {
+    const runGenerate = (values: QuestionsFromTextData) => {
         setErrorMessage(null);
         setReadyTask(null);
         setPendingTaskId(null);
@@ -120,6 +133,18 @@ export const GenerateQuestionsFromText = ({
             data: { ...values, taskName: getRandomTaskName() },
             taskId: '',
         });
+    };
+
+    const onSubmit = (values: QuestionsFromTextData) => {
+        const needsConfirm =
+            (costPreview.credits != null && costPreview.credits >= CONFIRM_COST_THRESHOLD) ||
+            costPreview.isLowBalanceAfter;
+        if (needsConfirm) {
+            setPendingValues(values);
+            setConfirmOpen(true);
+            return;
+        }
+        runGenerate(values);
     };
 
     const pollGenerateQuestionsFromText = (data: QuestionsFromTextData) => {
@@ -376,15 +401,35 @@ export const GenerateQuestionsFromText = ({
                         </div>
                     </div>
                 ) : (
-                    <button
-                        type="submit"
-                        className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-600"
-                    >
-                        Draft my questions
-                        <ArrowRight size={16} weight="bold" />
-                    </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            type="submit"
+                            className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+                        >
+                            Draft my questions
+                            <ArrowRight size={16} weight="bold" />
+                        </button>
+                        <ToolCostBadge
+                            credits={costPreview.credits}
+                            sufficient={costPreview.sufficient}
+                            loading={costPreview.isLoading}
+                        />
+                    </div>
                 )}
             </form>
+
+            <ToolCostConfirmDialog
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                credits={costPreview.credits}
+                currentBalance={costPreview.currentBalance}
+                balanceAfter={costPreview.balanceAfter}
+                sufficient={costPreview.sufficient}
+                confirmLabel="Draft my questions"
+                onConfirm={() => {
+                    if (pendingValues) runGenerate(pendingValues);
+                }}
+            />
 
             <RecentFilesPanel
                 tasks={recentTasks}

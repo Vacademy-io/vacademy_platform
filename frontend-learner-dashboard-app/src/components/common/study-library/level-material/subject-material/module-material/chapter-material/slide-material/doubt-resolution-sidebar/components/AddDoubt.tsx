@@ -26,18 +26,27 @@ export const AddDoubt = ({
     timestamp, 
 }: AddDoubtProps) => {
 
-    const {activeItem} = useContentStore();
+    const {activeItem, currentPackageSessionId} = useContentStore();
     const addDoubt = useAddDoubt()
     const { currentPdfPage, currentYoutubeTime, currentUploadedVideoTime } = useMediaRefsStore();
-    const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
+    const [fallbackPackageSessionId, setFallbackPackageSessionId] = useState<string | null>(null);
 
+    // Prefer the package session of the course currently being viewed (set from
+    // the route's sessionId). Only fall back to the learner's stored default
+    // enrollment if that isn't available, so multi-course learners no longer
+    // get their doubt filed under the wrong course.
     useEffect(() => {
-        const fetchPackageSessionId = async () => {
-            const id = await getPackageSessionId();
-            setPackageSessionId(id);
+        if (currentPackageSessionId) return;
+        let active = true;
+        getPackageSessionId().then((id) => {
+            if (active) setFallbackPackageSessionId(id);
+        });
+        return () => {
+            active = false;
         };
-        fetchPackageSessionId();
-    }, []);
+    }, [currentPackageSessionId]);
+
+    const packageSessionId = currentPackageSessionId || fallbackPackageSessionId;
     
     const progressMarker = (() => {
         // If timestamp is provided, use it

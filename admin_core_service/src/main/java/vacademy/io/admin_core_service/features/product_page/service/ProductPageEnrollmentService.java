@@ -138,8 +138,11 @@ public class ProductPageEnrollmentService {
                 request.getProductPageCode(), request.getInstituteId(),
                 request.getSelectedPsInvitePaymentOptionIds());
 
-        // Create / update user
-        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+        // Create / update user — ensure STUDENT role is assigned
+        if (request.getUserDetails().getRoles() == null || request.getUserDetails().getRoles().isEmpty()) {
+            request.getUserDetails().setRoles(java.util.List.of("STUDENT"));
+        }
+        UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(
                 request.getUserDetails(), request.getInstituteId(), false);
 
         studentRegistrationManager.createStudentFromRequest(
@@ -262,6 +265,9 @@ public class ProductPageEnrollmentService {
 
         // Create / find user — use addLearnerRoute (same as learner/enroll) so the
         // STUDENT role is assigned in the auth-service user_role table.
+        if (request.getUser().getRoles() == null || request.getUser().getRoles().isEmpty()) {
+            request.getUser().setRoles(java.util.List.of("STUDENT"));
+        }
         UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(
                 request.getUser(), request.getInstituteId(), false);
         payReq.setEmail(user.getEmail());
@@ -576,8 +582,11 @@ public class ProductPageEnrollmentService {
         PaymentPlan plan = paymentPlanRepository.findById(request.getPaymentPlanId())
                 .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + request.getPaymentPlanId()));
 
-        // Create / find user
-        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+        // Create / find user — ensure STUDENT role is assigned
+        if (request.getUserDetails().getRoles() == null || request.getUserDetails().getRoles().isEmpty()) {
+            request.getUserDetails().setRoles(java.util.List.of("STUDENT"));
+        }
+        UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(
                 request.getUserDetails(), request.getInstituteId(), false);
 
         studentRegistrationManager.createStudentFromRequest(

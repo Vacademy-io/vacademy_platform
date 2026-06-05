@@ -312,6 +312,10 @@ export interface DisplaySettingsData {
         showCopyTo: boolean;
         showMoveTo: boolean;
         showDelete?: boolean;
+        // Show the "Add Question" button on video slides (in-video question authoring)
+        showAddVideoQuestion?: boolean;
+        // Show the "Convert to Split Screen" button on video slides
+        showConvertToSplitScreen?: boolean;
     };
 
     // 10b) Authored Courses card action visibility (Explore Courses → Authored tab)

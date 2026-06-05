@@ -14,10 +14,12 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     COUNSELOR_POOL_AUDIENCE,
+    COUNSELOR_POOL_AUDIENCES,
     COUNSELOR_POOL_AUDIENCE_ORDER,
     COUNSELOR_POOL_BASE,
     COUNSELOR_POOL_BY_ID,
     COUNSELOR_POOL_COUNSELOR,
+    COUNSELOR_POOL_COUNSELORS,
     COUNSELOR_POOL_COUNSELOR_MEMBERSHIPS,
     COUNSELOR_POOL_COUNSELOR_MONTHLY_TARGET,
     COUNSELOR_POOL_COUNSELOR_STATUS,
@@ -219,16 +221,28 @@ export const deletePool = async (poolId: string): Promise<void> => {
     await authenticatedAxiosInstance.delete(COUNSELOR_POOL_BY_ID(poolId));
 };
 
-export const addAudienceToPool = async (poolId: string, audienceId: string): Promise<void> => {
-    await authenticatedAxiosInstance.post(COUNSELOR_POOL_AUDIENCE(poolId, audienceId));
+// Atomic bulk attach — backend rolls back the whole batch if any id fails.
+export const addAudiencesToPool = async (
+    poolId: string,
+    audienceIds: string[]
+): Promise<void> => {
+    await authenticatedAxiosInstance.post(COUNSELOR_POOL_AUDIENCES(poolId), {
+        audience_ids: audienceIds,
+    });
 };
 
 export const removeAudienceFromPool = async (poolId: string, audienceId: string): Promise<void> => {
     await authenticatedAxiosInstance.delete(COUNSELOR_POOL_AUDIENCE(poolId, audienceId));
 };
 
-export const addCounselorToPool = async (poolId: string, counselorUserId: string): Promise<void> => {
-    await authenticatedAxiosInstance.post(COUNSELOR_POOL_COUNSELOR(poolId, counselorUserId));
+// Atomic bulk add — backend rolls back the whole batch if any id fails.
+export const addCounselorsToPool = async (
+    poolId: string,
+    counselorUserIds: string[]
+): Promise<void> => {
+    await authenticatedAxiosInstance.post(COUNSELOR_POOL_COUNSELORS(poolId), {
+        counselor_user_ids: counselorUserIds,
+    });
 };
 
 export const removeCounselorFromPool = async (
@@ -378,10 +392,10 @@ export const useDeletePool = () => {
     });
 };
 
-export const useAddAudienceToPool = (poolId: string) => {
+export const useAddAudiencesToPool = (poolId: string) => {
     const invalidate = useInvalidatePool();
     return useMutation({
-        mutationFn: (audienceId: string) => addAudienceToPool(poolId, audienceId),
+        mutationFn: (audienceIds: string[]) => addAudiencesToPool(poolId, audienceIds),
         onSuccess: () => invalidate(poolId),
     });
 };
@@ -394,10 +408,10 @@ export const useRemoveAudienceFromPool = (poolId: string) => {
     });
 };
 
-export const useAddCounselorToPool = (poolId: string) => {
+export const useAddCounselorsToPool = (poolId: string) => {
     const invalidate = useInvalidatePool();
     return useMutation({
-        mutationFn: (counselorUserId: string) => addCounselorToPool(poolId, counselorUserId),
+        mutationFn: (counselorUserIds: string[]) => addCounselorsToPool(poolId, counselorUserIds),
         onSuccess: () => invalidate(poolId),
     });
 };

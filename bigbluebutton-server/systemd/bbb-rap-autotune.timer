@@ -1,0 +1,13 @@
+[Unit]
+Description=Re-evaluate BBB rap-worker resource tuning every minute
+
+[Timer]
+# Run shortly after boot, then every minute. AccuracySec coarse to avoid
+# unnecessary timer wakeups — a 10s drift is fine for a 60s polling job.
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=10s
+Unit=bbb-rap-autotune.service
+
+[Install]
+WantedBy=timers.target

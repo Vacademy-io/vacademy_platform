@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { useSlides } from '../-hooks/use-slides';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { Route } from '..';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 interface SplitScreenData {
     splitScreen: boolean;
@@ -60,6 +62,12 @@ export const VideoSplitScreenAddDialog: React.FC<VideoSplitScreenAddDialogProps>
             sessionId: sessionId || '',
         }) || ''
     );
+
+    // Per-role Display Setting (Settings → Display Settings → Course Permission).
+    // Hide the "Convert to Split Screen" affordance when disabled for this role.
+    // Fail-open: if settings aren't cached yet, the button stays visible.
+    const slideView = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())?.slideView;
+    if (slideView?.showConvertToSplitScreen === false) return null;
 
     const splitScreenOptions: SplitScreenOption[] = [
         {

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Optional, List, Dict, Any
 from uuid import UUID
+from decimal import Decimal
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -140,9 +141,21 @@ class TokenUsageService:
         character_count: Optional[int] = None,
         seconds: Optional[int] = None,
         batch_id: Optional[str] = None,
+        precomputed_credits: Optional[Decimal] = None,
+        idempotency_key: Optional[str] = None,
+        user_role: Optional[str] = None,
+        subject_user_id: Optional[str] = None,
+        allow_negative: bool = False,
     ) -> AiTokenUsage:
         """
         Record token usage AND deduct credits from institute balance.
+
+        precomputed_credits: when set, the exact amount to deduct (bypasses
+            token-based calculation). Used by the academy-credits parametric
+            tools where charge = max(parametric_estimate, actual_token_cost).
+        idempotency_key: dedup key for split/async charges (transcription).
+        user_role / subject_user_id: per-user ledger attribution (Phase 3).
+            user_id (already a param) is written to ai_token_usage too.
         
         This is a convenience method that combines record_usage with credit deduction.
         Use this for any API calls that should consume institute credits.
@@ -194,6 +207,12 @@ class TokenUsageService:
                     seconds=seconds or 0,
                     usage_log_id=str(usage_record.id) if usage_record and hasattr(usage_record, 'id') else None,
                     batch_id=batch_id,
+                    precomputed_credits=precomputed_credits,
+                    idempotency_key=idempotency_key,
+                    user_id=user_id,
+                    user_role=user_role,
+                    subject_user_id=subject_user_id,
+                    allow_negative=allow_negative,
                 )
                 logger.info(f"[TokenUsageService] CreditDeductRequest created: {deduct_request}")
                 

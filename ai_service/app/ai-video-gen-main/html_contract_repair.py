@@ -253,6 +253,26 @@ def _ensure_root_inline_style(html: str) -> Tuple[str, List[str]]:
     return html, fixes
 
 
+def _strip_root_brand_bg_override(html: str) -> Tuple[str, List[str]]:
+    """Strip any `--brand-bg: ...;` the shot redefines inside its OWN `:root`
+    block. The institute brand background is defined once at the harness level;
+    a shot overriding it in :root silently changes the brand color. This was
+    previously audit-only (warn but ship) — now the global palette actually
+    wins. Only the `--brand-bg` line is removed; the rest of :root is kept."""
+    fixes: List[str] = []
+    if not html or "--brand-bg" not in html.lower():
+        return html, fixes
+
+    def _scrub(m: "re.Match") -> str:
+        block = m.group(0)
+        new_block = _BRAND_BG_DECL_RE.sub("", block)
+        if new_block != block:
+            fixes.append("stripped_root_--brand-bg_override")
+        return new_block
+
+    return _ROOT_BRAND_BG_RE.sub(_scrub, html), fixes
+
+
 # ---------------------------------------------------------------------------
 # Public: run all repairs in order
 # ---------------------------------------------------------------------------
@@ -274,6 +294,10 @@ def repair_root_contract(html: str) -> Tuple[str, List[str]]:
 
     # Step 4: ensure root div has the required inline style.
     html, fixes = _ensure_root_inline_style(html)
+    all_fixes.extend(fixes)
+
+    # Step 5: strip any :root --brand-bg override so the global palette wins.
+    html, fixes = _strip_root_brand_bg_override(html)
     all_fixes.extend(fixes)
 
     return html, all_fixes
@@ -318,7 +342,10 @@ def audit_contract(html: str) -> List[str]:
     # Unloaded JS libraries.
     if re.search(r"\banime\s*\(", html):
         issues.append("uses anime() — anime.js is not loaded (only GSAP is)")
-    if "<iconify-icon" in html.lower():
-        issues.append("uses <iconify-icon> — iconify runtime is not loaded")
+    # NOTE: <iconify-icon> is intentionally NOT flagged. The iconify runtime IS
+    # loaded in every renderer (server render harness + admin/learner players)
+    # and the per-shot prompt actively instructs the model to use it — the old
+    # "iconify runtime is not loaded" warning was a stale false positive that
+    # risked driving a wrong "forbid iconify" fix (which would remove working icons).
 
     return issues

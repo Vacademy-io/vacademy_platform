@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
+import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -141,6 +143,12 @@ export function CreateAssessmentFromRecordingModal({
     // question stem and every option. Off by default — it adds real
     // latency and Gemini API spend.
     const [includeImages, setIncludeImages] = useState<boolean>(false);
+
+    // Live "≈ N credits" preview driven by the number of questions + illustrations.
+    const costPreview = useToolCostPreview('assessment', {
+        num_questions: numQuestions,
+        include_images: includeImages,
+    });
 
     useEffect(() => {
         if (!open) {
@@ -411,19 +419,26 @@ export function CreateAssessmentFromRecordingModal({
                     {isPreview ? 'Close' : 'Cancel'}
                 </MyButton>
                 {isForm && (
-                    <MyButton
-                        onClick={() => {
-                            if (questionTypes.length === 0) {
-                                toast.error('Pick at least one question type');
-                                return;
-                            }
-                            handleSubmit();
-                        }}
-                        disable={questionTypes.length === 0 || isPending}
-                    >
-                        <Sparkles className="size-3.5" />
-                        Generate Assessment
-                    </MyButton>
+                    <>
+                        <ToolCostBadge
+                            credits={costPreview.credits}
+                            sufficient={costPreview.sufficient}
+                            loading={costPreview.isLoading}
+                        />
+                        <MyButton
+                            onClick={() => {
+                                if (questionTypes.length === 0) {
+                                    toast.error('Pick at least one question type');
+                                    return;
+                                }
+                                handleSubmit();
+                            }}
+                            disable={questionTypes.length === 0 || isPending}
+                        >
+                            <Sparkles className="size-3.5" />
+                            Generate Assessment
+                        </MyButton>
+                    </>
                 )}
                 {isFailed && <MyButton onClick={() => setResult(null)}>Try Again</MyButton>}
             </div>

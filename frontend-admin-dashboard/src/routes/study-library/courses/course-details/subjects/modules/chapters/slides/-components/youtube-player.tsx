@@ -17,10 +17,17 @@ import VideoQuestionsTimeFrameAddDialog from './video-questions-add-timeframe';
 import VideoQuestionsTimeFrameEditDialog from './video-questions-edit-timeframe';
 import VideoQuestionDialogEditPreview from './slides-sidebar/video-question-dialog-edit-preview';
 import { StudyLibraryQuestion } from '@/types/study-library/study-library-video-questions';
-import { formatTimeStudyLibraryInSeconds, timestampToSeconds } from '../-helper/helper';
+import {
+    formatTimeStudyLibraryInSeconds,
+    timestampToSeconds,
+    converDataToVideoFormat,
+} from '../-helper/helper';
+import { useSlides } from '../-hooks/use-slides';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useContentStore } from '../-stores/chapter-sidebar-store';
 import { useMediaNavigationStore } from '../-stores/media-navigation-store';
-import { TrashSimple } from '@phosphor-icons/react';
+import { TrashSimple, CheckCircle } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
@@ -96,6 +103,18 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
     const isAddQuestionTypeRef = useRef<HTMLButtonElement | null>(null);
     const { activeItem, setActiveItem } = useContentStore();
     const { videoSeekTime, clearVideoSeekTime } = useMediaNavigationStore();
+    // Slide context + save mutation so deleting a question persists immediately.
+    const { getPackageSessionId } = useInstituteDetailsStore();
+    const { addUpdateVideoSlide } = useSlides(
+        searchParams.chapterId || '',
+        searchParams.moduleId || '',
+        searchParams.subjectId || '',
+        getPackageSessionId({
+            courseId: searchParams.courseId || '',
+            levelId: searchParams.levelId || '',
+            sessionId: searchParams.sessionId || '',
+        }) || ''
+    );
 
     const [formData, setFormData] = useState<UploadQuestionPaperFormType>({
         questionPaperId: '1',
@@ -194,23 +213,42 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
 
     const showInVideoQuestion = roleDisplay?.contentTypes?.video?.showInVideoQuestion !== false;
 
-    const handleDeleteQuestionFormData = (questionId: string) => {
+    const handleDeleteQuestionFormData = async (questionId: string) => {
+        // Remove the question entirely (not a soft DELETE flag). It then drops out
+        // of the saved payload, and the backend removes the row whose id is absent.
+        const remainingQuestions = (activeItem?.video_slide?.questions || []).filter(
+            (q: any) => q.questionId !== questionId
+        );
+
         setFormData((prevData) => ({
             ...prevData,
             questions: prevData.questions.filter((q) => q.questionId !== questionId),
         }));
 
-        // Update activeItem: mark matching question's status as DELETE, keep others unchanged
-        setActiveItem({
+        const updatedSlide: any = {
             ...activeItem,
             video_slide: {
                 ...activeItem?.video_slide,
-                questions: (activeItem?.video_slide?.questions || []).map((q: any) =>
-                    q.questionId === questionId ? { ...q, status: 'DELETE' } : q
-                ) as any,
+                questions: remainingQuestions,
             },
-        });
+        };
+        setActiveItem(updatedSlide);
         closeDeleteDialogRef.current?.click();
+
+        // Persist immediately so the question is actually deleted on the backend.
+        try {
+            const payload = converDataToVideoFormat({
+                activeItem: updatedSlide,
+                status: activeItem?.status || 'DRAFT',
+                notify: false,
+                newSlide: false,
+            });
+            await addUpdateVideoSlide(payload);
+            toast.success('Question deleted');
+        } catch (err) {
+            console.error('Failed to delete question:', err);
+            toast.error('Failed to delete question');
+        }
     };
 
     const extractVideoId = (url: string): string => {
@@ -612,36 +650,53 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
                                                     <TrashSimple size={18} />
                                                 </MyButton>
                                             </DialogTrigger>
-                                            <DialogContent className="flex flex-col p-0">
+                                            <DialogContent className="flex w-full max-w-md flex-col gap-0 p-0">
+                                                <DialogClose asChild>
+                                                    <button
+                                                        ref={closeDeleteDialogRef}
+                                                        className="hidden"
+                                                    />
+                                                </DialogClose>
                                                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
                                                     Delete Question
                                                 </h1>
-                                                <div className="flex flex-col gap-4 p-4">
-                                                    <h1>
+                                                <div className="flex flex-col gap-1 p-5">
+                                                    <p className="text-subtitle font-semibold text-neutral-700">
                                                         Are you sure you want to delete this
                                                         question?
-                                                    </h1>
-                                                    <div>
-                                                        <DialogClose>
-                                                            <button
-                                                                ref={closeDeleteDialogRef}
-                                                                className="hidden"
-                                                            />
-                                                        </DialogClose>
-                                                        <MyButton
-                                                            buttonType="primary"
-                                                            scale="medium"
-                                                            layoutVariant="default"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeleteQuestionFormData(
-                                                                    question.questionId || ''
-                                                                );
-                                                            }}
-                                                        >
-                                                            Delete
-                                                        </MyButton>
-                                                    </div>
+                                                    </p>
+                                                    <p className="text-body text-neutral-500">
+                                                        This permanently removes the question at this
+                                                        timestamp and can&apos;t be undone.
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-col-reverse justify-end gap-2 border-t border-neutral-200 p-4 sm:flex-row sm:gap-3">
+                                                    <MyButton
+                                                        type="button"
+                                                        buttonType="secondary"
+                                                        scale="medium"
+                                                        layoutVariant="default"
+                                                        onClick={() =>
+                                                            closeDeleteDialogRef.current?.click()
+                                                        }
+                                                    >
+                                                        Cancel
+                                                    </MyButton>
+                                                    <MyButton
+                                                        type="button"
+                                                        buttonType="primary"
+                                                        scale="medium"
+                                                        layoutVariant="default"
+                                                        className="!bg-danger-600 hover:!bg-danger-500"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteQuestionFormData(
+                                                                question.questionId || ''
+                                                            );
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </MyButton>
                                                 </div>
                                             </DialogContent>
                                         </Dialog>
@@ -701,20 +756,36 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
                                                             return (
                                                                 <span
                                                                     key={`option-${globalIndex}-${idx}`}
-                                                                    className="flex w-1/2 rounded-xl border bg-neutral-50 p-4 font-thin"
+                                                                    className={cn(
+                                                                        'flex w-1/2 items-center justify-between rounded-xl border p-4 font-thin',
+                                                                        option?.isSelected
+                                                                            ? 'border-success-500 bg-success-50'
+                                                                            : 'bg-neutral-50'
+                                                                    )}
                                                                 >
-                                                                    <span className="mr-1">
-                                                                        (
-                                                                        {String.fromCharCode(
-                                                                            97 + globalIndex
-                                                                        )}
-                                                                        .)
+                                                                    <span className="flex items-center">
+                                                                        <span className="mr-1">
+                                                                            (
+                                                                            {String.fromCharCode(
+                                                                                97 + globalIndex
+                                                                            )}
+                                                                            .)
+                                                                        </span>
+                                                                        <span
+                                                                            dangerouslySetInnerHTML={{
+                                                                                __html: option?.name || '',
+                                                                            }}
+                                                                        />
                                                                     </span>
-                                                                    <span
-                                                                        dangerouslySetInnerHTML={{
-                                                                            __html: option?.name || '',
-                                                                        }}
-                                                                    />
+                                                                    {option?.isSelected && (
+                                                                        <span className="ml-2 flex shrink-0 items-center gap-1 text-success-600">
+                                                                            <CheckCircle
+                                                                                size={16}
+                                                                                weight="fill"
+                                                                            />
+                                                                            Correct
+                                                                        </span>
+                                                                    )}
                                                                 </span>
                                                             );
                                                         })}

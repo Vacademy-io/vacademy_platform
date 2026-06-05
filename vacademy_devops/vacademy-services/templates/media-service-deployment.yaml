@@ -1,3 +1,12 @@
+{{- /*
+  JVM heap is pinned via JAVA_TOOL_OPTIONS below because the Hetzner
+  Ubuntu 26.04 / Linux 7.0.0 kernel breaks the JVM's cgroup-v2
+  container-support detection: every Java pod read the node's full
+  memory (~11.4 GiB) as its heap budget on a 1-2 GiB pod limit, which
+  caused OOMKill cascades (migration day + media-service OOMKill).
+  Explicit -Xms/-Xmx via JAVA_TOOL_OPTIONS sidesteps the broken
+  auto-detection. See memory/jvm-cgroup-detection-broken-hetzner.md.
+*/ -}}
 {{- if .Values.services.media_service.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,41 +39,49 @@ spec:
                 name: myconfigmapv1.0
             - secretRef:
                 name: vacademy-secrets
+          env:
+            # Pin heap explicitly; cgroup-v2 auto-detection is broken on this kernel.
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms256m -Xmx1280m -XX:+UseG1GC -XX:MaxGCPauseMillis=200"
           resources:
             requests:
-              cpu: "200m"
-              memory: "512Mi"
-            limits:
-              cpu: "400m"
+              cpu: "300m"
               memory: "1Gi"
-          livenessProbe:
-            httpGet:
-              path: /media-service/actuator/health
-              port: {{ .Values.services.media_service.port }}
-              scheme: HTTP
-            initialDelaySeconds: 180
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 5
-            successThreshold: 1
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          # See PR #1847 era — startupProbe at initialDelaySeconds=30 lets the rollout
+          # complete in ~2-3 min instead of waiting 5 min before the first probe even fires.
+          # liveness/readiness initialDelay=0 is safe because k8s won't run them until
+          # startupProbe succeeds; failureThreshold=60 × periodSeconds=30 = 30 min grace.
           startupProbe:
             httpGet:
               path: /media-service/actuator/health
               port: {{ .Values.services.media_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 180
+            initialDelaySeconds: 30
             periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 30
+            timeoutSeconds: 15
+            failureThreshold: 60
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /media-service/actuator/health
+              port: {{ .Values.services.media_service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 0
+            periodSeconds: 30
+            timeoutSeconds: 15
+            failureThreshold: 5
             successThreshold: 1
           readinessProbe:
             httpGet:
               path: /media-service/actuator/health
               port: {{ .Values.services.media_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 180
+            initialDelaySeconds: 0
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             failureThreshold: 5
             successThreshold: 1
           ports:

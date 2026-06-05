@@ -835,7 +835,7 @@ cmd_sync() {
     echo ""
 
     echo "[1/6] Scripts to /root/..."
-    local root_scripts=(configure-bbb.sh install-recording-hook.sh post-publish-s3-upload.sh setup-hetzner.sh bbb-recording-drain.sh)
+    local root_scripts=(configure-bbb.sh install-recording-hook.sh post-publish-s3-upload.sh setup-hetzner.sh bbb-recording-drain.sh bbb-rap-autotune.sh)
     for f in "${root_scripts[@]}"; do
         [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"
     done
@@ -856,6 +856,8 @@ cmd_sync() {
             "systemd/bbb-rap-resque-worker.service.d/lowprio.conf"
             "systemd/freeswitch.service.d/highprio.conf"
             "systemd/bbb-webrtc-sfu.service.d/highprio.conf"
+            "systemd/bbb-rap-autotune.service"
+            "systemd/bbb-rap-autotune.timer"
         )
         for f in "${systemd_files[@]}"; do
             [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"

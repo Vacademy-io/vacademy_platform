@@ -116,6 +116,10 @@ class RequestType(str, enum.Enum):
     QUESTION_METADATA = "question_metadata"  # Question metadata extraction (migrated)
     STOCK = "stock"                  # Stock photos and videos
     AVATAR_VIDEO = "avatar_video"    # Per-second avatar video (fal.ai talking-head, Host feature)
+    # Metered AI tools (academy-credits Phase 2) — parametric pricing via ai_tool_pricing.
+    ASSESSMENT = "assessment"        # AI assessment generation (topic / transcript)
+    NOTES = "notes"                  # Auto study-notes from a lecture transcript
+    TRANSCRIPTION = "transcription"  # Live-recording speech-to-text (per audio-minute)
 
 
 class AiTokenUsage(Base):

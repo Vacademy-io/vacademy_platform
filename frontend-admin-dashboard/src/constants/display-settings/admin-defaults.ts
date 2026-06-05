@@ -157,6 +157,8 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showCopyTo: true,
         showMoveTo: true,
         showDelete: true,
+        showAddVideoQuestion: true,
+        showConvertToSplitScreen: true,
     },
     authoredCoursesCard: {
         showCopyToEdit: true,

@@ -1,6 +1,6 @@
 {
-  "name": "SSDC Horizon",
-  "short_name": "SSDC Horizon",
+  "name": "Vacademy",
+  "short_name": "Vacademy",
   "description": "Learning Platform",
   "start_url": "/",
   "display": "standalone",

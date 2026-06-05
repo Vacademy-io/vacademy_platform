@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -59,11 +60,26 @@ class ShotScreenshotClient:
         *,
         base_url: Optional[str] = None,
         render_key: Optional[str] = None,
-        timeout_s: float = 30.0,
+        timeout_s: Optional[float] = None,
     ):
         self.base_url = (base_url or os.getenv("RENDER_SERVER_URL", "")).rstrip("/")
         self.render_key = render_key if render_key is not None else os.getenv("RENDER_SERVER_KEY", "")
+        # The render worker is a single process that also serves the heavy MP4
+        # render + rembg init; under the pipeline's 8-way shot fan-out a
+        # /screenshot or /bbox-check can queue well past 30s and time out, which
+        # silently disables ALL post-render visual QA (bbox-lint + vision
+        # review). Default to 120s (env-tunable) instead of a flat 30s.
+        if timeout_s is None:
+            try:
+                timeout_s = float(os.getenv("RENDER_SCREENSHOT_TIMEOUT_S", "120"))
+            except ValueError:
+                timeout_s = 120.0
         self._timeout = timeout_s
+        try:
+            self._max_retries = int(os.getenv("RENDER_SCREENSHOT_RETRIES", "2"))
+        except ValueError:
+            self._max_retries = 2
+        self._retry_backoff_s = 1.5
 
     @property
     def is_configured(self) -> bool:
@@ -74,6 +90,35 @@ class ShotScreenshotClient:
         if self.render_key:
             h["X-Render-Key"] = self.render_key
         return h
+
+    def _post_json(self, path: str, payload: dict) -> dict:
+        """POST to the render worker with a bounded retry on transport/timeout
+        errors. A 4xx/5xx is a definitive server response and is NOT retried —
+        only transient transport failures (timeouts under burst load) are, since
+        those recover once the single-process worker drains its queue. Raises
+        the underlying httpx error; callers wrap it into ScreenshotClientError."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                with httpx.Client(timeout=self._timeout) as client:
+                    resp = client.post(
+                        f"{self.base_url}{path}",
+                        json=payload,
+                        headers=self._headers(),
+                    )
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError:
+                raise  # definitive 4xx/5xx — don't retry
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt < self._max_retries:
+                    time.sleep(self._retry_backoff_s * (attempt + 1))
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
+        raise ScreenshotClientError("render worker request failed with no response")
 
     def take_shot_screenshots(
         self,
@@ -106,14 +151,7 @@ class ShotScreenshotClient:
         }
 
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(
-                    f"{self.base_url}/screenshot",
-                    json=payload,
-                    headers=self._headers(),
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            data = self._post_json("/screenshot", payload)
         except httpx.HTTPStatusError as exc:
             raise ScreenshotClientError(
                 f"render worker /screenshot returned {exc.response.status_code}: "
@@ -121,6 +159,8 @@ class ShotScreenshotClient:
             ) from exc
         except httpx.HTTPError as exc:
             raise ScreenshotClientError(f"render worker /screenshot transport error: {exc}") from exc
+        except ScreenshotClientError:
+            raise
         except Exception as exc:
             raise ScreenshotClientError(f"render worker /screenshot unexpected error: {exc}") from exc
 
@@ -176,14 +216,7 @@ class ShotScreenshotClient:
         }
 
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(
-                    f"{self.base_url}/bbox-check",
-                    json=payload,
-                    headers=self._headers(),
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            data = self._post_json("/bbox-check", payload)
         except httpx.HTTPStatusError as exc:
             raise ScreenshotClientError(
                 f"render worker /bbox-check returned {exc.response.status_code}: "
@@ -191,6 +224,8 @@ class ShotScreenshotClient:
             ) from exc
         except httpx.HTTPError as exc:
             raise ScreenshotClientError(f"render worker /bbox-check transport error: {exc}") from exc
+        except ScreenshotClientError:
+            raise
         except Exception as exc:
             raise ScreenshotClientError(f"render worker /bbox-check unexpected error: {exc}") from exc
 

@@ -654,9 +654,15 @@ public class StudentListManager {
         try {
             List<CustomFieldValueMap> list = mapper.readValue(json, new TypeReference<List<CustomFieldValueMap>>() {
             });
+            // Skip null values: an institute can have thousands of custom-field
+            // definitions but only a handful are filled per learner. Emitting
+            // {uuid: null} for each empty definition bloats the page response
+            // ~250x (observed: 4077 defs * 10 rows = 1.77 MB; populated == ~7 KB).
             Map<String, String> map = new HashMap<>();
             for (CustomFieldValueMap cf : list) {
-                map.put(cf.getCustomFieldId(), cf.getValue());
+                if (cf.getValue() != null) {
+                    map.put(cf.getCustomFieldId(), cf.getValue());
+                }
             }
             return map;
         } catch (JsonProcessingException e) {

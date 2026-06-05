@@ -184,9 +184,23 @@ public class CounselorPoolService {
     // Audience membership
     // ────────────────────────────────────────────────────────────────
 
+    /**
+     * Attach one or more audiences to the pool atomically. If any id fails
+     * (e.g. already attached to another pool), the whole batch rolls back.
+     */
     @Transactional
-    public void addAudienceToPool(String poolId, String audienceId, String addedByUserId) {
+    public void addAudiencesToPool(String poolId, List<String> audienceIds, String addedByUserId) {
         ensurePoolExists(poolId);
+        if (audienceIds == null || audienceIds.isEmpty()) {
+            throw new VacademyException("audience_ids must be a non-empty list");
+        }
+        // De-dupe while preserving order so a repeated id can't double-seed rows.
+        for (String audienceId : new LinkedHashSet<>(audienceIds)) {
+            attachAudienceToPoolInternal(poolId, audienceId, addedByUserId);
+        }
+    }
+
+    private void attachAudienceToPoolInternal(String poolId, String audienceId, String addedByUserId) {
         attachAudienceInternal(poolId, audienceId);
 
         // Seed member rows for the new audience using existing pool members.
@@ -220,9 +234,17 @@ public class CounselorPoolService {
     // Counselor membership
     // ────────────────────────────────────────────────────────────────
 
+    /**
+     * Add one or more counselors to the pool atomically. Each counselor is
+     * appended to the bottom of the rotation for every audience. If any id
+     * fails, the whole batch rolls back.
+     */
     @Transactional
-    public void addCounselorToPool(String poolId, String counselorUserId, String addedByUserId) {
+    public void addCounselorsToPool(String poolId, List<String> counselorUserIds, String addedByUserId) {
         ensurePoolExists(poolId);
+        if (counselorUserIds == null || counselorUserIds.isEmpty()) {
+            throw new VacademyException("counselor_user_ids must be a non-empty list");
+        }
 
         List<CounselorPoolAudience> audiences = poolAudienceRepository.findByPoolId(poolId);
         if (audiences.isEmpty()) {
@@ -230,6 +252,14 @@ public class CounselorPoolService {
             throw new VacademyException("Add at least one audience to the pool before adding counselors.");
         }
 
+        // De-dupe while preserving order so a repeated id can't shift ordering.
+        for (String counselorUserId : new LinkedHashSet<>(counselorUserIds)) {
+            addCounselorToAudiences(poolId, audiences, counselorUserId, addedByUserId);
+        }
+    }
+
+    private void addCounselorToAudiences(String poolId, List<CounselorPoolAudience> audiences,
+                                         String counselorUserId, String addedByUserId) {
         // For each audience, append this counselor at the bottom of the rotation.
         for (CounselorPoolAudience pa : audiences) {
             String audienceId = pa.getAudienceId();

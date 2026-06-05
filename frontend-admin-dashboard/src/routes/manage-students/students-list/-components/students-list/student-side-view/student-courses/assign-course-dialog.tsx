@@ -72,11 +72,29 @@ export const AssignCourseDialog = ({
     const loadBatches = async () => {
         try {
             setIsLoadingBatches(true);
-            const data = await fetchPaginatedBatches({
-                page: 0,
-                size: 100,
-            });
-            setBatches(data.content || []);
+
+            // The API caps each response at PAGE_SIZE rows, so fetch page 0 first
+            // to learn total_elements, then pull the remaining pages. e.g. 271
+            // courses → 3 calls (0-99, 100-199, 200-270).
+            const PAGE_SIZE = 100;
+            const firstPage = await fetchPaginatedBatches({ page: 0, size: PAGE_SIZE });
+
+            const totalElements = firstPage.total_elements ?? firstPage.content?.length ?? 0;
+            const totalPages = Math.max(1, Math.ceil(totalElements / PAGE_SIZE));
+
+            let allBatches = firstPage.content || [];
+            if (totalPages > 1) {
+                const remainingPages = await Promise.all(
+                    Array.from({ length: totalPages - 1 }, (_, i) =>
+                        fetchPaginatedBatches({ page: i + 1, size: PAGE_SIZE })
+                    )
+                );
+                remainingPages.forEach((page) => {
+                    allBatches = allBatches.concat(page.content || []);
+                });
+            }
+
+            setBatches(allBatches);
         } catch {
             toast.error('Failed to load courses');
         } finally {
@@ -250,7 +268,7 @@ export const AssignCourseDialog = ({
             {isLoadingBatches ? (
                 <DashboardLoader />
             ) : (
-                <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
+                <div className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-1">
                     {filteredBatches.length === 0 ? (
                         <p className="py-4 text-center text-sm text-neutral-400">
                             No courses found
@@ -301,7 +319,7 @@ export const AssignCourseDialog = ({
             </p>
 
             {/* Invite pickers per PS */}
-            <div className="flex max-h-[340px] flex-col gap-3 overflow-y-auto pr-1">
+            <div className="flex max-h-80 flex-col gap-3 overflow-y-auto pr-1">
                 {psConfigs.map((cfg) => (
                     <InvitePickerRow
                         key={cfg.packageSessionId}
@@ -313,7 +331,7 @@ export const AssignCourseDialog = ({
 
             {/* Global options */}
             <div className="flex flex-col gap-3 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-neutral-500">
                     Options
                 </p>
                 <div className="flex items-center gap-2">
@@ -375,7 +393,7 @@ export const AssignCourseDialog = ({
 
                 {/* Invite resolution summary */}
                 <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2">
-                    <p className="mb-1 text-[10px] font-semibold uppercase text-neutral-500">
+                    <p className="mb-1 text-2xs font-semibold uppercase text-neutral-500">
                         Invite Configuration
                     </p>
                     {psConfigs.map((cfg) => {
@@ -394,7 +412,7 @@ export const AssignCourseDialog = ({
                         return (
                             <div
                                 key={cfg.packageSessionId}
-                                className="text-[11px] text-neutral-600"
+                                className="text-2xs text-neutral-600"
                             >
                                 <span className="font-medium">
                                     {cfg.packageSessionName.split(' · ')[0]}:
@@ -426,7 +444,7 @@ export const AssignCourseDialog = ({
                 </div>
 
                 {/* Results table */}
-                <div className="max-h-[200px] overflow-y-auto rounded-lg border border-neutral-200">
+                <div className="max-h-52 overflow-y-auto rounded-lg border border-neutral-200">
                     <table className="w-full text-left text-xs">
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
@@ -465,7 +483,7 @@ export const AssignCourseDialog = ({
                                         </td>
                                         <td className="px-3 py-2">
                                             <span
-                                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
                                                     r.status === 'SUCCESS'
                                                         ? 'bg-green-100 text-green-700'
                                                         : r.status === 'SKIPPED'
@@ -476,7 +494,7 @@ export const AssignCourseDialog = ({
                                                 {r.status}
                                             </span>
                                             {r.message && (
-                                                <p className="mt-0.5 text-[10px] text-neutral-400">
+                                                <p className="mt-0.5 text-2xs text-neutral-400">
                                                     {r.message}
                                                 </p>
                                             )}
@@ -513,7 +531,7 @@ export const AssignCourseDialog = ({
                     )}
                 </div>
 
-                <div className="max-h-[260px] overflow-y-auto rounded-lg border border-neutral-200">
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-neutral-200">
                     <table className="w-full text-left text-xs">
                         <thead className="sticky top-0 bg-neutral-50">
                             <tr>
@@ -540,7 +558,7 @@ export const AssignCourseDialog = ({
                                         </td>
                                         <td className="px-3 py-2">
                                             <span
-                                                className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                                className={`inline-block rounded-full px-2 py-0.5 text-2xs font-medium ${
                                                     r.status === 'SUCCESS'
                                                         ? 'bg-green-100 text-green-700'
                                                         : r.status === 'SKIPPED'
@@ -580,7 +598,7 @@ export const AssignCourseDialog = ({
             {stepLabels.map((s, i) => (
                 <div key={s.key} className="flex items-center">
                     <div
-                        className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-[10px] font-medium transition-colors ${
+                        className={`flex h-6 items-center gap-1 rounded-full px-2.5 text-2xs font-medium transition-colors ${
                             i === stepIndex
                                 ? 'bg-primary-500 text-white'
                                 : i < stepIndex

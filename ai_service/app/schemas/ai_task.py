@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -47,6 +47,17 @@ class LecturePlanResponse(_CamelModel):
     time_wise_split: Optional[List[TimeSplitSection]] = None
     assignment: Optional[Assignment] = None
     summary: Optional[List[str]] = None
+
+    @field_validator("heading", "mode", "duration", "language", "level", mode="before")
+    @classmethod
+    def _coerce_scalar_to_str(cls, v):
+        """The lecture-planner LLM sometimes emits scalar string fields as
+        numbers (observed: `level: 8`). Pydantic v2 won't coerce int→str, so the
+        whole plan validation hard-fails and the user gets a blank lecture plan.
+        Coerce numeric/bool scalars to str before validation."""
+        if isinstance(v, (int, float, bool)):
+            return str(v)
+        return v
 
 
 class LecturePlanKickoffResponse(BaseModel):

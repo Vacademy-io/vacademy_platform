@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, X, CircleNotch } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import AdminDisplaySettings from './AdminDisplaySettings';
 import TeacherDisplaySettings from './TeacherDisplaySettings';
 import CustomRoleDisplaySettings from './CustomRoleDisplaySettings';
-import AudienceAccessCard from './AudienceAccessCard';
 import {
     Select,
     SelectContent,
@@ -11,16 +12,27 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { getAllRoles, createCustomRole } from '@/routes/manage-custom-teams/-services/custom-team-services';
+import {
+    getAllRoles,
+    createCustomRole,
+} from '@/routes/manage-custom-teams/-services/custom-team-services';
 import type { CustomRole } from '@/routes/manage-custom-teams/-services/custom-team-services';
-import { Button } from '@/components/ui/button';
+import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
-import { Plus, X, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { SettingsPageShell } from '@/components/settings/shell';
+
+type RoleKey = 'admin' | 'teacher' | 'custom';
+
+const ROLE_OPTIONS: { value: RoleKey; label: string }[] = [
+    { value: 'admin', label: 'Admin' },
+    { value: 'teacher', label: 'Teacher' },
+    { value: 'custom', label: 'Custom Role' },
+];
 
 export default function RoleDisplaySettingsMain() {
     const queryClient = useQueryClient();
-    const [selectedRole, setSelectedRole] = useState<'admin' | 'teacher' | 'custom'>('admin');
+    const [selectedRole, setSelectedRole] = useState<RoleKey>('admin');
     const [selectedCustomRoleId, setSelectedCustomRoleId] = useState<string>('');
     const [showNewRoleInput, setShowNewRoleInput] = useState(false);
     const [newRoleName, setNewRoleName] = useState('');
@@ -68,46 +80,60 @@ export default function RoleDisplaySettingsMain() {
         createRoleMutation.mutate(trimmed);
     };
 
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center gap-4 py-2">
-                <h1 className="text-xl font-bold">Display Settings</h1>
-                <Select value={selectedRole} onValueChange={(val: any) => setSelectedRole(val)}>
-                    <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Select Role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="teacher">Teacher</SelectItem>
-                        <SelectItem value="custom">Custom Role</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+    const selectedCustomRoleName = customRoles?.find(
+        (r: CustomRole) => r.id === selectedCustomRoleId
+    )?.name;
 
-            {selectedRole === 'admin' && (
-                <div className="space-y-4">
-                    <AdminDisplaySettings />
-                    <AudienceAccessCard
-                        key="audience-access-admin"
-                        roleName="ADMIN"
-                        roleLabel="Admin"
-                    />
+    return (
+        <SettingsPageShell
+            title={
+                selectedRole === 'admin'
+                    ? 'Admin Display Settings'
+                    : selectedRole === 'teacher'
+                      ? 'Teacher Display Settings'
+                      : selectedCustomRoleName
+                        ? `${selectedCustomRoleName} Display Settings`
+                        : 'Custom Role Display Settings'
+            }
+            description="Control what this role sees and can do — courses, sidebar, dashboard, permissions and more."
+            maxWidth="max-w-7xl"
+            actions={
+                <div
+                    role="tablist"
+                    aria-label="Select role to configure"
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted p-1"
+                >
+                    {ROLE_OPTIONS.map((opt) => {
+                        const active = selectedRole === opt.value;
+                        return (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                role="tab"
+                                aria-selected={active}
+                                onClick={() => setSelectedRole(opt.value)}
+                                className={cn(
+                                    'cursor-pointer rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
+                                    active
+                                        ? 'bg-white text-neutral-900 shadow-sm'
+                                        : 'text-neutral-600 hover:text-neutral-800'
+                                )}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
                 </div>
-            )}
-            {selectedRole === 'teacher' && (
-                <div className="space-y-4">
-                    <TeacherDisplaySettings />
-                    <AudienceAccessCard
-                        key="audience-access-teacher"
-                        roleName="TEACHER"
-                        roleLabel="Teacher"
-                    />
-                </div>
-            )}
+            }
+        >
+            {selectedRole === 'admin' && <AdminDisplaySettings />}
+            {selectedRole === 'teacher' && <TeacherDisplaySettings />}
             {selectedRole === 'custom' && (
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4 py-2 border-b pb-4">
-                        <span className="text-sm font-medium">Select Custom Role to Configure:</span>
+                <div className="space-y-6">
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                        <span className="text-sm font-semibold text-neutral-700">
+                            Custom role to configure
+                        </span>
                         {showNewRoleInput ? (
                             <div className="flex items-center gap-2">
                                 <Input
@@ -121,43 +147,45 @@ export default function RoleDisplaySettingsMain() {
                                         }
                                     }}
                                     disabled={createRoleMutation.isPending}
-                                    className="h-8 w-[250px]"
+                                    className="h-9 w-64"
                                 />
-                                <Button
+                                <MyButton
                                     type="button"
-                                    size="sm"
+                                    scale="small"
                                     onClick={handleCreateRole}
-                                    disabled={createRoleMutation.isPending}
-                                    className="h-8"
+                                    disable={createRoleMutation.isPending}
                                 >
                                     {createRoleMutation.isPending ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <CircleNotch className="size-3 animate-spin" />
                                     ) : (
                                         'Create'
                                     )}
-                                </Button>
-                                <Button
+                                </MyButton>
+                                <MyButton
                                     type="button"
-                                    variant="ghost"
-                                    size="sm"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    layoutVariant="icon"
+                                    aria-label="Cancel"
                                     onClick={() => {
                                         setShowNewRoleInput(false);
                                         setNewRoleName('');
                                     }}
-                                    disabled={createRoleMutation.isPending}
-                                    className="h-8 px-2"
+                                    disable={createRoleMutation.isPending}
                                 >
-                                    <X className="h-3 w-3" />
-                                </Button>
+                                    <X className="size-4" />
+                                </MyButton>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
                                 <Select
                                     value={selectedCustomRoleId}
-                                    onValueChange={(val: any) => setSelectedCustomRoleId(val)}
+                                    onValueChange={(val: string) =>
+                                        setSelectedCustomRoleId(val)
+                                    }
                                 >
-                                    <SelectTrigger className="w-[300px]">
-                                        <SelectValue placeholder="Choose a custom role..." />
+                                    <SelectTrigger className="h-9 w-72">
+                                        <SelectValue placeholder="Choose a custom role…" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {filteredCustomRoles.length === 0 ? (
@@ -166,62 +194,40 @@ export default function RoleDisplaySettingsMain() {
                                             </div>
                                         ) : (
                                             filteredCustomRoles.map((r: CustomRole) => (
-                                                <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                                <SelectItem key={r.id} value={r.id}>
+                                                    {r.name}
+                                                </SelectItem>
                                             ))
                                         )}
                                     </SelectContent>
                                 </Select>
-                                <Button
+                                <MyButton
                                     type="button"
-                                    variant="outline"
-                                    size="sm"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    layoutVariant="icon"
+                                    aria-label="Add new role"
                                     onClick={() => setShowNewRoleInput(true)}
-                                    className="h-8 px-2"
-                                    title="Add new role"
                                 >
-                                    <Plus className="h-3 w-3" />
-                                </Button>
+                                    <Plus className="size-4" />
+                                </MyButton>
                             </div>
                         )}
                     </div>
 
                     {selectedCustomRoleId ? (
-                        <div className="space-y-4">
-                            <CustomRoleDisplaySettings
-                                key={selectedCustomRoleId}
-                                roleId={selectedCustomRoleId}
-                                roleName={
-                                    customRoles?.find(
-                                        (r: CustomRole) => r.id === selectedCustomRoleId
-                                    )?.name
-                                }
-                            />
-                            {(() => {
-                                const selectedRoleName =
-                                    customRoles?.find(
-                                        (r: CustomRole) => r.id === selectedCustomRoleId
-                                    )?.name ?? '';
-                                if (!selectedRoleName) return null;
-                                return (
-                                    <AudienceAccessCard
-                                        // key forces a clean remount when the selected
-                                        // custom role changes, so the card hydrates
-                                        // from scratch instead of reusing stale local
-                                        // state from the previous role.
-                                        key={`audience-access-custom-${selectedCustomRoleId}`}
-                                        // Backend resolver matches against JWT authorities, which
-                                        // are uppercased by `CustomUserDetails`. Mirror that here.
-                                        roleName={selectedRoleName.toUpperCase()}
-                                        roleLabel={selectedRoleName}
-                                    />
-                                );
-                            })()}
-                        </div>
+                        <CustomRoleDisplaySettings
+                            key={selectedCustomRoleId}
+                            roleId={selectedCustomRoleId}
+                            roleName={selectedCustomRoleName}
+                        />
                     ) : (
-                        <div className="text-sm text-gray-500 italic mt-4">Please select a custom role from the dropdown above to view or edit its settings.</div>
+                        <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-neutral-500">
+                            Select a custom role above to view or edit its display settings.
+                        </div>
                     )}
                 </div>
             )}
-        </div>
+        </SettingsPageShell>
     );
 }

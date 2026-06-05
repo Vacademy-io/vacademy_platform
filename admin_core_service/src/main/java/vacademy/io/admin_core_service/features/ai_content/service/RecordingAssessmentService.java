@@ -33,6 +33,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -172,7 +173,9 @@ public class RecordingAssessmentService {
         Map<String, Object> aiResp;
         try {
             aiResp = callAiServiceGenerate(
-                    instituteId, transcriptText, detectedLanguage, numQuestions, includeImages);
+                    instituteId, transcriptText, detectedLanguage, numQuestions, includeImages,
+                    user != null ? user.getId() : null,
+                    "assessment:" + artifact.getId());
         } catch (ResponseStatusException e) {
             return failArtifact(artifact, recordingId,
                     "ai-service: " + e.getStatusCode().value() + " " +
@@ -483,17 +486,28 @@ public class RecordingAssessmentService {
             String transcriptText,
             String targetLanguage,
             int numQuestions,
-            boolean includeImages) {
+            boolean includeImages,
+            String userId,
+            String idempotencyKey) {
 
         String url = aiServiceUrl + "/ai-service/assessment/generate-from-transcript";
 
-        Map<String, Object> reqBody = Map.of(
-                "transcript_text", transcriptText,
-                "target_language", targetLanguage,
-                "num_questions", numQuestions,
-                "institute_id", instituteId,
-                "include_images", includeImages
-        );
+        // HashMap (not Map.of) so a null userId doesn't NPE — the ai-service
+        // attributes the credit charge to this user when present (Phase 3).
+        Map<String, Object> reqBody = new HashMap<>();
+        reqBody.put("transcript_text", transcriptText);
+        reqBody.put("target_language", targetLanguage);
+        reqBody.put("num_questions", numQuestions);
+        reqBody.put("institute_id", instituteId);
+        reqBody.put("include_images", includeImages);
+        if (userId != null && !userId.isBlank()) {
+            reqBody.put("user_id", userId);
+        }
+        // Dedup the credit charge so a RestTemplate timeout-after-success or a
+        // double-submit can't double-charge the institute.
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            reqBody.put("idempotency_key", idempotencyKey);
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

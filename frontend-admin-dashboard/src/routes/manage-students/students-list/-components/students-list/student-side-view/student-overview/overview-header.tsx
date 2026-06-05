@@ -113,46 +113,56 @@ export const OverviewHeader = ({
         });
     }
 
+    // Don't render an empty card. If we have no metadata AND no tiles, skip.
+    if (!hasMetadata && tiles.length === 0) return null;
+
     return (
-        <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-sm">
-            {/* Enrollment chip line (Course / Level / Session) — the #1 question */}
+        <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+            {/* Hero band — top of the card, primary-tinted, hosts the course name
+                as the visual anchor. Modern LMS feel: course name is BIG, the
+                level/session/enrollment are a subtle metadata strip below it. */}
             {hasMetadata && (
-                <div className="flex flex-wrap items-center gap-2 text-caption">
+                <div className="border-b border-border bg-primary-50/40 px-4 py-3">
+                    <div className="text-caption font-semibold uppercase tracking-widest text-primary-600">
+                        Currently Enrolled
+                    </div>
                     {course && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-caption font-semibold text-primary-700 ring-1 ring-primary-200">
-                            <GraduationCap className="size-3.5" weight="duotone" />
-                            {course}
-                        </span>
-                    )}
-                    {level && (
-                        <span className="inline-flex items-center gap-1 text-card-foreground">
-                            <BookOpen className="size-3.5 text-muted-foreground" />
-                            {level}
-                        </span>
-                    )}
-                    {session && (
-                        <span className="inline-flex items-center gap-1 text-card-foreground">
-                            <Calendar className="size-3.5 text-muted-foreground" />
-                            {session}
-                        </span>
-                    )}
-                    {enrollmentNo && (
-                        <>
-                            <span className="text-muted-foreground/60">·</span>
-                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                <Hash className="size-3.5" />
-                                {enrollmentNo}
+                        <div className="mt-1 flex items-center gap-2">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-100 text-primary-700">
+                                <GraduationCap className="size-5" weight="duotone" />
                             </span>
-                        </>
+                            <h3 className="truncate text-subtitle font-semibold text-card-foreground">
+                                {course}
+                            </h3>
+                        </div>
                     )}
-                    {joinedDate && (
-                        <>
-                            <span className="text-muted-foreground/60">·</span>
-                            <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                <CalendarBlank className="size-3.5" />
-                                Joined {joinedDate}
-                            </span>
-                        </>
+                    {(level || session || enrollmentNo || joinedDate) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
+                            {level && (
+                                <span className="inline-flex items-center gap-1">
+                                    <BookOpen className="size-3.5" />
+                                    {level}
+                                </span>
+                            )}
+                            {session && (
+                                <span className="inline-flex items-center gap-1">
+                                    <Calendar className="size-3.5" />
+                                    {session}
+                                </span>
+                            )}
+                            {enrollmentNo && (
+                                <span className="inline-flex items-center gap-1">
+                                    <Hash className="size-3.5" />
+                                    {enrollmentNo}
+                                </span>
+                            )}
+                            {joinedDate && (
+                                <span className="inline-flex items-center gap-1">
+                                    <CalendarBlank className="size-3.5" />
+                                    Joined {joinedDate}
+                                </span>
+                            )}
+                        </div>
                     )}
                 </div>
             )}
@@ -161,7 +171,7 @@ export const OverviewHeader = ({
             {tiles.length > 0 && (
                 <div
                     className={cn(
-                        'grid gap-1 border-t border-border pt-3',
+                        'grid gap-1 px-4 py-3',
                         tiles.length === 1 && 'grid-cols-1',
                         tiles.length === 2 && 'grid-cols-2',
                         tiles.length === 3 && 'grid-cols-3',

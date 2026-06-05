@@ -544,21 +544,25 @@ export const ProfileContextStrip = ({
     const visible = items.filter(Boolean) as ContextStripItem[];
     if (!visible.length) return null;
     return (
+        // Surface-3 strip per the handoff hero meta row: warm grey bg with no
+        // border (the bg-card+border-border above provides the seam), 26px
+        // column gaps, and slightly larger value typography so the strip reads
+        // as an at-a-glance ID/Joined/Email/Phone row instead of fading out.
         <div
             className={cn(
-                'flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border border-neutral-200 bg-neutral-50/60 px-3 py-2',
+                'flex flex-wrap items-center gap-x-6 gap-y-1.5 rounded-md bg-neutral-100 px-4 py-2.5',
                 className
             )}
         >
             {visible.map((it, i) => (
-                <div key={i} className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                <div key={i} className="flex min-w-0 items-baseline gap-2">
+                    <span className="shrink-0 text-caption font-semibold uppercase tracking-wide text-muted-foreground">
                         {it.label}
                     </span>
                     <span
                         className={cn(
-                            'truncate text-xs font-semibold',
-                            it.tone ? TONE_TEXT[it.tone] : 'text-neutral-800'
+                            'truncate text-body font-semibold',
+                            it.tone ? TONE_TEXT[it.tone] : 'text-card-foreground'
                         )}
                         title={typeof it.value === 'string' ? it.value : undefined}
                     >

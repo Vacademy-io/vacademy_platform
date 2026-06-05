@@ -1,5 +1,4 @@
 import { StudentTable } from '@/types/student-table-types';
-import { MyButton } from '@/components/design-system/button';
 import {
     Lightning,
     CheckCircle,
@@ -32,6 +31,22 @@ const TONE_CHIP_CLASSES: Record<Tone, string> = {
     warning: 'bg-warning-50 text-warning-600',
     info: 'bg-info-50 text-info-600',
     success: 'bg-success-50 text-success-600',
+};
+
+/**
+ * Maps tone → tone-coloured soft action pill classes, per the handoff
+ * "Btn variant='soft'" styling. Each pill has a tinted background, a
+ * tone-matched text colour, a subtle ring, and a clear hover state so the
+ * action reads as the row's primary affordance instead of a ghost button.
+ */
+const TONE_ACTION_CLASSES: Record<Tone, string> = {
+    danger:
+        'bg-danger-50 text-danger-700 ring-1 ring-danger-100 hover:bg-danger-100 hover:text-danger-800 focus-visible:ring-danger-300',
+    warning:
+        'bg-warning-50 text-warning-700 ring-1 ring-warning-100 hover:bg-warning-100 hover:text-warning-800 focus-visible:ring-warning-300',
+    info: 'bg-info-50 text-info-700 ring-1 ring-info-100 hover:bg-info-100 hover:text-info-800 focus-visible:ring-info-300',
+    success:
+        'bg-success-50 text-success-700 ring-1 ring-success-100 hover:bg-success-100 hover:text-success-800 focus-visible:ring-success-300',
 };
 
 /**
@@ -136,13 +151,10 @@ export const OverviewNeedsAttention = ({
     }
 
     return (
-        <section className="overflow-hidden rounded-lg border border-border shadow-sm">
-            {/* Header row: ⚡ + label + count badge */}
-            <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-3">
-                <Lightning
-                    className="size-4 text-warning-600"
-                    weight="fill"
-                />
+        <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            {/* Header row — plain card surface per handoff (no tinted bg). */}
+            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <Lightning className="size-4 text-warning-500" weight="fill" />
                 <span className="text-body font-bold text-card-foreground">
                     Needs attention
                 </span>
@@ -151,11 +163,14 @@ export const OverviewNeedsAttention = ({
                 </span>
             </div>
 
-            {/* Rows */}
+            {/* Rows — each row's action is a tone-coloured SOFT PILL per the
+                handoff: tinted bg + matching text colour + subtle ring, so
+                the action reads as the row's primary affordance. */}
             <ul className="divide-y divide-border">
                 {items.map((it) => {
                     const IconCmp = it.icon;
                     const ActionIcon = it.actionIcon;
+                    const disabled = !it.onAction;
                     return (
                         <li
                             key={it.id}
@@ -177,16 +192,19 @@ export const OverviewNeedsAttention = ({
                                     {it.description}
                                 </div>
                             </div>
-                            <MyButton
-                                buttonType="secondary"
-                                scale="small"
+                            <button
+                                type="button"
                                 onClick={it.onAction}
-                                disable={!it.onAction}
-                                className="shrink-0"
+                                disabled={disabled}
+                                className={cn(
+                                    'inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2',
+                                    TONE_ACTION_CLASSES[it.tone],
+                                    disabled && 'cursor-not-allowed opacity-60'
+                                )}
                             >
-                                {ActionIcon && <ActionIcon className="size-3.5" />}
                                 {it.actionLabel}
-                            </MyButton>
+                                {ActionIcon && <ActionIcon className="size-3.5" weight="bold" />}
+                            </button>
                         </li>
                     );
                 })}

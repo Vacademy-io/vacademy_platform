@@ -68,7 +68,7 @@ export const fetchTelephonyConfig = async (
     const res = await authenticatedAxiosInstance.get<TelephonyConfigView | ''>(
         TELEPHONY_CONFIG(instituteId)
     );
-    if (res.status === 204 || !res.data || res.data === '') return null;
+    if (res.status === 204 || !res.data) return null;
     return res.data as TelephonyConfigView;
 };
 

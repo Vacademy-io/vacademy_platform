@@ -1348,7 +1348,7 @@ export const CourseStructureDetails = ({
                                               </span>
                                             )}
                                             <span
-                                              className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
+                                              className="break-words text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1511,7 +1511,7 @@ export const CourseStructureDetails = ({
                                                         {getIcon(slide, "3")}
                                                       </div>
                                                       <span
-                                                        className="break-words text-sm sm:text-base  text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                        className="break-words text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
                                                         title={slide.title}
                                                       >
                                                         {slide.title}
@@ -1794,7 +1794,7 @@ export const CourseStructureDetails = ({
                                         <div className="shrink-0 group-hover:scale-110 transition-transform">
                                           {getIcon(slide, "3")}
                                         </div>
-                                        <span className="break-words text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors" title={slide.title}>
+                                        <span className="break-words text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors" title={slide.title}>
                                           {slide.title}
                                         </span>
                                         {(() => {
@@ -1920,7 +1920,7 @@ export const CourseStructureDetails = ({
                                             </span>
                                           )}
                                           <span
-                                            className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
+                                            className="break-words text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
                                             title={toTitleCase(ch.chapter_name)}
                                           >
                                             {toTitleCase(ch.chapter_name)}
@@ -2044,7 +2044,7 @@ export const CourseStructureDetails = ({
                                                     {getIcon(slide, "3")}
                                                   </div>
                                                   <span
-                                                    className="truncate text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                    className="truncate text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
@@ -2264,7 +2264,7 @@ export const CourseStructureDetails = ({
                                                     {getIcon(slide, "3")}
                                                   </div>
                                                   <span
-                                                    className="truncate text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                    className="truncate text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
@@ -2466,7 +2466,7 @@ export const CourseStructureDetails = ({
                   </div>
                   <div className="min-w-0 flex-1 py-1">
                     <h3
-                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
+                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2 break-words"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
@@ -2513,10 +2513,10 @@ export const CourseStructureDetails = ({
                   </div>
                   <div className="min-w-0 flex-1 py-1">
                     <h3
-                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
-                      title={m.module.module_name}
+                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2 break-words"
+                      title={toTitleCase(m.module.module_name)}
                     >
-                      {m.module.module_name}
+                      {toTitleCase(m.module.module_name)}
                     </h3>
                   </div>
                 </CardContent>
@@ -2580,7 +2580,7 @@ export const CourseStructureDetails = ({
                         </div>
                         <div className="min-w-0 flex-1 py-1">
                           <h3
-                            className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
+                            className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2 break-words"
                             title={toTitleCase(ch.chapter_name)}
                           >
                             {toTitleCase(ch.chapter_name)}

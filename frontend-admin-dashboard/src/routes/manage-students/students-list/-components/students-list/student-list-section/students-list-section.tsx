@@ -9,6 +9,7 @@ import { StudentListHeader } from './student-list-header';
 import { StudentFilters } from './student-filters';
 import { useStudentFilters } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 import { useStudentTable } from '@/routes/manage-students/students-list/-hooks/useStudentTable';
+import { useStudentCounts } from '@/routes/manage-students/students-list/-hooks/useStudentCounts';
 import { StudentTable } from '@/types/student-table-types';
 import {
     getColumnsVisibility,
@@ -205,6 +206,10 @@ export const StudentsListSection = () => {
         search.package_session_id ? [search.package_session_id] : null
     );
 
+    // Header badge counts (Total / Active / Inactive) — independent of the status
+    // filter so the breakdown is always visible.
+    const studentCounts = useStudentCounts(appliedFilters, !isLoading);
+
     const leadSettings = useLeadSettings();
     // Don't render lead UI while settings are loading (defaults have enabled:true which would flash)
     const leadReady = !leadSettings.isLoading && leadSettings.enabled;
@@ -315,7 +320,13 @@ export const StudentsListSection = () => {
             <section className="animate-fadeIn flex max-w-full flex-col gap-3 overflow-visible">
                 <div className="flex flex-col gap-3">
                     <InviteFormProvider>
-                        <StudentListHeader currentSession={currentSession} />
+                        <StudentListHeader
+                            currentSession={currentSession}
+                            total={studentCounts.total}
+                            active={studentCounts.active}
+                            inactive={studentCounts.inactive}
+                            countsLoading={studentCounts.isLoading}
+                        />
                     </InviteFormProvider>
 
                     <StudentFilters

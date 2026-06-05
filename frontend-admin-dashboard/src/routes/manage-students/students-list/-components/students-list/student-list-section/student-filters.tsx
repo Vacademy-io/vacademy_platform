@@ -5,8 +5,8 @@ import { Filters } from './myFilter';
 import { StudentSearchBox } from '../../../../../../components/common/student-search-box';
 import { StudentFiltersProps } from '@/routes/manage-students/students-list/-types/students-list-types';
 import { useMemo, useRef, useState } from 'react';
-import { exportStudentsCsv } from '../../../-services/exportStudentsCsv';
 import { exportAccountDetails } from '../../../-services/exportAccountDetails';
+import { ExportColumnsDialog } from './export-columns-dialog';
 import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
 import { AddSessionDialog } from '@/routes/manage-institute/sessions/-components/session-operations/add-session/add-session-dialog';
 import { useAddSession } from '@/services/study-library/session-management/addSession';
@@ -38,6 +38,7 @@ export const StudentFilters = ({
     sessionList,
 }: StudentFiltersProps) => {
     const [isAddSessionDiaogOpen, setIsAddSessionDiaogOpen] = useState(false);
+    const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
     const handleOpenAddSessionDialog = () => {
         if (!instituteDetails?.batches_for_sessions.length) return;
         setIsAddSessionDiaogOpen(!isAddSessionDiaogOpen);
@@ -115,7 +116,7 @@ export const StudentFilters = ({
     }, [columnFilters, searchFilter]);
 
     const handleExportClick = () => {
-        exportStudentsCsv({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
+        setIsExportDialogOpen(true);
     };
 
     const handleExportAccountDetails = () => {
@@ -277,6 +278,13 @@ export const StudentFilters = ({
                     )}
                 </div>
             </div>
+
+            <ExportColumnsDialog
+                open={isExportDialogOpen}
+                onOpenChange={setIsExportDialogOpen}
+                appliedFilters={appliedFilters}
+                totalElements={totalElements || 0}
+            />
         </div>
     );
 };

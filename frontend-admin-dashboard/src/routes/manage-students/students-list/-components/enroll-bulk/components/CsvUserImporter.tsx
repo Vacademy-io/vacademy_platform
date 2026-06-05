@@ -2,11 +2,12 @@ import { useRef, useState, useMemo, useEffect } from 'react';
 import Papa from 'papaparse';
 import { UploadSimple, DownloadSimple } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import { NewUserRow, CustomFieldValue } from '../../../-types/bulk-assign-types';
 import {
     getCustomFieldSettingsFromCache,
     getCustomFieldSettings,
-    CustomField,
     CustomFieldSettingsData,
 } from '@/services/custom-field-settings';
 import { useUserIdentifierSetting } from '@/services/user-identifier-setting';
@@ -112,24 +113,33 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
             }
         }
 
-        // Add custom fields visible in learner enrollment
+        // Add institute custom fields so they can be bulk-imported. Gather from
+        // every bucket (a field can be standalone, institute-level, or grouped),
+        // dedup by id, and include unless explicitly hidden from the learner list —
+        // the same set the export picker shows, so the two stay consistent.
         const cfCols: { csvKey: string; customFieldId: string; label: string; required: boolean }[] = [];
-        if (settings?.customFields) {
-            const enrollmentFields = settings.customFields.filter(
-                (cf: CustomField) => cf.visibility?.learnerEnrollment === true
-            );
-            for (const cf of enrollmentFields) {
+        if (settings) {
+            const allCustomFields = [
+                ...(settings.instituteFields ?? []),
+                ...(settings.customFields ?? []),
+                ...(settings.fieldGroups ?? []).flatMap((g) => g.fields),
+            ];
+            const seenCustomIds = new Set<string>();
+            for (const cf of allCustomFields) {
+                if (!cf?.id || !cf?.name || seenCustomIds.has(cf.id)) continue;
+                if (cf.visibility && cf.visibility.learnersList === false) continue;
+                seenCustomIds.add(cf.id);
                 const safeKey = `cf_${cf.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
                 cfCols.push({
                     csvKey: safeKey,
                     customFieldId: cf.id,
                     label: cf.name,
-                    required: cf.required,
+                    required: !!cf.required,
                 });
                 cols.push({
                     csvKey: safeKey,
                     label: cf.name,
-                    required: cf.required,
+                    required: !!cf.required,
                     sample: '',
                 });
             }
@@ -140,10 +150,54 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
 
     const REQUIRED_HEADERS = allColumns.filter((c) => c.required).map((c) => c.csvKey);
 
-    // ─── Download template ────
+    // ─── Template column picker (inline; rendered within the wizard step) ────
+    const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+    const [templateCols, setTemplateCols] = useState<Record<string, boolean>>({});
+
+    const isRequiredCol = (csvKey: string) => REQUIRED_HEADERS.includes(csvKey);
+
+    // Open the picker with every available column pre-selected.
+    const openTemplatePicker = () => {
+        setTemplateCols(
+            allColumns.reduce<Record<string, boolean>>((acc, c) => {
+                acc[c.csvKey] = true;
+                return acc;
+            }, {})
+        );
+        setShowTemplatePicker(true);
+    };
+
+    const toggleTemplateCol = (csvKey: string) => {
+        if (isRequiredCol(csvKey)) return; // required columns can't be removed
+        setTemplateCols((prev) => ({ ...prev, [csvKey]: !prev[csvKey] }));
+    };
+
+    const optionalKeys = allColumns
+        .filter((c) => !isRequiredCol(c.csvKey))
+        .map((c) => c.csvKey);
+    const allOptionalSelected = optionalKeys.every((k) => templateCols[k]);
+    const toggleAllTemplateCols = () => {
+        const next = !allOptionalSelected;
+        setTemplateCols((prev) => {
+            const copy = { ...prev };
+            optionalKeys.forEach((k) => {
+                copy[k] = next;
+            });
+            return copy;
+        });
+    };
+
+    const selectedTemplateCount = allColumns.filter(
+        (c) => isRequiredCol(c.csvKey) || templateCols[c.csvKey]
+    ).length;
+
+    // ─── Download template (only the chosen columns; required ones always included) ────
     const handleDownloadTemplate = () => {
-        const headers = allColumns.map((c) => c.csvKey);
-        const sampleRow = allColumns.map((c) => c.sample);
+        const cols = allColumns.filter(
+            (c) => isRequiredCol(c.csvKey) || templateCols[c.csvKey]
+        );
+        const headers = cols.map((c) => c.csvKey);
+        const sampleRow = cols.map((c) => c.sample);
         const csv = [headers.join(','), sampleRow.join(',')].join('\n');
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
@@ -152,6 +206,7 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
         a.download = 'bulk_enroll_template.csv';
         a.click();
         URL.revokeObjectURL(url);
+        setShowTemplatePicker(false);
     };
 
     // ─── Parse CSV ────
@@ -334,12 +389,93 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
                     buttonType="secondary"
                     scale="small"
                     layoutVariant="default"
-                    onClick={handleDownloadTemplate}
+                    onClick={openTemplatePicker}
                 >
                     <DownloadSimple size={14} className="mr-1" />
                     Template
                 </MyButton>
             </div>
+
+            {/* Inline template column picker (rendered in-flow to avoid modal-on-modal stacking) */}
+            {showTemplatePicker && (
+                <div className="animate-fadeIn flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-2">
+                        <div className="min-w-0">
+                            <p className="text-sm font-medium text-neutral-700">
+                                Choose template columns
+                            </p>
+                            <p className="text-xs text-neutral-400">
+                                Required columns are always included; the upload still accepts any
+                                subset.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={toggleAllTemplateCols}
+                            className="shrink-0 text-xs font-medium text-primary-500 hover:text-primary-600"
+                        >
+                            {allOptionalSelected ? 'Clear optional' : 'Select all'}
+                        </button>
+                    </div>
+                    <div className="grid max-h-60 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                        {allColumns.map((c) => {
+                            const required = isRequiredCol(c.csvKey);
+                            const checked = required || !!templateCols[c.csvKey];
+                            return (
+                                <label
+                                    key={c.csvKey}
+                                    className={cn(
+                                        'flex items-center gap-2 rounded-md border px-2.5 py-2 transition-colors',
+                                        checked
+                                            ? 'border-primary-200 bg-primary-50'
+                                            : 'border-neutral-200 hover:bg-neutral-50',
+                                        required ? 'cursor-default' : 'cursor-pointer'
+                                    )}
+                                >
+                                    <Checkbox
+                                        checked={checked}
+                                        disabled={required}
+                                        onCheckedChange={() => toggleTemplateCol(c.csvKey)}
+                                    />
+                                    <span className="truncate text-sm text-neutral-700">
+                                        {c.label}
+                                    </span>
+                                    {required && (
+                                        <span className="ml-auto shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-500">
+                                            Required
+                                        </span>
+                                    )}
+                                </label>
+                            );
+                        })}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 border-t border-neutral-100 pt-2">
+                        <span className="text-xs text-neutral-500">
+                            {selectedTemplateCount} column(s)
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                layoutVariant="default"
+                                onClick={() => setShowTemplatePicker(false)}
+                            >
+                                Cancel
+                            </MyButton>
+                            <MyButton
+                                buttonType="primary"
+                                scale="small"
+                                layoutVariant="default"
+                                onClick={handleDownloadTemplate}
+                                className="flex items-center gap-1.5"
+                            >
+                                <DownloadSimple size={14} />
+                                Download
+                            </MyButton>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Drop zone */}
             <div

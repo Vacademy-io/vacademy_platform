@@ -24,7 +24,6 @@ import {
     CaretLeft,
     CaretRight,
     Funnel,
-    Trash,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -33,13 +32,10 @@ import {
     ProfileSkeleton,
     ProfileEmpty,
     ProfileHeroStat,
-    ProfileActionBar,
     ProfileMiniBar,
 } from '../profile-ui';
 
 const ITEMS_PER_PAGE = 20;
-
-type FilterKey = 'all' | 'progress' | 'completed' | 'past';
 
 export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmissionTab?: boolean; packageSessionId?: string }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -56,7 +52,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     const [progressPage, setProgressPage] = useState(0);
     const [completedPage, setCompletedPage] = useState(0);
     const [pastPage, setPastPage] = useState(0);
-    const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
 
     const levelIds = selectedLevelId ? [selectedLevelId] : [];
     const packageSessionIds = packageSessionId ? [packageSessionId] : [];
@@ -169,10 +164,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         setPastPage(0);
     };
 
-    const handleStatFilter = (key: FilterKey) => {
-        setActiveFilter((prev) => (prev === key ? 'all' : key));
-    };
-
     const courseTermSingular = getTerminology(ContentTerms.Course, SystemTerms.Course);
     const courseTermPlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
 
@@ -207,47 +198,40 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         );
     }
 
-    const showProgress = activeFilter === 'all' || activeFilter === 'progress';
-    const showCompleted = activeFilter === 'all' || activeFilter === 'completed';
-    const showPast = activeFilter === 'all' || activeFilter === 'past';
-
     return (
         <div className="flex flex-col gap-3">
-            {/* Hero stat grid — 3 tiles, single row on desktop, wraps on narrow */}
+            {/* Hero stat grid — passive counters per handoff CoursesSection.
+                Click-to-filter has been dropped: the 3 sections below always
+                render, so these tiles are purely orientation/status read-outs. */}
             <div className="grid grid-cols-3 gap-2">
                 <ProfileHeroStat
                     label="In Progress"
                     value={progressCount}
                     tone="primary"
                     icon={BookOpen}
-                    selected={activeFilter === 'progress'}
-                    onClick={() => handleStatFilter('progress')}
                 />
                 <ProfileHeroStat
                     label="Completed"
                     value={completedCount}
                     tone="success"
                     icon={CheckCircle}
-                    selected={activeFilter === 'completed'}
-                    onClick={() => handleStatFilter('completed')}
                 />
                 <ProfileHeroStat
                     label="Past"
                     value={pastCount}
                     tone="neutral"
                     icon={ClockCounterClockwise}
-                    selected={activeFilter === 'past'}
-                    onClick={() => handleStatFilter('past')}
                 />
             </div>
 
-            {/* Primary action bar */}
-            <ProfileActionBar>
+            {/* Combined action + filter row per handoff — Assign / Remove
+                buttons sit alongside the level filter chips so the controls
+                are one mental group, not two stacked bars. */}
+            <div className="flex flex-wrap items-center gap-2">
                 <MyButton
                     buttonType="primary"
                     scale="small"
                     onClick={() => setAssignOpen(true)}
-                    className="w-full md:w-auto"
                 >
                     + Assign to {courseTermSingular}
                 </MyButton>
@@ -256,105 +240,94 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     scale="small"
                     onClick={() => setDeassignOpen(true)}
                     disable={allActiveCourses.length === 0}
-                    className="w-full md:w-auto"
                 >
                     Remove from {courseTermSingular}
                 </MyButton>
-            </ProfileActionBar>
+                {availableLevels.length > 0 && (
+                    <div className="ml-auto flex items-center gap-1.5">
+                        <Funnel className="size-3.5 shrink-0 text-muted-foreground" />
+                        <ChipToggleGroup<string>
+                            value={selectedLevelId ?? '__ALL__'}
+                            onChange={(v) => handleLevelFilter(v === '__ALL__' ? null : v)}
+                            options={[
+                                { value: '__ALL__', label: 'All' },
+                                ...availableLevels.map((level) => ({
+                                    value: level.id,
+                                    label: level.level_name,
+                                })),
+                            ]}
+                            ariaLabel="Filter courses by level"
+                        />
+                    </div>
+                )}
+            </div>
 
-            {/* Level filter chips */}
-            {availableLevels.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                    <Funnel className="size-3.5 shrink-0 text-muted-foreground" />
-                    <ChipToggleGroup<string>
-                        value={selectedLevelId ?? '__ALL__'}
-                        onChange={(v) => handleLevelFilter(v === '__ALL__' ? null : v)}
-                        options={[
-                            { value: '__ALL__', label: 'All' },
-                            ...availableLevels.map((level) => ({
-                                value: level.id,
-                                label: level.level_name,
-                            })),
-                        ]}
-                        ariaLabel="Filter courses by level"
-                    />
-                </div>
-            )}
+            {/* All three sections render unconditionally per handoff —
+                counsellors see the full enrolment story without toggling. */}
+            <InProgressSection
+                courseTermPlural={courseTermPlural}
+                courses={progressCourses?.content || []}
+                page={progressPage}
+                totalPages={progressCourses?.totalPages || 0}
+                onPageChange={setProgressPage}
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
+            />
 
-            {/* In Progress — shown first as most actionable */}
-            {showProgress && (
-                <InProgressSection
-                    courseTermPlural={courseTermPlural}
-                    courses={progressCourses?.content || []}
-                    page={progressPage}
-                    totalPages={progressCourses?.totalPages || 0}
-                    onPageChange={setProgressPage}
-                    onCourseClick={handleCourseClick}
-                    getSessionName={(course) => {
-                        if (!course.package_session_id) return null;
-                        const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
-                        return details?.session.session_name || null;
-                    }}
-                    onDeassign={() => setDeassignOpen(true)}
-                />
-            )}
-
-            {/* Completed */}
-            {showCompleted && (
-                <CourseSection
-                    title={`Completed ${courseTermPlural}`}
-                    icon={CheckCircle}
-                    courses={completedCourses?.content || []}
-                    emptyMessage={`No completed ${courseTermPlural.toLowerCase()}`}
-                    onCourseClick={handleCourseClick}
-                    getSessionName={(course) => {
-                        if (!course.package_session_id) return null;
-                        const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
-                        return details?.session.session_name || null;
-                    }}
-                    renderBadge={(course) => (
-                        <div className="flex shrink-0 items-center gap-1.5">
-                            {course.level_name && (
-                                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                    {course.level_name}
-                                </span>
-                            )}
-                            <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700">
-                                Completed
-                            </span>
-                        </div>
-                    )}
-                    page={completedPage}
-                    totalPages={completedCourses?.totalPages || 0}
-                    onPageChange={setCompletedPage}
-                />
-            )}
-
-            {/* Past */}
-            {showPast && (
-                <CourseSection
-                    title={`Past ${courseTermPlural}`}
-                    icon={GraduationCap}
-                    courses={pastCourses?.content || []}
-                    emptyMessage={`No past ${courseTermPlural.toLowerCase()}`}
-                    onCourseClick={handleCourseClick}
-                    getSessionName={(course) => {
-                        if (!course.package_session_id) return null;
-                        const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
-                        return details?.session.session_name || null;
-                    }}
-                    renderBadge={(course) =>
-                        course.level_name ? (
-                            <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
+            <CourseSection
+                title={`Completed ${courseTermPlural}`}
+                icon={CheckCircle}
+                courses={completedCourses?.content || []}
+                emptyMessage={`No completed ${courseTermPlural.toLowerCase()}`}
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
+                renderBadge={(course) => (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {course.level_name && (
+                            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
                                 {course.level_name}
                             </span>
-                        ) : null
-                    }
-                    page={pastPage}
-                    totalPages={pastCourses?.totalPages || 0}
-                    onPageChange={setPastPage}
-                />
-            )}
+                        )}
+                        <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700">
+                            Completed
+                        </span>
+                    </div>
+                )}
+                page={completedPage}
+                totalPages={completedCourses?.totalPages || 0}
+                onPageChange={setCompletedPage}
+            />
+
+            <CourseSection
+                title={`Past ${courseTermPlural}`}
+                icon={GraduationCap}
+                courses={pastCourses?.content || []}
+                emptyMessage={`No past ${courseTermPlural.toLowerCase()}`}
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
+                renderBadge={(course) =>
+                    course.level_name ? (
+                        <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
+                            {course.level_name}
+                        </span>
+                    ) : null
+                }
+                page={pastPage}
+                totalPages={pastCourses?.totalPages || 0}
+                onPageChange={setPastPage}
+            />
 
             {/* Dialogs */}
             <AssignCourseDialog
@@ -386,7 +359,6 @@ const InProgressSection = ({
     onPageChange,
     onCourseClick,
     getSessionName,
-    onDeassign,
 }: {
     courseTermPlural: string;
     courses: PackageDetailDTO[];
@@ -395,7 +367,6 @@ const InProgressSection = ({
     onPageChange: (page: number) => void;
     onCourseClick: (course: PackageDetailDTO) => void;
     getSessionName: (course: PackageDetailDTO) => string | null;
-    onDeassign: () => void;
 }) => {
     const sessionTermSingular = getTerminology(ContentTerms.Session, SystemTerms.Session);
 
@@ -407,51 +378,40 @@ const InProgressSection = ({
                         const sessionName = getSessionName(course);
                         const pct = Math.min(Math.max(course.percentage_completed ?? 0, 0), 100);
                         return (
-                            <div
+                            <button
+                                type="button"
                                 key={course.id + (course.package_session_id || '')}
-                                className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 transition-shadow hover:border-primary-300 hover:shadow-sm"
+                                onClick={() => onCourseClick(course)}
+                                className="flex w-full flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 text-left transition-shadow hover:border-primary-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                             >
-                                {/* Top row: name + remove action */}
-                                <div className="flex min-w-0 items-start justify-between gap-2">
-                                    <button
-                                        type="button"
-                                        className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
-                                        onClick={() => onCourseClick(course)}
+                                {/* Single-line summary per handoff: name (flex-1)
+                                    + level badge + percentage chip. Per-row
+                                    Trash removed — Remove from {course} lives
+                                    in the top action bar. */}
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <p
+                                        className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-800"
+                                        title={course.package_name || 'Unnamed Course'}
                                     >
-                                        <p
-                                            className="truncate text-sm font-semibold text-neutral-800"
-                                            title={course.package_name || 'Unnamed Course'}
-                                        >
-                                            {course.package_name || 'Unnamed Course'}
-                                        </p>
-                                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                                            {course.level_name && (
-                                                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                                    {course.level_name}
-                                                </span>
-                                            )}
-                                            {sessionName && (
-                                                <span className="text-xs text-neutral-500">
-                                                    {sessionTermSingular}: {sessionName}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        aria-label="Remove from course"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onDeassign();
-                                        }}
-                                        className="shrink-0 rounded p-1 text-neutral-400 transition hover:bg-danger-50 hover:text-danger-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-400"
-                                    >
-                                        <Trash className="size-3.5" weight="duotone" />
-                                    </button>
+                                        {course.package_name || 'Unnamed Course'}
+                                    </p>
+                                    {course.level_name && (
+                                        <span className="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium capitalize text-primary-700">
+                                            {course.level_name}
+                                        </span>
+                                    )}
+                                    <span className="shrink-0 tabular-nums text-sm font-semibold text-card-foreground">
+                                        {pct}%
+                                    </span>
                                 </div>
+                                {sessionName && (
+                                    <span className="text-xs text-neutral-500">
+                                        {sessionTermSingular}: {sessionName}
+                                    </span>
+                                )}
                                 {/* Progress mini-bar */}
                                 <ProfileMiniBar value={pct} />
-                            </div>
+                            </button>
                         );
                     })}
 

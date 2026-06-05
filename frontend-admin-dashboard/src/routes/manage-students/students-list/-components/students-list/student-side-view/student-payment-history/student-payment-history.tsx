@@ -1,29 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useStudentSidebar } from '../../../../-context/selected-student-sidebar-context';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { fetchPaymentLogs, getPaymentLogsQueryKey } from '@/services/payment-logs';
 import { fetchUserInvoices, getInvoiceDownloadUrl } from '@/services/invoice-service';
 import type { InvoiceDTO } from '@/services/invoice-service';
-import { PaymentLogsTable } from '@/routes/manage-payments/-components/PaymentLogsTable';
-import type { BatchForSession, PaymentLogsResponse } from '@/types/payment-logs';
 import { FileText, Wallet, Plus, DownloadSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
 import { CreateInvoiceDialog } from './create-invoice-dialog';
+import { ProfileSectionCard, ProfileEmpty } from '../profile-ui';
 
-const PAGE_SIZE = 20;
 const INVOICES_PER_PAGE = 10;
-
-/** Sort payment log entries by date, most recent first (by payment_log.date then user_plan.created_at) */
-function sortByDateRecentFirst(data: PaymentLogsResponse): PaymentLogsResponse {
-    const sorted = [...data.content].sort((a, b) => {
-        const dateA = a.payment_log?.date || a.user_plan?.created_at || '';
-        const dateB = b.payment_log?.date || b.user_plan?.created_at || '';
-        return new Date(dateB).getTime() - new Date(dateA).getTime();
-    });
-    return { ...data, content: sorted };
-}
 
 function formatDate(dateStr: string | null | undefined): string {
     if (!dateStr) return '—';
@@ -92,10 +79,11 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
 
     if (invoices.length === 0) {
         return (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-                <FileText className="mx-auto mb-2 size-8 text-gray-400" />
-                <p className="text-sm text-gray-500">No invoices found.</p>
-            </div>
+            <ProfileEmpty
+                icon={FileText}
+                title="No invoices yet"
+                hint="Invoices generated for this learner will appear here."
+            />
         );
     }
 
@@ -186,39 +174,7 @@ export const StudentPaymentHistory = () => {
     const { selectedStudent } = useStudentSidebar();
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
     const queryClient = useQueryClient();
-    const [currentPage, setCurrentPage] = useState(0);
     const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
-
-    const batchesForSessions: BatchForSession[] = useMemo(() => {
-        const batches = instituteDetails?.batches_for_sessions;
-        return batches && Array.isArray(batches)
-            ? (batches as unknown as BatchForSession[])
-            : [];
-    }, [instituteDetails]);
-
-    const hasOrgAssociatedBatches = useMemo(() => {
-        return batchesForSessions.some((batch) => batch.is_org_associated === true);
-    }, [batchesForSessions]);
-
-    const requestFilters = useMemo(
-        () => ({
-            sort_columns: { createdAt: 'DESC' as const },
-            ...(selectedStudent?.user_id && { user_id: selectedStudent.user_id }),
-        }),
-        [selectedStudent?.user_id]
-    );
-
-    const {
-        data: paymentLogsData,
-        isLoading: isLoadingPayments,
-        error: paymentsError,
-        refetch: refetchPaymentLogs,
-    } = useQuery({
-        queryKey: getPaymentLogsQueryKey(currentPage, PAGE_SIZE, requestFilters),
-        queryFn: () => fetchPaymentLogs(currentPage, PAGE_SIZE, requestFilters),
-        staleTime: 30000,
-        enabled: Boolean(selectedStudent?.user_id),
-    });
 
     const {
         data: invoicesData,
@@ -230,52 +186,35 @@ export const StudentPaymentHistory = () => {
         enabled: Boolean(selectedStudent?.user_id),
     });
 
-    const packageSessionsMap = useMemo(() => {
-        const map: Record<string, string> = {};
-        batchesForSessions.forEach((batch) => {
-            const packageName = batch.package_dto.package_name;
-            const sessionName = batch.session.session_name;
-            const levelName = batch.level.level_name;
-            map[batch.id] = `${packageName} - ${sessionName} - ${levelName}`;
-        });
-        return map;
-    }, [batchesForSessions]);
-
-    const handlePageChange = (page: number) => {
-        setCurrentPage(page);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
     if (!selectedStudent?.user_id) {
         return (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center">
-                <p className="text-gray-600">Select a learner to view payment history.</p>
-            </div>
+            <ProfileEmpty
+                icon={Wallet}
+                title="No learner selected"
+                hint="Select a learner to view their payment history."
+            />
         );
     }
 
     return (
-        <div className="space-y-6">
-            {/* CPO Installments — only renders when this learner has CPO UserPlans;
-                self-hides for everyone else so non-CPO views are unchanged. */}
-            <div>
-                <div className="mb-2 flex items-center gap-2">
-                    <Wallet className="size-4 text-gray-500" />
-                    <h3 className="text-sm font-semibold text-gray-700">CPO Installments</h3>
-                </div>
+        <div className="flex flex-col gap-3">
+            {/* CPO Installments — self-hides when the learner has no CPO plan.
+                Wrapped in a SectionCard per handoff PaymentHistorySection so
+                the Fee Plan / installments surface frames the whole section. */}
+            <ProfileSectionCard icon={Wallet} heading="Fee Plan & Installments">
                 <CpoInstallmentsEditor userId={selectedStudent.user_id} />
-            </div>
+            </ProfileSectionCard>
 
-            {/* Invoices Section */}
-            <div>
-                <div className="mb-2 flex items-center gap-2">
-                    <FileText className="size-4 text-gray-500" />
-                    <h3 className="flex-1 text-sm font-semibold text-gray-700">
-                        Invoices
-                        {invoicesData && invoicesData.length > 0 && (
-                            <span className="ml-1.5 text-xs font-normal text-gray-400">({invoicesData.length})</span>
-                        )}
-                    </h3>
+            {/* Invoices — lifted into a SectionCard with Create Invoice in
+                the action slot, per handoff PaymentHistorySection layout. */}
+            <ProfileSectionCard
+                icon={FileText}
+                heading={
+                    invoicesData && invoicesData.length > 0
+                        ? `Invoices (${invoicesData.length})`
+                        : 'Invoices'
+                }
+                action={
                     <MyButton
                         buttonType="secondary"
                         scale="small"
@@ -284,7 +223,8 @@ export const StudentPaymentHistory = () => {
                         <Plus className="mr-1 size-3.5" />
                         Create Invoice
                     </MyButton>
-                </div>
+                }
+            >
                 {selectedStudent?.user_id && instituteDetails?.id && (
                     <CreateInvoiceDialog
                         userId={selectedStudent.user_id}
@@ -300,32 +240,20 @@ export const StudentPaymentHistory = () => {
                     />
                 )}
                 {isLoadingInvoices ? (
-                    <div className="flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 p-6">
-                        <div className="size-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
-                        <span className="ml-2 text-sm text-gray-500">Loading invoices...</span>
+                    <div className="flex items-center justify-center rounded-lg border border-border bg-muted p-6">
+                        <div className="size-5 animate-spin rounded-full border-2 border-muted-foreground border-t-card-foreground" />
+                        <span className="ml-2 text-sm text-muted-foreground">Loading invoices...</span>
                     </div>
                 ) : (
                     <InvoicesList invoices={invoicesData || []} />
                 )}
-            </div>
+            </ProfileSectionCard>
 
-            {/* Payment Logs Section */}
-            <div>
-                <p className="mb-2 text-sm text-neutral-600">
-                    Payment History for <span className="font-medium text-neutral-800">{selectedStudent.full_name}</span>
-                </p>
-                <PaymentLogsTable
-                    data={paymentLogsData ? sortByDateRecentFirst(paymentLogsData) : undefined}
-                    isLoading={isLoadingPayments}
-                    error={paymentsError as Error}
-                    currentPage={currentPage}
-                    onPageChange={handlePageChange}
-                    packageSessions={packageSessionsMap}
-                    hasOrgAssociatedBatches={hasOrgAssociatedBatches}
-                    hideUserColumn
-                    onRefresh={() => refetchPaymentLogs()}
-                />
-            </div>
+            {/* Payment Logs table removed per handoff PaymentHistorySection —
+                Invoices already shows the per-installment lifecycle (GENERATED
+                → SENT → PAID), so the raw payment-log audit trail is forensic
+                detail rather than counsellor surface. CpoInstallmentsEditor
+                continues to cover plan adjustments above. */}
         </div>
     );
 };

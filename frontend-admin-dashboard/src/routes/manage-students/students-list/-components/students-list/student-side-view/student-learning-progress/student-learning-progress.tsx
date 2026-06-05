@@ -15,7 +15,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useRouter } from '@tanstack/react-router';
-import { GraduationCap, Books, ChartLineUp, ClockCounterClockwise, Warning, CaretDown, CaretRight } from '@phosphor-icons/react';
+import { GraduationCap, Stack, ChartLineUp, ClockCounterClockwise, Warning, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
     ProfileSectionCard,
@@ -177,7 +177,7 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
             <div className="flex flex-col gap-3">
                 {picker}
                 <ProfileEmpty
-                    icon={Books}
+                    icon={Stack}
                     title="No course content yet"
                     hint="No subjects have been created for this batch."
                 />
@@ -279,7 +279,7 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
                         onClick={handleLearningTimeLineClick}
                     >
                         <ClockCounterClockwise className="size-4" />
-                        Timeline
+                        Learning Timeline
                     </MyButton>
                     <MyButton
                         buttonType="secondary"
@@ -287,12 +287,12 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
                         onClick={handleLearningProgressClick}
                     >
                         <ChartLineUp className="size-4" />
-                        Progress
+                        Learning Progress
                     </MyButton>
                 </ProfileActionBar>
 
                 {/* ── Course content expandable subject list ────────────── */}
-                <ProfileSectionCard icon={Books} heading="Course Content">
+                <ProfileSectionCard icon={Stack} heading="Course Content">
                     <div className="flex flex-col divide-y divide-neutral-100">
                         {subjectsWithChapters.map((subject) => {
                             const subjectPct = calcSubjectPercentage(subject);

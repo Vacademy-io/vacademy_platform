@@ -265,10 +265,13 @@ export const StudentProfileOverlay = () => {
                                 and a status dot bottom-right. We render a
                                 photo when face_file_id resolves, falling back
                                 to initials (handoff: "avatars are initial
-                                circles"). The status dot is a 12px green dot
-                                with a 2.5px white border for ACTIVE learners. */}
+                                circles"). size-14 (56px) is the closest
+                                design-token to the spec's 52px and reads
+                                noticeably more prominent than size-12 (48px).
+                                The status dot is a 12px green dot with a
+                                2.5px white border for ACTIVE learners. */}
                             <div className="relative shrink-0">
-                                <div className="flex size-12 items-center justify-center overflow-hidden rounded-full bg-primary-50 text-primary-700 ring-2 ring-primary-200">
+                                <div className="flex size-14 items-center justify-center overflow-hidden rounded-full bg-primary-50 text-primary-700 ring-2 ring-primary-200">
                                     {faceLoader ? (
                                         <div className="size-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
                                     ) : imageUrl ? (
@@ -278,17 +281,17 @@ export const StudentProfileOverlay = () => {
                                             className="size-full object-cover"
                                         />
                                     ) : selectedStudent.full_name ? (
-                                        <span className="text-body font-bold">
+                                        <span className="text-h4 font-bold">
                                             {initialsOf(selectedStudent.full_name)}
                                         </span>
                                     ) : (
-                                        <DummyProfile className="size-8 text-neutral-400" />
+                                        <DummyProfile className="size-9 text-neutral-400" />
                                     )}
                                 </div>
                                 {isActive && (
                                     <span
                                         aria-hidden
-                                        className="absolute bottom-0 right-0 block size-3 rounded-full border-2 border-white bg-success-500"
+                                        className="absolute bottom-0 right-0 block size-3.5 rounded-full border-2 border-white bg-success-500"
                                     />
                                 )}
                             </div>

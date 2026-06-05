@@ -34,20 +34,16 @@ const TONE_CHIP_CLASSES: Record<Tone, string> = {
 };
 
 /**
- * Maps tone → tone-coloured soft action pill classes, per the handoff
- * "Btn variant='soft'" styling. Each pill has a tinted background, a
- * tone-matched text colour, a subtle ring, and a clear hover state so the
- * action reads as the row's primary affordance instead of a ghost button.
+ * Soft action-pill classes — per the handoff EVERY row's button uses the
+ * BRAND accent (green in default Vacademy / tenant-themed primary in
+ * white-labels), regardless of the row's own tone. The row's tone lives in
+ * the LEFT icon chip (warning triangle, danger ₹, info phone). Mixing tones
+ * across buttons would read as four different actions; keeping them uniform
+ * keeps the action surface consistent and the eye lands on the issue's
+ * coloured chip first.
  */
-const TONE_ACTION_CLASSES: Record<Tone, string> = {
-    danger:
-        'bg-danger-50 text-danger-700 ring-1 ring-danger-100 hover:bg-danger-100 hover:text-danger-800 focus-visible:ring-danger-300',
-    warning:
-        'bg-warning-50 text-warning-700 ring-1 ring-warning-100 hover:bg-warning-100 hover:text-warning-800 focus-visible:ring-warning-300',
-    info: 'bg-info-50 text-info-700 ring-1 ring-info-100 hover:bg-info-100 hover:text-info-800 focus-visible:ring-info-300',
-    success:
-        'bg-success-50 text-success-700 ring-1 ring-success-100 hover:bg-success-100 hover:text-success-800 focus-visible:ring-success-300',
-};
+const ACTION_PILL_CLASSES =
+    'bg-primary-50 text-primary-700 ring-1 ring-primary-100 hover:bg-primary-100 hover:text-primary-800 focus-visible:ring-primary-300';
 
 /**
  * Needs Attention card — the action-first hero strip on the Overview tab.
@@ -198,7 +194,7 @@ export const OverviewNeedsAttention = ({
                                 disabled={disabled}
                                 className={cn(
                                     'inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2',
-                                    TONE_ACTION_CLASSES[it.tone],
+                                    ACTION_PILL_CLASSES,
                                     disabled && 'cursor-not-allowed opacity-60'
                                 )}
                             >

@@ -20,7 +20,28 @@ import { StudentTable } from '@/types/student-table-types';
  * Responsive: 2-col on md+ screens, stacks to 1-col below md so the drawer
  * width settings (compact 640 / standard 780 / wide 960) all read well.
  */
-export const OverviewBottomGrid = ({
+interface CopyContext {
+    onCopy: (value: string, label: string) => void;
+    copiedField: string;
+}
+
+interface EnrolmentProps extends CopyContext {
+    student: StudentTable | null;
+    course?: string | null;
+    level?: string | null;
+    session?: string | null;
+    plan?: string | null;
+}
+
+interface ContactProps extends CopyContext {
+    student: StudentTable | null;
+}
+
+/**
+ * Enrolment Details card — left column of the Overview 2-col grid in the
+ * Vacademy design handoff. Hides itself when there are no meaningful rows.
+ */
+export const OverviewEnrolment = ({
     student,
     course,
     level,
@@ -28,17 +49,7 @@ export const OverviewBottomGrid = ({
     plan,
     onCopy,
     copiedField,
-}: {
-    student: StudentTable | null;
-    course?: string | null;
-    level?: string | null;
-    session?: string | null;
-    /** Plan label (e.g. "Paid courses · Basic"). When absent, falls back to
-        course + level joined with "·". */
-    plan?: string | null;
-    onCopy: (value: string, label: string) => void;
-    copiedField: string;
-}) => {
+}: EnrolmentProps) => {
     if (!student) return null;
 
     const enrollmentNo = student.institute_enrollment_number;
@@ -47,63 +58,95 @@ export const OverviewBottomGrid = ({
         student.linked_institute_name && student.linked_institute_name.trim() !== ''
             ? student.linked_institute_name
             : null;
+
+    const planLine = plan || [course, level].filter(Boolean).join(' · ') || null;
+
+    const rows: Array<{ label: string; value: string }> = [];
+    if (planLine) rows.push({ label: 'Plan', value: planLine });
+    if (enrollmentNo) rows.push({ label: 'Enrollment No', value: enrollmentNo });
+    if (session) rows.push({ label: 'Session', value: session });
+    if (gender) rows.push({ label: 'Gender', value: gender });
+    if (school) rows.push({ label: 'School', value: school });
+
+    if (rows.length === 0) return null;
+
+    return (
+        <ProfileSectionCard icon={ClipboardText} heading="Enrolment Details">
+            <dl className="divide-y divide-border">
+                {rows.map((r) => (
+                    <ProfileFieldRow
+                        key={r.label}
+                        label={r.label}
+                        value={r.value}
+                        copied={copiedField === r.label}
+                        onCopy={() => onCopy(r.value, r.label)}
+                    />
+                ))}
+            </dl>
+        </ProfileSectionCard>
+    );
+};
+
+/**
+ * Contact card — right column of the Overview 2-col grid in the handoff.
+ * Hides itself when neither phone nor email are set.
+ */
+export const OverviewContact = ({ student, onCopy, copiedField }: ContactProps) => {
+    if (!student) return null;
+
     const mobile =
         student.mobile_number && student.mobile_number.trim() !== ''
             ? student.mobile_number
             : null;
     const email = student.email && student.email.trim() !== '' ? student.email : null;
 
-    const planLine = plan || [course, level].filter(Boolean).join(' · ') || null;
+    const rows: Array<{ label: string; value: string }> = [];
+    if (mobile) rows.push({ label: 'Mobile No.', value: mobile });
+    if (email) rows.push({ label: 'Email', value: email });
 
-    const enrolmentRows: Array<{ label: string; value: string }> = [];
-    if (planLine) enrolmentRows.push({ label: 'Plan', value: planLine });
-    if (enrollmentNo) enrolmentRows.push({ label: 'Enrollment No', value: enrollmentNo });
-    if (session) enrolmentRows.push({ label: 'Session', value: session });
-    if (gender) enrolmentRows.push({ label: 'Gender', value: gender });
-    if (school) enrolmentRows.push({ label: 'School', value: school });
-
-    const contactRows: Array<{ label: string; value: string }> = [];
-    if (mobile) contactRows.push({ label: 'Mobile No.', value: mobile });
-    if (email) contactRows.push({ label: 'Email', value: email });
-
-    // Both cards empty → nothing to show.
-    if (enrolmentRows.length === 0 && contactRows.length === 0) return null;
+    if (rows.length === 0) return null;
 
     return (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {enrolmentRows.length > 0 && (
-                <ProfileSectionCard
-                    icon={ClipboardText}
-                    heading="Enrolment Details"
-                >
-                    <dl className="divide-y divide-border">
-                        {enrolmentRows.map((r) => (
-                            <ProfileFieldRow
-                                key={r.label}
-                                label={r.label}
-                                value={r.value}
-                                copied={copiedField === r.label}
-                                onCopy={() => onCopy(r.value, r.label)}
-                            />
-                        ))}
-                    </dl>
-                </ProfileSectionCard>
-            )}
-            {contactRows.length > 0 && (
-                <ProfileSectionCard icon={Phone} heading="Contact">
-                    <dl className="divide-y divide-border">
-                        {contactRows.map((r) => (
-                            <ProfileFieldRow
-                                key={r.label}
-                                label={r.label}
-                                value={r.value}
-                                copied={copiedField === r.label}
-                                onCopy={() => onCopy(r.value, r.label)}
-                            />
-                        ))}
-                    </dl>
-                </ProfileSectionCard>
-            )}
-        </div>
+        <ProfileSectionCard icon={Phone} heading="Contact">
+            <dl className="divide-y divide-border">
+                {rows.map((r) => (
+                    <ProfileFieldRow
+                        key={r.label}
+                        label={r.label}
+                        value={r.value}
+                        copied={copiedField === r.label}
+                        onCopy={() => onCopy(r.value, r.label)}
+                    />
+                ))}
+            </dl>
+        </ProfileSectionCard>
     );
 };
+
+/**
+ * Back-compat wrapper — older callers can still mount the Enrolment + Contact
+ * pair as a single 2-col grid. New callers should compose OverviewEnrolment
+ * and OverviewContact individually inside the handoff's 4-card 2-col layout.
+ */
+export const OverviewBottomGrid = ({
+    student,
+    course,
+    level,
+    session,
+    plan,
+    onCopy,
+    copiedField,
+}: EnrolmentProps) => (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <OverviewEnrolment
+            student={student}
+            course={course}
+            level={level}
+            session={session}
+            plan={plan}
+            onCopy={onCopy}
+            copiedField={copiedField}
+        />
+        <OverviewContact student={student} onCopy={onCopy} copiedField={copiedField} />
+    </div>
+);

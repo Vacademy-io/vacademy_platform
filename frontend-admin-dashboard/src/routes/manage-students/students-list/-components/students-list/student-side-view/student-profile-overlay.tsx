@@ -26,9 +26,26 @@ import { type StudentSideViewSettings, type StudentSideViewTabId } from '@/types
 import { TAB_ID_TO_VISIBILITY_KEY } from '@/constants/display-settings/student-side-view-tabs';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { ProfileQuickContact, ProfileContextStrip, type ContextStripItem } from './profile-ui';
+
+/** Two-letter initials from a full name, ALL CAPS. */
+function initialsOf(name: string | null | undefined): string {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+    return ((parts[0]![0] ?? '') + (parts[parts.length - 1]![0] ?? '')).toUpperCase();
+}
+
+/** Tier → tonal classes for the inline lead-tier pill. */
+const TIER_PILL: Record<'HOT' | 'WARM' | 'COLD', string> = {
+    HOT: 'bg-danger-100 text-danger-700',
+    WARM: 'bg-warning-100 text-warning-700',
+    COLD: 'bg-info-100 text-info-700',
+};
 import { GroupedNavRail } from './grouped-nav-rail';
 import { SECTION_REGISTRY } from './nav-groups';
 
@@ -106,6 +123,21 @@ export const StudentProfileOverlay = () => {
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
     const contentScrollRef = useRef<HTMLDivElement>(null);
+
+    // Lead profile for the header tier pill. Reuses the batch hook so this
+    // request is deduped against any list-level fetch already in flight.
+    const headerUserId = selectedStudent?.user_id || selectedStudent?.id || '';
+    const { profiles: leadProfilesMap } = useLeadProfiles(
+        headerUserId ? [headerUserId] : [],
+        !!leadSettings.enabled
+    );
+    const leadHeaderProfile = headerUserId ? leadProfilesMap[headerUserId] : undefined;
+    const tier = leadHeaderProfile?.lead_tier?.toUpperCase() as
+        | 'HOT'
+        | 'WARM'
+        | 'COLD'
+        | undefined;
+    const isActive = (selectedStudent?.status || '').toUpperCase() === 'ACTIVE';
 
     // Load display settings (which sections are visible + order) when the overlay opens.
     useEffect(() => {
@@ -228,23 +260,41 @@ export const StudentProfileOverlay = () => {
                 <header className="relative shrink-0 border-b border-neutral-200 bg-white">
                     <div className="flex flex-col gap-3 px-6 pt-5">
                         <div className="flex items-start gap-4">
-                            {/* Avatar ~52px with accent ring per handoff
-                                (size-12 = 48px is the closest design token). */}
-                            <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-2 ring-primary-200">
-                                {faceLoader ? (
-                                    <div className="size-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                                ) : imageUrl ? (
-                                    <img
-                                        src={imageUrl}
-                                        alt={selectedStudent.full_name || 'Profile'}
-                                        className="size-full object-cover"
+                            {/* Avatar — handoff calls for ~52px initials circle
+                                with --accent-soft bg + --accent-text initials
+                                and a status dot bottom-right. We render a
+                                photo when face_file_id resolves, falling back
+                                to initials (handoff: "avatars are initial
+                                circles"). The status dot is a 12px green dot
+                                with a 2.5px white border for ACTIVE learners. */}
+                            <div className="relative shrink-0">
+                                <div className="flex size-12 items-center justify-center overflow-hidden rounded-full bg-primary-50 text-primary-700 ring-2 ring-primary-200">
+                                    {faceLoader ? (
+                                        <div className="size-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                    ) : imageUrl ? (
+                                        <img
+                                            src={imageUrl}
+                                            alt={selectedStudent.full_name || 'Profile'}
+                                            className="size-full object-cover"
+                                        />
+                                    ) : selectedStudent.full_name ? (
+                                        <span className="text-body font-bold">
+                                            {initialsOf(selectedStudent.full_name)}
+                                        </span>
+                                    ) : (
+                                        <DummyProfile className="size-8 text-neutral-400" />
+                                    )}
+                                </div>
+                                {isActive && (
+                                    <span
+                                        aria-hidden
+                                        className="absolute bottom-0 right-0 block size-3 rounded-full border-2 border-white bg-success-500"
                                     />
-                                ) : (
-                                    <DummyProfile className="size-8 text-neutral-400" />
                                 )}
                             </div>
 
-                            {/* Identity — eyebrow + name + status pills inline. */}
+                            {/* Identity — eyebrow + name + status / tier / sub-org
+                                pills inline per handoff identity row. */}
                             <div className="flex min-w-0 flex-1 flex-col gap-1">
                                 <span className="text-xs font-bold uppercase tracking-widest text-primary-700">
                                     {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
@@ -263,6 +313,24 @@ export const StudentProfileOverlay = () => {
                                     </h1>
                                     {selectedStudent.status && (
                                         <StatusChips status={selectedStudent.status} />
+                                    )}
+                                    {tier && (
+                                        <span
+                                            className={cn(
+                                                'rounded-full px-2 py-0.5 text-xs font-semibold',
+                                                TIER_PILL[tier]
+                                            )}
+                                            title={`Lead tier ${tier}${
+                                                typeof leadHeaderProfile?.best_score === 'number'
+                                                    ? ` · score ${leadHeaderProfile.best_score}`
+                                                    : ''
+                                            }`}
+                                        >
+                                            {tier}
+                                            {typeof leadHeaderProfile?.best_score === 'number'
+                                                ? ` · ${leadHeaderProfile.best_score}`
+                                                : ''}
+                                        </span>
                                     )}
                                     {selectedStudent.sub_org_name && (
                                         <span className="rounded-full bg-info-50 px-2 py-0.5 text-xs font-medium text-info-600">

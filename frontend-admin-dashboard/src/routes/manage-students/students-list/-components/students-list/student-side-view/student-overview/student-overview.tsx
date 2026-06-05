@@ -28,8 +28,9 @@ import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui
 import { OverviewHeader } from './overview-header';
 import { OverviewNeedsAttention } from './overview-needs-attention';
 import { OverviewQuickActions } from './overview-quick-actions';
-import { OverviewBottomGrid } from './overview-bottom-grid';
+import { OverviewEnrolment, OverviewContact } from './overview-bottom-grid';
 import { OverviewContinueLearning } from './overview-continue-learning';
+import { OverviewRecentActivity } from './overview-recent-activity';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { useQuery } from '@tanstack/react-query';
 import { fetchUserInvoices } from '@/services/invoice-service';
@@ -316,26 +317,40 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             {/* Quick Actions: every common admin action 1-click from Overview. */}
             <OverviewQuickActions student={selectedStudent} />
 
-            {/* Continue Learning card — shows only when the learner has active courses. */}
-            {progressInfo && (
-                <OverviewContinueLearning
-                    averagePercent={progressInfo.averagePercent}
-                    primaryCourseName={progressInfo.primary?.package_name}
-                    primaryLevel={progressInfo.primary?.level_name}
-                    primarySession={headerDetails?.session?.session_name}
-                    behindCount={progressInfo.behindCount}
-                />
-            )}
-
-            {/* 2-col bottom grid: Enrolment Details (left) + Contact (right). */}
-            <OverviewBottomGrid
-                student={selectedStudent}
-                course={headerDetails?.package_dto?.package_name}
-                level={headerDetails?.level?.level_name}
-                session={headerDetails?.session?.session_name}
-                onCopy={handleCopy}
-                copiedField={copiedField}
-            />
+            {/* Two-column body per handoff Overview layout:
+                  LEFT  = Continue Learning + Enrolment Details
+                  RIGHT = Contact          + Recent Activity
+                Continue Learning renders unconditionally (handoff spec: the
+                Overview "must never feel empty") — when there's no active
+                course it shows a 0% ring with course-not-set copy so the
+                slot still anchors the layout. */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.35fr_1fr]">
+                <div className="flex flex-col gap-3">
+                    <OverviewContinueLearning
+                        averagePercent={progressInfo?.averagePercent ?? 0}
+                        primaryCourseName={progressInfo?.primary?.package_name}
+                        primaryLevel={progressInfo?.primary?.level_name}
+                        primarySession={headerDetails?.session?.session_name}
+                        behindCount={progressInfo?.behindCount ?? 0}
+                    />
+                    <OverviewEnrolment
+                        student={selectedStudent}
+                        course={headerDetails?.package_dto?.package_name}
+                        level={headerDetails?.level?.level_name}
+                        session={headerDetails?.session?.session_name}
+                        onCopy={handleCopy}
+                        copiedField={copiedField}
+                    />
+                </div>
+                <div className="flex flex-col gap-3">
+                    <OverviewContact
+                        student={selectedStudent}
+                        onCopy={handleCopy}
+                        copiedField={copiedField}
+                    />
+                    <OverviewRecentActivity userId={userId || undefined} />
+                </div>
+            </div>
 
             {/* Overview sections — hide-when-empty + row-level filtering.
                 General Details (key=1) and Contact Information (key=3) are

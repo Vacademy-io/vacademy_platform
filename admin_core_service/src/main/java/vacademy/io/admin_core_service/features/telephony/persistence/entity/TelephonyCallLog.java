@@ -51,7 +51,12 @@ public class TelephonyCallLog implements Persistable<String> {
     @Column(name = "user_id", nullable = false)
     private String userId;
 
-    @Column(name = "counsellor_user_id", nullable = false)
+    /**
+     * The user who owns this call. Outbound: the actor who clicked Call (always
+     * set). Inbound: the routing winner at INITIATED time, or NULL when an
+     * inbound call falls through to the voicemail number with no agent reached.
+     */
+    @Column(name = "counsellor_user_id")
     private String counsellorUserId;
 
     @Column(name = "direction", nullable = false, length = 16)

@@ -16,7 +16,9 @@ export interface CallLogItem {
     durationSeconds?: number | null;
     price?: number | null;
     hasRecording: boolean;
-    counsellorUserId: string;
+    // Nullable on INBOUND rows that fell through to voicemail with no agent
+    // matched. Outbound rows always carry the actor user id.
+    counsellorUserId: string | null;
     responseId?: string | null;
     userId: string;
 }

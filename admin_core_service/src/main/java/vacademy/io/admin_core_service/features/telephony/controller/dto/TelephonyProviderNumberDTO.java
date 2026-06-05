@@ -5,6 +5,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
 
+import java.sql.Timestamp;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -19,6 +21,12 @@ public class TelephonyProviderNumberDTO {
     private String region;
     private Integer priority;
     private Boolean enabled;
+    /** Inbound-flow attach status: ATTACHED | PENDING | FAILED | DETACHED | null. */
+    private String flowAttachStatus;
+    /** Body / message of the most recent attach failure. Null when ATTACHED. */
+    private String flowAttachError;
+    /** Wall-clock of the most recent successful attach. Null when never attached. */
+    private Timestamp flowAttachedAt;
 
     public static TelephonyProviderNumberDTO from(TelephonyProviderNumber n) {
         return TelephonyProviderNumberDTO.builder()
@@ -31,6 +39,9 @@ public class TelephonyProviderNumberDTO {
                 .region(n.getRegion())
                 .priority(n.getPriority())
                 .enabled(n.getEnabled())
+                .flowAttachStatus(n.getFlowAttachStatus())
+                .flowAttachError(n.getFlowAttachError())
+                .flowAttachedAt(n.getFlowAttachedAt())
                 .build();
     }
 }

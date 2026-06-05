@@ -49,12 +49,15 @@ const labelFor = (status: CallStatus, durationSeconds?: number | null): string =
     switch (status) {
         case 'INITIATED':
         case 'QUEUED':
+            return 'Starting the call…';
         case 'COUNSELLOR_RINGING':
             return 'Ringing your phone…';
         case 'COUNSELLOR_ANSWERED':
-            return 'Connecting the lead…';
+            // You picked up — Exotel is now ringing the lead's phone.
+            return 'You picked up · ringing the lead…';
         case 'IN_PROGRESS':
-            return 'Connected · live';
+            // Lead also picked up — both sides bridged, conversation live.
+            return 'Lead picked up · connected';
         case 'COMPLETED': {
             const d = formatDuration(durationSeconds);
             return d ? `Call ended · ${d}` : 'Call ended';
@@ -95,7 +98,11 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
         (resp: PlaceCallResponse, vars: { responseId: string; userId?: string }) => {
             // One toast id, updated in place so the sales person sees one
             // continuously-evolving status row instead of stacked toasts.
-            const toastId = toast.loading('Ringing your phone…', { duration: Infinity });
+            // Initial text matches the QUEUED label so the first SSE event
+            // doesn't visibly swap text — it's the "placed but not ringing
+            // yet" moment between /connect responding and the counsellor's
+            // phone actually ringing.
+            const toastId = toast.loading('Starting the call…', { duration: Infinity });
 
             // SSE — server publishes one "status" event per webhook callback.
             // EventSource can't send Authorization headers; the callLogId UUID

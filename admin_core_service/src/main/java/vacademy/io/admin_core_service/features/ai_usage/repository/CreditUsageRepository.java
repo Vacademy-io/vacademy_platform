@@ -42,14 +42,14 @@ public interface CreditUsageRepository extends Repository<AiTokenUsage, UUID> {
             "    WHERE ur.user_id = u.id AND ur.institute_id = :instituteId AND ur.status IN ('ACTIVE','INVITED')) AS roles, " +
             " agg.net_credits, agg.req_count " +
             "FROM ( " + AGG + " ) agg " +
-            "JOIN users u ON u.id::text = agg.uid " +
+            "JOIN users u ON CAST(u.id AS text) = agg.uid " +
             "WHERE (CAST(:role AS text) IS NULL OR EXISTS ( " +
             "   SELECT 1 FROM user_role ur2 JOIN roles r2 ON r2.id = ur2.role_id " +
             "    WHERE ur2.user_id = u.id AND ur2.institute_id = :instituteId " +
             "      AND ur2.status IN ('ACTIVE','INVITED') AND r2.role_name = :role)) " +
             "ORDER BY agg.net_credits DESC",
             countQuery = "SELECT COUNT(*) FROM ( " + AGG + " ) agg " +
-                    "JOIN users u ON u.id::text = agg.uid " +
+                    "JOIN users u ON CAST(u.id AS text) = agg.uid " +
                     "WHERE (CAST(:role AS text) IS NULL OR EXISTS ( " +
                     "   SELECT 1 FROM user_role ur2 JOIN roles r2 ON r2.id = ur2.role_id " +
                     "    WHERE ur2.user_id = u.id AND ur2.institute_id = :instituteId " +
@@ -64,7 +64,7 @@ public interface CreditUsageRepository extends Repository<AiTokenUsage, UUID> {
     // Per-role rollup for the sub-tabs. Object[]{role_name, user_count, total_credits}.
     @Query(value = "SELECT r.role_name, COUNT(DISTINCT agg.uid), COALESCE(SUM(agg.net_credits), 0) " +
             "FROM ( " + AGG + " ) agg " +
-            "JOIN users u ON u.id::text = agg.uid " +
+            "JOIN users u ON CAST(u.id AS text) = agg.uid " +
             "JOIN user_role ur ON ur.user_id = u.id AND ur.institute_id = :instituteId AND ur.status IN ('ACTIVE','INVITED') " +
             "JOIN roles r ON r.id = ur.role_id " +
             "GROUP BY r.role_name ORDER BY 3 DESC",

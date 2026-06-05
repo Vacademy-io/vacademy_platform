@@ -144,9 +144,14 @@ def create_app() -> FastAPI:
     allow_methods = [m.strip() for m in settings.cors_allow_methods.split(",") if m.strip()]
     allow_headers = [h.strip() for h in settings.cors_allow_headers.split(",") if h.strip()]
 
+    # NOTE: `allow_origins=["*"]` with `allow_credentials=True` is an INVALID CORS
+    # combination — browsers reject `Access-Control-Allow-Origin: *` for any
+    # credentialed request. Use a regex that ECHOES the request origin (valid
+    # with credentials), so it's correct regardless of whether a caller sends
+    # credentials, while still effectively allowing all origins.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origin_regex=".*",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -125,6 +125,7 @@ export const useUsageUsersQuery = (
         enabled,
         placeholderData: keepPreviousData,
         staleTime: 60_000,
+        retry: false,
     });
 
 export const useUsageSummaryQuery = (filters: UsageDateRange, enabled = true) =>
@@ -133,6 +134,7 @@ export const useUsageSummaryQuery = (filters: UsageDateRange, enabled = true) =>
         queryFn: () => fetchUsageSummary(filters),
         enabled,
         staleTime: 60_000,
+        retry: false,
     });
 
 export const useUsageUserLogsQuery = (
@@ -148,6 +150,7 @@ export const useUsageUserLogsQuery = (
         enabled: enabled && !!userId,
         placeholderData: keepPreviousData,
         staleTime: 60_000,
+        retry: false,
     });
 
 // ── Date helper: DateRangeFilter gives DD/MM/YYYY → epoch millis ──────────────

@@ -12,10 +12,8 @@ import { useStudentSidebar } from '../../../../-context/selected-student-sidebar
 import { Tag, X, type Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
-    ProfileHero,
     ProfileSectionCard,
     ProfileSkeleton,
-    ProfileEmpty,
     ProfileError,
 } from '../profile-ui';
 
@@ -113,94 +111,88 @@ export const StudentUserTagging = ({ isSubmissionTab }: { isSubmissionTab?: bool
     const activeTags = userTags?.active ?? [];
     const inactiveTags = userTags?.inactive ?? [];
     const activeCount = activeTags.length;
-    const heroTitle =
-        activeCount === 0
-            ? 'No tags yet'
-            : `${activeCount} active tag${activeCount === 1 ? '' : 's'}`;
 
     return (
         <div className="flex flex-col gap-3">
-            {/* Hero: eyebrow + count title + type-ahead input */}
-            <ProfileHero
-                eyebrow="TAGS"
-                title={heroTitle}
-                subtitle="Search or add a tag"
-                icon={Tag as PhosphorIcon}
-                tone="primary"
-            >
-                <div className="flex items-end gap-2">
-                    <div className="min-w-0 flex-1">
-                        <MyInput
-                            label="Tag name"
-                            inputPlaceholder="e.g. VIP Student, High Performer"
-                            input={newTagInput}
-                            onChangeFunction={(e) => setNewTagInput(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleAddTag();
-                            }}
-                            disabled={tagsLoading}
-                            className="w-full"
-                        />
-                    </div>
-                    <MyButton
-                        buttonType="primary"
-                        scale="small"
-                        disable={tagsLoading || !newTagInput.trim() || !selectedStudent}
-                        onAsyncClick={handleAddTag}
-                        className="shrink-0 self-end"
-                    >
-                        Add
-                    </MyButton>
-                </div>
-            </ProfileHero>
-
-            {/* Active Tags */}
+            {/* Combined: input + active tags in a single card (LMS-style) */}
             <ProfileSectionCard
                 icon={Tag as PhosphorIcon}
-                heading="Active Tags"
+                heading="Tags"
                 action={
                     activeCount > 0 ? (
-                        <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700 ring-1 ring-primary-200">
-                            {activeCount}
+                        <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-caption font-semibold text-primary-700 ring-1 ring-primary-200">
+                            {activeCount} active
                         </span>
                     ) : undefined
                 }
             >
-                {activeCount > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                        {activeTags.map((t) => (
-                            <span
-                                key={t.id}
-                                className={cn(
-                                    'inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1',
-                                    'bg-primary-50 text-xs font-medium text-primary-700 ring-1 ring-primary-200'
-                                )}
-                                title={t.tagName}
-                            >
-                                <span className="truncate">{t.tagName}</span>
-                                {t.defaultTag ? (
-                                    <span className="shrink-0 text-primary-400">(default)</span>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        className="shrink-0 rounded-full p-0.5 text-primary-500 hover:bg-primary-100 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 disabled:opacity-50"
-                                        onClick={() => handleRemoveTag(t.id)}
-                                        disabled={tagsLoading}
-                                        aria-label={`Remove tag ${t.tagName}`}
-                                    >
-                                        <X className="size-3" />
-                                    </button>
-                                )}
-                            </span>
-                        ))}
+                <div className="flex flex-col gap-3">
+                    {/* Inline add-tag row */}
+                    <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-1">
+                            <MyInput
+                                label=""
+                                inputPlaceholder="Add a tag (e.g. VIP, High Performer)"
+                                input={newTagInput}
+                                onChangeFunction={(e) => setNewTagInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleAddTag();
+                                }}
+                                disabled={tagsLoading}
+                                className="w-full"
+                            />
+                        </div>
+                        <MyButton
+                            buttonType="primary"
+                            scale="small"
+                            disable={
+                                tagsLoading || !newTagInput.trim() || !selectedStudent
+                            }
+                            onAsyncClick={handleAddTag}
+                            className="shrink-0"
+                        >
+                            Add
+                        </MyButton>
                     </div>
-                ) : (
-                    <ProfileEmpty
-                        icon={Tag as PhosphorIcon}
-                        title="No active tags"
-                        hint="Add a tag above to get started"
-                    />
-                )}
+
+                    {/* Tag chips, or compact empty hint */}
+                    {activeCount > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                            {activeTags.map((t) => (
+                                <span
+                                    key={t.id}
+                                    className={cn(
+                                        'inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1',
+                                        'bg-primary-50 text-caption font-medium text-primary-700 ring-1 ring-primary-200'
+                                    )}
+                                    title={t.tagName}
+                                >
+                                    <span className="truncate">{t.tagName}</span>
+                                    {t.defaultTag ? (
+                                        <span className="shrink-0 text-primary-400">
+                                            (default)
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="shrink-0 rounded-full p-0.5 text-primary-500 hover:bg-primary-100 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 disabled:opacity-50"
+                                            onClick={() => handleRemoveTag(t.id)}
+                                            disabled={tagsLoading}
+                                            aria-label={`Remove tag ${t.tagName}`}
+                                        >
+                                            <X className="size-3" />
+                                        </button>
+                                    )}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-caption italic text-muted-foreground">
+                            No tags yet — add one above to start segmenting this
+                            learner.
+                        </p>
+                    )}
+                </div>
             </ProfileSectionCard>
 
             {/* Inactive Tags */}

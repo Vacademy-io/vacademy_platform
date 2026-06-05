@@ -112,37 +112,6 @@ const PlanRow = ({
     </div>
 );
 
-// ── Action tile (one of the 3-tile primary action grid) ───────────────────────
-
-const ActionTile = ({
-    icon: Icon,
-    label,
-    description,
-    onClick,
-}: {
-    icon: PhosphorIcon;
-    label: string;
-    description: string;
-    onClick: () => void;
-}) => (
-    <button
-        type="button"
-        onClick={onClick}
-        className={cn(
-            'flex flex-1 flex-col items-center gap-2 rounded-lg border border-neutral-200 bg-white p-4 text-center',
-            'transition-shadow hover:border-primary-300 hover:shadow-md',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
-            'active:bg-primary-50'
-        )}
-    >
-        <span className="flex size-10 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-            <Icon className="size-5" weight="duotone" />
-        </span>
-        <span className="text-xs font-semibold text-neutral-800">{label}</span>
-        <span className="text-xs text-neutral-500 leading-snug">{description}</span>
-    </button>
-);
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const StudentEnrollDeroll = () => {
@@ -271,27 +240,37 @@ export const StudentEnrollDeroll = () => {
                 />
             )}
 
-            {/* ── ACTION GRID: 3-tile primary actions ── */}
-            <div className="flex gap-3">
-                <ActionTile
-                    icon={BookOpen}
-                    label="Rent Book"
-                    description="Borrow a book for a fixed period"
-                    onClick={() => handleNewEnrollmentClick('Rent a book', 'RENT')}
-                />
-                <ActionTile
-                    icon={ShoppingCart}
-                    label="Buy Book"
-                    description="Purchase a book permanently"
-                    onClick={() => handleNewEnrollmentClick('Buy a book', 'BUY')}
-                />
-                <ActionTile
-                    icon={CreditCard}
-                    label="Purchase Membership"
-                    description="Enroll in a subscription plan"
-                    onClick={() => handleNewEnrollmentClick('Purchase membership', 'MEMBERSHIP')}
-                />
-            </div>
+            {/* ── New enrollment: compact button row instead of 3 big tiles ── */}
+            <ProfileSectionCard icon={CreditCard} heading="Enroll in something new">
+                <div className="flex flex-wrap gap-2">
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        onClick={() =>
+                            handleNewEnrollmentClick('Purchase membership', 'MEMBERSHIP')
+                        }
+                    >
+                        <CreditCard className="size-4" />
+                        Purchase Membership
+                    </MyButton>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={() => handleNewEnrollmentClick('Rent a book', 'RENT')}
+                    >
+                        <BookOpen className="size-4" />
+                        Rent Book
+                    </MyButton>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={() => handleNewEnrollmentClick('Buy a book', 'BUY')}
+                    >
+                        <ShoppingCart className="size-4" />
+                        Buy Book
+                    </MyButton>
+                </div>
+            </ProfileSectionCard>
 
             {/* ── BODY: Cancel active membership ── */}
             <ProfileSectionCard icon={UserMinus} heading="Cancel Membership">

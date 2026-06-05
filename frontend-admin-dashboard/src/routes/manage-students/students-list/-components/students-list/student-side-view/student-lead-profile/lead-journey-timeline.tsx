@@ -7,6 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { MyButton } from '@/components/design-system/button';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { fetchCallRecordingUrl } from '@/components/shared/leads';
 import {
     Path,
     UserPlus,
@@ -26,6 +28,8 @@ import {
     PencilSimple,
     Note,
     Phone,
+    PlayCircle,
+    DownloadSimple,
     CaretDown,
     CaretUp,
     ArrowsClockwise,
@@ -167,6 +171,15 @@ const ACTION_CONFIG: Record<string, ActionConfig> = {
         dotBg: 'bg-secondary ring-border',
         iconColor: 'text-neutral-500',
         label: 'Call',
+    },
+    // Outbound call placed via the telephony integration (Exotel etc.).
+    // Recording playback is rendered inline in EventMeta when a
+    // recording_storage_key is present on the metadata.
+    CALL_MADE: {
+        Icon: Phone,
+        dotBg: 'bg-primary-50 ring-primary-200',
+        iconColor: 'text-primary-600',
+        label: 'Outbound Call',
     },
     WALK_IN_NOTE: {
         Icon: Note,
@@ -338,6 +351,163 @@ function FollowupMeta({ meta }: { meta: Record<string, unknown> }) {
     );
 }
 
+/**
+ * CallRecordingMeta — inline player + download for an Outbound Call event.
+ *
+ * The recording mp3 lives in our media_service (uploaded by the backend
+ * after Exotel delivers the StatusCallback). The presigned URL is fetched
+ * lazily on first Play click and reused for Download so we don't trigger
+ * two presign round-trips per recording.
+ *
+ * NOT-A-BUG: the raw Exotel URL in the row's `recording_url` column does
+ * require HTTP Basic Auth (our Exotel API creds). That URL is purely a
+ * server-side breadcrumb — the UI never touches it. We always go through
+ * GET /telephony/calls/{id}/recording, which returns a presigned URL from
+ * our media_service that the browser can play directly.
+ */
+function CallRecordingMeta({
+    title,
+    description,
+    meta,
+}: {
+    title: string;
+    description: string | null;
+    meta: Record<string, unknown>;
+}) {
+    const instituteId = getCurrentInstituteId() ?? '';
+    const callLogId = typeof meta.call_log_id === 'string' ? meta.call_log_id : null;
+    const callerId = typeof meta.caller_id === 'string' ? meta.caller_id : null;
+    const status = typeof meta.status === 'string' ? meta.status : null;
+    const durationSeconds =
+        typeof meta.duration_seconds === 'number'
+            ? meta.duration_seconds
+            : null;
+    const hasRecording = typeof meta.recording_storage_key === 'string';
+
+    const [url, setUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    const resolveUrl = async (): Promise<string | null> => {
+        if (url) return url;
+        if (!callLogId || !instituteId) return null;
+        setLoading(true);
+        try {
+            const fetched = await fetchCallRecordingUrl(callLogId, instituteId);
+            setUrl(fetched);
+            return fetched;
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="mt-1.5 space-y-1.5 text-xs text-muted-foreground">
+            {/* Top line: status pill + duration + caller-ID */}
+            <div className="flex flex-wrap items-center gap-1.5">
+                {status && (
+                    <span
+                        className={cn(
+                            'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                            status === 'COMPLETED'
+                                ? 'bg-success-50 text-success-700'
+                                : status === 'NO_ANSWER' || status === 'BUSY'
+                                ? 'bg-warning-50 text-warning-700'
+                                : status === 'FAILED' || status === 'CANCELLED'
+                                ? 'bg-danger-50 text-danger-700'
+                                : 'bg-neutral-100 text-neutral-600'
+                        )}
+                    >
+                        {formatStatus(status)}
+                    </span>
+                )}
+                {durationSeconds != null && durationSeconds > 0 && (
+                    <span className="text-neutral-600">{formatDuration(durationSeconds)}</span>
+                )}
+                {callerId && (
+                    <span className="text-neutral-400">· from {callerId}</span>
+                )}
+            </div>
+
+            {description && status == null && (
+                <p className="leading-relaxed">{description}</p>
+            )}
+
+            {hasRecording && (
+                <div className="pt-0.5">
+                    {url ? (
+                        <div className="space-y-1.5">
+                            <audio
+                                controls
+                                src={url}
+                                preload="metadata"
+                                className="w-full max-w-md"
+                            />
+                            <a
+                                href={url}
+                                download={`call-${callLogId}.mp3`}
+                                className="inline-flex items-center gap-1 text-[11px] text-primary-600 hover:underline"
+                            >
+                                <DownloadSimple className="size-3" />
+                                Download
+                            </a>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={resolveUrl}
+                            disabled={loading || !callLogId}
+                            className={cn(
+                                'inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 transition-colors',
+                                loading || !callLogId
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'hover:bg-neutral-50 hover:border-primary-300'
+                            )}
+                        >
+                            <PlayCircle className="size-3.5" />
+                            {loading ? 'Loading…' : 'Play recording'}
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Suppress title-only display for CALL_MADE — the pill row above
+                already conveys "Outbound call · 0m 23s · Connected". */}
+            <span className="sr-only">{title}</span>
+        </div>
+    );
+}
+
+function formatDuration(seconds: number): string {
+    if (seconds <= 0) return '0s';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m === 0 ? `${s}s` : `${m}m ${s}s`;
+}
+
+function formatStatus(status: string): string {
+    switch (status) {
+        case 'COMPLETED':
+            return 'Connected';
+        case 'NO_ANSWER':
+            return 'No answer';
+        case 'BUSY':
+            return 'Busy';
+        case 'FAILED':
+            return 'Failed';
+        case 'CANCELLED':
+            return 'Cancelled';
+        case 'IN_PROGRESS':
+            return 'In progress';
+        case 'COUNSELLOR_RINGING':
+        case 'COUNSELLOR_ANSWERED':
+            return 'Ringing';
+        case 'QUEUED':
+            return 'Queued';
+        default:
+            return status;
+    }
+}
+
 function EventMeta({ event }: { event: TimelineEvent }) {
     const meta = event.metadata ?? {};
     switch (event.action_type) {
@@ -356,6 +526,14 @@ function EventMeta({ event }: { event: TimelineEvent }) {
         case 'FOLLOWUP_SCHEDULED':
         case 'FOLLOWUP':
             return <FollowupMeta meta={meta} />;
+        case 'CALL_MADE':
+            return (
+                <CallRecordingMeta
+                    title={event.title}
+                    description={event.description}
+                    meta={meta}
+                />
+            );
         default:
             if (!event.description) return null;
             // Sanitize and render rich text (HTML from the RichTextEditor)

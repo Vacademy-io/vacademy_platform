@@ -1,4 +1,4 @@
-import { ArrowUpRight, Plus, UserPlus } from '@phosphor-icons/react';
+import { ArrowUpRight, Phone, Plus, UserPlus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { LeadCardVM } from './lead-view-model';
 import type { LeadActionHandlers } from './lead-actions';
@@ -32,6 +32,9 @@ export function LeadRowActions({
 }: LeadRowActionsProps) {
     const { userId, name } = vm;
     const canOps = showOps && !!userId;
+    // Call gating — `canCall` is the single source of truth; if missing,
+    // assume the surface doesn't expose calling at all.
+    const callGate = actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
 
     return (
         <div className="flex items-center justify-end gap-0.5">
@@ -47,6 +50,24 @@ export function LeadRowActions({
             >
                 <ArrowUpRight className="size-4" />
             </button>
+            {canOps && actions.onCallLead && callGate && (
+                <button
+                    type="button"
+                    title={callGate.allowed ? 'Call lead' : callGate.reason ?? 'Call lead'}
+                    aria-label="Call lead"
+                    disabled={!callGate.allowed}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (callGate.allowed) actions.onCallLead!(vm);
+                    }}
+                    className={cn(
+                        QUICK,
+                        callGate.allowed ? 'hover:text-success-600' : 'cursor-not-allowed opacity-50'
+                    )}
+                >
+                    <Phone className="size-4" />
+                </button>
+            )}
             {canOps && actions.onAddNote && (
                 <button
                     type="button"

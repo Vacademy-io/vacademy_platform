@@ -13,6 +13,7 @@
  */
 
 import { ListChecks, FileText, ExternalLink } from 'lucide-react';
+import { Phone } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -22,6 +23,8 @@ import {
     isMultiSelectType,
     parseMultiSelectValue,
 } from '../../-utils/format-custom-field-value';
+import { CallPickerPopover, usePlaceCall } from '@/components/shared/leads';
+import { cn } from '@/lib/utils';
 
 export interface LeadResponseField {
     id: string;
@@ -33,7 +36,65 @@ export interface LeadResponseField {
 const isUrlValue = (value: string | null) =>
     !!value && (value.startsWith('http://') || value.startsWith('https://'));
 
-const Row = ({ field }: { field: LeadResponseField }) => {
+/**
+ * Returns true when this form-response row holds the lead's phone number —
+ * either by field type or by a name that looks like phone/mobile. We accept
+ * the loose name match because campaign authors sometimes pick a generic
+ * "text" field for the phone column.
+ */
+const isPhoneField = (field: LeadResponseField): boolean => {
+    const t = (field.type ?? '').toLowerCase().trim();
+    if (t === 'phone' || t === 'mobile' || t === 'telephone') return true;
+    const n = (field.name ?? '').toLowerCase();
+    return /\bphone\b|\bmobile\b|\btelephone\b/.test(n);
+};
+
+interface CallAction {
+    /** Called when the counsellor picks an ExoPhone and clicks "Call now". */
+    onCall: (preferredNumberId: string) => void;
+    leadUserId: string | null | undefined;
+    /** Greys out the trigger and shows {@link reason} as a tooltip. */
+    disabled: boolean;
+    reason?: string;
+    /** Reflects {@code placeCallMutation.isPending} so the button shows progress. */
+    isPending: boolean;
+}
+
+/**
+ * Pill-style Call CTA — visually mirrors the CALL_LOG action tile in the
+ * activity timeline (teal accent + phone icon) so counsellors immediately
+ * recognise it as the "place a call" affordance.
+ */
+const CallButton = ({ call }: { call: CallAction }) => {
+    const muted = call.disabled || call.isPending;
+    return (
+        <CallPickerPopover
+            leadUserId={call.leadUserId}
+            disabled={muted}
+            disabledReason={call.reason}
+            onConfirm={call.onCall}
+            trigger={
+                <button
+                    type="button"
+                    title={call.reason ?? 'Call this lead'}
+                    aria-label="Call lead"
+                    disabled={muted}
+                    className={cn(
+                        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                        muted
+                            ? 'cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400'
+                            : 'border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100'
+                    )}
+                >
+                    <Phone weight="fill" className="size-3.5" />
+                    {call.isPending ? 'Connecting…' : 'Call now'}
+                </button>
+            }
+        />
+    );
+};
+
+const Row = ({ field, call }: { field: LeadResponseField; call?: CallAction }) => {
     const { name, type, rawValue } = field;
     const normalized = (type ?? '').toLowerCase();
 
@@ -93,6 +154,7 @@ const Row = ({ field }: { field: LeadResponseField }) => {
     }
 
     const display = formatCustomFieldValue(rawValue, type);
+    const showCall = !!call && isPhoneField(field) && display !== '-';
     return (
         <div className="flex items-start gap-3 px-3 py-2.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-500">
@@ -102,13 +164,18 @@ const Row = ({ field }: { field: LeadResponseField }) => {
                 <p className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
                     {name}
                 </p>
-                <p className="break-words text-sm font-medium text-neutral-900">
-                    {display === '-' ? (
-                        <span className="font-normal italic text-neutral-400">Not provided</span>
-                    ) : (
-                        display
-                    )}
-                </p>
+                <div className="flex items-center gap-2">
+                    <p className="min-w-0 flex-1 break-words text-sm font-medium text-neutral-900">
+                        {display === '-' ? (
+                            <span className="font-normal italic text-neutral-400">
+                                Not provided
+                            </span>
+                        ) : (
+                            display
+                        )}
+                    </p>
+                    {showCall && <CallButton call={call!} />}
+                </div>
             </div>
         </div>
     );
@@ -116,16 +183,46 @@ const Row = ({ field }: { field: LeadResponseField }) => {
 
 export const LeadFormResponseCard = () => {
     const { selectedStudent } = useStudentSidebar();
-    // Loose access — `_response_fields` is attached by audience-list flows only;
-    // not part of the canonical StudentTable shape so consumers from other
-    // surfaces (manage-students, manage-contacts) don't carry it.
-    const fields = (selectedStudent as unknown as { _response_fields?: LeadResponseField[] })
-        ?._response_fields;
+    // Loose access — `_response_fields` / `_audience_campaign_name` /
+    // `_response_id` are attached by audience-list flows only and aren't part
+    // of the canonical StudentTable shape. `user_id` IS canonical, so we
+    // read it off the typed object directly.
+    const ext = selectedStudent as unknown as {
+        _response_fields?: LeadResponseField[];
+        _audience_campaign_name?: string;
+        _response_id?: string | null;
+    };
+    const fields = ext._response_fields;
+    const responseId = ext._response_id ?? null;
+    const leadUserId = selectedStudent?.user_id ?? null;
+
+    // Hooks must run unconditionally — set up the mutation before the
+    // empty-fields short-circuit so React's hook order stays stable.
+    const placeCallMutation = usePlaceCall();
 
     if (!fields || fields.length === 0) return null;
 
-    const campaignName = (selectedStudent as unknown as { _audience_campaign_name?: string })
-        ?._audience_campaign_name;
+    const campaignName = ext._audience_campaign_name;
+
+    // The Call button shows on the phone-number row only (see {@link isPhoneField}).
+    // We disable it pre-emptively when we don't have a response id (the backend
+    // looks up the lead's phone via that id).
+    const call: CallAction = {
+        leadUserId,
+        disabled: !responseId,
+        reason: !responseId
+            ? 'No campaign response linked — cannot place a call from here.'
+            : undefined,
+        isPending: placeCallMutation.isPending,
+        onCall: (preferredNumberId) => {
+            if (!responseId) return;
+            placeCallMutation.mutate({
+                responseId,
+                userId: leadUserId ?? undefined,
+                preferredNumberId,
+            });
+        },
+    };
 
     return (
         <Card className="border-neutral-200 shadow-none">
@@ -143,7 +240,7 @@ export const LeadFormResponseCard = () => {
             <CardContent className="px-1 pb-3 pt-0">
                 {fields.map((field, idx) => (
                     <div key={field.id || `${field.name}-${idx}`}>
-                        <Row field={field} />
+                        <Row field={field} call={call} />
                         {idx < fields.length - 1 && <Separator className="bg-neutral-100" />}
                     </div>
                 ))}

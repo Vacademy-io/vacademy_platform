@@ -28,6 +28,8 @@ import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui
 import { OverviewHeader } from './overview-header';
 import { OverviewNeedsAttention } from './overview-needs-attention';
 import { OverviewQuickActions } from './overview-quick-actions';
+import { OverviewBottomGrid } from './overview-bottom-grid';
+import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -39,6 +41,10 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
     const [tncFileUrl, setTncFileUrl] = useState<string | null>(null);
     const userId = isSubmissionTab ? selectedStudent?.id : selectedStudent?.user_id;
     const { data: studentDetails, isLoading, isError, error } = useGetStudentDetails(userId || '');
+    // Lead score for the Snapshot tile. Reuses the cached batch query so other
+    // tables don't refetch when Overview opens. Skips when no user is selected.
+    const { profiles: leadProfiles } = useLeadProfiles(userId ? [userId] : [], !!userId);
+    const leadProfile = userId ? leadProfiles[userId] : undefined;
 
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
     const { getCredentials } = useStudentCredentialsStore();
@@ -235,6 +241,11 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 attendancePercent={
                     typeof headerAttendance === 'number' ? headerAttendance : undefined
                 }
+                leadScore={
+                    typeof leadProfile?.best_score === 'number'
+                        ? leadProfile.best_score
+                        : undefined
+                }
             />
 
             {/* Needs Attention card — action-first triage strip per design handoff. */}
@@ -246,10 +257,25 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             {/* Quick Actions: every common admin action 1-click from Overview. */}
             <OverviewQuickActions student={selectedStudent} />
 
-            {/* Overview sections — hide-when-empty + row-level filtering. */}
+            {/* 2-col bottom grid: Enrolment Details (left) + Contact (right). */}
+            <OverviewBottomGrid
+                student={selectedStudent}
+                course={headerDetails?.package_dto?.package_name}
+                level={headerDetails?.level?.level_name}
+                session={headerDetails?.session?.session_name}
+                onCopy={handleCopy}
+                copiedField={copiedField}
+            />
+
+            {/* Overview sections — hide-when-empty + row-level filtering.
+                General Details (key=1) and Contact Information (key=3) are
+                absorbed into the OverviewBottomGrid above; skip them here so
+                the data isn't shown twice. */}
             {selectedStudent != null ? (
                 overviewData?.map((studentDetail, key) => {
                     if (key === 0) return null; // Account Credentials → Portal Access tab
+                    if (key === 1) return null; // General Details → OverviewBottomGrid
+                    if (key === 3) return null; // Contact Information → OverviewBottomGrid
                     const SectionIcon = SECTION_ICONS[key] ?? User;
                     const meaningfulRows = (studentDetail.content || []).filter(
                         isMeaningfulRow

@@ -10,6 +10,7 @@ import {
     Exam,
     Wallet,
     CalendarBlank,
+    Target,
 } from '@phosphor-icons/react';
 
 interface OverviewHeaderProps {
@@ -30,6 +31,8 @@ interface OverviewHeaderProps {
     testsAttempted?: { attempted: number; total: number };
     /** Outstanding amount in INR. Pass undefined to render "—". */
     outstandingAmount?: number;
+    /** Lead score 0–100. Pass undefined to skip the tile. */
+    leadScore?: number;
 }
 
 /**
@@ -58,6 +61,7 @@ export const OverviewHeader = ({
     progressPercent,
     testsAttempted,
     outstandingAmount,
+    leadScore,
 }: OverviewHeaderProps) => {
     if (!student) return null;
 
@@ -110,6 +114,19 @@ export const OverviewHeader = ({
                     ? `₹${outstandingAmount.toLocaleString('en-IN')}`
                     : '₹0',
             tone: outstandingAmount > 0 ? 'danger' : 'success',
+        });
+    }
+    if (leadScore != null) {
+        tiles.push({
+            label: 'Lead Score',
+            icon: Target,
+            value: `${Math.round(leadScore)} / 100`,
+            tone:
+                leadScore >= 70
+                    ? 'success'
+                    : leadScore >= 40
+                      ? 'warning'
+                      : 'danger',
         });
     }
 
@@ -175,7 +192,7 @@ export const OverviewHeader = ({
                         tiles.length === 1 && 'grid-cols-1',
                         tiles.length === 2 && 'grid-cols-2',
                         tiles.length === 3 && 'grid-cols-3',
-                        tiles.length === 4 && 'grid-cols-4'
+                        tiles.length >= 4 && 'grid-cols-4'
                     )}
                 >
                     {tiles.map((t) => (

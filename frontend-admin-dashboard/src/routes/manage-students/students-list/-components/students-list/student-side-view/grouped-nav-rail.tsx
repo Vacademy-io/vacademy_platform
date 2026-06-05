@@ -53,11 +53,16 @@ export const GroupedNavRail = ({
     return (
         <nav
             aria-label="Profile sections"
-            className="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-muted/30 px-3 py-3.5"
+            // Handoff: 208px (w-52) width, warm cream surface (bg-neutral-50
+            // ≈ --bg-warm), 14px vertical / 12px horizontal padding, hairline
+            // right border.
+            className="flex w-52 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border bg-neutral-50 px-3 py-3.5"
         >
             {groups.map(({ group, items }) => (
                 <div key={group} className="flex flex-col gap-0.5">
-                    <div className="px-2.5 pb-1.5 text-caption font-bold uppercase tracking-wider text-muted-foreground">
+                    {/* Handoff group label: ~10.5px / 700 / wide tracking /
+                        uppercase / muted. Sits in 0 10px 6px padding. */}
+                    <div className="px-2.5 pb-1.5 text-caption font-bold uppercase tracking-widest text-muted-foreground">
                         {group}
                     </div>
                     {items.map((item) => {
@@ -69,8 +74,13 @@ export const GroupedNavRail = ({
                                 type="button"
                                 onClick={() => onSelect(item.id)}
                                 aria-current={isActive ? 'page' : undefined}
+                                // Handoff NavBtn: 9px 11px padding, 13.5/600
+                                // label, gap 11px, var(--r-md) (10px ≈
+                                // rounded-md). Icon ~17px, duotone weight.
+                                // Active = accent bg + on-accent fg.
+                                // Hover  = accent-soft bg + accent-text fg.
                                 className={cn(
-                                    'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                                    'flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-body font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                                     isActive
                                         ? 'bg-primary-500 text-white shadow-sm'
                                         : 'text-card-foreground hover:bg-primary-50 hover:text-primary-700'
@@ -78,7 +88,7 @@ export const GroupedNavRail = ({
                             >
                                 <Icon
                                     className="size-4 shrink-0"
-                                    weight={isActive ? 'fill' : 'regular'}
+                                    weight={isActive ? 'fill' : 'duotone'}
                                 />
                                 <span className="truncate">{item.label}</span>
                             </button>

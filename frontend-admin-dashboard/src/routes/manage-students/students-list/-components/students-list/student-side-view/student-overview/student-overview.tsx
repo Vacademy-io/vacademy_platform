@@ -286,12 +286,21 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
 
     return (
         <div className="flex flex-col gap-3 text-card-foreground">
-            {/* Rich Overview Header — Course chip + 4-stat health strip */}
+            {/* Needs Attention — action-first triage strip per handoff
+                OverviewSection: this is the FIRST card so any urgent action
+                (unsigned T&C, outstanding fee, behind subject) leads the eye. */}
+            <OverviewNeedsAttention
+                student={selectedStudent}
+                tncAccepted={selectedStudent?.tnc_accepted ?? undefined}
+                outstandingAmount={outstandingAmount}
+                behindCount={progressInfo?.behindCount}
+            />
+
+            {/* Health-stat tile strip — flat 4-tile grid per handoff. The
+                earlier "CURRENTLY ENROLLED" hero band has been dropped (it
+                duplicated Continue Learning + Enrolment Details). */}
             <OverviewHeader
                 student={selectedStudent}
-                course={headerDetails?.package_dto?.package_name}
-                level={headerDetails?.level?.level_name}
-                session={headerDetails?.session?.session_name}
                 attendancePercent={
                     typeof headerAttendance === 'number' ? headerAttendance : undefined
                 }
@@ -302,14 +311,6 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                         ? leadProfile.best_score
                         : undefined
                 }
-            />
-
-            {/* Needs Attention card — action-first triage strip per design handoff. */}
-            <OverviewNeedsAttention
-                student={selectedStudent}
-                tncAccepted={selectedStudent?.tnc_accepted ?? undefined}
-                outstandingAmount={outstandingAmount}
-                behindCount={progressInfo?.behindCount}
             />
 
             {/* Quick Actions: every common admin action 1-click from Overview. */}

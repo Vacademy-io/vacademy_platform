@@ -15,6 +15,8 @@ import EmptyStudentListImage from '@/assets/svgs/empty-students-image.svg';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
+import { getSystemFieldColumnVisibility } from '@/components/design-system/utils/constants/system-field-columns';
+import { getCustomFieldSettings } from '@/services/custom-field-settings';
 
 export const ContactsListSection = () => {
     const { setNavHeading } = useNavHeadingStore();
@@ -23,6 +25,16 @@ export const ContactsListSection = () => {
         useContactTable(filters.appliedFilters, filters.setAppliedFilters);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const tableRef = useRef<HTMLDivElement>(null);
+
+    // Keep the custom-field settings cache fresh (it's cleared on save) and
+    // re-render so the column-visibility recomputes — otherwise the readers fail
+    // open and show columns that were toggled off.
+    const [, bumpCustomFieldsVersion] = useState(0);
+    useEffect(() => {
+        getCustomFieldSettings()
+            .then(() => bumpCustomFieldsVersion((v) => v + 1))
+            .catch(() => {});
+    }, []);
 
     const leadSettings = useLeadSettings();
     // Don't render lead UI while settings are loading (defaults have enabled:true which would flash)
@@ -129,7 +141,30 @@ export const ContactsListSection = () => {
                                             }}
                                             columns={columns}
                                             tableState={{
-                                                columnVisibility: {},
+                                                columnVisibility: (() => {
+                                                    // Preserve existing visibility (none today),
+                                                    // then hide any system field toggled off in
+                                                    // Settings → Custom Fields. Contacts columns use
+                                                    // `user.<accessor>` ids.
+                                                    const visibility: Record<string, boolean> = {};
+                                                    const systemVis = getSystemFieldColumnVisibility();
+                                                    (
+                                                        [
+                                                            'full_name',
+                                                            'username',
+                                                            'email',
+                                                            'mobile_number',
+                                                            'gender',
+                                                            'region',
+                                                            'city',
+                                                        ] as const
+                                                    ).forEach((accessor) => {
+                                                        if (systemVis[accessor] === false) {
+                                                            visibility[`user.${accessor}`] = false;
+                                                        }
+                                                    });
+                                                    return visibility;
+                                                })(),
                                             }}
                                             isLoading={isLoading}
                                             error={error}

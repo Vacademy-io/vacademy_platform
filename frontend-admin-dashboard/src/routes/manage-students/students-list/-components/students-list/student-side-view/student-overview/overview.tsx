@@ -51,8 +51,8 @@ export const OverViewData = ({
         ...(show('country') ? [`Country: ${na(selectedStudent.country)}`] : []),
         ...(show('region') ? [`State: ${na(selectedStudent.region)}`] : []),
         ...(show('city') ? [`City: ${na(selectedStudent.city)}`] : []),
-        `Pincode: ${na(selectedStudent.pin_code)}`,
-        `Address: ${na(selectedStudent.address_line)}`,
+        ...(show('pin_code') ? [`Pincode: ${na(selectedStudent.pin_code)}`] : []),
+        ...(show('address_line') ? [`Address: ${na(selectedStudent.address_line)}`] : []),
     ];
 
     const contactContent = [

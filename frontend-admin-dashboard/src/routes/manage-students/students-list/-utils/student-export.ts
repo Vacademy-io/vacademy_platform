@@ -282,9 +282,9 @@ export const getStudentExportColumns = (): ExportColumn[] => {
     }
 
     // Drop any system column whose system-field toggle is off (Settings → Custom
-    // Fields). Most export column ids equal the system accessor key, so we can look
-    // them up directly; derived/unmapped columns (course/level/session, DOB,
-    // address, pin code, created_at, custom fields) aren't in the map and stay on.
+    // Fields). Export column ids equal the system accessor key, so we look them up
+    // directly. Derived columns (course/level/session, created_at, enroll invite)
+    // and custom fields aren't system accessors, so they stay on.
     const systemVisibility = getSystemFieldColumnVisibility();
     return columns.filter((col) => systemVisibility[col.id] !== false);
 };

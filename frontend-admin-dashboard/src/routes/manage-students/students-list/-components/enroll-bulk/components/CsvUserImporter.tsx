@@ -11,6 +11,7 @@ import {
     CustomFieldSettingsData,
 } from '@/services/custom-field-settings';
 import { useUserIdentifierSetting } from '@/services/user-identifier-setting';
+import { getSystemFieldColumnVisibility } from '@/components/design-system/utils/constants/system-field-columns';
 import { parse, isValid } from 'date-fns';
 
 // ─── System field definitions ───────────────────────────────────
@@ -95,20 +96,20 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
     // ─── Build dynamic column list from institute settings ────
     const { allColumns, customFieldColumns } = useMemo(() => {
 
-        // Determine which system fields are visible
-        const visibleSystemKeys = new Set<string>();
-        if (settings?.systemFields) {
-            for (const sf of settings.systemFields) {
-                if (sf.visibility) visibleSystemKeys.add(sf.key);
-            }
-        }
+        // System-field visibility keyed by column accessor (tolerant of non-standard
+        // keys). A column stays if not explicitly turned off; required columns
+        // (email/full_name/mobile) always stay regardless so the import still works.
+        const systemVisibility = getSystemFieldColumnVisibility();
+        const isColVisible = (csvKey: string) => systemVisibility[csvKey] !== false;
 
-        // Core columns are always included
-        const cols: CsvColumnDef[] = [...buildCoreColumns(phoneRequired)];
+        // Core columns: keep required ones always; gate the optional ones (e.g. address, pin code)
+        const cols: CsvColumnDef[] = buildCoreColumns(phoneRequired).filter(
+            (col) => col.required || isColVisible(col.csvKey)
+        );
 
-        // Add optional system columns if they're visible (or if no settings exist, include all)
+        // Add optional system columns that aren't toggled off
         for (const col of OPTIONAL_SYSTEM_COLUMNS) {
-            if (!settings?.systemFields || !col.systemKey || visibleSystemKeys.has(col.systemKey)) {
+            if (isColVisible(col.csvKey)) {
                 cols.push(col);
             }
         }

@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { X } from '@phosphor-icons/react';
+import { X, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { StatusChips } from '@/components/design-system/chips';
 import { cn } from '@/lib/utils';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
@@ -116,7 +116,18 @@ function resolveInitialSection(settings: StudentSideViewSettings): StudentSideVi
 }
 
 export const StudentProfileOverlay = () => {
-    const { selectedStudent, isOverlayOpen, closeOverlay } = useStudentSidebar();
+    const {
+        selectedStudent,
+        isOverlayOpen,
+        closeOverlay,
+        learnerListPosition,
+        goPrevLearner,
+        goNextLearner,
+    } = useStudentSidebar();
+    const hasPrev = !!learnerListPosition && learnerListPosition.index > 0;
+    const hasNext =
+        !!learnerListPosition &&
+        learnerListPosition.index < learnerListPosition.total - 1;
     const leadSettings = useLeadSettings();
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     const [activeSection, setActiveSection] = useState<SectionId>('overview');
@@ -185,6 +196,29 @@ export const StudentProfileOverlay = () => {
     useEffect(() => {
         if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0;
     }, [activeSection]);
+
+    // Keyboard nav: ← / → walk through the surrounding learner list without
+    // closing the overlay. Ignored when focus is inside a text-entry control
+    // (input / textarea / contenteditable) so the arrow keys still move the
+    // caret. Esc is handled by the Dialog primitive.
+    useEffect(() => {
+        if (!isOverlayOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            const tag = (target?.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || target?.isContentEditable)
+                return;
+            if (e.key === 'ArrowLeft' && hasPrev) {
+                e.preventDefault();
+                goPrevLearner();
+            } else if (e.key === 'ArrowRight' && hasNext) {
+                e.preventDefault();
+                goNextLearner();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isOverlayOpen, hasPrev, hasNext, goPrevLearner, goNextLearner]);
 
     if (!selectedStudent) return null;
 
@@ -305,7 +339,7 @@ export const StudentProfileOverlay = () => {
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h1
                                         className={cn(
-                                            'truncate text-h2 font-bold leading-tight',
+                                            'truncate text-h3 font-semibold leading-tight',
                                             selectedStudent.full_name
                                                 ? 'text-neutral-900'
                                                 : 'text-neutral-400'
@@ -343,11 +377,43 @@ export const StudentProfileOverlay = () => {
                                 </div>
                             </div>
 
-                            {/* Right controls — Email/Call/WhatsApp + divider + Close.
-                                Collapse-to-drawer button removed — the overlay IS the
-                                design's primary surface; we don't push users back to
-                                the cramped right-side drawer. */}
+                            {/* Right controls — Prev/Next learner group + quick
+                                contact icons + divider + Close. Per handoff:
+                                a single bordered group with chevron-left,
+                                "{i+1}/{N}", chevron-right; then the email /
+                                call / whatsapp buttons; then a vertical 1px
+                                divider; then Close. The Prev/Next group only
+                                renders when the surrounding table published
+                                a learner list. ← / → also walk via keyboard. */}
                             <div className="flex shrink-0 items-center gap-2">
+                                {learnerListPosition && (
+                                    <div className="inline-flex items-center overflow-hidden rounded-md border border-neutral-200 bg-card">
+                                        <button
+                                            type="button"
+                                            onClick={goPrevLearner}
+                                            disabled={!hasPrev}
+                                            aria-label="Previous learner (←)"
+                                            title="Previous learner (←)"
+                                            className="flex size-9 items-center justify-center text-neutral-600 transition-colors hover:bg-muted hover:text-card-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                        >
+                                            <CaretLeft className="size-4" weight="bold" />
+                                        </button>
+                                        <span className="select-none border-x border-neutral-200 px-3 py-1.5 text-caption font-semibold text-card-foreground tabular-nums">
+                                            {learnerListPosition.index + 1} /{' '}
+                                            {learnerListPosition.total}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={goNextLearner}
+                                            disabled={!hasNext}
+                                            aria-label="Next learner (→)"
+                                            title="Next learner (→)"
+                                            className="flex size-9 items-center justify-center text-neutral-600 transition-colors hover:bg-muted hover:text-card-foreground disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                        >
+                                            <CaretRight className="size-4" weight="bold" />
+                                        </button>
+                                    </div>
+                                )}
                                 <ProfileQuickContact
                                     email={selectedStudent.email}
                                     phone={selectedStudent.mobile_number}

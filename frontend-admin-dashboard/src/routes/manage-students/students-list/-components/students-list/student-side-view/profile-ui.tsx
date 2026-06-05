@@ -391,7 +391,7 @@ export const ProfileHeroStat = ({
                 </span>
                 {Icon && <Icon className="size-4 text-neutral-300" />}
             </div>
-            <div className={cn('text-2xl font-bold leading-none', TONE_TEXT[tone])}>{value}</div>
+            <div className={cn('text-xl font-semibold leading-none', TONE_TEXT[tone])}>{value}</div>
             {trend && (
                 <span
                     className={cn(

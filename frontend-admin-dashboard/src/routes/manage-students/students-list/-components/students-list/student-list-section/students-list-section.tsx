@@ -157,6 +157,13 @@ export const StudentsListSection = () => {
         const cached = getDisplaySettingsFromCache(roleKey);
         return new Set(cached?.learnerListColumns?.enabledCustomFields ?? []);
     }, []);
+    // Count badges (Total/Active/Inactive) are shown unless this role turned them off
+    // in Settings → Display Settings. Default visible.
+    const showCountBadges = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return cached?.learnerListColumns?.showCountBadges !== false;
+    }, []);
 
     // Full set of custom field accessors known for this institute (any source).
     // Anything in this set that's NOT in roleEnabledCustomFields gets force-hidden.
@@ -218,8 +225,13 @@ export const StudentsListSection = () => {
     );
 
     // Header badge counts (Total / Active / Inactive) — independent of the status
-    // filter so the breakdown is always visible.
-    const studentCounts = useStudentCounts(appliedFilters, !isLoading);
+    // filter so the breakdown is always visible. Pass the same pinned
+    // package_session_id the table uses so counts match in the Course Details tab.
+    const studentCounts = useStudentCounts(
+        appliedFilters,
+        !isLoading && showCountBadges,
+        search.package_session_id ? [search.package_session_id] : null
+    );
 
     const leadSettings = useLeadSettings();
     // Don't render lead UI while settings are loading (defaults have enabled:true which would flash)
@@ -333,6 +345,7 @@ export const StudentsListSection = () => {
                     <InviteFormProvider>
                         <StudentListHeader
                             currentSession={currentSession}
+                            showCounts={showCountBadges}
                             total={studentCounts.total}
                             active={studentCounts.active}
                             inactive={studentCounts.inactive}

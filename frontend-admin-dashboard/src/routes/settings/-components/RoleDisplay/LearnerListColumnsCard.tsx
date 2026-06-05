@@ -99,6 +99,9 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
         return Array.from(byId.values());
     }, [fieldData]);
 
+    // Count badges show by default; only false when explicitly turned off.
+    const showCountBadges = settings?.showCountBadges !== false;
+
     // System columns: toggling off ADDS to hiddenColumns (default visible).
     const setSystemVisible = (accessor: string, visible: boolean) => {
         const nextHidden = new Set(hidden);
@@ -107,6 +110,7 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
         onChange({
             hiddenColumns: Array.from(nextHidden),
             enabledCustomFields: settings?.enabledCustomFields,
+            showCountBadges: settings?.showCountBadges,
         });
     };
 
@@ -118,6 +122,15 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
         onChange({
             hiddenColumns: settings?.hiddenColumns ?? [],
             enabledCustomFields: Array.from(nextEnabled),
+            showCountBadges: settings?.showCountBadges,
+        });
+    };
+
+    const setShowCountBadges = (visible: boolean) => {
+        onChange({
+            hiddenColumns: settings?.hiddenColumns ?? [],
+            enabledCustomFields: settings?.enabledCustomFields,
+            showCountBadges: visible,
         });
     };
 
@@ -158,6 +171,18 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-6">
+                <div>
+                    <h4 className="mb-2 text-sm font-semibold text-neutral-600">Header</h4>
+                    <div className="flex items-center justify-between border-b border-neutral-100 py-2 last:border-b-0">
+                        <Label className="text-sm text-neutral-700">
+                            Count badges (Total / Active / Inactive)
+                        </Label>
+                        <Switch
+                            checked={showCountBadges}
+                            onCheckedChange={(v) => setShowCountBadges(v)}
+                        />
+                    </div>
+                </div>
                 <div>
                     <h4 className="mb-2 text-sm font-semibold text-neutral-600">System columns</h4>
                     <div className="flex flex-col">{SYSTEM_COLUMNS.map(renderSystemRow)}</div>

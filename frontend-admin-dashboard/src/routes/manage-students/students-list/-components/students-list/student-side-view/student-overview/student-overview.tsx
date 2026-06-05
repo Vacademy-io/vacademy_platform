@@ -16,7 +16,6 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { OverViewData, OverviewDetailsType } from './overview';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { EditStudentDetails } from './EditStudentDetails';
 import { useStudentCredentialsStore } from '@/stores/students/students-list/useStudentCredentialsStore';
 import { useGetStudentDetails } from '@/services/get-student-details';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -27,6 +26,8 @@ import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
 import { OverviewHeader } from './overview-header';
+import { OverviewAlerts } from './overview-alerts';
+import { OverviewQuickActions } from './overview-quick-actions';
 
 export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -236,62 +237,60 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 }
             />
 
+            {/* Alerts: T&C unsigned, payment overdue, no contact. Silent green path. */}
+            <OverviewAlerts
+                student={selectedStudent}
+                tncAccepted={selectedStudent?.tnc_accepted ?? undefined}
+            />
+
+            {/* Quick Actions: every common admin action 1-click from Overview. */}
+            <OverviewQuickActions student={selectedStudent} />
+
             {/* Overview sections — hide-when-empty + row-level filtering. */}
             {selectedStudent != null ? (
                 overviewData?.map((studentDetail, key) => {
                     if (key === 0) return null; // Account Credentials → Portal Access tab
                     const SectionIcon = SECTION_ICONS[key] ?? User;
-                    const isPrimary = key === 1; // hosts Edit Details button
                     const meaningfulRows = (studentDetail.content || []).filter(
                         isMeaningfulRow
                     );
 
-                    // Hide empty non-primary sections entirely. The primary
-                    // (General Details) stays visible because it holds Edit.
-                    if (meaningfulRows.length === 0 && !isPrimary) return null;
+                    // Hide empty sections entirely. Edit Details now lives in
+                    // the Quick Actions row, so even General Details can hide
+                    // when nothing's filled.
+                    if (meaningfulRows.length === 0) return null;
 
                     return (
                         <ProfileSectionCard
                             key={key}
                             icon={SectionIcon}
                             heading={studentDetail.heading}
-                            action={isPrimary ? <EditStudentDetails /> : undefined}
                         >
-                            {meaningfulRows.length > 0 ? (
-                                <dl className="divide-y divide-border">
-                                    {meaningfulRows.map((obj, key2) => {
-                                        const colonIdx = obj.indexOf(':');
-                                        const fieldName =
-                                            colonIdx >= 0
-                                                ? obj.slice(0, colonIdx).trim()
-                                                : obj.trim();
-                                        const value =
-                                            colonIdx >= 0 ? obj.slice(colonIdx + 1).trim() : '';
-                                        const canCopy = !!value;
-                                        return (
-                                            <ProfileFieldRow
-                                                key={key2}
-                                                label={fieldName}
-                                                value={value}
-                                                copied={copiedField === fieldName}
-                                                onCopy={
-                                                    canCopy
-                                                        ? () => handleCopy(value, fieldName)
-                                                        : undefined
-                                                }
-                                            />
-                                        );
-                                    })}
-                                </dl>
-                            ) : (
-                                <p className="text-caption italic text-muted-foreground">
-                                    No demographic details yet. Click{' '}
-                                    <span className="font-medium text-card-foreground">
-                                        Edit Details
-                                    </span>{' '}
-                                    to add gender, school, etc.
-                                </p>
-                            )}
+                            <dl className="divide-y divide-border">
+                                {meaningfulRows.map((obj, key2) => {
+                                    const colonIdx = obj.indexOf(':');
+                                    const fieldName =
+                                        colonIdx >= 0
+                                            ? obj.slice(0, colonIdx).trim()
+                                            : obj.trim();
+                                    const value =
+                                        colonIdx >= 0 ? obj.slice(colonIdx + 1).trim() : '';
+                                    const canCopy = !!value;
+                                    return (
+                                        <ProfileFieldRow
+                                            key={key2}
+                                            label={fieldName}
+                                            value={value}
+                                            copied={copiedField === fieldName}
+                                            onCopy={
+                                                canCopy
+                                                    ? () => handleCopy(value, fieldName)
+                                                    : undefined
+                                            }
+                                        />
+                                    );
+                                })}
+                            </dl>
                         </ProfileSectionCard>
                     );
                 })

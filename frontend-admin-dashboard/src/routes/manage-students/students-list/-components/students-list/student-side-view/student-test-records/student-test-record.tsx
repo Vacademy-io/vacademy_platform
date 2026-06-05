@@ -18,7 +18,7 @@ import { AssessmentReportStudentInterface } from '@/types/assessments/assessment
 import { getAssessmentDetailsData } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { Steps } from '@/types/assessments/assessment-data-type';
 import {
-    Exam,
+    Trophy,
     ChartBar,
     Bell,
     CheckCircle,
@@ -35,8 +35,6 @@ import {
     ProfileEmpty,
     ProfileError,
     ProfileHero,
-    ProfileHeroStat,
-    ProfileMiniBar,
 } from '../profile-ui';
 
 export interface StudentReportFilterInterface {
@@ -341,20 +339,6 @@ export const StudentTestRecord = ({
             ? attemptedRecords.reduce((sum, r) => sum + r.total_marks, 0) / attemptedCount
             : 0;
 
-    // Latest attempt: most-recent ENDED record (sorted by attempt_date desc)
-    const latestAttempt =
-        attemptedRecords.length > 0
-            ? attemptedRecords.slice().sort(
-                  (a, b) =>
-                      new Date(b.attempt_date).getTime() - new Date(a.attempt_date).getTime()
-              )[0]
-            : null;
-
-    // Hero tone derived from latest score; neutral when no attempts
-    const heroTone = latestAttempt
-        ? scoreTone(latestAttempt.total_marks)
-        : 'neutral';
-
     // Apply active filter chip client-side for the visible list
     const records: AssessmentReportStudentInterface[] =
         activeFilter === 'ALL'
@@ -363,15 +347,25 @@ export const StudentTestRecord = ({
 
     return (
         <div className="flex flex-col gap-3">
-            {/* ── Hero zone ─────────────────────────────────────────────────── */}
+            {/* ── Hero zone (Vacademy design handoff: TestsSection) ──────────
+                Hero is a PASSIVE summary card — the average score IS the
+                title, attempt count is the subtitle, no per-row action. */}
             <ProfileHero
-                eyebrow={latestAttempt ? 'LATEST RESULT' : 'TEST PERFORMANCE'}
-                icon={Exam}
-                tone={heroTone as 'success' | 'primary' | 'warning' | 'danger' | 'neutral'}
+                eyebrow="TEST PERFORMANCE"
+                icon={Trophy}
+                tone={
+                    attemptedCount > 0
+                        ? (scoreTone(avgScore) as
+                              | 'success'
+                              | 'primary'
+                              | 'warning'
+                              | 'danger')
+                        : 'neutral'
+                }
                 title={
-                    latestAttempt ? (
+                    attemptedCount > 0 ? (
                         <span className="text-h2 font-semibold leading-none text-card-foreground">
-                            {latestAttempt.total_marks.toFixed(2)}&nbsp;pts
+                            {avgScore.toFixed(1)} avg score
                         </span>
                     ) : (
                         <span className="text-h3 font-semibold leading-none text-muted-foreground">
@@ -380,67 +374,15 @@ export const StudentTestRecord = ({
                     )
                 }
                 subtitle={
-                    latestAttempt
-                        ? `${latestAttempt.assessment_name} · ${extractDateTime(convertToLocalDateTime(latestAttempt.attempt_date)).date}`
+                    attemptedCount > 0
+                        ? `${attemptedCount} test${attemptedCount === 1 ? '' : 's'} recorded`
                         : 'Tests assigned to this learner will appear below.'
                 }
-                action={
-                    latestAttempt ? (
-                        <MyButton
-                            buttonType="secondary"
-                            layoutVariant="default"
-                            scale="small"
-                            onClick={() =>
-                                handleViewReport(
-                                    latestAttempt.assessment_id,
-                                    latestAttempt.attempt_id,
-                                    latestAttempt
-                                )
-                            }
-                        >
-                            <ChartBar className="size-4" />
-                            View Report
-                        </MyButton>
-                    ) : undefined
-                }
-            >
-                {/* Mini score bar for visual reinforcement — only when an attempt exists */}
-                {latestAttempt && (
-                    <ProfileMiniBar
-                        value={Math.min(100, latestAttempt.total_marks)}
-                        tone={heroTone as 'success' | 'primary' | 'warning' | 'danger'}
-                        label={`${latestAttempt.total_marks.toFixed(1)} pts`}
-                    />
-                )}
-            </ProfileHero>
+            />
 
-            {/* ── Stat row (hidden when all-zero per Phase 0.5b) ────────────── */}
-            {(attemptedCount > 0 || pendingCount > 0) && (
-                <div className="flex gap-2">
-                    <ProfileHeroStat
-                        label="Attempted"
-                        value={attemptedCount}
-                        tone="primary"
-                        icon={CheckCircle}
-                    />
-                    <ProfileHeroStat
-                        label="Pending"
-                        value={pendingCount}
-                        tone={pendingCount > 0 ? 'warning' : 'neutral'}
-                        icon={Clock}
-                    />
-                    <ProfileHeroStat
-                        label="Avg Score"
-                        value={attemptedCount > 0 ? `${avgScore.toFixed(1)} pts` : '—'}
-                        tone={
-                            attemptedCount > 0
-                                ? (scoreTone(avgScore) as 'success' | 'primary' | 'warning' | 'danger')
-                                : 'neutral'
-                        }
-                        icon={ChartBar}
-                    />
-                </div>
-            )}
+            {/* Stat-tile row removed per design handoff — the avg score is
+                already surfaced as the hero title above, and the handoff's
+                TestsSection has no separate stat row. */}
 
             {/* ── Filter chips + search ──────────────────────────────────────── */}
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -469,12 +411,12 @@ export const StudentTestRecord = ({
             {/* ── Body ──────────────────────────────────────────────────────── */}
             {records.length === 0 ? (
                 <ProfileEmpty
-                    icon={Exam}
+                    icon={Trophy}
                     title="No tests yet"
                     hint="This student hasn't taken any assessments yet, or records aren't available for the selected filter."
                 />
             ) : (
-                <ProfileSectionCard heading="Test History" icon={Exam}>
+                <ProfileSectionCard heading="Test History" icon={Trophy}>
                     <div className="flex flex-col divide-y divide-neutral-100">
                         {records.map((studentReport: AssessmentReportStudentInterface, index: number) => {
                             const isEnded = studentReport.attempt_status === 'ENDED';

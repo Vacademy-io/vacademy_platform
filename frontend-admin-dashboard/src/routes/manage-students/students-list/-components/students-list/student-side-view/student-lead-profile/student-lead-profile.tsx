@@ -1186,7 +1186,11 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
 
     const { label: sLabel, className: sClass } = statusPill(profile.conversion_status);
     const isConverted = profile.conversion_status === 'CONVERTED';
-    const tone = heroTone(profile);
+    // Hero tone is hard-coded to warning per design handoff — the score itself
+    // and the tier pill carry the heat signal; the hero card frames the whole
+    // lead-interest summary with a consistent attention-tone surface.
+    // (Was `heroTone(profile)` — kept the helper for the badge-color logic.)
+    const tone: 'warning' = 'warning';
     const nextBestAction = deriveNextBestAction(profile);
 
     // Tier pill tokens
@@ -1288,57 +1292,133 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 </MyButton>
             </ProfileActionBar>
 
-            {/* ── 4-stat grid (hidden when all-zero per Phase 0.5b) ── */}
-            {(profile.campaign_count > 0 ||
-                profile.total_timeline_events > 0 ||
-                profile.demo_attendance_count > 0 ||
-                !!profile.best_source_type) && (
-                <div className="grid grid-cols-2 gap-2">
-                    <ProfileHeroStat
-                        label="Campaigns"
-                        value={profile.campaign_count}
-                        icon={Megaphone}
-                        tone={profile.campaign_count > 0 ? 'primary' : 'neutral'}
-                    />
-                    <ProfileHeroStat
-                        label="Timeline Events"
-                        value={profile.total_timeline_events}
-                        icon={Lightning}
-                        tone={profile.total_timeline_events > 0 ? 'primary' : 'neutral'}
-                    />
-                    <ProfileHeroStat
-                        label="Demo Attendance"
-                        value={profile.demo_attendance_count}
-                        icon={CalendarCheck}
-                        tone={profile.demo_attendance_count > 0 ? 'primary' : 'neutral'}
-                    />
-                    <ProfileHeroStat
-                        label="Best Source"
-                        value={sourceLabel(profile.best_source_type)}
-                        icon={Fire}
-                        tone={profile.best_source_type ? 'primary' : 'neutral'}
-                    />
-                </div>
-            )}
+            {/* ── 4-stat grid (always rendered per handoff — zero values still
+                read as data; primary/neutral tone tells you which dimension is
+                empty without hiding the slot). ── */}
+            <div className="grid grid-cols-2 gap-2">
+                <ProfileHeroStat
+                    label="Campaigns"
+                    value={profile.campaign_count}
+                    icon={Megaphone}
+                    tone={profile.campaign_count > 0 ? 'primary' : 'neutral'}
+                />
+                <ProfileHeroStat
+                    label="Timeline Events"
+                    value={profile.total_timeline_events}
+                    icon={Lightning}
+                    tone={profile.total_timeline_events > 0 ? 'primary' : 'neutral'}
+                />
+                <ProfileHeroStat
+                    label="Demo Attendance"
+                    value={profile.demo_attendance_count}
+                    icon={CalendarCheck}
+                    tone={profile.demo_attendance_count > 0 ? 'primary' : 'neutral'}
+                />
+                <ProfileHeroStat
+                    label="Best Source"
+                    value={sourceLabel(profile.best_source_type)}
+                    icon={Fire}
+                    tone={profile.best_source_type ? 'primary' : 'neutral'}
+                />
+            </div>
 
-            {/* ── Key Dates ── */}
-            <ProfileSectionCard heading="Key Dates">
-                <dl className="divide-y divide-neutral-100">
-                    <ProfileFieldRow label="Last Activity" value={formatDate(profile.last_activity_at)} />
-                    <ProfileFieldRow label="Lead Since" value={formatDate(profile.created_at)} />
-                    {isConverted && (
-                        <ProfileFieldRow
-                            label="Converted On"
-                            value={
-                                <span className="text-success-700">
-                                    {formatDate(profile.converted_at)}
-                                </span>
-                            }
-                        />
-                    )}
-                    <ProfileFieldRow label="Score Updated" value={formatDate(profile.last_calculated_at)} />
-                </dl>
-            </ProfileSectionCard>
+            {/* ── Key Dates + Lead Status side-by-side (handoff layout) ───
+                Per design handoff: Key Dates lives next to Lead Status in a
+                2-col grid so the at-a-glance view shows lifecycle dates and
+                pipeline stage together. Last Activity moved out — the hero
+                already surfaces "Scored {date}" and the Activity timeline
+                covers recent touch points. */}
+            <div className="grid gap-3 md:grid-cols-2">
+                <ProfileSectionCard heading="Key Dates">
+                    <dl className="divide-y divide-neutral-100">
+                        <ProfileFieldRow label="Lead Since" value={formatDate(profile.created_at)} />
+                        {isConverted && (
+                            <ProfileFieldRow
+                                label="Converted On"
+                                value={
+                                    <span className="text-success-700">
+                                        {formatDate(profile.converted_at)}
+                                    </span>
+                                }
+                            />
+                        )}
+                        <ProfileFieldRow label="Score Updated" value={formatDate(profile.last_calculated_at)} />
+                    </dl>
+                </ProfileSectionCard>
+
+                <ProfileSectionCard heading="Lead Status & Tier">
+                    <div className="flex flex-col gap-3">
+                        <div>
+                            <div className="mb-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                                Status
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {leadStatuses.map((s) => {
+                                    const active = profile.conversion_status === s.status_key;
+                                    return (
+                                        <button
+                                            key={s.id}
+                                            onClick={() => changeStatus(s.status_key)}
+                                            disabled={changingStatus}
+                                            className={cn(
+                                                'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                                                !active && 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
+                                            )}
+                                            // Inline style: status colour is an admin-picked hex (active state only).
+                                            style={
+                                                active
+                                                    ? {
+                                                          backgroundColor: `${s.color}1A`,
+                                                          color: s.color,
+                                                          boxShadow: `inset 0 0 0 1px ${s.color}55`,
+                                                      }
+                                                    : undefined
+                                            }
+                                        >
+                                            {s.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="mb-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground">
+                                Tier
+                            </div>
+                            <div className="flex gap-1.5">
+                                {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
+                                    const isActive =
+                                        profile.lead_tier === tier ||
+                                        (!profile.lead_tier &&
+                                            ((tier === 'HOT' && profile.best_score >= 80) ||
+                                                (tier === 'WARM' &&
+                                                    profile.best_score >= 50 &&
+                                                    profile.best_score < 80) ||
+                                                (tier === 'COLD' && profile.best_score < 50)));
+                                    return (
+                                        <button
+                                            key={tier}
+                                            onClick={() => changeTier(tier)}
+                                            disabled={changingTier}
+                                            className={cn(
+                                                'rounded-md px-3 py-1 text-xs font-medium transition-all',
+                                                isActive ? tierPillActive[tier] : tierPillHover[tier]
+                                            )}
+                                        >
+                                            {tier}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        {isConverted && (
+                            <p className="text-caption text-success-600">
+                                Score updates are frozen while converted.
+                            </p>
+                        )}
+                    </div>
+                </ProfileSectionCard>
+            </div>
 
             {/* ── Lead Score detail (manual override + breakdown) ── */}
             <ProfileSectionCard icon={ChartBar} heading="Score Details">
@@ -1356,72 +1436,6 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                             </>
                         )}
                     </div>
-                </div>
-            </ProfileSectionCard>
-
-            {/* ── Lead Status ── */}
-            <ProfileSectionCard heading="Lead Status">
-                <div className="flex flex-wrap gap-1.5">
-                    {leadStatuses.map((s) => {
-                        const active = profile.conversion_status === s.status_key;
-                        return (
-                            <button
-                                key={s.id}
-                                onClick={() => changeStatus(s.status_key)}
-                                disabled={changingStatus}
-                                className={cn(
-                                    'rounded-md px-3 py-1 text-xs font-medium transition-all',
-                                    !active && 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
-                                )}
-                                // Inline style: status colour is arbitrary user-picked hex (active state).
-                                style={
-                                    active
-                                        ? {
-                                              backgroundColor: `${s.color}1A`,
-                                              color: s.color,
-                                              boxShadow: `inset 0 0 0 1px ${s.color}55`,
-                                          }
-                                        : undefined
-                                }
-                            >
-                                {s.label}
-                            </button>
-                        );
-                    })}
-                </div>
-                {isConverted && (
-                    <p className="mt-2 text-caption text-success-600">
-                        Score updates are frozen while converted.
-                    </p>
-                )}
-            </ProfileSectionCard>
-
-            {/* ── Tier control ── */}
-            <ProfileSectionCard heading="Lead Tier">
-                <div className="flex gap-1.5">
-                    {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
-                        const isActive =
-                            profile.lead_tier === tier ||
-                            (!profile.lead_tier &&
-                                ((tier === 'HOT' && profile.best_score >= 80) ||
-                                    (tier === 'WARM' &&
-                                        profile.best_score >= 50 &&
-                                        profile.best_score < 80) ||
-                                    (tier === 'COLD' && profile.best_score < 50)));
-                        return (
-                            <button
-                                key={tier}
-                                onClick={() => changeTier(tier)}
-                                disabled={changingTier}
-                                className={cn(
-                                    'rounded-md px-3 py-1 text-xs font-medium transition-all',
-                                    isActive ? tierPillActive[tier] : tierPillHover[tier]
-                                )}
-                            >
-                                {tier}
-                            </button>
-                        );
-                    })}
                 </div>
             </ProfileSectionCard>
 

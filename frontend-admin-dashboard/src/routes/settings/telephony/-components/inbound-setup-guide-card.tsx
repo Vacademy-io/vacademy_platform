@@ -37,7 +37,11 @@ export function InboundSetupGuideCard() {
     // the guide every time they hit Settings. They can expand to re-check.
     const [expanded, setExpanded] = useState(!flowIsSet);
 
-    const base = (cfg?.webhookCallbackBase ?? '').replace(/\/$/, '');
+    // Defensive trim — backend property files have occasionally been seen with
+    // a leading space after the `=` ("foo= https://...") which Spring preserves
+    // verbatim. Without this, the Connect-applet URL gets a leading space and
+    // Exotel rejects it silently.
+    const base = (cfg?.webhookCallbackBase ?? '').trim().replace(/\/$/, '');
     const tokenSet = !!cfg?.webhookTokenSet;
     // We never send the actual token to the frontend (it's a secret). Render
     // a clearly-visible placeholder so the admin substitutes it manually.

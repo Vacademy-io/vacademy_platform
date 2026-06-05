@@ -128,7 +128,7 @@ export const StudentSidebar = ({
     };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
-    const { selectedStudent, openOverlay } = useStudentSidebar();
+    const { selectedStudent, openOverlay, isOverlayOpen } = useStudentSidebar();
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
@@ -245,6 +245,14 @@ export const StudentSidebar = ({
             });
         }
     }, [category]);
+
+    // The Vacademy design handoff defines ONE primary surface for the learner
+    // profile — the fullscreen overlay. The right-side drawer remains mounted
+    // only for callers that still use it programmatically (refresh hooks,
+    // legacy entry points); whenever the overlay is open we render null so
+    // the drawer never visually competes with the overlay. Placed AFTER all
+    // hooks per Rules of Hooks.
+    if (isOverlayOpen) return null;
 
     return (
         <Sidebar

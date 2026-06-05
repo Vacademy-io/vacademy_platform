@@ -75,7 +75,10 @@ function RouteComponent() {
   // Handle navigation to a specific session
   const handleNavigateToSession = useCallback(
     async (session: SessionDetails, isInWaitingRoom: boolean) => {
-      if (isInWaitingRoom) {
+      // PRE_JOINING sessions join the live class directly during the
+      // waiting-room window instead of entering the waiting-room screen.
+      const isPreJoining = session.waiting_room_type === "PRE_JOINING";
+      if (isInWaitingRoom && !isPreJoining) {
         // Navigate to waiting room (waiting room will handle attendance marking)
         console.log("Navigating to waiting room for:", session.title);
         navigate({

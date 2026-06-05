@@ -25,7 +25,7 @@ import {
     Record,
 } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
-import { WAITING_ROOM_OPTIONS } from '../-constants/options';
+import { WAITING_ROOM_OPTIONS, WAITING_ROOM_TYPE_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
 import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple, CheckCircle } from '@phosphor-icons/react';
 
@@ -70,7 +70,7 @@ import type { PlatformKey } from '@/services/live-session-settings';
 import { transformFormToDTOStep1, transformFormToDTOStep2 } from '../../-constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { sessionFormSchema } from '../-schema/schema';
-import { RecurringType, SessionPlatform, SessionType } from '../../-constants/enums';
+import { RecurringType, SessionPlatform, SessionType, WaitingRoomType } from '../../-constants/enums';
 import { createLiveSessionsChunked, type BulkLiveSessionRowResult } from '../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
@@ -289,6 +289,7 @@ export function BulkScheduleGrid() {
             sharedOptions: {
                 enableWaitingRoom: false,
                 waitingRoomMinutes: '5',
+                waitingRoomType: WaitingRoomType.WAITING_ROOM,
                 waitingRoomThumbnailFileId: undefined,
                 waitingRoomMusicFileId: undefined,
                 allowRewind: true,
@@ -572,6 +573,10 @@ export function BulkScheduleGrid() {
                     openWaitingRoomBefore: rowWaitingEnabled
                         ? rowWaitingMinutes
                         : '',
+                    waitingRoomType:
+                        row.waitingRoomType ??
+                        shared.waitingRoomType ??
+                        WaitingRoomType.WAITING_ROOM,
                     sessionType: SessionType.LIVE,
                     sessionPlatform: row.platform || 'other',
                     enableWaitingRoom: rowWaitingEnabled,
@@ -912,10 +917,14 @@ export function BulkScheduleGrid() {
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="text-sm font-medium text-neutral-800">
-                                    Enable Waiting Room
+                                    Enable Waiting Room or Pre-Joining
                                 </div>
                                 <div className="mt-0.5 text-xs text-neutral-500">
-                                    Hold learners in a waiting room before each class.
+                                    Turn this on to give learners early access before each
+                                    class starts — they either wait in a waiting room (with
+                                    an optional thumbnail and background music) or join the
+                                    live class directly (Pre-Joining), depending on the
+                                    Waiting Room Type you choose.
                                 </div>
                             </div>
                             <Controller
@@ -931,6 +940,35 @@ export function BulkScheduleGrid() {
                         </div>
                         {form.watch('sharedOptions.enableWaitingRoom') && (
                             <div className="mt-3 space-y-3">
+                                <div>
+                                    <label className="text-xs font-medium text-neutral-600">
+                                        Waiting Room Type
+                                    </label>
+                                    <Controller
+                                        control={form.control}
+                                        name="sharedOptions.waitingRoomType"
+                                        render={({ field }) => (
+                                            <Select
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                            >
+                                                <SelectTrigger className="mt-1 h-8 w-full">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {WAITING_ROOM_TYPE_OPTIONS.map((opt) => (
+                                                        <SelectItem
+                                                            key={opt._id}
+                                                            value={opt.value}
+                                                        >
+                                                            {opt.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    />
+                                </div>
                                 <div>
                                     <label className="text-xs font-medium text-neutral-600">
                                         Open waiting room before
@@ -960,6 +998,9 @@ export function BulkScheduleGrid() {
                                         )}
                                     />
                                 </div>
+                                {form.watch('sharedOptions.waitingRoomType') !==
+                                    WaitingRoomType.PRE_JOINING && (
+                                    <>
                                 <div>
                                     <label className="text-xs font-medium text-neutral-600">
                                         Thumbnail
@@ -1055,6 +1096,8 @@ export function BulkScheduleGrid() {
                                         )}
                                     </div>
                                 </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -2181,6 +2224,7 @@ const RowBatchPicker = ({ value, onChange, courses, sessionList }: RowBatchPicke
 interface WaitingRoomSharedSnapshot {
     enableWaitingRoom: boolean;
     waitingRoomMinutes: string;
+    waitingRoomType?: string;
     waitingRoomThumbnailFileId?: string;
     waitingRoomMusicFileId?: string;
 }
@@ -2188,6 +2232,7 @@ interface WaitingRoomSharedSnapshot {
 interface RowWaitingRoomChange {
     enabled?: boolean;
     minutes?: string;
+    waitingRoomType?: string;
     thumbnailFileId?: string;
     musicFileId?: string;
     reset?: boolean;
@@ -2198,6 +2243,7 @@ interface RowWaitingRoomPickerProps {
     row: {
         waitingRoomEnabled?: boolean;
         waitingRoomMinutes?: string;
+        waitingRoomType?: string;
         waitingRoomThumbnailFileId?: string;
         waitingRoomMusicFileId?: string;
     } | null;
@@ -2210,6 +2256,9 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
     // the popover. If the row hasn't customised a field, fall back to shared.
     const effectiveEnabled = row?.waitingRoomEnabled ?? shared.enableWaitingRoom;
     const effectiveMinutes = row?.waitingRoomMinutes ?? shared.waitingRoomMinutes;
+    const effectiveWaitingRoomType =
+        row?.waitingRoomType ?? shared.waitingRoomType ?? WaitingRoomType.WAITING_ROOM;
+    const isPreJoining = effectiveWaitingRoomType === WaitingRoomType.PRE_JOINING;
     const effectiveThumb =
         row?.waitingRoomThumbnailFileId ?? shared.waitingRoomThumbnailFileId;
     const effectiveMusic =
@@ -2326,6 +2375,26 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
                     <div className="space-y-3 p-3">
                         <div>
                             <label className="text-xs font-medium text-neutral-600">
+                                Waiting room type
+                            </label>
+                            <Select
+                                value={effectiveWaitingRoomType}
+                                onValueChange={(v) => onChange({ waitingRoomType: v })}
+                            >
+                                <SelectTrigger className="mt-1 h-8 w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {WAITING_ROOM_TYPE_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt._id} value={opt.value}>
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-neutral-600">
                                 Open before start
                             </label>
                             <Select
@@ -2344,6 +2413,8 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
                                 </SelectContent>
                             </Select>
                         </div>
+                        {!isPreJoining && (
+                            <>
                         <div>
                             <label className="text-xs font-medium text-neutral-600">
                                 Thumbnail
@@ -2454,6 +2525,8 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
                                     </p>
                                 )}
                         </div>
+                            </>
+                        )}
                     </div>
                 )}
                 {isOverridden && (
@@ -2523,6 +2596,7 @@ const RowEditor = memo(function RowEditor({
     const [
         waitingRoomEnabled,
         waitingRoomMinutes,
+        waitingRoomType,
         waitingRoomThumbnailFileId,
         waitingRoomMusicFileId,
     ] = useWatch({
@@ -2530,6 +2604,7 @@ const RowEditor = memo(function RowEditor({
         name: [
             `rows.${index}.waitingRoomEnabled`,
             `rows.${index}.waitingRoomMinutes`,
+            `rows.${index}.waitingRoomType`,
             `rows.${index}.waitingRoomThumbnailFileId`,
             `rows.${index}.waitingRoomMusicFileId`,
         ] as const,
@@ -2693,6 +2768,7 @@ const RowEditor = memo(function RowEditor({
                     row={{
                         waitingRoomEnabled,
                         waitingRoomMinutes,
+                        waitingRoomType,
                         waitingRoomThumbnailFileId,
                         waitingRoomMusicFileId,
                     }}
@@ -2709,6 +2785,13 @@ const RowEditor = memo(function RowEditor({
                             form.setValue(
                                 `rows.${index}.waitingRoomMinutes` as const,
                                 patch.minutes,
+                                { shouldDirty: true }
+                            );
+                        }
+                        if ('waitingRoomType' in patch) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomType` as const,
+                                patch.waitingRoomType,
                                 { shouldDirty: true }
                             );
                         }
@@ -2734,6 +2817,11 @@ const RowEditor = memo(function RowEditor({
                             );
                             form.setValue(
                                 `rows.${index}.waitingRoomMinutes` as const,
+                                undefined,
+                                { shouldDirty: true }
+                            );
+                            form.setValue(
+                                `rows.${index}.waitingRoomType` as const,
                                 undefined,
                                 { shouldDirty: true }
                             );

@@ -34,6 +34,7 @@ public class GetSessionByIdResponseDTO {
     private LocalDate sessionEndDate;
     private String accessType;
     private String waitingRoomTime;
+    private String waitingRoomType;
     private String thumbnailFileId;
     private String backgroundScoreFileId;
     private String coverFileId;

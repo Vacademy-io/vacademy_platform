@@ -130,6 +130,7 @@ public class GetSessionByIdService {
             dto.setRecurrenceType(first.getRecurrenceType());
             dto.setAccessType(first.getAccessLevel());
             dto.setWaitingRoomTime(first.getWaitingRoomTime() != null ? first.getWaitingRoomTime().toString() : null);
+            dto.setWaitingRoomType(first.getWaitingRoomType());
             dto.setThumbnailFileId(first.getThumbnailFileId());
             dto.setBackgroundScoreFileId(first.getBackgroundScoreFileId());
             dto.setCoverFileId(first.getCoverFileId());

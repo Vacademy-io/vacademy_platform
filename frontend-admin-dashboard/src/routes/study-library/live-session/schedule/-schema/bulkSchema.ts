@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AccessType } from '../../-constants/enums';
+import { AccessType, WaitingRoomType } from '../../-constants/enums';
 
 /**
  * Single row in the Bulk Schedule grid. Each row produces one independent
@@ -43,6 +43,12 @@ export const bulkSessionRowSchema = z
         waitingRoomEnabled: z.boolean().optional(),
         /** Override: minutes before start the waiting room opens for this row. */
         waitingRoomMinutes: z.string().optional(),
+        /**
+         * Override: waiting-room behaviour for this row. DEFAULT = waiting-room
+         * screen; PRE_JOINING = learner joins the live class directly. Undefined
+         * is treated as DEFAULT at submit time.
+         */
+        waitingRoomType: z.nativeEnum(WaitingRoomType).optional(),
         /** Override: S3 file id of a row-specific waiting-room thumbnail. */
         waitingRoomThumbnailFileId: z.string().optional(),
         /** Override: S3 file id of a row-specific waiting-room background score. */
@@ -93,6 +99,12 @@ export const bulkSharedOptionsSchema = z.object({
     enableWaitingRoom: z.boolean().default(false),
     /** Minutes before start time to open the waiting room. Used only when enableWaitingRoom is true. */
     waitingRoomMinutes: z.string().default('5'),
+    /**
+     * Shared waiting-room behaviour for every row. DEFAULT = waiting-room screen;
+     * PRE_JOINING = learner joins the live class directly during the window
+     * (thumbnail / background score don't apply). A row can override this.
+     */
+    waitingRoomType: z.nativeEnum(WaitingRoomType).default(WaitingRoomType.WAITING_ROOM),
     /** S3 file id of the waiting-room thumbnail uploaded once and applied to every bulk row. */
     waitingRoomThumbnailFileId: z.string().optional(),
     /** S3 file id of the waiting-room background music. */

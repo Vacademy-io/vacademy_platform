@@ -242,6 +242,10 @@ function RouteComponent() {
     const lt = (session.link_type ?? "").toLowerCase();
     const isZoomReady = lt === "zoom" || lt === "zoom_meeting";
 
+    // PRE_JOINING: during the waiting-room window the learner joins the live
+    // class directly instead of entering the waiting-room screen.
+    const isPreJoining = session.waiting_room_type === "PRE_JOINING";
+
     // If session has ended, show error — except for Zoom-ready sessions; the
     // SDK / backend will surface a real "meeting ended" if Zoom has ended it.
     if (hasSessionEnded && !isZoomReady) {
@@ -261,7 +265,7 @@ function RouteComponent() {
     // If we're in waiting room period, ONLY go to waiting room — skip for
     // Zoom-ready sessions; they go straight to the SDK / Zoom app, which has
     // its own waiting room and handles the host-not-started case.
-    if (isInWaitingRoom && !isZoomReady) {
+    if (isInWaitingRoom && !isZoomReady && !isPreJoining) {
       // Navigate to waiting room without marking attendance
       (navigate as any)({
         to: "/study-library/live-class/waiting-room",
@@ -271,8 +275,9 @@ function RouteComponent() {
     }
 
     // If live class has started (or it's a Zoom session with a meeting that's
-    // joinable any time), proceed to live session.
-    if (isLiveClassStarted || isZoomReady) {
+    // joinable any time, or a PRE_JOINING session whose waiting-room window is
+    // open), proceed to join the live class directly.
+    if (isLiveClassStarted || isZoomReady || (isInWaitingRoom && isPreJoining)) {
       // Helper to navigate/open based on session type
       const isBbb = session.link_type === "bbb" || session.link_type === "BBB_MEETING";
 
@@ -475,6 +480,9 @@ function RouteComponent() {
     const isZoom = lt === "zoom" || lt === "zoom_meeting";
     const canJoinEarlyZoom = isZoom;
     const zoomSettingUp = isZoom && !session.provider_meeting_id;
+    // PRE_JOINING: during the waiting-room window, offer "Join Live Class"
+    // (direct join) instead of "Join Waiting Room".
+    const isPreJoining = session.waiting_room_type === "PRE_JOINING";
 
     return (
       <div
@@ -586,7 +594,9 @@ function RouteComponent() {
                     : isBeforeWaitingRoom
                       ? "Not Started"
                       : isInWaitingRoom
-                        ? "Join Waiting Room"
+                        ? isPreJoining
+                          ? "Join Live Class"
+                          : "Join Waiting Room"
                         : "Join Session"}
               </Button>
             )}
@@ -698,7 +708,9 @@ function RouteComponent() {
                     : isBeforeWaitingRoom
                       ? "Not Started"
                       : isInWaitingRoom
-                        ? "Join Waiting Room"
+                        ? isPreJoining
+                          ? "Join Live Class"
+                          : "Join Waiting Room"
                         : "Join Session"}
               </Button>
             )}

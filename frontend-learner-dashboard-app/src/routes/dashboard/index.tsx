@@ -377,8 +377,11 @@ export function DashboardComponent() {
     const isInWaitingRoom =
       now >= waitingRoomStart && now < convertedSessionDate;
     const isInMainSession = now >= convertedSessionDate;
+    // PRE_JOINING sessions join the live class directly during the
+    // waiting-room window instead of entering the waiting-room screen.
+    const isPreJoining = session.waiting_room_type === "PRE_JOINING";
 
-    if (isInWaitingRoom) {
+    if (isInWaitingRoom && !isPreJoining) {
       track("Live Session Waiting Room Entered", {
         sessionId: session.session_id,
         sessionTitle: session.title,
@@ -387,7 +390,7 @@ export function DashboardComponent() {
         to: "/study-library/live-class/waiting-room",
         search: { sessionId: session.schedule_id },
       });
-    } else if (isInMainSession) {
+    } else if (isInMainSession || (isInWaitingRoom && isPreJoining)) {
       try {
         await markAttendance({
           sessionId: session.session_id,

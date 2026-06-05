@@ -39,6 +39,9 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         // learner can join any time before the session window closes, even
         // ahead of the scheduled start.
         String getProviderMeetingId();
+        // DEFAULT | PRE_JOINING. Drives whether the learner's waiting-room-window
+        // button enters the waiting-room screen or joins the live class directly.
+        String getWaitingRoomType();
     }
 
     public interface ScheduledSessionProjection {
@@ -183,6 +186,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         SELECT DISTINCT
             s.id AS sessionId,
             s.waiting_room_time AS waitingRoomTime,
+            s.waiting_room_type AS waitingRoomType,
             s.thumbnail_file_id AS thumbnailFileId,
             s.background_score_file_id AS backgroundScoreFileId,
             s.session_streaming_service_type AS sessionStreamingServiceType,
@@ -221,6 +225,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         SELECT DISTINCT
             s.id AS sessionId,
             s.waiting_room_time AS waitingRoomTime,
+            s.waiting_room_type AS waitingRoomType,
             s.thumbnail_file_id AS thumbnailFileId,
             s.background_score_file_id AS backgroundScoreFileId,
             s.session_streaming_service_type AS sessionStreamingServiceType,
@@ -259,6 +264,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         SELECT DISTINCT
             s.id AS sessionId,
             s.waiting_room_time AS waitingRoomTime,
+            s.waiting_room_type AS waitingRoomType,
             s.thumbnail_file_id AS thumbnailFileId,
             s.background_score_file_id AS backgroundScoreFileId,
             s.session_streaming_service_type AS sessionStreamingServiceType,
@@ -303,6 +309,7 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         SELECT DISTINCT
             s.id AS sessionId,
             s.waiting_room_time AS waitingRoomTime,
+            s.waiting_room_type AS waitingRoomType,
             s.thumbnail_file_id AS thumbnailFileId,
             s.background_score_file_id AS backgroundScoreFileId,
             s.session_streaming_service_type AS sessionStreamingServiceType,

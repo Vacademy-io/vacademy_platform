@@ -34,6 +34,8 @@ export interface LiveSessionStep1RequestDTO {
     background_score_file_id?: string;
     thumbnail_file_id?: string;
     waiting_room_time?: number;
+    // DEFAULT (waiting-room screen) | PRE_JOINING (join live class directly). See WaitingRoomType.
+    waiting_room_type?: string;
     link_type?: string;
     allow_rewind?: boolean;
     allow_play_pause?: boolean;
@@ -280,6 +282,7 @@ export function transformFormToDTOStep1(
         recurringSchedule = [],
         enableWaitingRoom,
         openWaitingRoomBefore,
+        waitingRoomType,
         streamingType,
         sessionPlatform,
         allowRewind,
@@ -358,6 +361,8 @@ export function transformFormToDTOStep1(
         background_score_file_id: musicFileId,
         thumbnail_file_id: thumbnailFileId,
         waiting_room_time: enableWaitingRoom ? Number(openWaitingRoomBefore) : 0,
+        // Type only matters while a waiting-room window exists; default otherwise.
+        waiting_room_type: enableWaitingRoom ? (waitingRoomType ?? 'WAITING_ROOM') : 'WAITING_ROOM',
         link_type: sessionPlatform,
         allow_rewind: allowRewind,
         allow_play_pause: allowPause,

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { AccessType, RecurringType } from '../../-constants/enums';
+import { AccessType, RecurringType, WaitingRoomType } from '../../-constants/enums';
 
 const weekDaysEnum = z.enum([
     'monday',
@@ -66,6 +66,8 @@ export const sessionFormSchema = z
         title: z.string().min(1, 'Title must be at least 1 characters'),
         subject: z.string().optional(),
         openWaitingRoomBefore: z.string().optional(),
+        // DEFAULT (waiting-room screen) | PRE_JOINING (join live class directly).
+        waitingRoomType: z.nativeEnum(WaitingRoomType).default(WaitingRoomType.WAITING_ROOM),
         sessionType: z.string(),
         sessionPlatform: z.string(),
         enableWaitingRoom: z.boolean(),

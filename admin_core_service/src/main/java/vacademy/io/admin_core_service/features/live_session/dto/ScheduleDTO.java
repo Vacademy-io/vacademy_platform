@@ -27,6 +27,7 @@ public interface ScheduleDTO {
     String getLearnerButtonConfig();
     String getWaitingRoomLink();
     Integer getWaitingRoomTime();
+    String getWaitingRoomType();
     String getRegistrationFormLinkForPublicSessions();
     String getCreatedByUserId();
     String getTitle();

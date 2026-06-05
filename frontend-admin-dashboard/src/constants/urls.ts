@@ -95,6 +95,49 @@ export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/in
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
+
+// Telephony — provider-agnostic click-to-call + recording surface.
+// Connect:   POST   /v1/telephony/calls/connect  -> { callLogId, eventsStreamUrl, ... }
+// Events:    SSE    /v1/telephony/calls/{id}/events  (public; capability via UUID)
+// History:   GET    /v1/telephony/calls?userId=
+// Recording: GET    /v1/telephony/calls/{id}/recording  -> { url }
+// Admin:     PUT    /v1/telephony/config/{instituteId}
+//            POST   /v1/telephony/numbers
+//
+// Pointed at BASE_URL so it picks up the active environment's admin-core-service
+// host. For local testing against a different port, swap to LOCAL_ADMIN_CORE_BASE
+// temporarily, but don't commit that — production needs BASE_URL.
+export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telephony/calls/connect`;
+// Returns { numbers, recommendedNumberId, strategyKey } — drives the runtime
+// picker on the Call button when an institute has multiple ExoPhones.
+export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
+// userId + instituteId are both required — the backend rejects cross-institute lookups.
+export const TELEPHONY_CALLS_BY_USER = (
+    userId: string,
+    instituteId: string,
+    page = 0,
+    size = 20
+) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls?userId=${encodeURIComponent(userId)}&instituteId=${encodeURIComponent(instituteId)}&page=${page}&size=${size}`;
+export const TELEPHONY_CALL_RECORDING = (callLogId: string, instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/recording?instituteId=${encodeURIComponent(instituteId)}`;
+export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/events`;
+export const TELEPHONY_CONFIG = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/config/${instituteId}`;
+export const TELEPHONY_NUMBERS = `${BASE_URL}/admin-core-service/v1/telephony/numbers`;
+export const TELEPHONY_NUMBER_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/numbers/${id}`;
+// Retry the Exotel flow-attach for a number whose last attempt was
+// PENDING / FAILED. POST with no body.
+export const TELEPHONY_NUMBER_ATTACH = (id: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/numbers/${encodeURIComponent(id)}/attach`;
+// Provider-specific sync: pull the list of ExoPhones on the institute's
+// Exotel account so the Numbers card can offer "Sync from Exotel" instead
+// of asking the admin to copy each Sid by hand.
+export const TELEPHONY_EXOTEL_EXOPHONES = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/exotel/exophones?instituteId=${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;

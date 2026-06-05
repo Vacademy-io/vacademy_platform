@@ -4260,7 +4260,14 @@ class VideoGenerationPipeline:
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
             interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION", "SLIDES"]
-            
+
+            # Defaults for the post-branch audio passes (background music +
+            # audio mix). The STANDARD VIDEO FLOW (else branch) sets these, but
+            # interactive content types take the `if` branch and would otherwise
+            # leave them unbound → UnboundLocalError at the music/mix call sites.
+            _director_plan = None
+            _seg_audio_dur = 0.0
+
             if content_type in interactive_types:
                 print(f"🎮 Processing interactive content type: {content_type}")
                 # For interactive content, we bypass audio-based segmentation and directly use the structure from the plan

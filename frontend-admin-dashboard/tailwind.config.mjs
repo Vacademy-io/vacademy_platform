@@ -77,6 +77,13 @@ module.exports = {
                         fontWeight: '400',
                     },
                 ],
+                '2xs': [
+                    '11px',
+                    {
+                        lineHeight: '14px',
+                        fontWeight: '400',
+                    },
+                ],
                 'h1-semibold': [
                     '30px',
                     {

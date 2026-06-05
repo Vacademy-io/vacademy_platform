@@ -48,6 +48,7 @@ import {
     LeadTable,
     LeadPagination,
     useUpdateLeadTier,
+    usePlaceCall,
     recentLeadToVM,
     type LeadActionHandlers,
 } from '@/components/shared/leads';
@@ -329,6 +330,7 @@ const RecentLeadsContent = () => {
 
     const invalidateKeys = [['recent-leads'], ['lead-profiles-batch']];
     const updateTier = useUpdateLeadTier({ invalidateKeys });
+    const placeCall = usePlaceCall({ invalidateKeys });
 
     const actions: LeadActionHandlers = useMemo(
         () => ({
@@ -340,8 +342,24 @@ const RecentLeadsContent = () => {
                 setNoteTarget({ userId, userName, responseId }),
             onAssignCounsellor: (userId, userName) => setCounsellorTarget({ userId, userName }),
             onSetTier: (userId, _userName, tier) => updateTier.mutate({ userId, tier }),
+            onCallLead: (vm, preferredNumberId) => {
+                if (!vm.responseId) return;
+                placeCall.mutate({
+                    responseId: vm.responseId,
+                    userId: vm.userId ?? undefined,
+                    preferredNumberId,
+                });
+            },
+            canCall: (vm) => {
+                if (!vm.responseId) return { allowed: false, reason: 'Lead has no submission id' };
+                const phone = vm.phone && vm.phone !== '-' ? vm.phone : '';
+                if (!phone) return { allowed: false, reason: 'Lead has no phone on file' };
+                if (placeCall.isPending)
+                    return { allowed: false, reason: 'Another call is starting…' };
+                return { allowed: true };
+            },
         }),
-        [setSelectedStudent, updateTier]
+        [setSelectedStudent, updateTier, placeCall]
     );
 
     const handleStatusUpdated = () => queryClient.invalidateQueries({ queryKey: ['recent-leads'] });

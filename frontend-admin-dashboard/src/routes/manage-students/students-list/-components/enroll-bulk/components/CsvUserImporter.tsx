@@ -114,10 +114,11 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
             }
         }
 
-        // Add institute custom fields so they can be bulk-imported. Gather from
-        // every bucket (a field can be standalone, institute-level, or grouped),
-        // dedup by id, and include unless explicitly hidden from the learner list —
-        // the same set the export picker shows, so the two stay consistent.
+        // Add institute custom fields so they can be bulk-imported. The import is a
+        // data-entry tool, so we include EVERY active custom field (from any bucket:
+        // standalone, institute-level, or grouped) regardless of its learner-list
+        // visibility — admins may need to populate a field that isn't shown as a
+        // column. The picker is opt-in, so they choose which to include.
         const cfCols: { csvKey: string; customFieldId: string; label: string; required: boolean }[] = [];
         if (settings) {
             const allCustomFields = [
@@ -128,7 +129,6 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
             const seenCustomIds = new Set<string>();
             for (const cf of allCustomFields) {
                 if (!cf?.id || !cf?.name || seenCustomIds.has(cf.id)) continue;
-                if (cf.visibility && cf.visibility.learnersList === false) continue;
                 seenCustomIds.add(cf.id);
                 const safeKey = `cf_${cf.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
                 cfCols.push({

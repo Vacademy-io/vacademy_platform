@@ -50,6 +50,9 @@ export interface LearnerButtonConfig {
 export interface SessionDetails {
   session_id: string;
   waiting_room_time: number;
+  // 'DEFAULT' = waiting-room screen during the waiting-room window.
+  // 'PRE_JOINING' = join the live class directly during that window.
+  waiting_room_type?: string;
   schedule_id: string;
   meeting_date: string;
   start_time: string;

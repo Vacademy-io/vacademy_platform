@@ -266,7 +266,8 @@ public class GetLiveSessionService {
         List<LiveSessionRepository.LiveSessionListProjection> projections =
                 sessionRepository.findUpcomingSessionsForBatch(instituteId);
 
-        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> {
+                LiveSessionListDTO dto = new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -286,8 +287,10 @@ public class GetLiveSessionService {
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
-                p.getLinkType()
-        )).toList());
+                p.getLinkType());
+                dto.setWaitingRoomType(p.getWaitingRoomType());
+                return dto;
+        }).toList());
 
         enrichWithPackageSessionDetails(flatList);
 
@@ -308,7 +311,8 @@ public class GetLiveSessionService {
         List<LiveSessionRepository.LiveSessionListProjection> projections =
                 sessionRepository.findUpcomingSessionsForUser(userId);
 
-        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> new LiveSessionListDTO(
+        List<LiveSessionListDTO> flatList = new ArrayList<>(projections.stream().map(p -> {
+                LiveSessionListDTO dto = new LiveSessionListDTO(
                 p.getSessionId(),
                 p.getWaitingRoomTime(),
                 p.getThumbnailFileId(),
@@ -328,8 +332,10 @@ public class GetLiveSessionService {
                 deserializeLearnerButtonConfig(p.getLearnerButtonConfig()),
                 p.getDefaultClassLink(),
                 p.getDefaultClassName(),
-                p.getLinkType()
-        )).toList());
+                p.getLinkType());
+                dto.setWaitingRoomType(p.getWaitingRoomType());
+                return dto;
+        }).toList());
 
         enrichWithPackageSessionDetails(flatList);
 
@@ -380,6 +386,7 @@ public class GetLiveSessionService {
                     p.getDefaultClassName(),
                     p.getLinkType());
             dto.setProviderMeetingId(p.getProviderMeetingId());
+            dto.setWaitingRoomType(p.getWaitingRoomType());
             return dto;
         }).toList());
 
@@ -430,6 +437,7 @@ public class GetLiveSessionService {
                     p.getDefaultClassName(),
                     p.getLinkType());
                 dto.setProviderMeetingId(p.getProviderMeetingId());
+                dto.setWaitingRoomType(p.getWaitingRoomType());
                 return dto;
             })
             .collect(Collectors.toList());

@@ -29,6 +29,9 @@ public class LiveSessionStep1RequestDTO {
     private String recurrenceType; // e.g., "WEEKLY"
     private String linkType;
     private Integer waitingRoomTime;
+    // DEFAULT (waiting-room screen) | PRE_JOINING (join live class directly during
+    // the waiting-room window). See WaitingRoomTypeEnum.
+    private String waitingRoomType;
     private String thumbnailFileId;
     private String backgroundScoreFileId;
     private String coverFileId;

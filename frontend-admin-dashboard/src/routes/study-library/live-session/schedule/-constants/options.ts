@@ -1,4 +1,4 @@
-import { StreamingPlatform } from '../../-constants/enums';
+import { StreamingPlatform, WaitingRoomType } from '../../-constants/enums';
 
 const WAITING_ROOM_OPTIONS = [
     { value: '5', label: '5 minutes', _id: 1 },
@@ -6,6 +6,11 @@ const WAITING_ROOM_OPTIONS = [
     { value: '15', label: '15 minutes', _id: 3 },
     { value: '30', label: '30 minutes', _id: 4 },
     { value: '45', label: '45 minutes', _id: 5 },
+];
+
+const WAITING_ROOM_TYPE_OPTIONS = [
+    { value: WaitingRoomType.WAITING_ROOM, label: 'Waiting Room', _id: 1 },
+    { value: WaitingRoomType.PRE_JOINING, label: 'Pre-Joining (join live class directly)', _id: 2 },
 ];
 
 const STREAMING_OPTIONS = [
@@ -110,4 +115,4 @@ const TIMEZONE_OPTIONS = [
     },
 ];
 
-export { WAITING_ROOM_OPTIONS, STREAMING_OPTIONS, TIMEZONE_OPTIONS };
+export { WAITING_ROOM_OPTIONS, WAITING_ROOM_TYPE_OPTIONS, STREAMING_OPTIONS, TIMEZONE_OPTIONS };

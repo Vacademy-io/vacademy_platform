@@ -133,16 +133,22 @@ export const StudentSidebar = ({
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
      * grouped left-rail navigation per the Vacademy design handoff.
-     * Phase B ships the rendering path; Phase C wires this to the
-     * display-settings system so tenants can opt in via admin UI.
-     * Default 'tabs' preserves the existing UX for every client today.
-     *
-     * Read via `as` cast so TS treats the value as the full union — without
-     * the cast, flow analysis narrows it to the literal 'tabs' and reports
-     * every `=== 'grouped'` comparison as unreachable.
+     * Now read directly from the typed StudentSideViewSettings.profileNavStyle
+     * field. Defaults to 'tabs' for back-compat.
      */
-    const navStyle = ((tabSettings as unknown as { profileNavStyle?: 'tabs' | 'grouped' } | null)
-        ?.profileNavStyle ?? 'tabs') as 'tabs' | 'grouped';
+    const navStyle: 'tabs' | 'grouped' = tabSettings?.profileNavStyle ?? 'tabs';
+    /**
+     * Per-tenant feature-module toggles per the handoff GROUP_TO_MODULE
+     * mapping. Missing or undefined entries fall back to true so existing
+     * clients see no change.
+     */
+    const enabledModules = {
+        learning: tabSettings?.profileModules?.learning ?? true,
+        finance: tabSettings?.profileModules?.finance ?? true,
+        crm: tabSettings?.profileModules?.crm ?? true,
+        account: tabSettings?.profileModules?.account ?? true,
+        records: tabSettings?.profileModules?.records ?? true,
+    };
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const leadSettings = useLeadSettings();
@@ -474,13 +480,7 @@ export const StudentSidebar = ({
                                     }).map((s) => s.id)
                                 )
                             }
-                            enabledModules={{
-                                learning: true,
-                                finance: true,
-                                crm: true,
-                                account: true,
-                                records: true,
-                            }}
+                            enabledModules={enabledModules}
                         />
                     )}
                 <div className="flex-1 overflow-y-auto p-3">

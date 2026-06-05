@@ -10,6 +10,18 @@ interface StudentSidebarContextType {
      *  pass nothing to open with whatever is currently selected. */
     openOverlay: (student?: StudentTable) => void;
     closeOverlay: () => void;
+    /**
+     * Optional list-scope nav: lets the overlay's Prev/Next chevron group walk
+     * through the surrounding learner list without closing. Tables that render
+     * a list of learners can call `setLearnerList` on data change; the overlay
+     * then derives the current index from `selectedStudent.user_id`.
+     */
+    learnerList: StudentTable[];
+    setLearnerList: (list: StudentTable[]) => void;
+    /** index, total — null when the selected learner isn't in the list. */
+    learnerListPosition: { index: number; total: number } | null;
+    goPrevLearner: () => void;
+    goNextLearner: () => void;
 }
 
 export const StudentSidebarContext = createContext<StudentSidebarContextType | undefined>(

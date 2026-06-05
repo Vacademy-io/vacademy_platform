@@ -54,7 +54,7 @@ export const ProfileSectionCard = ({
             <div className="mb-2 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2.5">
                     {Icon && (
-                        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
                             <Icon className="size-4" weight="duotone" />
                         </span>
                     )}
@@ -386,10 +386,20 @@ export const ProfileHeroStat = ({
     const content = (
         <>
             <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     {label}
                 </span>
-                {Icon && <Icon className="size-4 text-neutral-300" />}
+                {Icon && (
+                    <span
+                        className={cn(
+                            'flex size-8 shrink-0 items-center justify-center rounded-md',
+                            TONE_BG[tone],
+                            TONE_TEXT[tone]
+                        )}
+                    >
+                        <Icon className="size-4" weight="duotone" />
+                    </span>
+                )}
             </div>
             <div className={cn('text-xl font-semibold leading-none', TONE_TEXT[tone])}>{value}</div>
             {trend && (

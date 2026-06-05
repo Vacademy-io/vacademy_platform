@@ -1252,7 +1252,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
             {/* ── Action bar ── */}
             <ProfileActionBar>
                 <MyButton
-                    buttonType="secondary"
+                    buttonType="primary"
                     scale="small"
                     onClick={() => {
                         setHeroNoteAction('NOTE');
@@ -1279,7 +1279,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     Schedule Follow-up
                 </MyButton>
                 <MyButton
-                    buttonType="secondary"
+                    buttonType="text"
                     scale="small"
                     onClick={() => setShowAssignCounselor(true)}
                 >

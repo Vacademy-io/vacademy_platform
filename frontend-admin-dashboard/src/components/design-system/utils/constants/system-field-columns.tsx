@@ -1,5 +1,5 @@
 import { ColumnDef } from '@tanstack/react-table';
-import { SystemField } from '@/services/custom-field-settings';
+import type { SystemField } from '@/services/custom-field-settings';
 
 /**
  * Map system field keys to their corresponding column accessorKeys in myColumns
@@ -32,6 +32,48 @@ const SYSTEM_FIELD_KEY_TO_ACCESSOR: Record<string, string> = {
     EXPIRY_DATE: 'expiry_date',
     STATUS: 'status',
     REFERRAL_COUNT: 'referral_count',
+    ADDRESS_LINE: 'address_line',
+    PIN_CODE: 'pin_code',
+    DATE_OF_BIRTH: 'date_of_birth',
+};
+
+// Some institutes have legacy / non-standard system-field keys (camelCase, alt
+// spellings) that don't match the canonical UPPER_SNAKE keys above. These aliases
+// (keyed by the normalized UPPER_SNAKE form) map those to the right column so their
+// visibility toggle still takes effect. Exact matches above always win first.
+const SYSTEM_FIELD_KEY_ALIASES: Record<string, string> = {
+    DATE_OF_BERTH: 'date_of_birth',
+    DOB: 'date_of_birth',
+    PINCODE: 'pin_code',
+    PARENT_MOBILE_NAME: 'parents_mobile_number',
+    PARENT_MOBILE_NUMBER: 'parents_mobile_number',
+    PARENTS_MOBILE: 'parents_mobile_number',
+    PARENT_EMAIL: 'parents_email',
+    PARENT_TO_MOTHER_MOBILE_NUMBER: 'parents_to_mother_mobile_number',
+    PARENT_TO_MOTHER_EMAIL: 'parents_to_mother_email',
+    FATHER_MOBILE_NUMBER: 'parents_mobile_number',
+    FATHER_EMAIL: 'parents_email',
+    MOTHER_MOBILE_NUMBER: 'parents_to_mother_mobile_number',
+    MOTHER_EMAIL: 'parents_to_mother_email',
+};
+
+/** Normalize a field key (camelCase / spaces / hyphens) to UPPER_SNAKE_CASE. */
+const toUpperSnake = (key: string): string =>
+    key
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .replace(/[\s-]+/g, '_')
+        .toUpperCase();
+
+/**
+ * Resolve a system field key to a table accessor, tolerant of key-format
+ * variations: exact key → normalized UPPER_SNAKE → known alias. Returns undefined
+ * if the field has no corresponding column.
+ */
+export const resolveSystemFieldAccessor = (key: string): string | undefined => {
+    if (!key) return undefined;
+    if (SYSTEM_FIELD_KEY_TO_ACCESSOR[key]) return SYSTEM_FIELD_KEY_TO_ACCESSOR[key];
+    const normalized = toUpperSnake(key);
+    return SYSTEM_FIELD_KEY_TO_ACCESSOR[normalized] ?? SYSTEM_FIELD_KEY_ALIASES[normalized];
 };
 
 /**
@@ -71,9 +113,9 @@ export const getSystemFieldColumnVisibility = (): Record<string, boolean> => {
         return visibility;
     }
 
-    // Set visibility based on system fields
+    // Set visibility based on system fields (tolerant of non-standard keys)
     systemFields.forEach((field) => {
-        const accessorKey = SYSTEM_FIELD_KEY_TO_ACCESSOR[field.key];
+        const accessorKey = resolveSystemFieldAccessor(field.key);
         if (accessorKey) {
             visibility[accessorKey] = field.visibility;
         }

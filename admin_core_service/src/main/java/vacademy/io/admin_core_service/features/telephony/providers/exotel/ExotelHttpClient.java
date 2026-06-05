@@ -69,14 +69,18 @@ public class ExotelHttpClient {
         form.add("CallType", "trans");
         if (req.isRecord()) form.add("Record", "true");
         if (req.getStatusCallbackUrl() != null) {
-            // Exotel's defaults are exactly what we want:
-            //   - content type: application/x-www-form-urlencoded (our handler
-            //     parses via req.getParameter)
-            //   - events: every state transition
-            // Adding StatusCallbackContentType / StatusCallbackEvents triggers
-            // 340025 ("Invalid Call Parameters") on Connect Two Numbers, so we
-            // leave them off.
+            // StatusCallback content type: omit. Exotel's default is
+            // application/x-www-form-urlencoded which is what req.getParameter
+            // reads. Adding StatusCallbackContentType triggered 340025 in a
+            // previous attempt, so we don't set it.
+            //
+            // StatusCallbackEvents: explicitly subscribe to "terminal,answered"
+            // so the counsellor sees granular SSE updates (counsellor picked
+            // up → lead picked up → call ended) instead of just one final
+            // event. Default is "terminal" only — which is why the UI was
+            // jumping straight from "Ringing your phone…" to "Call ended".
             form.add("StatusCallback", req.getStatusCallbackUrl());
+            form.add("StatusCallbackEvents", "terminal,answered");
         }
         if (req.getCorrelationId() != null) {
             // Exotel echoes CustomField back on every status callback — that's
@@ -96,6 +100,99 @@ public class ExotelHttpClient {
 
     private static String trimOrNull(String s) {
         return s == null ? null : s.trim();
+    }
+
+    /**
+     * Attach an ExoPhone to an App Bazaar flow so inbound calls execute that
+     * flow (and therefore hit our Connect-applet URL). Replaces whatever the
+     * number was previously attached to.
+     *
+     * Endpoint: PUT /v2_beta/Accounts/{sid}/IncomingPhoneNumbers/{exoPhoneSid}
+     *
+     * Field name: Exotel's public docs are fragmentary on whether they expect
+     * {@code app_id}, {@code AppSid}, or {@code voice_url} on the PUT body —
+     * different SDK samples use different names. We defensively send all
+     * three: Exotel silently ignores unknown params, so this works regardless
+     * of which name they accept on the account we're hitting. {@code voice_url}
+     * is constructed in the documented {@code start_voice} form.
+     *
+     * Returns the parsed JSON body (Exotel echoes the updated row). Throws if
+     * the response is non-2xx; the caller wraps + persists the error message
+     * on the provider-number row so the admin sees it in the UI.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> attachExoPhoneToFlow(String exoPhoneSid, String flowSid,
+                                                    ProviderCredentials creds) {
+        URI uri = URI.create(baseUrl + "/v2_beta/Accounts/" + creds.getAccountId()
+                + "/IncomingPhoneNumbers/" + exoPhoneSid.trim());
+
+        String trimmedFlow = flowSid.trim();
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("app_id", trimmedFlow);
+        form.add("AppSid", trimmedFlow);
+        // Exotel's documented "start a flow on incoming call" URL shape. They
+        // use it as the canonical representation of "this number runs this
+        // flow" in API responses; sending it on writes works too.
+        form.add("voice_url", "https://my.exotel.in/Exotel/exoml/start_voice/" + trimmedFlow);
+
+        HttpHeaders headers = basicAuthHeaders(creds);
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        ResponseEntity<Map> resp = restTemplate.exchange(uri,
+                HttpMethod.PUT,
+                new HttpEntity<>(form, headers),
+                Map.class);
+        return resp.getBody();
+    }
+
+    /**
+     * List every ExoPhone on the account. Powers the "Sync from Exotel"
+     * button so admins don't have to manually copy {@code exoPhoneSid}s out
+     * of the dashboard into our Numbers card. Returns the raw envelope —
+     * caller extracts the {@code incoming_phone_numbers} array.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> listExoPhones(ProviderCredentials creds) {
+        URI uri = URI.create(baseUrl + "/v2_beta/Accounts/" + creds.getAccountId()
+                + "/IncomingPhoneNumbers");
+        HttpHeaders headers = basicAuthHeaders(creds);
+        ResponseEntity<Map> resp = restTemplate.exchange(uri,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        return resp.getBody();
+    }
+
+    /**
+     * Fetch the account's current credit balance + currency. Used by the
+     * Settings → Calling page to surface "how much credit is left" without
+     * forcing the admin to open the Exotel dashboard.
+     *
+     * Endpoint: GET /v1/Accounts/{sid}/Balance.json
+     * Response shape (per docs): {"Account": {"BalanceData": {"Balance": "...",
+     *                  "Currency": "INR", "PricingPlan": "...",
+     *                  "DateUpdated": "..."}}}
+     *
+     * Returns the raw response body as a String. Some accounts/regions
+     * surface a content-type that Spring's Map auto-binder silently drops to
+     * an empty Map for — pulling the raw bytes and parsing in the caller
+     * sidesteps that. Plus we get to log exactly what Exotel sent.
+     *
+     * Also: we send {@code Accept: application/json} explicitly. The default
+     * RestTemplate also advertises {@code application/cbor} which can cause
+     * some Exotel endpoints to negotiate to a binary body Spring's JSON
+     * parser can't read.
+     */
+    public String getBalanceRaw(ProviderCredentials creds) {
+        URI uri = URI.create(baseUrl + "/v1/Accounts/" + creds.getAccountId()
+                + "/Balance.json");
+        HttpHeaders headers = basicAuthHeaders(creds);
+        headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+        ResponseEntity<String> resp = restTemplate.exchange(uri,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                String.class);
+        return resp.getBody();
     }
 
     /**

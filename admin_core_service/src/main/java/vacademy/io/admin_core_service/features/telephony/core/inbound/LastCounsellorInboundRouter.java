@@ -1,0 +1,79 @@
+package vacademy.io.admin_core_service.features.telephony.core.inbound;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.telephony.core.UserMobileResolver;
+import vacademy.io.admin_core_service.features.telephony.enums.InboundRouterStrategy;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
+import vacademy.io.admin_core_service.features.telephony.spi.InboundLeadRouter;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundRouteDecision;
+import vacademy.io.admin_core_service.features.telephony.spi.dto.InboundRouteRequest;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Primary inbound strategy — ring the counsellor who most recently called this
+ * lead. Builds caller-recognition on both sides: the counsellor sees the lead
+ * they spoke to two days ago, the lead reaches the human they already trust.
+ *
+ * Pure DB lookup on the miss path, one auth-service hit on the hit path
+ * (resolving the counsellor's mobile). Returns empty when no prior outbound
+ * call exists or auth-service has no mobile on file for the counsellor.
+ *
+ * No opt-out / mobile-override layer: if a counsellor doesn't want callbacks
+ * on a given number, they update their auth-service profile mobile. A
+ * dedicated per-(user, institute) preferences table is a Phase 2 concern
+ * that should serve more than just telephony when it lands.
+ */
+@Component
+public class LastCounsellorInboundRouter implements InboundLeadRouter {
+
+    @Autowired private TelephonyCallLogRepository callLogRepo;
+    @Autowired private UserMobileResolver mobileResolver;
+
+    @Override
+    public String strategyKey() {
+        return InboundRouterStrategy.LAST_COUNSELLOR;
+    }
+
+    @Override
+    public Optional<InboundRouteDecision> route(InboundRouteRequest req) {
+        if (req.getInstituteId() == null || req.getFromNumber() == null) return Optional.empty();
+
+        // Native query returns rows of [counsellor_user_id, user_id, response_id]
+        // — LIMIT 1, so at most one. Take the first defensively if present.
+        List<Object[]> rows = callLogRepo.findRecentOutboundAttributionByLeadPhone(
+                req.getInstituteId(), req.getFromNumber());
+        if (rows == null || rows.isEmpty()) return Optional.empty();
+        Object[] row = rows.get(0);
+        if (row == null || row.length == 0) return Optional.empty();
+
+        String counsellorUserId = asString(row[0]);
+        String leadUserId       = row.length > 1 ? asString(row[1]) : null;
+        String responseId       = row.length > 2 ? asString(row[2]) : null;
+        if (counsellorUserId == null) return Optional.empty();
+
+        Optional<String> mobile = mobileResolver.findVerifiedMobile(counsellorUserId);
+        if (mobile.isEmpty()) return Optional.empty();
+
+        InboundRouteDecision.DialLeg leg = InboundRouteDecision.DialLeg.builder()
+                .number(mobile.get())
+                .counsellorUserId(counsellorUserId)
+                .label("Last counsellor")
+                .build();
+
+        return Optional.of(InboundRouteDecision.builder()
+                .strategyKey(strategyKey())
+                .attributedCounsellorUserId(counsellorUserId)
+                .attributedLeadUserId(leadUserId)
+                .attributedResponseId(responseId)
+                .numbersToDial(List.of(leg))
+                .reason("Most recent outbound call to this lead was made by this counsellor")
+                .build());
+    }
+
+    private static String asString(Object o) {
+        return o == null ? null : o.toString();
+    }
+}

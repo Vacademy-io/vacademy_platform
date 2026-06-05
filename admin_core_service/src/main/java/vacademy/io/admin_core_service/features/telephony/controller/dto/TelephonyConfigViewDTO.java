@@ -20,6 +20,17 @@ public class TelephonyConfigViewDTO {
     private Boolean recordCalls;
     private String defaultSelectorKey;
     private Boolean enabled;
+    /** Inbound fallback number (E.164). Echoed back as-is — no encryption. */
+    private String inboundVoicemailNumber;
+    /** App Bazaar flow id (drives Exotel auto-attach on number CRUD). */
+    private String flowSid;
+    /**
+     * Public base URL the provider should hit for webhooks/route calls.
+     * Sourced from {@code telephony.webhook.callback-base} on the server — the
+     * Setup Guide renders the full Connect-applet URL by appending the route
+     * path + token. Not persisted; injected by the controller at GET time.
+     */
+    private String webhookCallbackBase;
     private Timestamp updatedAt;
 
     public static TelephonyConfigViewDTO from(InstituteTelephonyConfig c) {
@@ -34,6 +45,8 @@ public class TelephonyConfigViewDTO {
                 .recordCalls(c.getRecordCalls())
                 .defaultSelectorKey(c.getDefaultSelectorKey())
                 .enabled(c.getEnabled())
+                .inboundVoicemailNumber(c.getInboundVoicemailNumber())
+                .flowSid(c.getFlowSid())
                 .updatedAt(c.getUpdatedAt())
                 .build();
     }

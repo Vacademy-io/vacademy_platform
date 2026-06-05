@@ -31,7 +31,7 @@ const getAllCustomFieldsForLearnerList = (): LearnerListCustomField[] => {
 /**
  * Component to render custom field cell value
  */
-const formatCustomFieldValue = (value: string, fieldType?: string): string => {
+export const formatCustomFieldValue = (value: string, fieldType?: string): string => {
     if (!value || value === '-') return '-';
     switch (fieldType) {
         case 'checkbox':

@@ -191,8 +191,21 @@ function Slides() {
     },
   });
   const resolvedSessionId = sessionId || packageSessionIdFromStore || "";
-  const { setItems, setActiveItem, activeItem, setSlideEvaluations } =
-    useContentStore();
+  const {
+    setItems,
+    setActiveItem,
+    activeItem,
+    setSlideEvaluations,
+    setCurrentPackageSessionId,
+  } = useContentStore();
+
+  // Keep the content store in sync with the course currently being viewed so
+  // that doubts are raised/filtered against THIS course's package session
+  // (the URL's sessionId), not the learner's default first enrollment.
+  useEffect(() => {
+    setCurrentPackageSessionId(resolvedSessionId || null);
+  }, [resolvedSessionId, setCurrentPackageSessionId]);
+
   const { slides } = useSlides(chapterId || "");
   const { studyLibraryData } = useStudyLibraryStore();
   const { modulesWithChaptersData, setModulesWithChaptersData } = useModulesWithChaptersStore();

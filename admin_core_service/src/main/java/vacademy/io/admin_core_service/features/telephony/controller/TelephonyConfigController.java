@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.telephony.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -30,10 +31,19 @@ public class TelephonyConfigController {
     @Autowired private TokenEncryptionService tokenEncryption;
     @Autowired private TelephonyConfigCache configCache;
 
+    /** Public base URL providers hit for webhooks. Renders into the Setup
+     *  Guide on the frontend so the admin sees the exact copy-paste URL. */
+    @Value("${telephony.webhook.callback-base:}")
+    private String webhookCallbackBase;
+
     @GetMapping("/{instituteId}")
     public ResponseEntity<TelephonyConfigViewDTO> get(@PathVariable String instituteId) {
         return repo.findByInstituteId(instituteId)
-                .map(c -> ResponseEntity.ok(TelephonyConfigViewDTO.from(c)))
+                .map(c -> {
+                    TelephonyConfigViewDTO dto = TelephonyConfigViewDTO.from(c);
+                    dto.setWebhookCallbackBase(webhookCallbackBase);
+                    return ResponseEntity.ok(dto);
+                })
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
@@ -78,12 +88,25 @@ public class TelephonyConfigController {
         if (body.getRecordCalls()       != null) cfg.setRecordCalls(body.getRecordCalls());
         if (body.getDefaultSelectorKey() != null) cfg.setDefaultSelectorKey(body.getDefaultSelectorKey());
         if (body.getEnabled()           != null) cfg.setEnabled(body.getEnabled());
+        // Voicemail: distinguish "leave as-is" (null) from "clear it" (blank)
+        // so an admin can remove the fallback number explicitly.
+        if (body.getInboundVoicemailNumber() != null) {
+            String trimmed = body.getInboundVoicemailNumber().trim();
+            cfg.setInboundVoicemailNumber(trimmed.isEmpty() ? null : trimmed);
+        }
+        // Flow SID: same as voicemail — blank clears, null leaves alone.
+        if (body.getFlowSid() != null) {
+            String trimmed = body.getFlowSid().trim();
+            cfg.setFlowSid(trimmed.isEmpty() ? null : trimmed);
+        }
 
         InstituteTelephonyConfig saved = repo.save(cfg);
         // Hot-path cache holds decrypted creds + numbers — drop the entry so
         // the next webhook / connect reloads with the new values.
         configCache.evict(instituteId);
-        return ResponseEntity.ok(TelephonyConfigViewDTO.from(saved));
+        TelephonyConfigViewDTO dto = TelephonyConfigViewDTO.from(saved);
+        dto.setWebhookCallbackBase(webhookCallbackBase);
+        return ResponseEntity.ok(dto);
     }
 
     private static void requireNonBlank(String s, String msg) {

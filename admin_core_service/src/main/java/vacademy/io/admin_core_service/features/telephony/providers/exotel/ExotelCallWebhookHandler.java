@@ -72,8 +72,21 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
         String sid = firstNonBlank(req.getParameter("CallSid"), req.getParameter("Sid"));
         String exotelStatus = req.getParameter("Status");
         String dialCallStatus = req.getParameter("DialCallStatus");
+        // Passthru applets (used as the inbound flow's "after the conversation
+        // ends" hook) emit a different field set than the Connect-applet's
+        // native Status Callback. Specifically: no `Status`, but `CallType`
+        // carries the high-level outcome ("completed", "missed", etc.). Read
+        // CallType too so the inbound termination flow can fire even when
+        // `Status` is absent. Connect-applet status callbacks ignore it.
+        String callType = req.getParameter("CallType");
+        // When we subscribe to "answered" events, Exotel adds an EventType
+        // field on those callbacks. The Leg field (1 or 2) tells us which
+        // side answered — for Connect Two Numbers: Leg 1 = counsellor (the
+        // From), Leg 2 = lead (the To). Used by mapStatus below.
+        String eventType = req.getParameter("EventType");
+        String leg = firstNonBlank(req.getParameter("Leg"), req.getParameter("LegNumber"));
 
-        CallStatus status = mapStatus(exotelStatus, dialCallStatus);
+        CallStatus status = mapStatus(exotelStatus, dialCallStatus, callType, eventType, leg);
 
         // Exotel uses different duration keys depending on endpoint and event.
         // Order matters — the most-specific to the bridged-call duration first.
@@ -129,12 +142,33 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
     }
 
     /**
-     * Map Exotel's vocabulary onto our normalised CallStatus. Exotel uses:
-     *   "queued", "in-progress", "ringing", "completed", "busy", "no-answer",
-     *   "failed", "canceled".
+     * Map Exotel's vocabulary onto our normalised CallStatus. Exotel sends:
+     *   • Status events: "queued", "ringing", "in-progress", "completed",
+     *                    "busy", "no-answer", "failed", "canceled"
+     *   • Answered events (when subscribed via StatusCallbackEvents=answered):
+     *     EventType="answered" plus a Leg/LegNumber field. For Connect Two
+     *     Numbers: Leg 1 = the counsellor (From), Leg 2 = the lead (To).
+     *
+     * The answered events let us split what would otherwise be a single
+     * "in-progress" state into two visible UI steps for the counsellor:
+     *   COUNSELLOR_ANSWERED (you picked up, we're ringing the lead now) →
+     *   IN_PROGRESS (lead picked up, you're connected).
      */
-    private CallStatus mapStatus(String exotelStatus, String dialCallStatus) {
-        String s = exotelStatus == null ? "" : exotelStatus.toLowerCase();
+    private CallStatus mapStatus(String exotelStatus, String dialCallStatus,
+                                 String callType, String eventType, String leg) {
+        // Answered events get priority — they're the granular signal that the
+        // raw Status field doesn't expose. Leg 2 = lead picked up = full bridge.
+        if (eventType != null && eventType.toLowerCase().contains("answered")) {
+            return "2".equals(leg) ? CallStatus.IN_PROGRESS : CallStatus.COUNSELLOR_ANSWERED;
+        }
+
+        // Fall back through the multiple "what's the call status" fields
+        // Exotel sends across different applet types. Connect-applet status
+        // callbacks send `Status`; Passthru applets send `CallType` or
+        // `DialCallStatus` instead. First non-blank wins.
+        String s = firstNonBlank(exotelStatus, callType, dialCallStatus);
+        s = s == null ? "" : s.toLowerCase();
+
         if (s.contains("queued"))      return CallStatus.QUEUED;
         if (s.contains("in-progress")) return CallStatus.IN_PROGRESS;
         if (s.contains("ringing"))     return CallStatus.COUNSELLOR_RINGING;
@@ -159,6 +193,13 @@ public class ExotelCallWebhookHandler implements CallWebhookHandler {
     private static String firstNonBlank(String a, String b) {
         if (a != null && !a.isBlank()) return a;
         if (b != null && !b.isBlank()) return b;
+        return null;
+    }
+
+    private static String firstNonBlank(String a, String b, String c) {
+        String ab = firstNonBlank(a, b);
+        if (ab != null) return ab;
+        if (c != null && !c.isBlank()) return c;
         return null;
     }
 

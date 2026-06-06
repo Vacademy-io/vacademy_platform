@@ -196,16 +196,19 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
         );
 
     // ── Report navigation handlers ───────────────────────────────────────────
+    // learningTab is lower-cased to match the Tabs `value` in studentReports.tsx
+    // (`timeline` / `progress`). levelId uses batch.level.id — was incorrectly
+    // set to batch.session.id, which made the Level prefill always miss.
     const handleLearningTimeLineClick = () => {
         router.navigate({
             to: '/study-library/reports',
             search: {
                 studentReport: {
                     tab: 'STUDENT',
-                    learningTab: 'TIMELINE',
+                    learningTab: 'timeline',
                     courseId: batch?.package_dto.id,
                     sessionId: batch?.session.id,
-                    levelId: batch?.session.id,
+                    levelId: batch?.level.id,
                     fullName: selectedStudent.full_name,
                     userId: isSubmissionTab
                         ? selectedStudent?.id || ''
@@ -220,10 +223,10 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
             search: {
                 studentReport: {
                     tab: 'STUDENT',
-                    learningTab: 'PROGRESS',
+                    learningTab: 'progress',
                     courseId: batch?.package_dto.id,
                     sessionId: batch?.session.id,
-                    levelId: batch?.session.id,
+                    levelId: batch?.level.id,
                     fullName: selectedStudent.full_name,
                     userId: isSubmissionTab
                         ? selectedStudent?.id || ''

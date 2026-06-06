@@ -38,6 +38,7 @@ import { SpinnerGap } from "@phosphor-icons/react";
 import type { Student } from "@/types/user/user-detail";
 import { FormProvider, useForm } from "react-hook-form";
 import { useFileUpload } from "@/hooks/use-file-upload";
+import { useSystemFieldVisibility } from "@/hooks/use-system-field-visibility";
 import PhoneInputField from "@/components/design-system/phone-input-field";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -88,6 +89,8 @@ export default function EditProfile() {
   const [isUploading, setIsUploading] = useState(false);
   const { uploadFile, getPublicUrl } = useFileUpload();
   const { showForInstitutes } = useInstituteFeatureStore();
+  // Honor the admin's system-field toggles (Settings → Custom Fields). Fails open.
+  const { isFieldVisible } = useSystemFieldVisibility();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const methods = useForm();
@@ -404,26 +407,29 @@ export default function EditProfile() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="gender" className="text-xs uppercase font-medium text-gray-500">
-                        Gender*
-                      </Label>
-                      <Select
-                        value={formData.gender}
-                        onValueChange={(value) => handleChange("gender", value)}
-                      >
-                        <SelectTrigger className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors">
-                          <SelectValue placeholder="Select gender" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Male">Male</SelectItem>
-                          <SelectItem value="Female">Female</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {isFieldVisible("GENDER") && (
+                      <div className="space-y-2">
+                        <Label htmlFor="gender" className="text-xs uppercase font-medium text-gray-500">
+                          Gender*
+                        </Label>
+                        <Select
+                          value={formData.gender}
+                          onValueChange={(value) => handleChange("gender", value)}
+                        >
+                          <SelectTrigger className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors">
+                            <SelectValue placeholder="Select gender" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
-                    {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+                    {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) &&
+                      isFieldVisible("LINKED_INSTITUTE_NAME") && (
                       <div className="space-y-2">
                         <Label htmlFor="institute_name" className="text-xs uppercase font-medium text-gray-500">
                           College/School Name
@@ -454,40 +460,44 @@ export default function EditProfile() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="contact_number" className="text-xs uppercase font-medium text-gray-500">
-                        Mobile Number*
-                      </Label>
-                      <PhoneInputField
-                        label=""
-                        name="contact_number"
-                        placeholder="Enter mobile number"
-                        control={methods.control}
-                        value={formData.contact_number}
-                        onChange={(value) => handleChange("contact_number", value)}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="email" className="text-xs uppercase font-medium text-gray-500">
-                        Email*
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="email"
-                          type="email"
-                          value={formData.email}
-                          onChange={(e) => handleChange("email", e.target.value)}
-                          placeholder="Enter email address"
-                          required
-                          className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-                        />
-                        <EnvelopeSimple
-                          size={18}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    {isFieldVisible("MOBILE_NUMBER") && (
+                      <div className="space-y-2">
+                        <Label htmlFor="contact_number" className="text-xs uppercase font-medium text-gray-500">
+                          Mobile Number*
+                        </Label>
+                        <PhoneInputField
+                          label=""
+                          name="contact_number"
+                          placeholder="Enter mobile number"
+                          control={methods.control}
+                          value={formData.contact_number}
+                          onChange={(value) => handleChange("contact_number", value)}
                         />
                       </div>
-                    </div>
+                    )}
+
+                    {isFieldVisible("EMAIL") && (
+                      <div className="space-y-2">
+                        <Label htmlFor="email" className="text-xs uppercase font-medium text-gray-500">
+                          Email*
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="email"
+                            type="email"
+                            value={formData.email}
+                            onChange={(e) => handleChange("email", e.target.value)}
+                            placeholder="Enter email address"
+                            required
+                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                          <EnvelopeSimple
+                            size={18}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -542,29 +552,33 @@ export default function EditProfile() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="city" className="text-xs uppercase font-medium text-gray-500">
-                            City/Village
-                          </Label>
-                          <Input
-                            id="city"
-                            value={formData?.city || ""}
-                            onChange={(e) => handleChange("city", e.target.value)}
-                            className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-                          />
-                        </div>
+                        {isFieldVisible("CITY") && (
+                          <div className="space-y-2">
+                            <Label htmlFor="city" className="text-xs uppercase font-medium text-gray-500">
+                              City/Village
+                            </Label>
+                            <Input
+                              id="city"
+                              value={formData?.city || ""}
+                              onChange={(e) => handleChange("city", e.target.value)}
+                              className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                            />
+                          </div>
+                        )}
 
-                        <div className="space-y-2">
-                          <Label htmlFor="state" className="text-xs uppercase font-medium text-gray-500">
-                            State
-                          </Label>
-                          <Input
-                            id="state"
-                            value={formData.state}
-                            onChange={(e) => handleChange("state", e.target.value)}
-                            className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-                          />
-                        </div>
+                        {isFieldVisible("REGION") && (
+                          <div className="space-y-2">
+                            <Label htmlFor="state" className="text-xs uppercase font-medium text-gray-500">
+                              State
+                            </Label>
+                            <Input
+                              id="state"
+                              value={formData.state}
+                              onChange={(e) => handleChange("state", e.target.value)}
+                              className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                            />
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="pin_code" className="text-xs uppercase font-medium text-gray-500">
@@ -581,8 +595,12 @@ export default function EditProfile() {
                   )}
                 </div>
 
-                {/* Parent Details */}
-                {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
+                {/* Parent Details — hidden entirely when every guardian field is toggled off */}
+                {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) &&
+                  (isFieldVisible("FATHER_NAME") ||
+                    isFieldVisible("MOTHER_NAME") ||
+                    isFieldVisible("PARENTS_EMAIL") ||
+                    isFieldVisible("PARENTS_MOBILE_NUMBER")) && (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-lg font-semibold text-gray-900 border-b pb-2">
                       <Users size={20} className="text-gray-500" weight="bold" />
@@ -590,62 +608,70 @@ export default function EditProfile() {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="father_name" className="text-xs uppercase font-medium text-gray-500">
-                          Father's Name
-                        </Label>
-                        <Input
-                          id="father_name"
-                          value={formData.father_name}
-                          onChange={(e) => handleChange("father_name", e.target.value)}
-                          className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="mother_name" className="text-xs uppercase font-medium text-gray-500">
-                          Mother's Name
-                        </Label>
-                        <Input
-                          id="mother_name"
-                          value={formData.mother_name}
-                          onChange={(e) => handleChange("mother_name", e.target.value)}
-                          className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-                        />
-                      </div>
+                      {isFieldVisible("FATHER_NAME") && (
+                        <div className="space-y-2">
+                          <Label htmlFor="father_name" className="text-xs uppercase font-medium text-gray-500">
+                            Father's Name
+                          </Label>
+                          <Input
+                            id="father_name"
+                            value={formData.father_name}
+                            onChange={(e) => handleChange("father_name", e.target.value)}
+                            className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                        </div>
+                      )}
+                      {isFieldVisible("MOTHER_NAME") && (
+                        <div className="space-y-2">
+                          <Label htmlFor="mother_name" className="text-xs uppercase font-medium text-gray-500">
+                            Mother's Name
+                          </Label>
+                          <Input
+                            id="mother_name"
+                            value={formData.mother_name}
+                            onChange={(e) => handleChange("mother_name", e.target.value)}
+                            className="h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                        </div>
+                      )}
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="parents_email" className="text-xs uppercase font-medium text-gray-500">
-                        Guardian's Email
-                      </Label>
-                      <div className="relative">
-                        <Input
-                          id="parents_email"
-                          type="email"
-                          value={formData.parents_email}
-                          onChange={(e) => handleChange("parents_email", e.target.value)}
-                          className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
-                        />
-                        <EnvelopeSimple
-                          size={18}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    {isFieldVisible("PARENTS_EMAIL") && (
+                      <div className="space-y-2">
+                        <Label htmlFor="parents_email" className="text-xs uppercase font-medium text-gray-500">
+                          Guardian's Email
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="parents_email"
+                            type="email"
+                            value={formData.parents_email}
+                            onChange={(e) => handleChange("parents_email", e.target.value)}
+                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          />
+                          <EnvelopeSimple
+                            size={18}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {isFieldVisible("PARENTS_MOBILE_NUMBER") && (
+                      <div className="space-y-2">
+                        <Label htmlFor="parents_mobile_number" className="text-xs uppercase font-medium text-gray-500">
+                          Guardian's Mobile
+                        </Label>
+                        <PhoneInputField
+                          label=""
+                          name="parents_mobile_number"
+                          placeholder="Enter mobile number"
+                          control={methods.control}
+                          value={formData.parents_mobile_number}
+                          onChange={(value) => handleChange("parents_mobile_number", value)}
                         />
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="parents_mobile_number" className="text-xs uppercase font-medium text-gray-500">
-                        Guardian's Mobile
-                      </Label>
-                      <PhoneInputField
-                        label=""
-                        name="parents_mobile_number"
-                        placeholder="Enter mobile number"
-                        control={methods.control}
-                        value={formData.parents_mobile_number}
-                        onChange={(value) => handleChange("parents_mobile_number", value)}
-                      />
-                    </div>
+                    )}
                   </div>
                 )}
               </div>

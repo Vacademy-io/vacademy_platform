@@ -53,6 +53,22 @@ public class TelephonyProviderNumber {
     @Builder.Default
     private Boolean enabled = true;
 
+    /**
+     * Outcome of the most recent Exotel-flow attach attempt:
+     *   ATTACHED | PENDING | FAILED | DETACHED.
+     * NULL = never attempted (e.g. {@code flow_sid} was empty when this
+     * number was created). The Numbers card surfaces this as a status pill.
+     */
+    @Column(name = "flow_attach_status", length = 16)
+    private String flowAttachStatus;
+
+    /** Body of the failure response when {@code flow_attach_status = FAILED}. */
+    @Column(name = "flow_attach_error", columnDefinition = "TEXT")
+    private String flowAttachError;
+
+    @Column(name = "flow_attached_at")
+    private Timestamp flowAttachedAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

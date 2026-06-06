@@ -138,6 +138,11 @@ export const TELEPHONY_NUMBER_ATTACH = (id: string) =>
 // of asking the admin to copy each Sid by hand.
 export const TELEPHONY_EXOTEL_EXOPHONES = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/exotel/exophones?instituteId=${encodeURIComponent(instituteId)}`;
+// Surfaces the institute's current Exotel balance + currency in the
+// Calling settings page so admins don't have to open the Exotel dashboard
+// just to check credits.
+export const TELEPHONY_EXOTEL_BALANCE = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/telephony/exotel/balance?instituteId=${encodeURIComponent(instituteId)}`;
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;

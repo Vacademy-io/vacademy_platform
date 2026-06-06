@@ -161,14 +161,57 @@ const InviteLinksDialog = ({
 import { useCompactMode } from '@/hooks/use-compact-mode';
 
 
+const CountBadge = ({
+    label,
+    value,
+    tone,
+    isCompact,
+}: {
+    label: string;
+    value: number;
+    tone: 'total' | 'active' | 'inactive';
+    isCompact: boolean;
+}) => {
+    // Fixed semantic scales (not the white-labeled `primary`, whose per-institute
+    // shades can clash) with -700 text for readable contrast on the -50/-100 surface.
+    const toneClasses = {
+        total: 'bg-neutral-100 text-neutral-700 ring-neutral-200',
+        active: 'bg-success-50 text-success-700 ring-success-200',
+        inactive: 'bg-warning-50 text-warning-700 ring-warning-200',
+    }[tone];
+
+    return (
+        <span
+            className={cn(
+                'inline-flex items-center gap-1 rounded-full text-xs font-medium ring-1',
+                isCompact ? 'px-1.5 py-0.5' : 'px-2 py-0.5',
+                toneClasses
+            )}
+        >
+            <span>{label}</span>
+            <span className="font-semibold tabular-nums">{value.toLocaleString()}</span>
+        </span>
+    );
+};
+
 export const StudentListHeader = ({
     currentSession,
     titleSize,
     packageSessionId,
+    showCounts = true,
+    total,
+    active,
+    inactive,
+    countsLoading,
 }: {
     currentSession?: DropdownItemType;
     titleSize?: string;
     packageSessionId?: string;
+    showCounts?: boolean;
+    total?: number;
+    active?: number;
+    inactive?: number;
+    countsLoading?: boolean;
 }) => {
     const [openInviteLinksDialog, setOpenInviteLinksDialog] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
@@ -185,7 +228,7 @@ export const StudentListHeader = ({
             isCompact ? "mb-1" : "mb-2"
         )}>
             {/* Compact professional title */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <div className={cn(
                     "rounded-md bg-gradient-to-br from-primary-100 to-primary-200 shadow-sm",
                     isCompact ? "p-0.5" : "p-1"
@@ -200,6 +243,16 @@ export const StudentListHeader = ({
                 >
                     {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Management
                 </h1>
+                {showCounts &&
+                    (countsLoading ? (
+                        <span className="h-4 w-28 animate-pulse rounded-full bg-neutral-100" />
+                    ) : (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <CountBadge label="Total" value={total ?? 0} tone="total" isCompact={isCompact} />
+                            <CountBadge label="Active" value={active ?? 0} tone="active" isCompact={isCompact} />
+                            <CountBadge label="Inactive" value={inactive ?? 0} tone="inactive" isCompact={isCompact} />
+                        </div>
+                    ))}
             </div>
 
             {/* Compact professional action buttons */}

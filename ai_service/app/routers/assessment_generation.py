@@ -18,13 +18,15 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency
 from ..dependencies import get_institute_id_or_internal
+from ..models.ai_token_usage import RequestType
 from ..repositories.ai_api_keys_repository import AiApiKeysRepository  # noqa: F401  (kept for parity)
+from ..services.ai_billing import preflight_tool_credits, record_tool_billing
 from ..services.ai_models_service import AIModelsService
 from ..services.api_key_resolver import ApiKeyResolver
 from ..services.chat_llm_client import ChatLLMClient
@@ -80,6 +82,17 @@ class GenerateAssessmentRequest(BaseModel):
                     "<img> tags. Adds 30-120s of latency and substantial API "
                     "spend (~5 image calls per question), so off by default.",
     )
+    user_id: Optional[str] = Field(
+        None,
+        description="Verified actor (teacher/admin) for credit attribution. "
+                    "admin_core forwards CustomUserDetails.getId().",
+    )
+    idempotency_key: Optional[str] = Field(
+        None,
+        description="Dedup key for the credit charge so a retry (RestTemplate "
+                    "timeout after success, double-click) can't double-charge. "
+                    "admin_core sends 'assessment:{artifactId}'.",
+    )
 
 
 class AssessmentQuestion(BaseModel):
@@ -126,6 +139,24 @@ async def generate_from_transcript(
     if not request.transcript_text or not request.transcript_text.strip():
         raise HTTPException(status_code=400, detail="transcript_text must not be empty")
 
+    # Pre-flight credit gate (academy-credits). Block before spending an LLM
+    # call when the institute can't afford the parametric estimate.
+    tool_params = {
+        "num_questions": request.num_questions,
+        "include_images": request.include_images,
+    }
+    estimate = preflight_tool_credits(
+        db, tool_key="assessment", tool_params=tool_params, institute_id=institute_id
+    )
+    if estimate.get("sufficient") is False:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: this assessment needs ~{estimate['estimated_credits']} "
+                f"credits but the balance is {estimate.get('current_balance')}."
+            ),
+        )
+
     # Resolve model: explicit override > `agent` use case default > hardcoded fallback.
     model = request.model
     if not model:
@@ -150,12 +181,34 @@ async def generate_from_transcript(
             target_language=request.target_language,
             num_questions=request.num_questions,
             institute_id=institute_id,
-            user_id=None,
+            user_id=request.user_id,
             model=model,
             include_images=request.include_images,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+    # Charge credits: max(parametric estimate, actual token cost). Best-effort —
+    # the assessment has already been generated, so billing must never 500.
+    # Bill images on the count ACTUALLY delivered (not num_questions × toggle),
+    # and dedup on the idempotency key so a retry can't double-charge.
+    usage = result.get("usage") or {}
+    billing_params = {
+        "num_questions": request.num_questions,
+        "image_count": int(result.get("images_generated") or 0),
+    }
+    record_tool_billing(
+        tool_key="assessment",
+        tool_params=billing_params,
+        request_type=RequestType.ASSESSMENT,
+        model=model,
+        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+        completion_tokens=int(usage.get("completion_tokens") or 0),
+        institute_id=institute_id,
+        user_id=request.user_id,
+        user_role="ADMIN" if request.user_id else None,
+        idempotency_key=request.idempotency_key,
+    )
 
     logger.info(
         f"[assessment-gen] [{institute_id}] generated {len(result['questions'])} "

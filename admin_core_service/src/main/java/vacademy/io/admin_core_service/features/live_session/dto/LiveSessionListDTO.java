@@ -43,6 +43,8 @@ public class LiveSessionListDTO {
     private String defaultClassName;
     private String linkType;
     private String providerMeetingId;
+    // DEFAULT | PRE_JOINING — drives the learner waiting-room-window join button.
+    private String waitingRoomType;
     private List<PackageSessionInfo> packageSessionDetails;
 
     public LiveSessionListDTO(String sessionId, Integer waitingRoomTime, String thumbnailFileId,

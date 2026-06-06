@@ -19,6 +19,7 @@ import {
     Plus,
     Info,
     FilmStrip,
+    ChartLineUp,
     Palette,
     TextT,
     BookOpen,
@@ -31,6 +32,7 @@ import {
     SettingsSectionsLayout,
     type SettingsSectionGroup,
 } from '@/components/settings/shell';
+import { AiUsageSection } from './ai-usage/AiUsageSection';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     AI_SERVICE_BASE_URL,
@@ -147,6 +149,7 @@ const AI_SETTINGS_SECTIONS: SettingsSectionGroup[] = [
             { id: 'grp-knowledge', label: 'Knowledge Base', icon: Books },
             { id: 'grp-prompt', label: 'Course Prompt', icon: Article },
             { id: 'grp-video', label: 'Video', icon: FilmStrip },
+            { id: 'grp-usage', label: 'Usage', icon: ChartLineUp },
         ],
     },
 ];
@@ -2519,6 +2522,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     )}
                 </CardContent>
             </Card>
+            </section>
+
+            <section id="grp-usage" className="space-y-6">
+                <AiUsageSection />
             </section>
             </SettingsSectionsLayout>
 

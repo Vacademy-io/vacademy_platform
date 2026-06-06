@@ -2,13 +2,11 @@ package vacademy.io.admin_core_service.features.telephony.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.telephony.controller.dto.TelephonyProviderNumberDTO;
-import vacademy.io.admin_core_service.features.telephony.core.TelephonyConfigCache;
-import vacademy.io.admin_core_service.features.telephony.persistence.entity.InstituteTelephonyConfig;
+import vacademy.io.admin_core_service.features.telephony.core.InboundFlowAttacher;
+import vacademy.io.admin_core_service.features.telephony.core.TelephonyNumberTxOps;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
-import vacademy.io.admin_core_service.features.telephony.persistence.repository.InstituteTelephonyConfigRepository;
 import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyProviderNumberRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -19,8 +17,8 @@ import java.util.List;
 public class TelephonyNumberController {
 
     @Autowired private TelephonyProviderNumberRepository numberRepo;
-    @Autowired private InstituteTelephonyConfigRepository configRepo;
-    @Autowired private TelephonyConfigCache configCache;
+    @Autowired private TelephonyNumberTxOps tx;
+    @Autowired private InboundFlowAttacher flowAttacher;
 
     @GetMapping
     public ResponseEntity<List<TelephonyProviderNumberDTO>> list(
@@ -32,57 +30,55 @@ public class TelephonyNumberController {
     }
 
     @PostMapping
-    @Transactional
     public ResponseEntity<TelephonyProviderNumberDTO> create(
             @RequestBody TelephonyProviderNumberDTO body) {
         if (body.getInstituteId() == null || body.getInstituteId().isBlank()) {
             throw new VacademyException("instituteId is required");
         }
-        InstituteTelephonyConfig cfg = configRepo.findByInstituteId(body.getInstituteId())
-                .orElseThrow(() -> new VacademyException(
-                        "Configure provider for this institute before adding numbers"));
         if (body.getPhoneNumber() == null || body.getPhoneNumber().isBlank()) {
             throw new VacademyException("phoneNumber is required");
         }
-        TelephonyProviderNumber n = TelephonyProviderNumber.builder()
-                .configId(cfg.getId())
-                .instituteId(cfg.getInstituteId())
-                .providerType(cfg.getProviderType())
-                .phoneNumber(body.getPhoneNumber())
-                .providerResourceId(body.getProviderResourceId())
-                .label(body.getLabel())
-                .region(body.getRegion())
-                .priority(body.getPriority() == null ? 100 : body.getPriority())
-                .enabled(body.getEnabled() == null ? Boolean.TRUE : body.getEnabled())
-                .build();
-        TelephonyProviderNumber saved = numberRepo.save(n);
-        configCache.evict(cfg.getInstituteId());
-        return ResponseEntity.ok(TelephonyProviderNumberDTO.from(saved));
+        // Persistence runs in its own short transaction (TxOps bean) and commits
+        // BEFORE the external Exotel HTTP call so a slow Exotel API doesn't hold
+        // a DB connection or turn a successful save into a phantom failure.
+        TelephonyProviderNumber saved = tx.create(body);
+        // Auto-attach to the institute's configured flow. Non-fatal — the row
+        // is created either way; outcome lives on flow_attach_* columns and
+        // is reflected in the response.
+        flowAttacher.attach(saved);
+        TelephonyProviderNumber refreshed = numberRepo.findById(saved.getId()).orElse(saved);
+        return ResponseEntity.ok(TelephonyProviderNumberDTO.from(refreshed));
     }
 
     @PutMapping("/{id}")
-    @Transactional
     public ResponseEntity<TelephonyProviderNumberDTO> update(
             @PathVariable String id,
             @RequestBody TelephonyProviderNumberDTO body) {
-        TelephonyProviderNumber n = numberRepo.findById(id)
+        TelephonyProviderNumber saved = tx.update(id, body);
+        // Re-attach if anything routing-relevant changed — provider_resource_id
+        // is the main case (admin pasted in the ExoPhone Sid after the row was
+        // created). Cheap to over-attach: PUT-based, idempotent.
+        if (body.getProviderResourceId() != null) {
+            flowAttacher.attach(saved);
+        }
+        TelephonyProviderNumber refreshed = numberRepo.findById(saved.getId()).orElse(saved);
+        return ResponseEntity.ok(TelephonyProviderNumberDTO.from(refreshed));
+    }
+
+    /** Re-run the attach for a number whose last attempt was PENDING / FAILED. */
+    @PostMapping("/{id}/attach")
+    public ResponseEntity<TelephonyProviderNumberDTO> retryAttach(@PathVariable String id) {
+        flowAttacher.retry(id);
+        return numberRepo.findById(id)
+                .map(n -> ResponseEntity.ok(TelephonyProviderNumberDTO.from(n)))
                 .orElseThrow(() -> new VacademyException("Number not found"));
-        if (body.getLabel()    != null) n.setLabel(body.getLabel());
-        if (body.getRegion()   != null) n.setRegion(body.getRegion());
-        if (body.getPriority() != null) n.setPriority(body.getPriority());
-        if (body.getEnabled()  != null) n.setEnabled(body.getEnabled());
-        TelephonyProviderNumber saved = numberRepo.save(n);
-        configCache.evict(saved.getInstituteId());
-        return ResponseEntity.ok(TelephonyProviderNumberDTO.from(saved));
     }
 
     @DeleteMapping("/{id}")
-    @Transactional
     public ResponseEntity<Void> delete(@PathVariable String id) {
-        String instituteId = numberRepo.findById(id)
-                .map(TelephonyProviderNumber::getInstituteId).orElse(null);
-        numberRepo.deleteById(id);
-        configCache.evict(instituteId);
+        TelephonyProviderNumber existing = numberRepo.findById(id).orElse(null);
+        if (existing != null) flowAttacher.detachQuietly(existing);
+        tx.delete(id, existing == null ? null : existing.getInstituteId());
         return ResponseEntity.noContent().build();
     }
 }

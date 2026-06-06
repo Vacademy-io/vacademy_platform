@@ -23,9 +23,15 @@ import { RecentFilesPanel } from '@/routes/ai-center/-components/RecentFilesPane
 import { AITaskIndividualListInterface } from '@/types/ai/generate-assessment/generate-complete-assessment';
 import { ArrowRight, ChalkboardSimple, Sparkle } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
+import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
+import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 
 const DEFAULT_METHOD = teachingMethod[0];
 const DEFAULT_LANGUAGE = languageSupport[0];
+
+// Confirm before spending when the estimate is high or the balance would go low.
+const CONFIRM_COST_THRESHOLD = 20;
 
 const methodShortLabel = (full: string): string => {
     const idx = full.indexOf('–');
@@ -90,7 +96,17 @@ const PlanLectureAI = () => {
         },
     });
 
-    const onSubmit = (values: PlanLectureAIFormSchema) => {
+    // Live "≈ N credits" preview driven by the homework / question toggles.
+    const watchQuestions = form.watch('isQuestionGenerated');
+    const watchHomework = form.watch('isAssignmentHomeworkGenerated');
+    const costPreview = useToolCostPreview('lecture', {
+        generate_questions: watchQuestions,
+        generate_homework: watchHomework,
+    });
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingValues, setPendingValues] = useState<PlanLectureAIFormSchema | null>(null);
+
+    const runGenerate = (values: PlanLectureAIFormSchema) => {
         setErrorMessage(null);
         setReadyTask(null);
         setPendingTaskId(null);
@@ -98,6 +114,18 @@ const PlanLectureAI = () => {
             ...values,
             taskName: getRandomTaskName(),
         });
+    };
+
+    const onSubmit = (values: PlanLectureAIFormSchema) => {
+        const needsConfirm =
+            (costPreview.credits != null && costPreview.credits >= CONFIRM_COST_THRESHOLD) ||
+            costPreview.isLowBalanceAfter;
+        if (needsConfirm) {
+            setPendingValues(values);
+            setConfirmOpen(true);
+            return;
+        }
+        runGenerate(values);
     };
 
     const { data: recentTasksData } = useQuery({
@@ -350,16 +378,36 @@ const PlanLectureAI = () => {
                             subtitle="Organizing the lecture into clear segments. Usually ~30 seconds."
                         />
                     ) : (
-                        <button
-                            type="submit"
-                            className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-600"
-                        >
-                            Draft my plan
-                            <ArrowRight size={16} weight="bold" />
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                type="submit"
+                                className="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary-600"
+                            >
+                                Draft my plan
+                                <ArrowRight size={16} weight="bold" />
+                            </button>
+                            <ToolCostBadge
+                                credits={costPreview.credits}
+                                sufficient={costPreview.sufficient}
+                                loading={costPreview.isLoading}
+                            />
+                        </div>
                     )}
                 </form>
             </FormProvider>
+
+            <ToolCostConfirmDialog
+                open={confirmOpen}
+                onOpenChange={setConfirmOpen}
+                credits={costPreview.credits}
+                currentBalance={costPreview.currentBalance}
+                balanceAfter={costPreview.balanceAfter}
+                sufficient={costPreview.sufficient}
+                confirmLabel="Draft my plan"
+                onConfirm={() => {
+                    if (pendingValues) runGenerate(pendingValues);
+                }}
+            />
 
             <RecentFilesPanel
                 tasks={recentTasks}

@@ -5,6 +5,7 @@ import {
     GET_INSITITUTE_SETTINGS,
     UPDATE_CUSTOM_FIELD_SETTINGS,
 } from '@/constants/urls';
+import { resolveSystemFieldAccessor } from '@/components/design-system/utils/constants/system-field-columns';
 
 const CUSTOM_FIELD_SETTINGS_KEY = 'CUSTOM_FIELD_SETTING';
 const LOCALSTORAGE_KEY = 'custom-field-settings-cache';
@@ -570,6 +571,29 @@ export const DEFAULT_SYSTEM_FIELDS: SystemField[] = [
     // columns by reorderColumnsBySystemFields.
 ];
 
+// Standard labels for system fields that predate DEFAULT_SYSTEM_FIELDS (so the
+// "Default Name" column reads cleanly for them too).
+const EXTRA_DEFAULT_LABELS: Record<string, string> = {
+    address_line: 'Address',
+    pin_code: 'PIN Code',
+    date_of_birth: 'Date of Birth',
+};
+
+/**
+ * Canonical/standard display name for a system field, for the Settings "Default
+ * Name" column. Some institutes have legacy data where `defaultValue` is a raw
+ * camelCase key (e.g. "fullName"); this resolves the field to its accessor and
+ * returns the proper standard label instead. Falls back to `fallback` if unknown.
+ */
+export const getSystemFieldDefaultLabel = (key: string, fallback = ''): string => {
+    const accessor = resolveSystemFieldAccessor(key);
+    if (!accessor) return fallback;
+    const canonical = DEFAULT_SYSTEM_FIELDS.find(
+        (field) => resolveSystemFieldAccessor(field.key) === accessor
+    )?.defaultValue;
+    return canonical || EXTRA_DEFAULT_LABELS[accessor] || fallback;
+};
+
 // Mapping Functions
 
 /**
@@ -718,6 +742,30 @@ const mapApiResponseToUI = (apiResponse: ApiCustomFieldResponse): CustomFieldSet
                 order: dto.order,
                 visibility: dto.visibility,
             });
+        });
+
+        // Merge in any standard system fields the institute's saved config is
+        // missing (e.g. Country, Status, Attendance) using their built-in defaults,
+        // so every standard field gets a toggle and a proper default visibility.
+        // Without this, a field not present in the config has no toggle and the
+        // visibility readers fail open (always shown). Dedup by resolved column
+        // accessor so a non-standard key (e.g. "fatherName") isn't duplicated by its
+        // canonical twin (FATHER_NAME).
+        const coveredAccessors = new Set(
+            systemFields
+                .map((field) => resolveSystemFieldAccessor(field.key))
+                .filter((accessor): accessor is string => Boolean(accessor))
+        );
+        let nextOrder = systemFields.reduce(
+            (max, field) => Math.max(max, field.order || 0),
+            0
+        );
+        DEFAULT_SYSTEM_FIELDS.forEach((defaultField) => {
+            const accessor = resolveSystemFieldAccessor(defaultField.key);
+            if (accessor && !coveredAccessors.has(accessor)) {
+                systemFields.push({ ...defaultField, order: ++nextOrder });
+                coveredAccessors.add(accessor);
+            }
         });
     } else {
         // First time setup - use default system fields
@@ -1704,11 +1752,19 @@ export const saveCustomFieldSettings = async (
             },
         });
 
-        // Invalidate the cache so the next read (from any page — invite
-        // dialog, live session step 2, etc.) triggers a fresh API fetch
-        // with the backend-assigned UUIDs. Writing the UI state to cache
-        // here would preserve temp_ IDs that don't match real DB rows.
+        // Invalidate the cache, then immediately repopulate it with fresh backend
+        // data (real UUIDs). We MUST refetch rather than leave it empty: sync
+        // readers (learner list columns, side view, export, import) treat a missing
+        // cache as "show everything" (fail-open), so an empty cache makes a just-
+        // toggled-off field reappear until something else refetches. Repopulating
+        // here means the change is reflected everywhere without a manual reload.
         localStorage.removeItem(LOCALSTORAGE_KEY);
+        try {
+            await fetchCustomFieldSettingsFromAPI();
+        } catch (refetchError) {
+            // Best-effort: leave the cache cleared; the next read will refetch.
+            console.warn('Failed to refresh custom field settings cache after save:', refetchError);
+        }
 
         return {
             success: true,

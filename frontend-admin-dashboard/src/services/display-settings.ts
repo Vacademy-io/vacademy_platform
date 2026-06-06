@@ -544,6 +544,11 @@ function mergeDisplayWithDefaults(
             enabledCustomFields:
                 incoming?.learnerListColumns?.enabledCustomFields ??
                 defaults.learnerListColumns?.enabledCustomFields,
+            // Count badges show by default; only false when a role explicitly turns them off.
+            showCountBadges:
+                incoming?.learnerListColumns?.showCountBadges ??
+                defaults.learnerListColumns?.showCountBadges ??
+                true,
         };
     }
 

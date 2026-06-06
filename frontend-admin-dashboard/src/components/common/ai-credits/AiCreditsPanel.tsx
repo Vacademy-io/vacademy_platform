@@ -4,7 +4,9 @@ import {
     useAiTransactionsQuery,
     useAiUsageAnalyticsQuery,
     useAiUsageForecastQuery,
+    useUserAiUsageQuery,
 } from '@/services/ai-credits/get-ai-credits';
+import { getUserId } from '@/utils/userDetails';
 import { TopUpModal } from './TopUpModal';
 import type {
     CreditTransaction,
@@ -96,6 +98,8 @@ function OverviewTab() {
     const { data: credits, isLoading: isCreditsLoading } = useAiCreditsQuery(true);
     const { data: forecast, isLoading: isForecastLoading } = useAiUsageForecastQuery(true);
     const { data: analytics, isLoading: isAnalyticsLoading } = useAiUsageAnalyticsQuery(7, true);
+    const selfUserId = getUserId();
+    const { data: selfUsage, isLoading: isSelfUsageLoading } = useUserAiUsageQuery(selfUserId, 7, true);
 
     const totalCredits = parseFloat(credits?.total_credits || '0');
     const usedCredits = parseFloat(credits?.used_credits || '0');
@@ -228,6 +232,26 @@ function OverviewTab() {
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Your usage (self) */}
+            <div className="flex items-center justify-between rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 p-2.5">
+                <div className="flex items-center gap-1.5">
+                    <div className="rounded-md bg-white/70 p-1">
+                        <Sparkle className="size-3 text-purple-500" weight="fill" />
+                    </div>
+                    <span className="text-caption font-medium text-purple-700">Your usage (7d)</span>
+                </div>
+                {isSelfUsageLoading ? (
+                    <Skeleton className="h-5 w-16" />
+                ) : (
+                    <span className="text-body font-bold text-purple-800">
+                        {(selfUsage?.total_credits ?? 0).toFixed(1)} credits
+                        <span className="ml-1 text-caption font-medium text-purple-500">
+                            · {selfUsage?.request_count ?? 0} req
+                        </span>
+                    </span>
+                )}
             </div>
 
             {/* Forecast recommendation */}

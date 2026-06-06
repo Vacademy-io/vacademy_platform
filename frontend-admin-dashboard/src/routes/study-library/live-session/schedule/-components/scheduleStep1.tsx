@@ -21,6 +21,7 @@ import {
     SessionPlatform,
     SessionType,
     StreamingPlatform,
+    WaitingRoomType,
 } from '../../-constants/enums';
 import { WEEK_DAYS } from '../../-constants/type';
 import { sessionFormSchema } from '../-schema/schema';
@@ -53,7 +54,12 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { format } from 'date-fns';
 import { toZonedTime, format as formatTZ } from 'date-fns-tz';
-import { TIMEZONE_OPTIONS, STREAMING_OPTIONS, WAITING_ROOM_OPTIONS } from '../-constants/options';
+import {
+    TIMEZONE_OPTIONS,
+    STREAMING_OPTIONS,
+    WAITING_ROOM_OPTIONS,
+    WAITING_ROOM_TYPE_OPTIONS,
+} from '../-constants/options';
 import { DefaultClassLinkInput } from './DefaultClassLinkInput';
 import { LearnerButtonConfigInput } from './LearnerButtonConfigInput';
 import { ScrollArea } from '@radix-ui/react-scroll-area';
@@ -249,6 +255,7 @@ export default function ScheduleStep1() {
             startTime: defaultTime,
             events: '1',
             openWaitingRoomBefore: '15',
+            waitingRoomType: WaitingRoomType.WAITING_ROOM,
             sessionType: SessionType.LIVE,
             streamingType: SessionPlatform.EMBED_IN_APP,
             allowRewind: false,
@@ -577,6 +584,10 @@ export default function ScheduleStep1() {
             computedEnableWaitingRoom = schedule.waiting_room_time > 0;
             computedOpenWaitingRoomBefore = String(schedule.waiting_room_time);
         }
+        const computedWaitingRoomType =
+            (schedule as any).waiting_room_type === WaitingRoomType.PRE_JOINING
+                ? WaitingRoomType.PRE_JOINING
+                : WaitingRoomType.WAITING_ROOM;
 
         // Compute learner button config
         const topLevelLearnerButtonConfig =
@@ -605,6 +616,7 @@ export default function ScheduleStep1() {
             sessionType: SessionType.LIVE,
             enableWaitingRoom: computedEnableWaitingRoom,
             openWaitingRoomBefore: computedOpenWaitingRoomBefore,
+            waitingRoomType: computedWaitingRoomType,
             allowRewind: schedule.allow_rewind ?? false,
             allowPause: schedule.allow_play_pause ?? false,
             events: '1',
@@ -2389,11 +2401,12 @@ export default function ScheduleStep1() {
                     <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 p-3">
                         <div>
                             <div className="text-sm font-medium text-neutral-800">
-                                Enable Waiting Room
+                                Enable Waiting Room or Pre-Joining
                             </div>
                             <div className="mt-0.5 text-xs text-neutral-500">
-                                Hold learners in a waiting room before the class goes live, with
-                                an optional thumbnail and background score.
+                                {watch('waitingRoomType') === WaitingRoomType.PRE_JOINING
+                                    ? 'Let learners join the live class directly during the window before it starts.'
+                                    : 'Turn this on to give learners early access before the class starts — they either wait in a waiting room (with an optional thumbnail and background music) or join the live class directly (Pre-Joining), depending on the Waiting Room Type you choose.'}
                             </div>
                         </div>
                         <Controller
@@ -2417,6 +2430,14 @@ export default function ScheduleStep1() {
         return (
                 <div className="flex flex-col items-start gap-4 sm:flex-row">
                     <SelectField
+                        label="Waiting Room Type"
+                        name="waitingRoomType"
+                        labelStyle="text-sm font-medium"
+                        options={WAITING_ROOM_TYPE_OPTIONS}
+                        control={form.control}
+                        className="mt-[8px] w-full font-thin sm:w-56"
+                    />
+                    <SelectField
                         label="Open Waiting Room Before"
                         name="openWaitingRoomBefore"
                         labelStyle="text-sm font-medium"
@@ -2438,6 +2459,8 @@ export default function ScheduleStep1() {
                         accept=".mp3, .wav, .ogg, .m4a, .aac, .flac, .wma, .aiff, .au, .mid, .midi, .mp2, .mp3, .m4a, .aac, .flac, .wma, .aiff, .au, .mid, .midi"
                         className="hidden"
                     />
+                    {form.watch('waitingRoomType') !== WaitingRoomType.PRE_JOINING && (
+                    <>
                     <div className="flex flex-col items-start gap-2">
                         <div className="flex flex-col gap-2">
                             <div>Thumbnail</div>
@@ -2551,6 +2574,8 @@ export default function ScheduleStep1() {
                             </div>
                         )}
                     </div>
+                    </>
+                    )}
                 </div>
             );
     };

@@ -13,6 +13,13 @@ export enum AccessType {
     PUBLIC = 'public',
     PRIVATE = 'private',
 }
+// Per-session waiting room behaviour during the waiting-room window.
+// WAITING_ROOM = learner enters the waiting-room screen.
+// PRE_JOINING = learner joins the live class directly (pre-join).
+export enum WaitingRoomType {
+    WAITING_ROOM = 'WAITING_ROOM',
+    PRE_JOINING = 'PRE_JOINING',
+}
 export enum InputType {
     TEXT = 'text',
     DROPDOWN = 'dropdown',

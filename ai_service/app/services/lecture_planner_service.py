@@ -140,17 +140,30 @@ def record_lecture_billing(
     user_id: Optional[str],
     task_id: str,
     result: LectureGenerationResult,
+    generate_questions: bool = False,
+    generate_homework: bool = False,
 ) -> None:
-    """Log token usage and deduct institute credits for a completed lecture
-    generation (best-effort; runs on its own session in the background worker)."""
-    ai_billing.record_llm_billing(
+    """Charge institute credits for a completed lecture plan (best-effort; runs on
+    its own session in the background worker).
+
+    Uses the parametric tool path so the charge == the previewed price
+    (flat + question/homework add-ons), with the actual token cost as the
+    overage floor — `max(parametric, actual)`. Idempotent on the task id so a
+    retried task can't double-charge.
+    """
+    ai_billing.record_tool_billing(
+        tool_key="lecture",
+        tool_params={
+            "generate_questions": bool(generate_questions),
+            "generate_homework": bool(generate_homework),
+        },
         request_type=RequestType.LECTURE,
         model=result.model_used,
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
-        total_tokens=result.total_tokens,
         institute_id=institute_id,
         user_id=user_id,
+        user_role="ADMIN" if user_id else None,
         request_id=task_id,
-        metadata={"feature": "lecture_planner"},
+        idempotency_key=f"lecture:{task_id}",
     )

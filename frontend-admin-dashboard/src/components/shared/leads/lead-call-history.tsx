@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Phone, PlayCircle, DownloadSimple } from '@phosphor-icons/react';
+import {
+    Phone,
+    PhoneIncoming,
+    PhoneOutgoing,
+    PlayCircle,
+    DownloadSimple,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
@@ -114,13 +120,30 @@ function CallHistoryRow({
         }
     };
 
+    const isInbound = item.direction === 'INBOUND';
     return (
-        <div className="rounded-md border border-neutral-200 bg-white p-3">
+        <div
+            className={cn(
+                'rounded-md border bg-white p-3',
+                isInbound
+                    ? 'border-l-4 border-l-info-500 border-y-neutral-200 border-r-neutral-200'
+                    : 'border-neutral-200'
+            )}
+        >
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                    <Phone className="size-4 text-neutral-400" />
-                    <span className="text-sm font-medium text-neutral-700">
-                        {item.direction === 'OUTBOUND' ? 'Outbound' : 'Inbound'}
+                    {isInbound ? (
+                        <PhoneIncoming className="size-4 text-info-600" />
+                    ) : (
+                        <PhoneOutgoing className="size-4 text-neutral-400" />
+                    )}
+                    <span
+                        className={cn(
+                            'text-sm font-medium',
+                            isInbound ? 'text-info-700' : 'text-neutral-700'
+                        )}
+                    >
+                        {isInbound ? 'Lead called back' : 'Outbound'}
                     </span>
                     <span className={cn('rounded-full px-2 py-0.5 text-xs', tone)}>
                         {label}
@@ -136,8 +159,17 @@ function CallHistoryRow({
                 </span>
             </div>
             <div className="mt-1 text-xs text-neutral-500">
-                {item.callerId ? <span>From {item.callerId} · </span> : null}
-                <span>To {item.toNumberMasked ?? '—'}</span>
+                {isInbound ? (
+                    <>
+                        <span>From {item.fromNumberMasked ?? '—'} · </span>
+                        <span>To {item.callerId ?? item.toNumberMasked ?? '—'}</span>
+                    </>
+                ) : (
+                    <>
+                        {item.callerId ? <span>From {item.callerId} · </span> : null}
+                        <span>To {item.toNumberMasked ?? '—'}</span>
+                    </>
+                )}
             </div>
             {item.hasRecording && (
                 <div className="mt-2">

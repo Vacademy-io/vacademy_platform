@@ -9,6 +9,7 @@ import { StudentListHeader } from './student-list-header';
 import { StudentFilters } from './student-filters';
 import { useStudentFilters } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 import { useStudentTable } from '@/routes/manage-students/students-list/-hooks/useStudentTable';
+import { useStudentCounts } from '@/routes/manage-students/students-list/-hooks/useStudentCounts';
 import { StudentTable } from '@/types/student-table-types';
 import {
     getColumnsVisibility,
@@ -26,7 +27,7 @@ import { useQuery } from '@tanstack/react-query';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
-import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
+import { getCustomFieldSettingsFromCache, getCustomFieldSettings } from '@/services/custom-field-settings';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
 import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -91,6 +92,17 @@ export const StudentsListSection = () => {
         );
     }, []);
 
+    // Ensure the custom-field settings cache is populated/fresh. After saving a
+    // toggle the cache is cleared, and the column-visibility readers fail open
+    // (show everything) on an empty cache. Fetch on mount, then force a re-render
+    // so the inline column-visibility recomputes with the fresh data.
+    const [, bumpCustomFieldsVersion] = useState(0);
+    useEffect(() => {
+        getCustomFieldSettings()
+            .then(() => bumpCustomFieldsVersion((v) => v + 1))
+            .catch(() => {});
+    }, []);
+
     const {
         columnFilters,
         appliedFilters,
@@ -144,6 +156,13 @@ export const StudentsListSection = () => {
         const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         return new Set(cached?.learnerListColumns?.enabledCustomFields ?? []);
+    }, []);
+    // Count badges (Total/Active/Inactive) are shown unless this role turned them off
+    // in Settings → Display Settings. Default visible.
+    const showCountBadges = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return cached?.learnerListColumns?.showCountBadges !== false;
     }, []);
 
     // Full set of custom field accessors known for this institute (any source).
@@ -202,6 +221,15 @@ export const StudentsListSection = () => {
     } = useStudentTable(
         appliedFilters,
         setAppliedFilters,
+        search.package_session_id ? [search.package_session_id] : null
+    );
+
+    // Header badge counts (Total / Active / Inactive) — independent of the status
+    // filter so the breakdown is always visible. Pass the same pinned
+    // package_session_id the table uses so counts match in the Course Details tab.
+    const studentCounts = useStudentCounts(
+        appliedFilters,
+        !isLoading && showCountBadges,
         search.package_session_id ? [search.package_session_id] : null
     );
 
@@ -315,7 +343,14 @@ export const StudentsListSection = () => {
             <section className="animate-fadeIn flex max-w-full flex-col gap-3 overflow-visible">
                 <div className="flex flex-col gap-3">
                     <InviteFormProvider>
-                        <StudentListHeader currentSession={currentSession} />
+                        <StudentListHeader
+                            currentSession={currentSession}
+                            showCounts={showCountBadges}
+                            total={studentCounts.total}
+                            active={studentCounts.active}
+                            inactive={studentCounts.inactive}
+                            countsLoading={studentCounts.isLoading}
+                        />
                     </InviteFormProvider>
 
                     <StudentFilters

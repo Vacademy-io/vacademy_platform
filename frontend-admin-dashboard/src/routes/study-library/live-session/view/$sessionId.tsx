@@ -9,6 +9,9 @@ import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syn
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
+import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
+import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
@@ -1928,12 +1931,19 @@ function RecordingTranscribeAction({
     // dialog calls saveStudyNotes and returns the updated row).
     const [savedNotesMarkdown, setSavedNotesMarkdown] = useState<string | undefined>();
     const [savedNotesGeneratedAt, setSavedNotesGeneratedAt] = useState<string | undefined>();
+    const [transcribeConfirmOpen, setTranscribeConfirmOpen] = useState(false);
 
     // Institute-level kill switch for the transcription feature. Defaults to
     // false (see `DEFAULT_LIVE_SESSION_SETTINGS.recordingTranscriptionEnabled`)
     // so transcription stays opt-in until an admin turns it on in
     // Settings → Live Session Settings → Recording Transcription.
     const { settings: liveSessionSettings } = useLiveSessionSettings();
+
+    // Live "≈ N credits" preview for transcription, priced per audio-minute from
+    // the recording's known duration. Read-only — nothing is deducted in Phase 1.
+    const transcriptionPreview = useToolCostPreview('transcription', {
+        duration_seconds: rec.durationSeconds,
+    });
 
     const handleData = useCallback((data: RecordingTranscriptionStatus) => {
         setStatus(data.status);
@@ -2128,15 +2138,50 @@ function RecordingTranscribeAction({
         return null;
     }
 
+    // Above this estimated cost (or if the balance would go low) we confirm
+    // before kicking off transcription. Preview-only in Phase 1 (no deduction).
+    const TRANSCRIBE_CONFIRM_THRESHOLD = 20;
+    const startTranscription = () => {
+        const needsConfirm =
+            (transcriptionPreview.credits != null &&
+                transcriptionPreview.credits >= TRANSCRIBE_CONFIRM_THRESHOLD) ||
+            transcriptionPreview.isLowBalanceAfter;
+        if (needsConfirm) {
+            setTranscribeConfirmOpen(true);
+            return;
+        }
+        mutate();
+    };
+
     return (
-        <button
-            onClick={() => mutate()}
-            disabled={inFlight}
-            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
-            title="Generate transcript (English + source language) and detect the audio language"
-        >
-            <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
-            {inFlight ? 'Processing…' : 'Process Recording'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+                onClick={startTranscription}
+                disabled={inFlight}
+                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+                title="Generate transcript (English + source language) and detect the audio language"
+            >
+                <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
+                {inFlight ? 'Processing…' : 'Process Recording'}
+            </button>
+            {rec.durationSeconds > 0 && (
+                <ToolCostBadge
+                    credits={transcriptionPreview.credits}
+                    sufficient={transcriptionPreview.sufficient}
+                    loading={transcriptionPreview.isLoading}
+                />
+            )}
+            <ToolCostConfirmDialog
+                open={transcribeConfirmOpen}
+                onOpenChange={setTranscribeConfirmOpen}
+                credits={transcriptionPreview.credits}
+                currentBalance={transcriptionPreview.currentBalance}
+                balanceAfter={transcriptionPreview.balanceAfter}
+                sufficient={transcriptionPreview.sufficient}
+                heading="Process this recording?"
+                confirmLabel="Process Recording"
+                onConfirm={() => mutate()}
+            />
+        </div>
     );
 }

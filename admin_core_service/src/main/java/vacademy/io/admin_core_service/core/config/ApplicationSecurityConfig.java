@@ -109,7 +109,12 @@ public class ApplicationSecurityConfig {
             // Telephony call-event SSE stream — EventSource doesn't support auth
             // headers; the callLogId UUID acts as the capability token (returned only
             // to the counsellor who placed the call via /telephony/calls/connect).
-            "/admin-core-service/v1/telephony/calls/*/events"
+            "/admin-core-service/v1/telephony/calls/*/events",
+            // Inbound (lead -> counsellor) routing + status callbacks. The provider's
+            // Connect applet hits /inbound/route synchronously and /inbound/status
+            // when the call terminates; both auth via shared-secret ?token= verified
+            // by the matching provider handler.
+            "/admin-core-service/v1/telephony/inbound/**"
 
     };
     @Autowired

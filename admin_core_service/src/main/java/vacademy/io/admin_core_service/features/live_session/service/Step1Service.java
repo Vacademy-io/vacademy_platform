@@ -529,6 +529,8 @@ public class Step1Service {
             session.setThumbnailFileId(request.getThumbnailFileId());
         if (request.getWaitingRoomTime() != null)
             session.setWaitingRoomTime(request.getWaitingRoomTime());
+        if (request.getWaitingRoomType() != null)
+            session.setWaitingRoomType(request.getWaitingRoomType());
         if (request.getLinkType() != null)
             session.setLinkType(request.getLinkType());
         if (request.getAllowRewind() != null)

@@ -6,15 +6,19 @@ import lombok.Builder;
 import lombok.Data;
 
 /**
- * Response after creating a Razorpay order. The frontend feeds these into
- * Razorpay Checkout via {@code Razorpay({key_id, order_id, ...}).open()}.
+ * Response after creating a Razorpay payment. The frontend redirects the
+ * browser to {@code paymentLinkUrl} (Razorpay's hosted page) to pay — this is
+ * what lets payment work on the platform's custom admin domains, which Razorpay
+ * won't let checkout.js run on. {@code platformPaymentId} is polled for the
+ * webhook-driven credit grant.
  */
 @Data
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class CreditPackPurchaseResponseDTO {
     private String platformPaymentId;   // our id; FE polls /orders/{id}/status
-    private String razorpayOrderId;
+    private String paymentLinkUrl;      // Razorpay hosted page (rzp.io/i/…) — FE redirects here
+    private String razorpayOrderId;     // null for the payment-link flow (kept for back-compat)
     private String razorpayKeyId;
     private long amountMinor;           // what Razorpay will charge
     private String currency;            // "INR" / "USD"

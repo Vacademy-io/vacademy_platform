@@ -32,7 +32,6 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
-import vacademy.io.common.payment.dto.PaymentResponseDTO;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentType;
 
@@ -177,7 +176,7 @@ public class CreditPackService {
     // ─────────────────────────────────────────────────────────────────
 
     public CreditPackPurchaseResponseDTO createOrder(
-            String instituteId, String packId, UserDTO buyer) {
+            String instituteId, String packId, UserDTO buyer, String returnUrl) {
 
         // ── Phase A: validate + compute (no DB writes) ──
         Institute institute = instituteRepository.findById(instituteId)
@@ -243,35 +242,47 @@ public class CreditPackService {
         razorpayReq.setPaymentType(PaymentType.AI_CREDIT_PACK);
         razorpayReq.setDescription(pack.getName() + " — " + pack.getCredits() + " AI credits");
 
+        // Razorpay redirects the browser to this URL after the hosted payment.
+        // We append our platform_payment_id so the returning page can resume
+        // status polling. Payment happens on Razorpay's domain (always allowed) —
+        // this is what lets the top-up work on custom white-labelled admin domains.
+        String callbackUrl = null;
+        if (returnUrl != null && !returnUrl.isBlank()) {
+            callbackUrl = returnUrl + (returnUrl.contains("?") ? "&" : "?")
+                    + "topup_pp=" + payment.getId();
+        }
+
         Map<String, Object> creds = configService.getRazorpayCredsMap();
-        PaymentResponseDTO resp;
+        Map<String, Object> linkData;
         try {
-            resp = razorpayManager.initiatePayment(buyer, razorpayReq, creds);
+            linkData = razorpayManager.createPaymentLink(buyer, razorpayReq, creds, callbackUrl);
         } catch (RuntimeException e) {
             // Razorpay rejected / timed out. Flip the row to FAILED so it
             // doesn't sit at INITIATED forever, then propagate so the caller
             // sees a clear error.
-            log.error("Razorpay order creation failed for platform_payment {}: {}",
+            log.error("Razorpay payment link creation failed for platform_payment {}: {}",
                     payment.getId(), e.getMessage(), e);
             markFailedSafe(payment.getId());
             throw e;
         }
 
-        Map<String, Object> data = resp.getResponseData();
-        String razorpayOrderId = stringOrNull(data, "razorpayOrderId");
-        String razorpayKeyId = stringOrNull(data, "razorpayKeyId");
+        String paymentLinkUrl = stringOrNull(linkData, "paymentLinkUrl");
+        String paymentLinkId = stringOrNull(linkData, "paymentLinkId");
+        String razorpayKeyId = stringOrNull(linkData, "razorpayKeyId");
 
-        // ── Phase D (TX2): persist Razorpay order id for webhook lookup ──
+        // ── Phase D (TX2): persist the link id for audit/trace ──
+        // The webhook keys the grant on notes.orderId = platform_payment_id,
+        // NOT on this — so a link with the same notes fulfills exactly as before.
         final String paymentId = payment.getId();
         txTemplate.executeWithoutResult(status ->
                 platformPaymentRepository.findById(paymentId).ifPresent(p -> {
-                    p.setVendorOrderId(razorpayOrderId);
+                    p.setVendorOrderId(paymentLinkId);
                     platformPaymentRepository.save(p);
                 }));
 
         return CreditPackPurchaseResponseDTO.builder()
                 .platformPaymentId(payment.getId())
-                .razorpayOrderId(razorpayOrderId)
+                .paymentLinkUrl(paymentLinkUrl)
                 .razorpayKeyId(razorpayKeyId)
                 .amountMinor(tax.getTotalAmountMinor())
                 .currency(currency)

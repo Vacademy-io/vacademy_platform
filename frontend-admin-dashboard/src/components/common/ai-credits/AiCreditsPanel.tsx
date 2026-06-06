@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
     useAiCreditsQuery,
     useAiTransactionsQuery,
@@ -99,7 +99,11 @@ function OverviewTab() {
     const { data: forecast, isLoading: isForecastLoading } = useAiUsageForecastQuery(true);
     const { data: analytics, isLoading: isAnalyticsLoading } = useAiUsageAnalyticsQuery(7, true);
     const selfUserId = getUserId();
-    const { data: selfUsage, isLoading: isSelfUsageLoading } = useUserAiUsageQuery(selfUserId, 7, true);
+    const { data: selfUsage, isLoading: isSelfUsageLoading } = useUserAiUsageQuery(
+        selfUserId,
+        7,
+        true
+    );
 
     const totalCredits = parseFloat(credits?.total_credits || '0');
     const usedCredits = parseFloat(credits?.used_credits || '0');
@@ -240,7 +244,9 @@ function OverviewTab() {
                     <div className="rounded-md bg-white/70 p-1">
                         <Sparkle className="size-3 text-purple-500" weight="fill" />
                     </div>
-                    <span className="text-caption font-medium text-purple-700">Your usage (7d)</span>
+                    <span className="text-caption font-medium text-purple-700">
+                        Your usage (7d)
+                    </span>
                 </div>
                 {isSelfUsageLoading ? (
                     <Skeleton className="h-5 w-16" />
@@ -569,6 +575,33 @@ export function AiCreditsPanel({
     const [activeTab, setActiveTab] = useState<TabId>('overview');
     const [isOpen, setIsOpen] = useState(false);
     const [topUpOpen, setTopUpOpen] = useState(false);
+    const [resumePaymentId, setResumePaymentId] = useState<string | null>(null);
+
+    // Returning from Razorpay's hosted payment lands on …?topup_pp=<id>.
+    // Reopen the top-up modal straight into its polling/confirmation state, then
+    // scrub the payment params from the URL so a refresh can't re-trigger it.
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const pp = params.get('topup_pp');
+        if (!pp) return;
+        setResumePaymentId(pp);
+        setTopUpOpen(true);
+        [
+            'topup_pp',
+            'razorpay_payment_id',
+            'razorpay_payment_link_id',
+            'razorpay_payment_link_reference_id',
+            'razorpay_payment_link_status',
+            'razorpay_signature',
+        ].forEach((k) => params.delete(k));
+        const qs = params.toString();
+        window.history.replaceState(
+            {},
+            '',
+            `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`
+        );
+    }, []);
 
     if (!credits || isError) return null;
 
@@ -684,7 +717,16 @@ export function AiCreditsPanel({
                     )}
                 </div>
             </PopoverContent>
-            {!hideTopUp && <TopUpModal open={topUpOpen} onOpenChange={setTopUpOpen} />}
+            {!hideTopUp && (
+                <TopUpModal
+                    open={topUpOpen}
+                    onOpenChange={(o) => {
+                        setTopUpOpen(o);
+                        if (!o) setResumePaymentId(null);
+                    }}
+                    resumePaymentId={resumePaymentId}
+                />
+            )}
         </Popover>
     );
 }

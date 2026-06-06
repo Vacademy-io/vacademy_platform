@@ -9,6 +9,7 @@ import {
     ChartTooltipContent,
 } from '@/components/ui/chart';
 import dayjs from 'dayjs';
+import { useTheme } from '@/providers/theme/theme-provider';
 
 const chartConfig = {
     avg_daily_time_minutes: {
@@ -27,9 +28,22 @@ export interface ChartDataType {
     avg_daily_time_minutes_batch: number;
 }
 export function LineChartComponent({ chartData }: { chartData: ChartDataType[] }) {
+    // Brand colour for the chart axis labels — driven by the existing
+    // institute-level ThemeProvider so that white-label tenants automatically
+    // get their own brand colour without touching this chart.
+    const { getPrimaryColorCode } = useTheme();
+    const brandColor = getPrimaryColorCode();
     return (
         <Card className="w-full">
-            <ChartContainer className="h-[530px] w-full py-6" config={chartConfig}>
+            <ChartContainer
+                className="w-full py-6"
+                config={chartConfig}
+                // Fixed 530px chart canvas matches the surrounding container —
+                // no Tailwind height token equivalent. Isolated inline style
+                // with comment per the design-system rules.
+                // design-lint-ignore: chart canvas height
+                style={{ height: 530 }}
+            >
                 <LineChart
                     accessibilityLayer
                     data={chartData}
@@ -52,7 +66,8 @@ export function LineChartComponent({ chartData }: { chartData: ChartDataType[] }
                             position: 'left',
                             dx: 55,
                             dy: 30,
-                            style: { fontSize: '14px', fill: '#ED7424' },
+                            // Axis label fill follows the active tenant brand.
+                            style: { fontSize: '14px', fill: brandColor },
                         }}
                     />
                     <YAxis
@@ -67,7 +82,7 @@ export function LineChartComponent({ chartData }: { chartData: ChartDataType[] }
                             angle: -90, // Rotates the text to be vertical
                             dx: -10, // Adjusts the horizontal position
                             dy: 200, // Adjusts the vertical position
-                            style: { fontSize: '14px', fill: '#ED7424' },
+                            style: { fontSize: '14px', fill: brandColor },
                         }}
                     />
                     <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />

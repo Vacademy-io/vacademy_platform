@@ -74,13 +74,14 @@ public class ExotelHttpClient {
             // reads. Adding StatusCallbackContentType triggered 340025 in a
             // previous attempt, so we don't set it.
             //
-            // StatusCallbackEvents: explicitly subscribe to "terminal,answered"
-            // so the counsellor sees granular SSE updates (counsellor picked
-            // up → lead picked up → call ended) instead of just one final
-            // event. Default is "terminal" only — which is why the UI was
-            // jumping straight from "Ringing your phone…" to "Call ended".
+            // StatusCallbackEvents: Exotel's Connect-Two-Numbers API only
+            // accepts `terminal` (the default). Earlier attempts to also
+            // subscribe to `answered` for granular SSE updates ("counsellor
+            // picked up → lead picked up") returned
+            //   400 Bad Request: Invalid 'StatusCallbackEvents' specified
+            // so we leave the param unset and accept the single end-of-call
+            // event.
             form.add("StatusCallback", req.getStatusCallbackUrl());
-            form.add("StatusCallbackEvents", "terminal,answered");
         }
         if (req.getCorrelationId() != null) {
             // Exotel echoes CustomField back on every status callback — that's

@@ -131,11 +131,31 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
                     recoveryTimer = null;
                 }
             };
+            // Fallback polling: in multi-replica prod, the SSE stream is open
+            // on whichever pod the EventSource hit, but Exotel's status webhook
+            // can land on a DIFFERENT pod. CallEventBus is in-JVM, so the SSE
+            // subscriber on pod A never sees events published on pod B and
+            // `onerror` never fires (the stream is healthy, just silent).
+            // Polling the call-history API every 20s — stateless, hits the DB —
+            // catches the terminal status regardless of which pod processed the
+            // webhook. Stops as soon as anything resolves the toast.
+            let pollTimer: number | null = null;
+            let pollAttempts = 0;
+            const POLL_INTERVAL_MS = 20_000;
+            const POLL_FIRST_DELAY_MS = 25_000; // SSE gets first shot
+            const POLL_MAX_ATTEMPTS = 15;       // ~5 min total
+            const clearPollTimer = () => {
+                if (pollTimer !== null) {
+                    window.clearTimeout(pollTimer);
+                    pollTimer = null;
+                }
+            };
 
             const resolveAs = (kind: 'success' | 'error' | 'silent', message?: string) => {
                 if (resolved) return;
                 resolved = true;
                 clearRecoveryTimer();
+                clearPollTimer();
                 try {
                     es.close();
                 } catch {
@@ -179,6 +199,55 @@ export function usePlaceCall({ invalidateKeys = [] }: UsePlaceCallOptions = {}) 
 
             // Heartbeat pings — connection is healthy.
             es.addEventListener('ping', () => clearRecoveryTimer());
+
+            const pollOnce = async () => {
+                if (resolved) return;
+                pollAttempts += 1;
+                const userId = vars.userId;
+                if (!userId) {
+                    // No userId → can't look up call history. Give up polling.
+                    return;
+                }
+                try {
+                    const history = await fetchCallHistory(userId, instituteId, 0, 5);
+                    const row = history?.content?.find((c) => c.id === resp.callLogId);
+                    if (!row) {
+                        // Row not yet visible — keep polling.
+                    } else if (row.status === 'COMPLETED') {
+                        resolveAs('success', labelFor('COMPLETED', row.durationSeconds));
+                        return;
+                    } else if (TERMINAL.has(row.status as CallStatus)) {
+                        resolveAs('error', labelFor(row.status as CallStatus, row.durationSeconds));
+                        return;
+                    } else if (!receivedAnyEvent) {
+                        // Mid-call status from the DB — SSE clearly isn't
+                        // delivering. Update the toast text so the counsellor
+                        // sees forward motion instead of "Starting the call…"
+                        // for minutes.
+                        toast.loading(labelFor(row.status as CallStatus, row.durationSeconds), {
+                            id: toastId,
+                            duration: Infinity,
+                        });
+                    }
+                } catch {
+                    /* poll errors are non-fatal — try again next tick */
+                }
+                if (pollAttempts >= POLL_MAX_ATTEMPTS) {
+                    // Give up after ~5 min. Soft message rather than success/error
+                    // because we don't actually know the call's fate.
+                    if (!resolved) {
+                        toast.message('Live updates lost · check call history shortly', {
+                            id: toastId,
+                            duration: 6000,
+                        });
+                        resolved = true;
+                        try { es.close(); } catch { /* noop */ }
+                    }
+                    return;
+                }
+                pollTimer = window.setTimeout(pollOnce, POLL_INTERVAL_MS);
+            };
+            pollTimer = window.setTimeout(pollOnce, POLL_FIRST_DELAY_MS);
 
             es.onerror = () => {
                 if (resolved) return;

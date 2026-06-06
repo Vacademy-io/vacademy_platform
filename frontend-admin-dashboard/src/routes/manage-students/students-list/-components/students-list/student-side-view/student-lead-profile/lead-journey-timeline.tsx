@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_ALL_LEAD_EVENTS } from '@/constants/urls';
@@ -9,6 +9,8 @@ import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { fetchCallRecordingUrl } from '@/components/shared/leads';
+import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
+import type { CallActivity } from '@/components/shared/lead-calls/call-activity';
 import {
     Path,
     UserPlus,
@@ -27,6 +29,7 @@ import {
     ArrowRight,
     PencilSimple,
     Note,
+    NotePencil,
     Phone,
     PlayCircle,
     DownloadSimple,
@@ -369,15 +372,23 @@ function CallRecordingMeta({
     title,
     description,
     meta,
+    userId,
+    linkedNotes,
 }: {
     title: string;
     description: string | null;
     meta: Record<string, unknown>;
+    userId: string;
+    /** Notes added from this specific call row — rendered inline below the
+     *  recording so the counsellor sees "what was discussed" tied to "which
+     *  call". Empty array means no linked notes. */
+    linkedNotes: TimelineEvent[];
 }) {
     const instituteId = getCurrentInstituteId() ?? '';
     const callLogId = typeof meta.call_log_id === 'string' ? meta.call_log_id : null;
     const callerId = typeof meta.caller_id === 'string' ? meta.caller_id : null;
     const status = typeof meta.status === 'string' ? meta.status : null;
+    const direction = typeof meta.direction === 'string' ? meta.direction : null;
     const durationSeconds =
         typeof meta.duration_seconds === 'number'
             ? meta.duration_seconds
@@ -386,6 +397,17 @@ function CallRecordingMeta({
 
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+
+    // Pre-fill the Add-note dialog so the counsellor only has to pick an
+    // outcome and (optionally) write a note — direction + telephony_call_log_id
+    // come straight from this row's metadata, so the saved note links back to
+    // this exact call.
+    const initialCallActivity: CallActivity = {
+        direction: direction === 'INBOUND' ? 'INBOUND' : 'OUTBOUND',
+        provider: 'EXOTEL',
+        telephonyCallLogId: callLogId ?? undefined,
+    };
 
     const resolveUrl = async (): Promise<string | null> => {
         if (url) return url;
@@ -473,8 +495,115 @@ function CallRecordingMeta({
             {/* Suppress title-only display for CALL_MADE — the pill row above
                 already conveys "Outbound call · 0m 23s · Connected". */}
             <span className="sr-only">{title}</span>
+
+            {/* Inline notes — anything the counsellor logged from this call's
+                Add-note button is shown here (not as a separate timeline row)
+                so the note travels with the call it describes. */}
+            {linkedNotes.length > 0 && (
+                <div className="mt-2 space-y-1.5 border-l-2 border-primary-100 pl-2.5">
+                    {linkedNotes
+                        .slice()
+                        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+                        .map((n) => (
+                            <LinkedCallNote key={n.id} note={n} />
+                        ))}
+                </div>
+            )}
+
+            {/* Add-note affordance — opens AddLeadNoteDialog pre-filled with
+                action_type=CALL_LOG and a link to this call (via
+                telephony_call_log_id metadata). Lets the counsellor log an
+                outcome + note for the call directly from the Lead Journey
+                timeline. */}
+            {userId && callLogId && (
+                <div className="pt-1">
+                    <button
+                        type="button"
+                        onClick={() => setNoteDialogOpen(true)}
+                        className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 hover:bg-neutral-50 hover:border-primary-300"
+                    >
+                        <NotePencil className="size-3.5" />
+                        Add note
+                    </button>
+                </div>
+            )}
+            {userId && (
+                <AddLeadNoteDialog
+                    open={noteDialogOpen}
+                    onOpenChange={setNoteDialogOpen}
+                    userId={userId}
+                    initialActionType="CALL_LOG"
+                    initialCallActivity={initialCallActivity}
+                    hideCallRecordingControls
+                />
+            )}
         </div>
     );
+}
+
+/**
+ * One note tied to a specific call row — outcome pill + body + actor/time.
+ * Kept lightweight (no avatar / left rail) since it lives nested inside the
+ * parent CALL_MADE row's card, not as a top-level timeline event.
+ */
+function LinkedCallNote({ note }: { note: TimelineEvent }) {
+    const outcome =
+        note.metadata && typeof note.metadata.call_outcome === 'string'
+            ? (note.metadata.call_outcome as string)
+            : null;
+    const rawTs = note.created_at ?? '';
+    const hasOffset = rawTs.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(rawTs);
+    const ts = rawTs ? new Date(hasOffset ? rawTs : rawTs + '+05:30') : null;
+
+    return (
+        <div className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
+                <NotePencil weight="fill" className="size-3 text-primary-500 shrink-0" />
+                {outcome && (
+                    <span className="rounded-full bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-700">
+                        {formatCallOutcome(outcome)}
+                    </span>
+                )}
+                {note.actor_name && (
+                    <span className="text-[11px] text-neutral-500">{note.actor_name}</span>
+                )}
+                {ts && !isNaN(ts.getTime()) && (
+                    <span className="text-[11px] text-neutral-400">
+                        · {format(ts, 'MMM d, h:mm a')}
+                    </span>
+                )}
+            </div>
+            {note.description && (
+                <div
+                    className="mt-1 leading-relaxed text-neutral-700 [&_p]:m-0 [&_p+p]:mt-1"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(note.description) }}
+                />
+            )}
+        </div>
+    );
+}
+
+/** Outcome key → friendly label. Mirrors CALL_OUTCOME_LABELS from
+ *  call-activity.ts; duplicated here to avoid a cross-feature import
+ *  for one lookup. */
+function formatCallOutcome(key: string): string {
+    switch (key) {
+        case 'CONNECTED': return 'Connected';
+        case 'NO_ANSWER': return 'No answer';
+        case 'BUSY': return 'Busy';
+        case 'LEFT_VOICEMAIL': return 'Left voicemail';
+        case 'CALL_BACK_LATER': return 'Call back later';
+        case 'NOT_REACHABLE': return 'Not reachable';
+        case 'SWITCHED_OFF': return 'Switched off';
+        case 'WRONG_NUMBER': return 'Wrong number';
+        case 'INTERESTED': return 'Interested';
+        case 'NOT_INTERESTED': return 'Not interested';
+        case 'FOLLOW_UP_SCHEDULED': return 'Follow-up scheduled';
+        case 'DEMO_SCHEDULED': return 'Demo scheduled';
+        case 'CONVERTED': return 'Converted';
+        case 'DO_NOT_CALL': return 'Do not call';
+        default: return key;
+    }
 }
 
 function formatDuration(seconds: number): string {
@@ -508,7 +637,15 @@ function formatStatus(status: string): string {
     }
 }
 
-function EventMeta({ event }: { event: TimelineEvent }) {
+function EventMeta({
+    event,
+    userId,
+    linkedNotes,
+}: {
+    event: TimelineEvent;
+    userId: string;
+    linkedNotes: TimelineEvent[];
+}) {
     const meta = event.metadata ?? {};
     switch (event.action_type) {
         case 'STATUS_CHANGED':
@@ -532,6 +669,8 @@ function EventMeta({ event }: { event: TimelineEvent }) {
                     title={event.title}
                     description={event.description}
                     meta={meta}
+                    userId={userId}
+                    linkedNotes={linkedNotes}
                 />
             );
         default:
@@ -548,7 +687,20 @@ function EventMeta({ event }: { event: TimelineEvent }) {
 
 // ── Single event row ───────────────────────────────────────────────────────────
 
-function EventRow({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
+function EventRow({
+    event,
+    isLast,
+    userId,
+    linkedNotes,
+}: {
+    event: TimelineEvent;
+    isLast: boolean;
+    userId: string;
+    /** For CALL_MADE rows: notes whose metadata.telephony_call_log_id matches
+     *  this call's call_log_id — rendered inline under the recording so they
+     *  travel with the call instead of as separate timeline rows. */
+    linkedNotes: TimelineEvent[];
+}) {
     const config = getConfig(event.action_type);
     const { Icon, dotBg, iconColor } = config;
     const isConverted = event.action_type === 'LEAD_CONVERTED';
@@ -613,7 +765,7 @@ function EventRow({ event, isLast }: { event: TimelineEvent; isLast: boolean }) 
                     </time>
                 </div>
 
-                <EventMeta event={event} />
+                <EventMeta event={event} userId={userId} linkedNotes={linkedNotes} />
 
                 {/* Actor line: "by name" for admins, "System" badge for system events */}
                 <div className="mt-1.5 flex items-center gap-1.5">
@@ -697,6 +849,31 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
 
     const totalCount = data?.totalElements;
 
+    // Group notes that were added from a specific call row (they carry
+    // metadata.telephony_call_log_id pointing back at that call) so we can:
+    //   1. Render them inline under the matching CALL_MADE row, and
+    //   2. Exclude them from the top-level timeline so the user doesn't see
+    //      the same note twice.
+    // Notes added from the generic Add-activity flow have no
+    // telephony_call_log_id and stay in the timeline as standalone rows.
+    const { visibleEvents, notesByCallLogId } = useMemo(() => {
+        const events = data?.content ?? [];
+        const map: Record<string, TimelineEvent[]> = {};
+        const visible: TimelineEvent[] = [];
+        for (const e of events) {
+            const linkedId =
+                e.metadata && typeof e.metadata.telephony_call_log_id === 'string'
+                    ? (e.metadata.telephony_call_log_id as string)
+                    : null;
+            if (linkedId) {
+                (map[linkedId] ??= []).push(e);
+            } else {
+                visible.push(e);
+            }
+        }
+        return { visibleEvents: visible, notesByCallLogId: map };
+    }, [data?.content]);
+
     function handleRefresh(e: React.MouseEvent) {
         e.stopPropagation();
         queryClient.invalidateQueries({ queryKey });
@@ -770,15 +947,24 @@ export function LeadJourneyTimeline({ userId, responseId }: LeadJourneyTimelineP
 
                     {userId && !isLoading && !isError && data && (
                         <>
-                            {data.content.length === 0 ? (
+                            {visibleEvents.length === 0 ? (
                                 <EmptyState />
                             ) : (
                                 <div>
-                                    {data.content.map((event, idx) => (
+                                    {visibleEvents.map((event, idx) => (
                                         <EventRow
                                             key={event.id}
                                             event={event}
-                                            isLast={idx === data.content.length - 1 && data.last}
+                                            isLast={idx === visibleEvents.length - 1 && data.last}
+                                            userId={userId ?? ''}
+                                            linkedNotes={
+                                                event.action_type === 'CALL_MADE' &&
+                                                typeof event.metadata?.call_log_id === 'string'
+                                                    ? notesByCallLogId[
+                                                          event.metadata.call_log_id as string
+                                                      ] ?? []
+                                                    : []
+                                            }
                                         />
                                     ))}
 

@@ -58,7 +58,8 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
                     ss.default_class_link AS defaultClassLink,
                     ss.default_class_name AS defaultClassName,
                     COALESCE(ss.link_type, s.link_type) AS linkType,
-                    ss.provider_meeting_id AS providerMeetingId
+                    ss.provider_meeting_id AS providerMeetingId,
+                    s.waiting_room_type AS waitingRoomType
                 """;
 
         String baseFrom = """

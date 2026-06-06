@@ -17,7 +17,7 @@ import { BookOpen, Lightning } from '@phosphor-icons/react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarBlank as CalendarIcon } from '@phosphor-icons/react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
@@ -103,12 +103,12 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
             </div>
 
             {resolved?.paymentOption && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-caption text-neutral-600">
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-700">
                         {resolved.paymentOption.name}
                     </span>
                     <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        className={`rounded-full px-2 py-0.5 text-caption font-semibold ${
                             resolved.paymentOption.type === 'FREE'
                                 ? 'bg-emerald-100 text-emerald-700'
                                 : resolved.paymentOption.type === 'CPO'
@@ -119,7 +119,7 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                         {resolved.paymentOption.type}
                     </span>
                     {resolved.resolvedFromDefault && (
-                        <span className="text-[10px] text-neutral-400">
+                        <span className="text-caption text-neutral-400">
                             (auto-resolved from DEFAULT invite)
                         </span>
                     )}
@@ -246,7 +246,7 @@ export const Step3EnrollConfig = ({
                             <SelectTrigger>
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="z-popover-above-modal">
                                 <SelectItem value="SKIP">Skip silently (recommended)</SelectItem>
                                 <SelectItem value="RE_ENROLL">
                                     Re-enroll (reactivate expired/terminated)
@@ -286,7 +286,7 @@ export const Step3EnrollConfig = ({
                                     )}
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
+                            <PopoverContent className="z-popover-above-modal w-auto p-0" align="start">
                                 <Calendar
                                     mode="single"
                                     selected={

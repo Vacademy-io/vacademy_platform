@@ -116,16 +116,20 @@ export function SessionSelectionDialog({
                 <Button
                   onClick={() => onSelectSession(session)}
                   className={`flex-shrink-0 ${
-                    status.isInWaitingRoom
+                    status.isInWaitingRoom &&
+                    session.waiting_room_type !== "PRE_JOINING"
                       ? "bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700"
                       : "bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700"
                   } text-white shadow-sm hover:shadow-md transition-all duration-200`}
                   size="lg"
                 >
                   <ArrowSquareOut size={18} className="mr-2" />
-                  {status.isInWaitingRoom
+                  {status.isInWaitingRoom &&
+                  session.waiting_room_type !== "PRE_JOINING"
                     ? "Join Waiting Room"
-                    : "Join Session"}
+                    : status.isInWaitingRoom
+                      ? "Join Live Class"
+                      : "Join Session"}
                 </Button>
               </div>
             </div>

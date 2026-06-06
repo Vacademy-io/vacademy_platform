@@ -1115,7 +1115,11 @@ def _whisper_align(audio_path: Path, language: str = "English") -> list:
     # Default sizes per language. Allow override via env so we can step down
     # without a code change if the host is memory-constrained.
     _default_size = "medium" if lang_code != "en" else "base"
-    model_size = os.environ.get("WHISPER_MODEL_SIZE", _default_size)
+    # `.get(key, default)` only uses the default when the key is ABSENT — a
+    # blank env value (e.g. an unset Helm `modelSize: ""`) would otherwise reach
+    # WhisperModel("") and fail with "Invalid model size ''", silently dropping
+    # forced alignment to linear interpolation. Coerce blank → default.
+    model_size = (os.environ.get("WHISPER_MODEL_SIZE") or "").strip() or _default_size
     # Concurrency knobs — keep memory peaks predictable on shared hosts.
     # Default to 2 threads / 1 worker; override via env for beefier boxes.
     try:
@@ -1353,9 +1357,24 @@ class OpenRouterClient:
         treat empty as "use my `default_model`".
         """
         models: list[str] = []
+        # Explicit per-use-case fallback chain from `ai_model_defaults`
+        # (fallback_model_id → default_model_id → free_tier_model_id). Unlike
+        # `recommended_models`, these are ALWAYS appended to `models_to_try` in
+        # chat(), so a single dead/empty primary model (explicit or stage-routed)
+        # fails over to the configured fallback instead of burning the whole
+        # retry budget on one model.
+        self.use_case_fallback_chain: list[str] = []
         try:
-            from app.db import db_session as _db_ctx
-            from app.services.ai_models_service import AIModelsService
+            # These modules live in the `ai_service.app` package, but this file is
+            # loaded flat via sys.path (the dir name is hyphenated), so a bare
+            # `app.` import only resolves when cwd happens to be the service root.
+            # Try both so worker threads/subprocesses don't hit "No module named 'app'".
+            try:
+                from app.db import db_session as _db_ctx
+                from app.services.ai_models_service import AIModelsService
+            except ModuleNotFoundError:
+                from ai_service.app.db import db_session as _db_ctx
+                from ai_service.app.services.ai_models_service import AIModelsService
             with _db_ctx() as _db:
                 resp = AIModelsService(_db).get_models_for_use_case("video")
             for m in (getattr(resp, "recommended_models", None) or []):
@@ -1367,6 +1386,15 @@ class OpenRouterClient:
                 _free_mid = getattr(_free, "model_id", None) if _free else None
                 if _free_mid:
                     models.append(_free_mid)
+            # Build the always-on fallback chain (deduped; order fallback → default → free).
+            for _m in (
+                getattr(resp, "fallback_model", None),
+                getattr(resp, "default_model", None),
+                getattr(resp, "free_tier_model", None),
+            ):
+                _mid = getattr(_m, "model_id", None) if _m else None
+                if _mid and _mid not in self.use_case_fallback_chain:
+                    self.use_case_fallback_chain.append(_mid)
         except Exception as e:
             print(f"Warning: Failed to load model chain from registry: {e}")
         return models
@@ -1407,6 +1435,15 @@ class OpenRouterClient:
             else:
                 models_to_try = [self.default_model]
 
+        # Always allow failing over to the use-case fallback chain (from
+        # `ai_model_defaults`: fallback_model_id → default_model_id → free_tier).
+        # A single dead/empty model (explicit OR stage-routed) then fails over to
+        # the configured fallback instead of the retry decorator re-hitting the
+        # same broken model 4× and failing the whole run.
+        for _fb in getattr(self, "use_case_fallback_chain", []):
+            if _fb and _fb not in models_to_try:
+                models_to_try = models_to_try + [_fb]
+
         # Apply prompt caching: wrap system message content in cache_control array
         if self.use_prompt_cache:
             cached_messages: list = []
@@ -1445,10 +1482,32 @@ class OpenRouterClient:
                     raw = response.read().decode("utf-8")
                     # Parse JSON response and return content
                     data = json.loads(raw)
-                    content = data["choices"][0]["message"]["content"]
+                    _choice = data["choices"][0]
+                    _message = _choice.get("message", {}) or {}
+                    content = _message.get("content")
+                    _finish = _choice.get("finish_reason")
+
+                    # Reasoning / "thinking" models (e.g. MiniMax M-series) often
+                    # return an empty `content` with the actual text in
+                    # `reasoning` / `reasoning_content`, OR they spend the whole
+                    # token budget thinking and get cut off (finish_reason
+                    # "length") before emitting any `content`. Salvage the
+                    # reasoning text so a thinking model isn't treated as a hard
+                    # failure. JSON callers then pull the object out of it via the
+                    # tolerant `_extract_json_blob`; if it's a truncated
+                    # half-thought, parsing fails and the fallback chain kicks in.
+                    if not content or not content.strip():
+                        _reasoning = _message.get("reasoning_content") or _message.get("reasoning")
+                        if _reasoning and str(_reasoning).strip():
+                            content = str(_reasoning)
 
                     if not content or not content.strip():
-                        raise ValueError("Model returned an empty string.")
+                        _hint = (
+                            " (finish_reason=length — model hit max_tokens before emitting"
+                            " content; raise max_tokens for this model)"
+                            if _finish == "length" else ""
+                        )
+                        raise ValueError(f"Model returned an empty string.{_hint}")
 
                     usage = data.get("usage", {})
                     # Expose cache hit metrics when available (OpenRouter passes these through)
@@ -3501,6 +3560,11 @@ class VideoGenerationPipeline:
             self._base_prompt = base_prompt.strip()
 
         if do_script:
+            # Cooperative-stop checkpoint at the stage boundary — see `_check_stop`.
+            # Bounds how long an orphaned pipeline thread keeps running after a
+            # cancel: it unwinds here instead of grinding through the script LLM
+            # calls (beat planning + script writing).
+            self._check_stop()
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
 
@@ -3999,6 +4063,7 @@ class VideoGenerationPipeline:
                     "deferred_to_html": True,
                 }
             elif do_tts:
+                self._check_stop()  # stage-boundary cancel checkpoint (before TTS synthesis)
                 self._emit_progress({"type": "sub_stage", "sub_stage": "tts_generating",
                                       "message": "Generating voice narration..."})
                 tts_outputs = self._synthesize_voice(
@@ -4143,6 +4208,7 @@ class VideoGenerationPipeline:
                 print("🔤 Word timings deferred to html stage (v2 per-shot path)")
                 word_outputs = {"words_json": None, "words_csv": None}
             elif do_words:
+                self._check_stop()  # stage-boundary cancel checkpoint (before word alignment)
                 print("🔤 Deriving word timings ...")
                 word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
             elif content_type not in NO_AUDIO_TYPES:
@@ -4167,6 +4233,11 @@ class VideoGenerationPipeline:
 
         style_guide = None  # Will be set if do_html; used later to store palette in timeline meta
         if do_html:
+            # Stage-boundary cancel checkpoint — bails before the Director /
+            # style-guide LLM work, complementing the per-shot checkpoint inside
+            # the parallel HTML loop further down (`_check_stop` before each shot
+            # submission + an is_set() guard between completions).
+            self._check_stop()
             # Checkpoint: load style guide from prior run to skip this LLM call on resume
             _sg_ckpt = run_dir / "style_guide.json"
             if _sg_ckpt.exists():
@@ -4189,7 +4260,14 @@ class VideoGenerationPipeline:
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
             interactive_types = ["QUIZ", "STORYBOOK", "FLASHCARDS", "PUZZLE_BOOK", "INTERACTIVE_GAME", "SIMULATION", "WORKSHEET", "CODE_PLAYGROUND", "TIMELINE", "CONVERSATION", "MAP_EXPLORATION", "SLIDES"]
-            
+
+            # Defaults for the post-branch audio passes (background music +
+            # audio mix). The STANDARD VIDEO FLOW (else branch) sets these, but
+            # interactive content types take the `if` branch and would otherwise
+            # leave them unbound → UnboundLocalError at the music/mix call sites.
+            _director_plan = None
+            _seg_audio_dur = 0.0
+
             if content_type in interactive_types:
                 print(f"🎮 Processing interactive content type: {content_type}")
                 # For interactive content, we bypass audio-based segmentation and directly use the structure from the plan
@@ -5271,6 +5349,7 @@ class VideoGenerationPipeline:
 
         avatar_video_path = None
         if do_avatar:
+            self._check_stop()  # stage-boundary cancel checkpoint (before RunPod avatar gen)
             if content_type == "VIDEO":
                 print("👤 Starting AVATAR stage...")
                 avatar_video_path = self._generate_avatar_runpod(run_dir)
@@ -5278,6 +5357,13 @@ class VideoGenerationPipeline:
                 print(f"⏩ Skipping AVATAR stage (content_type={content_type} is not VIDEO)")
 
         if do_render:
+            # Stage-boundary cancel checkpoint. Render is the single longest,
+            # fully uninterruptible leg (Playwright + ffmpeg slice/concat/split,
+            # multi-minute). Bailing here is the highest-value checkpoint: it's
+            # where users most often cancel and where an orphaned thread would
+            # otherwise burn the most compute. Denser checks *inside* _render_video
+            # would need care around subprocess/temp-file cleanup (see notes).
+            self._check_stop()
             print("🎥 Rendering final video with Playwright...")
             
             # Get background color from style guide
@@ -17841,6 +17927,16 @@ class VideoGenerationPipeline:
         else:
             max_delay, max_duration = 0.70, 1.20
 
+        # A delay at/after 0.55×duration is an INTENTIONAL second-beat reveal —
+        # exactly what `_validate_shot_animation_density` requires ("no back-half
+        # motion"). Clamping those down to max_delay made that validator
+        # mathematically un-passable for every 3–7s shot (it only warned, but on
+        # tiers with regen it burned a regen that re-clamped and re-failed).
+        # So only clamp wasteful ENTRY delays (< back_half); leave back-half
+        # reveals untouched. Entry black-screen is still killed because the early
+        # tween's delay is, by definition, below this cutoff.
+        _back_half = 0.55 * dur
+
         # Match `delay: 1.5,` or `delay:1` etc. The lookbehind avoids
         # matching CSS strings like `transitionDelay`. We require the key to
         # be the literal `delay` (case-sensitive) preceded by `{`, `,`, or
@@ -17848,11 +17944,14 @@ class VideoGenerationPipeline:
         delay_pat = re.compile(r'(?P<pre>[\{\s,])delay\s*:\s*(?P<val>\d+(?:\.\d+)?)')
         dur_pat = re.compile(r'(?P<pre>[\{\s,])duration\s*:\s*(?P<val>\d+(?:\.\d+)?)')
 
-        def _clamp_factory(cap: float):
+        def _clamp_factory(cap: float, skip_above: Optional[float] = None):
             def _replace(m: re.Match) -> str:
                 try:
                     cur = float(m.group('val'))
                 except (TypeError, ValueError):
+                    return m.group(0)
+                # Leave intentional back-half reveals (delay ≥ skip_above) alone.
+                if skip_above is not None and cur >= skip_above:
                     return m.group(0)
                 if cur > cap:
                     pre = m.group('pre')
@@ -17862,7 +17961,9 @@ class VideoGenerationPipeline:
                 return m.group(0)
             return _replace
 
-        out = delay_pat.sub(_clamp_factory(max_delay), html)
+        # Delays only: skip clamping back-half reveals (≥ 0.55×dur). Durations
+        # are about fade length, not start time — clamp them unconditionally.
+        out = delay_pat.sub(_clamp_factory(max_delay, skip_above=_back_half), html)
         out = dur_pat.sub(_clamp_factory(max_duration), out)
         return out
 
@@ -20818,20 +20919,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         try:
             try:
                 from app.repositories.vision_review_repository import VisionReviewRepository
-            except ImportError:
-                # Module is sometimes loaded with a sys.path that doesn't
-                # include the ai_service root (e.g. the run-from-pipeline
-                # subprocess vs the FastAPI uvicorn worker). The `app/`
-                # package lives at `<service_root>/app`, so injecting
-                # `<service_root>` into sys.path resolves it. `__file__` is
-                # `<service_root>/app/ai-video-gen-main/automation_pipeline.py`
-                # so the service root is `parents[2]`.
-                import sys as _sys_vrr
-                from pathlib import Path as _Path_vrr
-                _service_root_vrr = str(_Path_vrr(__file__).resolve().parents[2])
-                if _service_root_vrr not in _sys_vrr.path:
-                    _sys_vrr.path.insert(0, _service_root_vrr)
-                from app.repositories.vision_review_repository import VisionReviewRepository
+            except ModuleNotFoundError:
+                # This file is loaded flat via sys.path (the dir name is
+                # hyphenated), so a bare `app.` import only resolves when cwd
+                # happens to be the service root — in a pipeline worker thread it
+                # raises "No module named 'app'". The canonical package root is
+                # `ai_service` (PYTHONPATH=/app, package at /app/ai_service), which
+                # is ALWAYS importable. Use it directly instead of the old
+                # `parents[2]` sys.path hack, which kept re-importing bare `app`.
+                from ai_service.app.repositories.vision_review_repository import VisionReviewRepository
             repo = VisionReviewRepository()
         except Exception as exc:
             print(f"   ⚠️ vision-review persistence: repository unavailable ({exc}) — skipping DB writes")
@@ -20839,13 +20935,36 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         try:
             import boto3 as _boto3_vrc
             import os as _os_vrc
+            # Prefer Pydantic settings (case-insensitive, .env-aware) — the same
+            # source the working S3Service uses. Falling back to bare os.environ
+            # is why this path logged "Unable to locate credentials": in the
+            # pipeline worker the exact-case env names weren't present, so boto3
+            # dropped to its default chain (no IAM role here) and failed.
+            try:
+                from app.config import get_settings as _get_settings_vrc
+            except ModuleNotFoundError:
+                from ai_service.app.config import get_settings as _get_settings_vrc
+            _st_vrc = _get_settings_vrc()
+            _ak = (getattr(_st_vrc, "s3_aws_access_key", None)
+                   or _os_vrc.environ.get("S3_AWS_ACCESS_KEY")
+                   or _os_vrc.environ.get("AWS_ACCESS_KEY_ID") or None)
+            _sk = (getattr(_st_vrc, "s3_aws_access_secret", None)
+                   or _os_vrc.environ.get("S3_AWS_ACCESS_SECRET")
+                   or _os_vrc.environ.get("AWS_SECRET_ACCESS_KEY") or None)
+            _rg = (getattr(_st_vrc, "s3_aws_region", None)
+                   or _os_vrc.environ.get("S3_AWS_REGION")
+                   or _os_vrc.environ.get("AWS_REGION") or "ap-south-1")
+            if not (_ak and _sk):
+                raise RuntimeError("S3 credentials not configured (settings/env)")
             s3 = _boto3_vrc.client(
                 "s3",
-                aws_access_key_id=_os_vrc.environ.get("S3_AWS_ACCESS_KEY") or _os_vrc.environ.get("AWS_ACCESS_KEY_ID") or None,
-                aws_secret_access_key=_os_vrc.environ.get("S3_AWS_ACCESS_SECRET") or _os_vrc.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                region_name=_os_vrc.environ.get("S3_AWS_REGION") or _os_vrc.environ.get("AWS_REGION", "ap-south-1"),
+                aws_access_key_id=_ak,
+                aws_secret_access_key=_sk,
+                region_name=_rg,
             )
-            bucket = "vacademy-media-storage-public"
+            bucket = (getattr(_st_vrc, "aws_bucket_name", None)
+                      or getattr(_st_vrc, "aws_s3_public_bucket", None)
+                      or "vacademy-media-storage-public")
         except Exception as exc:
             print(f"   ⚠️ vision-review persistence: S3 client unavailable ({exc}) — skipping artifact uploads")
             s3 = None
@@ -20859,7 +20978,11 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 return None
             key = f"VISION_REVIEW/{vid}/shot{idx:03d}/{kind}_{ts_idx}.png"
             try:
-                s3.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png", ACL="public-read")
+                # No ACL — the bucket has Object Ownership = bucket-owner-enforced
+                # (ACLs disabled); public read is granted via the bucket policy,
+                # the same way the shared S3Service uploads (which pass no ACL).
+                # Passing ACL="public-read" here triggers AccessControlListNotSupported.
+                s3.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png")
                 return f"https://{bucket}.s3.amazonaws.com/{key}"
             except Exception as exc:
                 print(f"   ⚠️ vision-review S3 upload failed ({key}): {exc}")
@@ -20872,7 +20995,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             try:
                 s3.put_object(
                     Bucket=bucket, Key=key, Body=html_str.encode("utf-8"),
-                    ContentType="text/html; charset=utf-8", ACL="public-read",
+                    ContentType="text/html; charset=utf-8",  # no ACL — bucket-owner-enforced
                 )
                 return f"https://{bucket}.s3.amazonaws.com/{key}"
             except Exception as exc:
@@ -22289,18 +22412,40 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         key = f"SUBJECT_REFS/{run_id}/{safe_sid}.png"
 
         try:
+            # Prefer Pydantic settings (case-insensitive, .env-aware) over bare
+            # os.environ — the latter dropped to boto3's default cred chain (no
+            # IAM role here) and failed with "Unable to locate credentials".
+            try:
+                from app.config import get_settings as _get_settings_subj
+            except ModuleNotFoundError:
+                from ai_service.app.config import get_settings as _get_settings_subj
+            try:
+                _st_subj = _get_settings_subj()
+            except Exception:
+                _st_subj = None
+            _ak_subj = (getattr(_st_subj, "s3_aws_access_key", None)
+                        or _os_subj.environ.get("S3_AWS_ACCESS_KEY")
+                        or _os_subj.environ.get("AWS_ACCESS_KEY_ID") or None)
+            _sk_subj = (getattr(_st_subj, "s3_aws_access_secret", None)
+                        or _os_subj.environ.get("S3_AWS_ACCESS_SECRET")
+                        or _os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None)
+            _rg_subj = (getattr(_st_subj, "s3_aws_region", None)
+                        or _os_subj.environ.get("S3_AWS_REGION")
+                        or _os_subj.environ.get("AWS_REGION") or "ap-south-1")
+            bucket = (getattr(_st_subj, "aws_bucket_name", None)
+                      or getattr(_st_subj, "aws_s3_public_bucket", None)
+                      or bucket)
             client = _boto3_subj.client(
                 "s3",
-                aws_access_key_id=_os_subj.environ.get("S3_AWS_ACCESS_KEY") or _os_subj.environ.get("AWS_ACCESS_KEY_ID") or None,
-                aws_secret_access_key=_os_subj.environ.get("S3_AWS_ACCESS_SECRET") or _os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-                region_name=_os_subj.environ.get("S3_AWS_REGION") or _os_subj.environ.get("AWS_REGION", "ap-south-1"),
+                aws_access_key_id=_ak_subj,
+                aws_secret_access_key=_sk_subj,
+                region_name=_rg_subj,
             )
             client.put_object(
                 Bucket=bucket,
                 Key=key,
                 Body=image_bytes,
-                ContentType="image/png",
-                ACL="public-read",
+                ContentType="image/png",  # no ACL — bucket-owner-enforced (ACLs disabled)
             )
         except Exception as _up_err:
             print(f"    ⚠️ subject_ref S3 upload failed for '{subject_id}': {_up_err}")

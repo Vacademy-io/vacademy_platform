@@ -1,4 +1,12 @@
-import { DotsThreeVertical, ArrowUpRight, Plus, UserPlus, Flame, Tag } from '@phosphor-icons/react';
+import {
+    DotsThreeVertical,
+    ArrowUpRight,
+    Phone,
+    Plus,
+    UserPlus,
+    Flame,
+    Tag,
+} from '@phosphor-icons/react';
 import {
     DropdownMenu,
     DropdownMenuTrigger,
@@ -73,6 +81,19 @@ export function LeadActionsMenu({
                     Open details
                 </DropdownMenuItem>
 
+                {canOps && actions.onCallLead && actions.canCall && (() => {
+                    const gate = actions.canCall(vm);
+                    return (
+                        <DropdownMenuItem
+                            disabled={!gate.allowed}
+                            title={gate.allowed ? undefined : gate.reason}
+                            onClick={() => actions.onCallLead!(vm)}
+                        >
+                            <Phone className="mr-2 size-4" />
+                            Call lead
+                        </DropdownMenuItem>
+                    );
+                })()}
                 {canOps && actions.onAddNote && (
                     <DropdownMenuItem
                         onClick={() => actions.onAddNote!(userId!, name, vm.responseId)}

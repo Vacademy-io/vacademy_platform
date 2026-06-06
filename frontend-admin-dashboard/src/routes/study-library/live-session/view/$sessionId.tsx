@@ -9,6 +9,9 @@ import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syn
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
+import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
+import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
@@ -1928,12 +1931,19 @@ function RecordingTranscribeAction({
     // dialog calls saveStudyNotes and returns the updated row).
     const [savedNotesMarkdown, setSavedNotesMarkdown] = useState<string | undefined>();
     const [savedNotesGeneratedAt, setSavedNotesGeneratedAt] = useState<string | undefined>();
+    const [transcribeConfirmOpen, setTranscribeConfirmOpen] = useState(false);
 
     // Institute-level kill switch for the transcription feature. Defaults to
     // false (see `DEFAULT_LIVE_SESSION_SETTINGS.recordingTranscriptionEnabled`)
     // so transcription stays opt-in until an admin turns it on in
     // Settings → Live Session Settings → Recording Transcription.
     const { settings: liveSessionSettings } = useLiveSessionSettings();
+
+    // Live "≈ N credits" preview for transcription, priced per audio-minute from
+    // the recording's known duration. Read-only — nothing is deducted in Phase 1.
+    const transcriptionPreview = useToolCostPreview('transcription', {
+        duration_seconds: rec.durationSeconds,
+    });
 
     const handleData = useCallback((data: RecordingTranscriptionStatus) => {
         setStatus(data.status);
@@ -1989,12 +1999,16 @@ function RecordingTranscribeAction({
         }
     }, [status, detectedLanguage, rec.recordingId]);
 
-    // Polling: only active while a job is in flight. Halts on terminal state.
-    // We still do one initial fetch on mount even when COMPLETED so we can
-    // load the sourceTextUrl/englishTextUrl needed by the viewer modal —
-    // the list endpoint doesn't include those fields.
+    // Status lifecycle. The recordings-list payload's transcriptStatus can be
+    // stale or null, so we ALWAYS fetch the live status once on mount — this is
+    // what makes an in-progress job (or an already-finished transcript) surface
+    // automatically, without the user having to click "Process Recording" to
+    // find out. While a job is in flight we poll every 10s so the row
+    // auto-advances QUEUED/RUNNING → COMPLETED/FAILED; polling halts on a
+    // terminal state. We also re-check when the tab regains focus. The mount
+    // fetch additionally loads the sourceTextUrl/englishTextUrl the list endpoint
+    // omits (needed by the viewer modal).
     const polling = status === 'QUEUED' || status === 'RUNNING';
-    const needsUrls = status === 'COMPLETED' && !sourceTextUrl && !englishTextUrl;
     useQuery({
         queryKey: ['recording-transcribe', rec.scheduleId, rec.recordingId],
         queryFn: async () => {
@@ -2002,9 +2016,12 @@ function RecordingTranscribeAction({
             handleData(data);
             return data;
         },
-        enabled: polling || needsUrls,
-        refetchInterval: polling ? 30_000 : false,
-        refetchOnWindowFocus: false,
+        enabled: true,
+        refetchInterval: (query) => {
+            const s = query.state.data?.status;
+            return s === 'QUEUED' || s === 'RUNNING' ? 10_000 : false;
+        },
+        refetchOnWindowFocus: true,
     });
 
     const { mutate, isPending } = useMutation({
@@ -2118,6 +2135,10 @@ function RecordingTranscribeAction({
     }
 
     const inFlight = polling || isPending;
+    // Stage-specific label so the admin can see what's actually happening,
+    // not just a generic spinner.
+    const processingLabel =
+        status === 'QUEUED' ? 'Queued…' : status === 'RUNNING' ? 'Transcribing…' : 'Processing…';
 
     // Hide the "Process Recording" entry point when the institute has the
     // transcription feature disabled. We only gate the *new-job* affordance —
@@ -2128,15 +2149,50 @@ function RecordingTranscribeAction({
         return null;
     }
 
+    // Above this estimated cost (or if the balance would go low) we confirm
+    // before kicking off transcription. Preview-only in Phase 1 (no deduction).
+    const TRANSCRIBE_CONFIRM_THRESHOLD = 20;
+    const startTranscription = () => {
+        const needsConfirm =
+            (transcriptionPreview.credits != null &&
+                transcriptionPreview.credits >= TRANSCRIBE_CONFIRM_THRESHOLD) ||
+            transcriptionPreview.isLowBalanceAfter;
+        if (needsConfirm) {
+            setTranscribeConfirmOpen(true);
+            return;
+        }
+        mutate();
+    };
+
     return (
-        <button
-            onClick={() => mutate()}
-            disabled={inFlight}
-            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
-            title="Generate transcript (English + source language) and detect the audio language"
-        >
-            <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
-            {inFlight ? 'Processing…' : 'Process Recording'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+                onClick={startTranscription}
+                disabled={inFlight}
+                className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+                title="Generate transcript (English + source language) and detect the audio language"
+            >
+                <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
+                {inFlight ? processingLabel : 'Process Recording'}
+            </button>
+            {rec.durationSeconds > 0 && !inFlight && (
+                <ToolCostBadge
+                    credits={transcriptionPreview.credits}
+                    sufficient={transcriptionPreview.sufficient}
+                    loading={transcriptionPreview.isLoading}
+                />
+            )}
+            <ToolCostConfirmDialog
+                open={transcribeConfirmOpen}
+                onOpenChange={setTranscribeConfirmOpen}
+                credits={transcriptionPreview.credits}
+                currentBalance={transcriptionPreview.currentBalance}
+                balanceAfter={transcriptionPreview.balanceAfter}
+                sufficient={transcriptionPreview.sufficient}
+                heading="Process this recording?"
+                confirmLabel="Process Recording"
+                onConfirm={() => mutate()}
+            />
+        </div>
     );
 }

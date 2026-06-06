@@ -117,6 +117,7 @@ export const enum SettingsTabs {
     Youtube = 'youtube',
     Automations = 'automations',
     Coupons = 'coupons',
+    Telephony = 'telephony',
 }
 
 export const DAYS_IN_MONTH = 30;

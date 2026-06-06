@@ -26,6 +26,7 @@ import { LeadInlineSelect, LEAD_TIER_OPTIONS } from './lead-inline-select';
 import { LeadSourcePill } from './lead-source-pill';
 import { LeadScoreBar } from './lead-score-bar';
 import { LeadEmptyState } from './lead-empty-state';
+import { CallPickerPopover } from './call-picker-popover';
 
 /**
  * LeadTable — the premium Orbitra-style leads table: light sentence-case headers,
@@ -237,11 +238,14 @@ export function LeadTable({
             header: 'Contact',
             thClass: 'min-w-48',
             show: true,
+            interactive: true,
             render: (vm) => {
                 const showEmail = vm.email !== '-' && vm.email !== vm.name;
                 const showPhone = vm.phone !== '-';
                 if (!showEmail && !showPhone)
                     return <span className="text-sm text-neutral-300">—</span>;
+                const callGate =
+                    actions.onCallLead && actions.canCall ? actions.canCall(vm) : null;
                 return (
                     <div className="min-w-0 space-y-1">
                         {showEmail && (
@@ -257,6 +261,37 @@ export function LeadTable({
                             <p className="flex items-center gap-1.5 truncate text-sm text-neutral-600">
                                 <Phone className="size-3.5 shrink-0 text-neutral-400" />
                                 <span className="truncate">{vm.phone}</span>
+                                {callGate && (
+                                    <CallPickerPopover
+                                        leadUserId={vm.userId}
+                                        disabled={!callGate.allowed}
+                                        disabledReason={callGate.reason}
+                                        onConfirm={(preferredNumberId) =>
+                                            actions.onCallLead?.(vm, preferredNumberId)
+                                        }
+                                        trigger={
+                                            <button
+                                                type="button"
+                                                onClick={(e) => e.stopPropagation()}
+                                                disabled={!callGate.allowed}
+                                                title={
+                                                    callGate.allowed
+                                                        ? 'Call lead'
+                                                        : callGate.reason ?? 'Call lead'
+                                                }
+                                                aria-label="Call lead"
+                                                className={cn(
+                                                    'ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100',
+                                                    callGate.allowed
+                                                        ? 'hover:bg-success-50 hover:text-success-600'
+                                                        : 'cursor-not-allowed'
+                                                )}
+                                            >
+                                                <Phone weight="fill" className="size-4" />
+                                            </button>
+                                        }
+                                    />
+                                )}
                             </p>
                         )}
                     </div>

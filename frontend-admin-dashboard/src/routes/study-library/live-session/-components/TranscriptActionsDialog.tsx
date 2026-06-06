@@ -26,6 +26,8 @@ import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { formatDistanceToNow } from 'date-fns';
 import { GENERATE_TRANSCRIPT_NOTES_URL } from '@/constants/urls';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { saveStudyNotes, type AssessmentArtifact } from '../-services/utils';
 import { PastPapersSection } from './PastPapersSection';
 
@@ -666,25 +668,20 @@ export function TranscriptActionsDialog({
         }
         setNotes({ state: 'loading', markdown: '' });
         try {
-            const resp = await fetch(GENERATE_TRANSCRIPT_NOTES_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    transcript_text: transcriptForLlm,
-                    title_hint: recordingTitle,
-                    target_language:
-                        english.text || isEnglishSource
-                            ? 'en'
-                            : (detectedLanguage ?? 'en').toLowerCase(),
-                }),
+            // Authenticated call: the ai-service derives the actor + institute
+            // from the JWT and charges credits (academy-credits). institute_id is
+            // sent only as a fallback; idempotency_key dedups retries per recording.
+            const resp = await authenticatedAxiosInstance.post(GENERATE_TRANSCRIPT_NOTES_URL, {
+                transcript_text: transcriptForLlm,
+                title_hint: recordingTitle,
+                target_language:
+                    english.text || isEnglishSource
+                        ? 'en'
+                        : (detectedLanguage ?? 'en').toLowerCase(),
+                institute_id: getCurrentInstituteId(),
+                idempotency_key: `notes:${recordingId}`,
             });
-            if (!resp.ok) {
-                const body = await resp.json().catch(() => null);
-                const msg =
-                    (body && (body.detail || body.message)) || `HTTP ${resp.status}`;
-                throw new Error(msg);
-            }
-            const data = (await resp.json()) as { markdown: string };
+            const data = resp.data as { markdown: string };
             if (!data.markdown || !data.markdown.trim()) {
                 throw new Error('ai-service returned empty notes');
             }
@@ -705,7 +702,12 @@ export function TranscriptActionsDialog({
             }
             toast.success('Lecture notes generated');
         } catch (e) {
-            const msg = e instanceof Error ? e.message : 'Failed to generate notes';
+            // Prefer the ai-service detail (e.g. the 402 "insufficient credits"
+            // message) over the generic axios "status code 402".
+            const axiosDetail = (e as { response?: { data?: { detail?: string } } })?.response
+                ?.data?.detail;
+            const msg =
+                axiosDetail || (e instanceof Error ? e.message : 'Failed to generate notes');
             setNotes({ state: 'error', markdown: '', error: msg });
             toast.error(msg);
         }

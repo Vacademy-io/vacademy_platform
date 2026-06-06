@@ -11,6 +11,8 @@ import { VideoPlayerTimeFormType } from '../-form-schemas/video-player-time-sche
 import { uploadQuestionPaperFormSchema } from '@/routes/assessment/question-papers/-utils/upload-question-paper-form-schema';
 import { z } from 'zod';
 import { Switch } from '@/components/ui/switch';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 type QuestionPaperForm = z.infer<ReturnType<typeof uploadQuestionPaperFormSchema>>;
 
@@ -47,6 +49,12 @@ const VideoQuestionsTimeFrameAddDialog = ({
     isAddQuestionTypeRef,
     videoDuration,
 }: VideoQuestionsTimeFrameDialogProps) => {
+    // Per-role Display Setting (Settings → Display Settings → Course Permission).
+    // Hide the entire "Add Question" affordance when disabled for this role.
+    // Fail-open: if settings aren't cached yet, the button stays visible.
+    const slideView = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())?.slideView;
+    if (slideView?.showAddVideoQuestion === false) return null;
+
     return (
         <Dialog>
             <DialogTrigger>
@@ -60,13 +68,13 @@ const VideoQuestionsTimeFrameAddDialog = ({
                     Add Question
                 </MyButton>
             </DialogTrigger>
-            <DialogContent className="w-fit p-0">
+            <DialogContent className="w-full max-w-md p-0">
                 <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
                     Time Stamp
                 </h1>
                 <FormProvider {...videoPlayerTimeFrameForm}>
-                    <form className="flex flex-col items-center gap-2 p-4">
-                        <div className="flex items-center gap-4 p-4">
+                    <form className="flex flex-col items-center gap-2 p-3 sm:p-4">
+                        <div className="flex flex-wrap items-center justify-center gap-2 p-2 sm:gap-3 sm:p-4">
                             <FormField
                                 control={videoPlayerTimeFrameForm.control}
                                 name={`hrs`}
@@ -92,7 +100,7 @@ const VideoQuestionsTimeFrameAddDialog = ({
                                                 }}
                                                 size="large"
                                                 {...field}
-                                                className="w-11"
+                                                className="w-14 sm:w-16"
                                             />
                                         </FormControl>
                                     </FormItem>
@@ -125,7 +133,7 @@ const VideoQuestionsTimeFrameAddDialog = ({
                                                 }}
                                                 size="large"
                                                 {...field}
-                                                className="w-11"
+                                                className="w-14 sm:w-16"
                                             />
                                         </FormControl>
                                     </FormItem>
@@ -158,7 +166,7 @@ const VideoQuestionsTimeFrameAddDialog = ({
                                                 }}
                                                 size="large"
                                                 {...field}
-                                                className="w-11"
+                                                className="w-14 sm:w-16"
                                             />
                                         </FormControl>
                                     </FormItem>
@@ -170,18 +178,18 @@ const VideoQuestionsTimeFrameAddDialog = ({
                                 buttonType="secondary"
                                 scale="medium"
                                 layoutVariant="default"
-                                className="ml-8"
+                                className="mt-2 w-full sm:mt-0 sm:w-auto"
                                 onClick={handleSetCurrentTimeStamp}
                             >
                                 Use Current Position
                             </MyButton>
                         </div>
-                        <div className="mb-2 ml-6 w-full">
+                        <div className="mb-2 w-full px-2 sm:px-4">
                             <FormField
                                 control={videoPlayerTimeFrameForm.control}
                                 name="canSkip"
                                 render={({ field }) => (
-                                    <FormItem className="flex w-1/2 items-center justify-between">
+                                    <FormItem className="flex w-full items-center justify-between gap-4">
                                         <FormLabel>
                                             Allow students to skip this question
                                             <span className="text-subtitle text-danger-600">*</span>

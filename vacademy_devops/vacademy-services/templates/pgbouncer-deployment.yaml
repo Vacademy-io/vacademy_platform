@@ -33,11 +33,11 @@ spec:
               readOnly: true
           resources:
             requests:
-              cpu: "100m"
-              memory: "64Mi"
+              cpu: "200m"
+              memory: "96Mi"
             limits:
-              cpu: "250m"
-              memory: "128Mi"
+              cpu: "1000m"
+              memory: "256Mi"
           livenessProbe:
             tcpSocket:
               port: 6432

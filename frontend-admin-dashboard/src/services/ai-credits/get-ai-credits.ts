@@ -84,6 +84,42 @@ export interface CreditEstimate {
     has_sufficient_credits?: boolean;
 }
 
+// ---- Parametric tool cost preview ("≈ N credits") ----
+
+export type ToolKey = 'assessment' | 'transcription' | 'notes' | 'lecture';
+export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat';
+export type ToolParams = Record<string, string | number | boolean | undefined>;
+
+export interface ToolPricingRow {
+    tool_key: string;
+    request_type: string;
+    flat_base_credits: number;
+    per_unit_credits: number;
+    unit_field: ToolUnitField;
+    params: Record<string, unknown>;
+}
+
+export interface ToolPricingResponse {
+    tools: ToolPricingRow[];
+}
+
+export interface ToolEstimateBreakdownItem {
+    component: string;
+    detail: string;
+    credits: number;
+}
+
+export interface ToolEstimate {
+    tool_key: string;
+    request_type: string;
+    unit_field: ToolUnitField;
+    estimated_credits: number;
+    breakdown: ToolEstimateBreakdownItem[];
+    current_balance?: number | null;
+    balance_after?: number | null;
+    sufficient?: boolean | null;
+}
+
 // ---- Fetcher functions ----
 
 export const fetchAiCredits = async (): Promise<AiCreditsType> => {
@@ -212,4 +248,120 @@ export const useCreditEstimateQuery = (
         staleTime: 120000, // 2 minutes
         retry: false,
     });
+};
+
+// ---- Parametric tool cost preview ----
+
+export const fetchToolPricing = async (): Promise<ToolPricingResponse> => {
+    const response = await authenticatedAxiosInstance.get<ToolPricingResponse>(
+        `${AI_SERVICE_BASE_URL}/credits/v1/tool-pricing`
+    );
+    return response.data;
+};
+
+export const fetchToolEstimate = async (
+    toolKey: ToolKey,
+    params: ToolParams
+): Promise<ToolEstimate> => {
+    const INSTITUTE_ID = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance.post<ToolEstimate>(
+        `${AI_SERVICE_BASE_URL}/credits/v1/estimate-tool`,
+        { tool_key: toolKey, params, institute_id: INSTITUTE_ID || undefined }
+    );
+    return response.data;
+};
+
+// ---- Per-user self usage (widget "your usage" stat) ----
+
+export interface UserUsage {
+    institute_id: string;
+    user_id: string;
+    period_days: number;
+    total_credits: number;
+    request_count: number;
+}
+
+export const fetchUserAiUsage = async (userId: string, days = 7): Promise<UserUsage> => {
+    const INSTITUTE_ID = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance.get<UserUsage>(
+        `${AI_SERVICE_BASE_URL}/credits/v1/institutes/${INSTITUTE_ID}/users/${userId}/usage?days=${days}`
+    );
+    return response.data;
+};
+
+export const useUserAiUsageQuery = (userId: string, days = 7, enabled = true) => {
+    return useQuery({
+        queryKey: ['GET_USER_AI_USAGE', userId, days],
+        queryFn: () => fetchUserAiUsage(userId, days),
+        enabled: enabled && !!userId,
+        staleTime: 60000,
+        retry: false,
+    });
+};
+
+export const useToolPricingQuery = (enabled = true) => {
+    return useQuery({
+        queryKey: ['GET_TOOL_PRICING'],
+        queryFn: fetchToolPricing,
+        enabled,
+        staleTime: 10 * 60 * 1000, // 10 minutes — rates change rarely
+        retry: false,
+    });
+};
+
+/**
+ * Local mirror of the backend ToolCostEstimator math. Lets the live badge update
+ * instantly as inputs change without a network round-trip. MUST stay in sync with
+ * ai_service/app/services/tool_cost_estimator.py (and the V321 seed).
+ */
+export const computeToolCredits = (
+    row: ToolPricingRow | undefined,
+    params: ToolParams
+): number | null => {
+    if (!row) return null;
+    const flatBase = Number(row.flat_base_credits) || 0;
+    const perUnit = Number(row.per_unit_credits) || 0;
+    const extra = row.params || {};
+    let total = flatBase;
+
+    switch (row.unit_field) {
+        case 'questions': {
+            const n = Math.max(0, Number(params.num_questions) || 0);
+            total += n * perUnit;
+            // Explicit image_count (charge time) wins; else include_images is the
+            // preview upper bound of one image per question.
+            let images = 0;
+            if (params.image_count != null) {
+                images = Math.max(0, Number(params.image_count) || 0);
+            } else if (params.include_images) {
+                images = n;
+            }
+            if (images > 0) {
+                total += images * (Number(extra.image_unit_credits) || 0);
+            }
+            break;
+        }
+        case 'audio_minutes': {
+            const minutes =
+                params.duration_seconds != null
+                    ? Math.ceil((Number(params.duration_seconds) || 0) / 60)
+                    : Math.ceil(Number(params.audio_minutes) || 0);
+            total = Math.max(Number(extra.min_credits) || 0, flatBase + minutes * perUnit);
+            break;
+        }
+        case 'chars': {
+            const chars = Math.max(0, Number(params.transcript_chars) || 0);
+            // Guard a misconfigured non-positive rate (mirrors the Python estimator).
+            let divisor = Number(extra.chars_per_unit);
+            if (!(divisor > 0)) divisor = 2000;
+            total += Math.ceil(chars / divisor) * perUnit;
+            break;
+        }
+        case 'flat': {
+            if (params.generate_questions) total += Number(extra.questions_add) || 0;
+            if (params.generate_homework) total += Number(extra.homework_add) || 0;
+            break;
+        }
+    }
+    return Math.ceil(total);
 };

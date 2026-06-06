@@ -1348,7 +1348,7 @@ export const CourseStructureDetails = ({
                                               </span>
                                             )}
                                             <span
-                                              className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
+                                              className="break-words text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
                                               title={toTitleCase(
                                                 ch.chapter_name
                                               )}
@@ -1511,7 +1511,7 @@ export const CourseStructureDetails = ({
                                                         {getIcon(slide, "3")}
                                                       </div>
                                                       <span
-                                                        className="break-words text-sm sm:text-base  text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                        className="break-words text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
                                                         title={slide.title}
                                                       >
                                                         {slide.title}
@@ -1794,7 +1794,7 @@ export const CourseStructureDetails = ({
                                         <div className="shrink-0 group-hover:scale-110 transition-transform">
                                           {getIcon(slide, "3")}
                                         </div>
-                                        <span className="break-words text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors" title={slide.title}>
+                                        <span className="break-words text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors" title={slide.title}>
                                           {slide.title}
                                         </span>
                                         {(() => {
@@ -1920,7 +1920,7 @@ export const CourseStructureDetails = ({
                                             </span>
                                           )}
                                           <span
-                                            className="break-words text-sm sm:text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
+                                            className="break-words text-base font-semibold text-neutral-800 group-hover:text-primary transition-colors"
                                             title={toTitleCase(ch.chapter_name)}
                                           >
                                             {toTitleCase(ch.chapter_name)}
@@ -2044,7 +2044,7 @@ export const CourseStructureDetails = ({
                                                     {getIcon(slide, "3")}
                                                   </div>
                                                   <span
-                                                    className="truncate text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                    className="truncate text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
@@ -2264,7 +2264,7 @@ export const CourseStructureDetails = ({
                                                     {getIcon(slide, "3")}
                                                   </div>
                                                   <span
-                                                    className="truncate text-sm sm:text-base text-neutral-800 group-hover:text-amber-700 transition-colors"
+                                                    className="truncate text-sm font-normal text-neutral-700 group-hover:text-amber-700 transition-colors"
                                                     title={slide.title}
                                                   >
                                                     {slide.title}
@@ -2433,22 +2433,31 @@ export const CourseStructureDetails = ({
 
         {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
         {!isModulesLoading && !selectedSubjectId && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {studyLibraryData?.map((subject) => (
               <Card
                 key={subject.id}
-                className="group h-full hover:shadow-sm transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-0.5 bg-white"
+                role="button"
+                tabIndex={0}
+                aria-label={toTitleCase(subject.subject_name)}
+                className="group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
                 onClick={() => {
                   setSelectedSubjectId(subject.id);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedSubjectId(subject.id);
+                  }
+                }}
               >
-                <CardContent className="p-4 flex items-center gap-5">
-                  <div className="w-20 h-20 shrink-0 rounded-lg bg-neutral-50 flex items-center justify-center overflow-hidden border border-neutral-100 shadow-sm relative group-hover:scale-105 transition-transform duration-300">
+                <CardContent className="p-0 flex flex-col h-full">
+                  <div className="relative aspect-square w-full bg-neutral-50 overflow-hidden">
                     {thumbUrlById[`subject:${subject.id}`] ? (
                       <img
                         src={thumbUrlById[`subject:${subject.id}`]}
-                        alt={toTitleCase(subject.subject_name)}
-                        className="w-full h-full object-cover"
+                        alt=""
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         crossOrigin="anonymous"
                         referrerPolicy="no-referrer"
                         loading="eager"
@@ -2457,16 +2466,18 @@ export const CourseStructureDetails = ({
                         }}
                       />
                     ) : (
-                      <Folder
-                        size={32}
-                        weight="duotone"
-                        className="text-primary-600/60"
-                      />
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Folder
+                          size={40}
+                          weight="duotone"
+                          className="text-primary-500"
+                        />
+                      </div>
                     )}
                   </div>
-                  <div className="min-w-0 flex-1 py-1">
+                  <div className="flex flex-col gap-2 p-3 flex-1">
                     <h3
-                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
+                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
@@ -2480,22 +2491,31 @@ export const CourseStructureDetails = ({
 
         {/* Modules */}
         {!isModulesLoading && selectedSubjectId && !selectedModuleId && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
               <Card
                 key={m.module.id}
-                className="group h-full hover:shadow-sm transition-all duration-300 cursor-pointer overflow-hidden border-neutral-200 hover:border-primary-300/50 transform hover:-translate-y-0.5 bg-white"
+                role="button"
+                tabIndex={0}
+                aria-label={toTitleCase(m.module.module_name)}
+                className="group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
                 onClick={() => {
                   setSelectedModuleId(m.module.id);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedModuleId(m.module.id);
+                  }
+                }}
               >
-                <CardContent className="p-4 flex items-center gap-5">
-                  <div className="w-20 h-20 shrink-0 rounded-lg bg-neutral-50 flex items-center justify-center overflow-hidden border border-neutral-100 shadow-sm relative group-hover:scale-105 transition-transform duration-300">
+                <CardContent className="p-0 flex flex-col h-full">
+                  <div className="relative aspect-square w-full bg-neutral-50 overflow-hidden">
                     {thumbUrlById[`module:${m.module.id}`] ? (
                       <img
                         src={thumbUrlById[`module:${m.module.id}`]}
-                        alt={m.module.module_name}
-                        className="w-full h-full object-cover"
+                        alt=""
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                         crossOrigin="anonymous"
                         referrerPolicy="no-referrer"
                         loading="eager"
@@ -2504,19 +2524,21 @@ export const CourseStructureDetails = ({
                         }}
                       />
                     ) : (
-                      <Folder
-                        size={32}
-                        weight="duotone"
-                        className="text-blue-600/60"
-                      />
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Folder
+                          size={40}
+                          weight="duotone"
+                          className="text-primary-500"
+                        />
+                      </div>
                     )}
                   </div>
-                  <div className="min-w-0 flex-1 py-1">
+                  <div className="flex flex-col gap-2 p-3 flex-1">
                     <h3
-                      className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
-                      title={m.module.module_name}
+                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                      title={toTitleCase(m.module.module_name)}
                     >
-                      {m.module.module_name}
+                      {toTitleCase(m.module.module_name)}
                     </h3>
                   </div>
                 </CardContent>
@@ -2530,7 +2552,7 @@ export const CourseStructureDetails = ({
           selectedSubjectId &&
           selectedModuleId &&
           !selectedChapterId && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
               {(subjectModulesMap[selectedSubjectId] || [])
                 .filter((m) => m.module.id === selectedModuleId)
                 .flatMap((m) => m.chapters)
@@ -2544,25 +2566,36 @@ export const CourseStructureDetails = ({
                   return (
                     <Card
                       key={ch.id}
+                      role="button"
+                      tabIndex={isChapterLocked ? -1 : 0}
+                      aria-label={toTitleCase(ch.chapter_name) + (isChapterLocked ? " (locked)" : "")}
+                      aria-disabled={isChapterLocked}
                       className={cn(
-                        "group h-full transition-all duration-300 overflow-hidden border-neutral-200 bg-white",
+                        "group h-full overflow-hidden border-neutral-200 bg-card transition-all duration-300 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
                         isChapterLocked
-                          ? "opacity-70 bg-neutral-50 cursor-not-allowed"
-                          : "hover:shadow-sm cursor-pointer hover:border-primary-300/50 transform hover:-translate-y-0.5"
+                          ? "opacity-70 cursor-not-allowed"
+                          : "cursor-pointer hover:border-primary-300/60 hover:shadow-md hover:-translate-y-0.5"
                       )}
                       onClick={async () => {
                         if (isChapterLocked) return;
                         setSelectedChapterId(ch.id);
                         await getSlidesWithChapterId(ch.id);
                       }}
+                      onKeyDown={async (e) => {
+                        if ((e.key === "Enter" || e.key === " ") && !isChapterLocked) {
+                          e.preventDefault();
+                          setSelectedChapterId(ch.id);
+                          await getSlidesWithChapterId(ch.id);
+                        }
+                      }}
                     >
-                      <CardContent className="p-4 flex items-center gap-5">
-                        <div className="w-20 h-20 shrink-0 rounded-lg bg-neutral-50 flex items-center justify-center overflow-hidden border border-neutral-100 shadow-sm relative group-hover:scale-105 transition-transform duration-300">
+                      <CardContent className="p-0 flex flex-col h-full">
+                        <div className="relative aspect-square w-full bg-neutral-50 overflow-hidden">
                           {thumbUrlById[`chapter:${ch.id}`] ? (
                             <img
                               src={thumbUrlById[`chapter:${ch.id}`]}
-                              alt={toTitleCase(ch.chapter_name)}
-                              className="w-full h-full object-cover"
+                              alt=""
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                               crossOrigin="anonymous"
                               referrerPolicy="no-referrer"
                               loading="eager"
@@ -2571,24 +2604,24 @@ export const CourseStructureDetails = ({
                               }}
                             />
                           ) : (
-                            <PresentationChart
-                              size={32}
-                              weight="duotone"
-                              className="text-primary-600/60"
-                            />
+                            <div className="w-full h-full flex items-center justify-center">
+                              <PresentationChart
+                                size={40}
+                                weight="duotone"
+                                className="text-primary-500"
+                              />
+                            </div>
                           )}
                         </div>
-                        <div className="min-w-0 flex-1 py-1">
+                        <div className="flex flex-col gap-2 p-3 flex-1">
                           <h3
-                            className="text-base font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug break-words"
+                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
                             title={toTitleCase(ch.chapter_name)}
                           >
                             {toTitleCase(ch.chapter_name)}
                           </h3>
                           {isChapterLocked && (
-                            <div className="mt-2 text-left">
-                              <LockedBadge size="sm" unlockMessage="" />
-                            </div>
+                            <LockedBadge size="sm" unlockMessage="" />
                           )}
                         </div>
                       </CardContent>

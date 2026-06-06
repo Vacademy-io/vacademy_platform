@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.live_session.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import vacademy.io.admin_core_service.features.live_session.enums.WaitingRoomTypeEnum;
 
 import java.sql.Timestamp;
 import java.util.Date;
@@ -35,7 +36,8 @@ import java.util.Date;
         @ColumnResult(name = "defaultClassLink", type = String.class),
         @ColumnResult(name = "defaultClassName", type = String.class),
         @ColumnResult(name = "linkType", type = String.class),
-        @ColumnResult(name = "providerMeetingId", type = String.class)
+        @ColumnResult(name = "providerMeetingId", type = String.class),
+        @ColumnResult(name = "waitingRoomType", type = String.class)
 }))
 public class LiveSession {
 
@@ -66,6 +68,13 @@ public class LiveSession {
     private String status;
 
     private Integer waitingRoomTime; // New field
+    /**
+     * Waiting room type — see {@link vacademy.io.admin_core_service.features.live_session.enums.WaitingRoomTypeEnum}.
+     * DEFAULT keeps the waiting-room screen; PRE_JOINING lets the learner join the
+     * live class directly during the waiting-room window.
+     */
+    @Column(name = "waiting_room_type")
+    private String waitingRoomType;
     private String thumbnailFileId; // New field
     private String backgroundScoreFileId; // New field
 
@@ -119,6 +128,9 @@ public class LiveSession {
     public void prePersist() {
         if (this.accessLevel == null) {
             this.accessLevel = "private";
+        }
+        if (this.waitingRoomType == null) {
+            this.waitingRoomType = WaitingRoomTypeEnum.WAITING_ROOM.name();
         }
     }
 }

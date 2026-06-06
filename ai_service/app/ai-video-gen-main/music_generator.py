@@ -517,14 +517,21 @@ def _concat_via_render_worker(segment_urls: List[Dict[str, Any]],
                               crossfade_seconds: float = 2.0) -> str:
     """POST to render_worker /concat_audio. Returns merged S3 URL."""
     import requests  # type: ignore
-    render_worker_url = os.environ.get("RENDER_WORKER_URL", "").rstrip("/")
+    # RENDER_WORKER_URL and RENDER_SERVER_URL point at the SAME render worker;
+    # fall back to RENDER_SERVER_URL (the one actually configured in the
+    # deployment) so multi-segment music concat works without a separate env var.
+    render_worker_url = (
+        os.environ.get("RENDER_WORKER_URL")
+        or os.environ.get("RENDER_SERVER_URL")
+        or ""
+    ).rstrip("/")
     if not render_worker_url:
         raise RuntimeError(
-            "RENDER_WORKER_URL not set — cannot concatenate multi-segment music. "
-            "Either configure the render worker or restrict background music to "
-            "videos shorter than one Lyria segment."
+            "Neither RENDER_WORKER_URL nor RENDER_SERVER_URL set — cannot "
+            "concatenate multi-segment music. Either configure the render worker "
+            "or restrict background music to videos shorter than one Lyria segment."
         )
-    render_key = os.environ.get("RENDER_KEY", "")
+    render_key = os.environ.get("RENDER_KEY") or os.environ.get("RENDER_SERVER_KEY", "")
     resp = requests.post(
         f"{render_worker_url}/concat_audio",
         json={

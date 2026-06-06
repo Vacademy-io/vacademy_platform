@@ -1005,13 +1005,30 @@ public class LiveSessionProviderController {
             sessionTitle = schedule.getDefaultClassName();
         }
 
+        // Derive the meeting length from the schedule's start -> last-entry window.
+        // last_entry_time is the schedule's END boundary (SessionScheduleRepository
+        // aliases it AS endTime; reschedule writes the new end time into it), so
+        // start->last_entry == the chosen class length. This mirrors
+        // ProviderMeetingBatchService.deriveDurationMinutes. BbbMeetingManager adds a
+        // +30 min buffer on top so a class is never cut short; fall back to 120 only
+        // when the window is missing/zero.
+        int durationMinutes = 120;
+        if (schedule.getStartTime() != null && schedule.getLastEntryTime() != null) {
+            long windowMinutes = java.time.Duration.between(
+                    schedule.getStartTime().toLocalTime(),
+                    schedule.getLastEntryTime().toLocalTime()).toMinutes();
+            if (windowMinutes > 0) {
+                durationMinutes = (int) windowMinutes;
+            }
+        }
+
         return ProviderMeetingCreateRequestDTO.builder()
                 .instituteId(instituteId)
                 .sessionId(schedule.getSessionId())
                 .scheduleId(scheduleId)
                 .topic(sessionTitle)
                 .provider(MeetingProvider.BBB_MEETING.name())
-                .durationMinutes(120)
+                .durationMinutes(durationMinutes)
                 .bbbConfig(bbbConfig)
                 .build();
     }

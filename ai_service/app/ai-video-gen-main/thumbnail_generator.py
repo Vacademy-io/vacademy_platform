@@ -181,24 +181,37 @@ def _upload_png_to_s3(
     regenerate produces a fresh URL (no CDN/browser cache poisoning of the
     previous image).
 
-    Reads credentials directly from `S3_AWS_ACCESS_KEY` / `S3_AWS_ACCESS_SECRET`
-    env vars — the same ones the `S3Service` reads via Pydantic settings.
-    We can't use `S3Service` from here because automation_pipeline is loaded
-    flat via `sys.path.insert`, and the `app` package isn't reliably
-    resolvable from the worker thread (the same context that makes the
-    AvatarBatch's `from app.X import Y` fail with `No module named 'app'`).
-    `boto3` is imported lazily so this module stays import-safe in tests
-    that don't have boto3 installed.
+    Resolves credentials via Pydantic settings first (the same case-insensitive,
+    .env-aware source `S3Service` uses), then bare env vars as a fallback. The
+    earlier env-only path logged "Unable to locate credentials" because the
+    exact-case env names weren't present in the pipeline worker, so boto3 fell
+    through to its default chain (no IAM role here). `boto3` is imported lazily
+    so this module stays import-safe in tests that don't have boto3 installed.
     """
     s3_key = f"{_S3_KEY_PREFIX}/{run_id}/{batch_ts}/{option_id}.png"
     try:
         import boto3  # type: ignore[import-not-found]
 
-        access_key = os.environ.get("S3_AWS_ACCESS_KEY") or None
-        secret_key = os.environ.get("S3_AWS_ACCESS_SECRET") or None
-        region = os.environ.get("S3_AWS_REGION") or "ap-south-1"
+        _settings = None
+        try:
+            try:
+                from app.config import get_settings as _get_settings_thumb
+            except ModuleNotFoundError:
+                from ai_service.app.config import get_settings as _get_settings_thumb
+            _settings = _get_settings_thumb()
+        except Exception:
+            _settings = None
+
+        access_key = (getattr(_settings, "s3_aws_access_key", None)
+                      or os.environ.get("S3_AWS_ACCESS_KEY") or None)
+        secret_key = (getattr(_settings, "s3_aws_access_secret", None)
+                      or os.environ.get("S3_AWS_ACCESS_SECRET") or None)
+        region = (getattr(_settings, "s3_aws_region", None)
+                  or os.environ.get("S3_AWS_REGION") or "ap-south-1")
         bucket = (
-            os.environ.get("AWS_BUCKET_NAME")
+            getattr(_settings, "aws_bucket_name", None)
+            or getattr(_settings, "aws_s3_public_bucket", None)
+            or os.environ.get("AWS_BUCKET_NAME")
             or os.environ.get("AWS_S3_PUBLIC_BUCKET")
             or _S3_BUCKET
         )

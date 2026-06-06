@@ -25,6 +25,12 @@ export interface SubmitLeadRequest {
     source_id: string;
     custom_field_values: Record<string, string>;
     user_dto: SubmitLeadUserDto;
+    /** Optional lead owner (counsellor) user id — written to the lead's assigned counsellor. */
+    counsellor_id?: string;
+    /** Optional lead owner display name (so the Counsellor column renders without a lookup). */
+    counsellor_name?: string;
+    /** Optional pipeline status key (e.g. "NEW") — sets the lead's status chip. */
+    lead_status_key?: string;
 }
 
 export interface SubmitLeadResponse {

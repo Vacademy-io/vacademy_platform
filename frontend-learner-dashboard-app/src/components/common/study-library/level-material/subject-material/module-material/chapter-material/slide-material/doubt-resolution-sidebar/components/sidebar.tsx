@@ -25,7 +25,7 @@ export const DoubtResolutionSidebar = () => {
   const [formattedTime, setFormattedTime] = useState<string | undefined>(
     undefined
   );
-  const { activeItem } = useContentStore();
+  const { activeItem, currentPackageSessionId } = useContentStore();
   const observer = useRef<IntersectionObserver | null>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState<DoubtFilter>({
@@ -67,12 +67,13 @@ export const DoubtResolutionSidebar = () => {
     data?.pages.flatMap((page) => page.content) || []
   );
 
-  // Fetch packageSessionId on component mount
+  // Filter doubts by the course currently being viewed (the route's sessionId,
+  // surfaced via the content store). Fall back to the learner's stored default
+  // enrollment only when that isn't available, mirroring doubt creation.
   useEffect(() => {
-    const fetchPackageSessionId = async () => {
-      const id = await getPackageSessionId();
+    const applyBatchFilter = async () => {
+      const id = currentPackageSessionId || (await getPackageSessionId());
 
-      // Update filter with the fetched packageSessionId
       if (id) {
         setFilter((prev) => ({
           ...prev,
@@ -81,8 +82,8 @@ export const DoubtResolutionSidebar = () => {
       }
     };
 
-    fetchPackageSessionId();
-  }, []);
+    applyBatchFilter();
+  }, [currentPackageSessionId]);
 
   // Handle click outside sidebar to close it
   useEffect(() => {

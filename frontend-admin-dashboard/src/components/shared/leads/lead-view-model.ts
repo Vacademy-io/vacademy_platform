@@ -157,13 +157,16 @@ export const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => 
     (result as unknown as Record<string, unknown>)._response_fields = responseFields;
     (result as unknown as Record<string, unknown>)._audience_campaign_name =
         lead.campaign_name ?? lead.source_audience_name ?? null;
+    (result as unknown as Record<string, unknown>)._response_id = lead.response_id ?? null;
     return result;
 };
 
 /**
  * Map a campaign Lead List row to a partial StudentTable. Underscore-prefixed
- * extras (`_response_fields`, `_audience_campaign_name`) are attached for the
- * LeadFormResponseCard to read from the side view.
+ * extras (`_response_fields`, `_audience_campaign_name`, `_response_id`) are
+ * attached for the LeadFormResponseCard to read from the side view —
+ * `_response_id` in particular drives the click-to-call action on the phone
+ * row (the backend looks up the lead's phone via that id).
  */
 export const mapCampaignRowToStudent = (row: CampaignUserTable): StudentTable => {
     const u = row._user ?? {};
@@ -215,6 +218,7 @@ export const mapCampaignRowToStudent = (row: CampaignUserTable): StudentTable =>
     (result as unknown as Record<string, unknown>)._response_fields = row._response_fields;
     (result as unknown as Record<string, unknown>)._audience_campaign_name =
         row._audience_campaign_name;
+    (result as unknown as Record<string, unknown>)._response_id = row._response_id ?? null;
     return result;
 };
 

@@ -5,8 +5,8 @@ import { Filters } from './myFilter';
 import { StudentSearchBox } from '../../../../../../components/common/student-search-box';
 import { StudentFiltersProps } from '@/routes/manage-students/students-list/-types/students-list-types';
 import { useMemo, useRef, useState } from 'react';
-import { exportStudentsCsv } from '../../../-services/exportStudentsCsv';
 import { exportAccountDetails } from '../../../-services/exportAccountDetails';
+import { ExportColumnsDialog } from './export-columns-dialog';
 import { MyDropdown } from '@/components/common/students/enroll-manually/dropdownForPackageItems';
 import { AddSessionDialog } from '@/routes/manage-institute/sessions/-components/session-operations/add-session/add-session-dialog';
 import { useAddSession } from '@/services/study-library/session-management/addSession';
@@ -38,6 +38,7 @@ export const StudentFilters = ({
     sessionList,
 }: StudentFiltersProps) => {
     const [isAddSessionDiaogOpen, setIsAddSessionDiaogOpen] = useState(false);
+    const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
     const handleOpenAddSessionDialog = () => {
         if (!instituteDetails?.batches_for_sessions.length) return;
         setIsAddSessionDiaogOpen(!isAddSessionDiaogOpen);
@@ -115,11 +116,11 @@ export const StudentFilters = ({
     }, [columnFilters, searchFilter]);
 
     const handleExportClick = () => {
-        exportStudentsCsv({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
+        setIsExportDialogOpen(true);
     };
 
-    const handleExportAccountDetails = () => {
-        exportAccountDetails({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
+    const handleExportAccountDetails = async () => {
+        await exportAccountDetails({ pageNo: 0, pageSize: totalElements || 0, filters: appliedFilters });
     };
 
     return (
@@ -178,7 +179,8 @@ export const StudentFilters = ({
                         scale="medium"
                         buttonType="secondary"
                         layoutVariant="default"
-                        onClick={handleExportAccountDetails}
+                        onAsyncClick={handleExportAccountDetails}
+                        loadingText="Exporting..."
                         className={cn(
                             "hover:scale-102 group flex items-center justify-center gap-1.5 bg-gradient-to-r from-neutral-50 to-neutral-100 transition-all duration-200 hover:from-neutral-100 hover:to-neutral-200",
                             isCompact ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
@@ -277,6 +279,13 @@ export const StudentFilters = ({
                     )}
                 </div>
             </div>
+
+            <ExportColumnsDialog
+                open={isExportDialogOpen}
+                onOpenChange={setIsExportDialogOpen}
+                appliedFilters={appliedFilters}
+                totalElements={totalElements || 0}
+            />
         </div>
     );
 };

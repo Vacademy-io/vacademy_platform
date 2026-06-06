@@ -25,9 +25,9 @@ import {
     Record,
 } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/switch';
-import { WAITING_ROOM_OPTIONS } from '../-constants/options';
+import { WAITING_ROOM_OPTIONS, WAITING_ROOM_TYPE_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
-import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch } from '@phosphor-icons/react';
+import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple, CheckCircle } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,18 +63,20 @@ import { cn } from '@/lib/utils';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 
-import { bulkSessionFormSchema, type BulkSessionForm } from '../-schema/bulkSchema';
+import { bulkSessionFormSchema, type BulkSessionForm, type BulkSessionRow } from '../-schema/bulkSchema';
 import { TIMEZONE_OPTIONS, STREAMING_OPTIONS } from '../-constants/options';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
 import type { PlatformKey } from '@/services/live-session-settings';
 import { transformFormToDTOStep1, transformFormToDTOStep2 } from '../../-constants/helper';
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { sessionFormSchema } from '../-schema/schema';
-import { RecurringType, SessionPlatform, SessionType } from '../../-constants/enums';
-import { createLiveSessionsBulk } from '../-services/utils';
+import { RecurringType, SessionPlatform, SessionType, WaitingRoomType } from '../../-constants/enums';
+import { createLiveSessionsChunked, type BulkLiveSessionRowResult } from '../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { LiveSessionPreviewDialog } from './LiveSessionPreviewDialog';
+import { BulkCsvImportDialog } from './BulkCsvImportDialog';
+import { downloadScheduleTemplate, downloadBatchReference, downloadResultsCsv } from '../-utils/bulkCsv';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -259,7 +261,13 @@ export function BulkScheduleGrid() {
         open: boolean;
         created: number;
         failed: number;
-        failures: { index: number; title?: string; error?: string }[];
+        results: BulkLiveSessionRowResult[];
+    } | null>(null);
+    const [csvImportOpen, setCsvImportOpen] = useState(false);
+    // Live "Creating X/Y…" progress while the throttled chunks run.
+    const [createProgress, setCreateProgress] = useState<{
+        done: number;
+        total: number;
     } | null>(null);
 
     const browserTz = useMemo(() => {
@@ -281,6 +289,7 @@ export function BulkScheduleGrid() {
             sharedOptions: {
                 enableWaitingRoom: false,
                 waitingRoomMinutes: '5',
+                waitingRoomType: WaitingRoomType.WAITING_ROOM,
                 waitingRoomThumbnailFileId: undefined,
                 waitingRoomMusicFileId: undefined,
                 allowRewind: true,
@@ -500,6 +509,22 @@ export function BulkScheduleGrid() {
         toast.success(`Pasted ${parsed.length} row${parsed.length === 1 ? '' : 's'}`);
     };
 
+    // Imported CSV rows replace a lone empty starter row, otherwise append —
+    // same rule as paste, so admins can stack imports onto manual rows.
+    const applyImportedRows = (rows: BulkSessionRow[]) => {
+        if (rows.length === 0) return;
+        const isStarter =
+            fields.length === 1 &&
+            !form.getValues('rows.0.title') &&
+            !form.getValues('rows.0.link');
+        if (isStarter) {
+            form.setValue('rows', rows as never, { shouldValidate: true });
+        } else {
+            for (const row of rows) append(row as never);
+        }
+        toast.success(`Imported ${rows.length} row${rows.length === 1 ? '' : 's'}`);
+    };
+
     const onSubmit = async (data: BulkSessionForm) => {
         if (!INSTITUTE_ID) {
             toast.error('Could not resolve institute. Please re-login.');
@@ -548,6 +573,10 @@ export function BulkScheduleGrid() {
                     openWaitingRoomBefore: rowWaitingEnabled
                         ? rowWaitingMinutes
                         : '',
+                    waitingRoomType:
+                        row.waitingRoomType ??
+                        shared.waitingRoomType ??
+                        WaitingRoomType.WAITING_ROOM,
                     sessionType: SessionType.LIVE,
                     sessionPlatform: row.platform || 'other',
                     enableWaitingRoom: rowWaitingEnabled,
@@ -692,9 +721,14 @@ export function BulkScheduleGrid() {
                 );
             });
 
-            const response = await createLiveSessionsBulk({
-                sessions,
-                step2_per_row: step2PerRow,
+            // Throttled creation: send rows in small chunks with a short pause
+            // between each so the server isn't hit with everything at once.
+            const response = await createLiveSessionsChunked(sessions, step2PerRow, {
+                // One session per request so the UI can count progress per class
+                // ("Scheduling 1/200…"). Total time is backend-bound, so this
+                // doesn't slow things down meaningfully vs larger chunks.
+                chunkSize: 1,
+                onProgress: (done, total) => setCreateProgress({ done, total }),
             });
 
             const successfulResults = response.results.filter(
@@ -721,6 +755,7 @@ export function BulkScheduleGrid() {
                     title: data.rows[0]?.title ?? '',
                     subject: data.rows[0]?.subject ?? '',
                     openWaitingRoomBefore: '',
+                    waitingRoomType: WaitingRoomType.WAITING_ROOM,
                     sessionType: SessionType.LIVE,
                     sessionPlatform: data.rows[0]?.platform || 'other',
                     enableWaitingRoom: false,
@@ -743,26 +778,28 @@ export function BulkScheduleGrid() {
                 });
             }
 
+            // Always show the results dialog so the admin gets a row-wise
+            // outcome and can download the Success/Failed + remarks report,
+            // whether or not anything failed. Navigation is via its Done button.
+            setResultDialog({
+                open: true,
+                created: createdIds.length,
+                failed: failures.length,
+                results: response.results,
+            });
             if (failures.length === 0) {
                 toast.success(
                     `${createdIds.length} ${
                         createdIds.length === 1 ? 'session' : 'sessions'
                     } created`
                 );
-                navigate({ to: '/study-library/live-session' });
-            } else {
-                setResultDialog({
-                    open: true,
-                    created: createdIds.length,
-                    failed: failures.length,
-                    failures,
-                });
             }
         } catch (err) {
             console.error('Bulk create failed', err);
             toast.error('Failed to create sessions. Please try again.');
         } finally {
             setSubmitting(false);
+            setCreateProgress(null);
         }
     };
 
@@ -881,10 +918,14 @@ export function BulkScheduleGrid() {
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="text-sm font-medium text-neutral-800">
-                                    Enable Waiting Room
+                                    Enable Waiting Room or Pre-Joining
                                 </div>
                                 <div className="mt-0.5 text-xs text-neutral-500">
-                                    Hold learners in a waiting room before each class.
+                                    Turn this on to give learners early access before each
+                                    class starts — they either wait in a waiting room (with
+                                    an optional thumbnail and background music) or join the
+                                    live class directly (Pre-Joining), depending on the
+                                    Waiting Room Type you choose.
                                 </div>
                             </div>
                             <Controller
@@ -900,6 +941,35 @@ export function BulkScheduleGrid() {
                         </div>
                         {form.watch('sharedOptions.enableWaitingRoom') && (
                             <div className="mt-3 space-y-3">
+                                <div>
+                                    <label className="text-xs font-medium text-neutral-600">
+                                        Waiting Room Type
+                                    </label>
+                                    <Controller
+                                        control={form.control}
+                                        name="sharedOptions.waitingRoomType"
+                                        render={({ field }) => (
+                                            <Select
+                                                value={field.value}
+                                                onValueChange={field.onChange}
+                                            >
+                                                <SelectTrigger className="mt-1 h-8 w-full">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {WAITING_ROOM_TYPE_OPTIONS.map((opt) => (
+                                                        <SelectItem
+                                                            key={opt._id}
+                                                            value={opt.value}
+                                                        >
+                                                            {opt.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
+                                    />
+                                </div>
                                 <div>
                                     <label className="text-xs font-medium text-neutral-600">
                                         Open waiting room before
@@ -929,6 +999,9 @@ export function BulkScheduleGrid() {
                                         )}
                                     />
                                 </div>
+                                {form.watch('sharedOptions.waitingRoomType') !==
+                                    WaitingRoomType.PRE_JOINING && (
+                                    <>
                                 <div>
                                     <label className="text-xs font-medium text-neutral-600">
                                         Thumbnail
@@ -1024,6 +1097,8 @@ export function BulkScheduleGrid() {
                                         )}
                                     </div>
                                 </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -1438,17 +1513,54 @@ export function BulkScheduleGrid() {
                     </Table>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 bg-neutral-50/60 px-4 py-2.5">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={addRow}
-                            className="h-8 gap-1.5"
-                        >
-                            <Plus size={14} /> Add row
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={addRow}
+                                className="h-8 gap-1.5"
+                            >
+                                <Plus size={14} /> Add row
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCsvImportOpen(true)}
+                                className="h-8 gap-1.5"
+                            >
+                                <UploadSimple size={14} /> Import CSV
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                    downloadScheduleTemplate(
+                                        instituteDetails?.batches_for_sessions ?? []
+                                    )
+                                }
+                                className="h-8 gap-1.5"
+                            >
+                                <DownloadSimple size={14} /> Template
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                    downloadBatchReference(
+                                        instituteDetails?.batches_for_sessions ?? []
+                                    )
+                                }
+                                className="h-8 gap-1.5"
+                            >
+                                <DownloadSimple size={14} /> Batch reference
+                            </Button>
+                        </div>
                         <span className="hidden text-xs text-neutral-500 sm:inline">
-                            Tip: paste tab-separated rows directly into the table.
+                            Tip: paste tab-separated rows, or import a CSV.
                         </span>
                     </div>
                 </div>
@@ -1671,14 +1783,31 @@ export function BulkScheduleGrid() {
                     )}
                     disable={submitting}
                 >
-                    {submitting ? 'Creating…' : 'Preview & create'}
+                    {submitting
+                        ? createProgress
+                            ? `Scheduling ${createProgress.done}/${createProgress.total}…`
+                            : 'Scheduling…'
+                        : 'Preview & create'}
                 </MyButton>
             </div>
+
+            <BulkCsvImportDialog
+                open={csvImportOpen}
+                onOpenChange={setCsvImportOpen}
+                batches={instituteDetails?.batches_for_sessions ?? []}
+                allowedPlatforms={filteredStreamingOptions.map((o) => o.value)}
+                onImport={applyImportedRows}
+            />
 
             <LiveSessionPreviewDialog
                 open={previewOpen}
                 onOpenChange={setPreviewOpen}
                 submitting={submitting}
+                submittingLabel={
+                    createProgress
+                        ? `Scheduling ${createProgress.done}/${createProgress.total}…`
+                        : 'Scheduling…'
+                }
                 onConfirm={async () => {
                     await form.handleSubmit(onSubmit, () =>
                         toast.error('Some rows have errors. Please fix them.')
@@ -1718,43 +1847,116 @@ export function BulkScheduleGrid() {
                 open={!!resultDialog?.open}
                 onOpenChange={(o) => setResultDialog((s) => (s ? { ...s, open: o } : null))}
             >
-                <DialogContent className="max-w-lg">
+                {/* Override the Dialog primitive's fixed 400px width (too narrow for
+                    the header + two footer buttons). The primitive's viewport cap keeps
+                    it inside small screens; sm:max-w-lg caps it on desktop. */}
+                <DialogContent className="w-full sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Bulk creation finished with errors</DialogTitle>
-                        <DialogDescription>
-                            {resultDialog?.created} created · {resultDialog?.failed} failed.
-                            Successful sessions already have participants & notifications
-                            applied. Fix the failed rows and retry, or close this dialog.
-                        </DialogDescription>
+                        <div className="flex items-start gap-3">
+                            <span
+                                className={cn(
+                                    'flex size-10 shrink-0 items-center justify-center rounded-full',
+                                    resultDialog && resultDialog.failed > 0
+                                        ? 'bg-warning-100 text-warning-600'
+                                        : 'bg-success-100 text-success-600'
+                                )}
+                            >
+                                {resultDialog && resultDialog.failed > 0 ? (
+                                    <Warning size={22} weight="fill" />
+                                ) : (
+                                    <CheckCircle size={22} weight="fill" />
+                                )}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <DialogTitle>
+                                    {resultDialog && resultDialog.failed > 0
+                                        ? 'Bulk creation finished with errors'
+                                        : 'Bulk scheduling complete'}
+                                </DialogTitle>
+                                <DialogDescription className="mt-1">
+                                    {resultDialog && resultDialog.failed > 0
+                                        ? 'Successful sessions already have participants & notifications applied. Download the report for a row-wise status, then fix the failed rows and retry.'
+                                        : 'All sessions were scheduled successfully. Download the report for a row-wise record.'}
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-2.5 py-1 text-sm font-medium text-success-700">
+                                <CheckCircle size={14} weight="fill" />
+                                {resultDialog?.created ?? 0} created
+                            </span>
+                            <span
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-sm font-medium',
+                                    resultDialog && resultDialog.failed > 0
+                                        ? 'bg-danger-50 text-danger-700'
+                                        : 'bg-neutral-100 text-neutral-500'
+                                )}
+                            >
+                                <Warning size={14} />
+                                {resultDialog?.failed ?? 0} failed
+                            </span>
+                        </div>
                     </DialogHeader>
-                    <ScrollArea className="max-h-72 rounded border border-neutral-200">
-                        <ul className="divide-y divide-neutral-100 text-sm">
-                            {resultDialog?.failures.map((f) => (
-                                <li key={f.index} className="px-3 py-2">
-                                    <div className="font-medium text-neutral-800">
-                                        Row {f.index + 1}
-                                        {f.title ? `: ${f.title}` : ''}
-                                    </div>
-                                    <div className="text-xs text-danger-600">
-                                        {f.error || 'Unknown error'}
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    </ScrollArea>
+                    {resultDialog && resultDialog.failed > 0 && (
+                        <div className="flex flex-col gap-1.5">
+                            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                                Failed rows ({resultDialog.failed})
+                            </p>
+                            <ScrollArea className="max-h-60 w-full overflow-x-hidden rounded-md border border-neutral-200 sm:max-h-72">
+                                <ul className="divide-y divide-neutral-100 text-sm">
+                                    {resultDialog.results
+                                        .filter((r) => !r.success)
+                                        .map((f) => (
+                                            <li
+                                                key={f.index}
+                                                className="flex items-start gap-2 px-3 py-2"
+                                            >
+                                                <Warning
+                                                    size={16}
+                                                    className="mt-0.5 shrink-0 text-danger-500"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="break-words font-medium text-neutral-800">
+                                                        Row {f.index + 1}
+                                                        {f.title ? `: ${f.title}` : ''}
+                                                    </div>
+                                                    <div className="whitespace-pre-wrap break-words text-xs text-danger-600">
+                                                        {f.error || 'Unknown error'}
+                                                    </div>
+                                                </div>
+                                            </li>
+                                        ))}
+                                </ul>
+                            </ScrollArea>
+                        </div>
+                    )}
                     <DialogFooter className="gap-2">
                         <Button
                             variant="outline"
-                            onClick={() => setResultDialog(null)}
+                            className="w-full sm:w-auto"
+                            onClick={() =>
+                                resultDialog && downloadResultsCsv(resultDialog.results)
+                            }
                         >
-                            Stay & retry
+                            <DownloadSimple size={16} className="mr-1.5" />
+                            Download results (CSV)
                         </Button>
+                        {resultDialog && resultDialog.failed > 0 && (
+                            <Button
+                                variant="outline"
+                                className="w-full sm:w-auto"
+                                onClick={() => setResultDialog(null)}
+                            >
+                                Stay & retry
+                            </Button>
+                        )}
                         <Button
                             onClick={() =>
                                 navigate({ to: '/study-library/live-session' })
                             }
                             disabled={!resultDialog || resultDialog.created === 0}
-                            className="bg-primary-500 hover:bg-primary-600"
+                            className="w-full bg-primary-500 hover:bg-primary-600 sm:w-auto"
                         >
                             Done — view sessions
                         </Button>
@@ -2023,6 +2225,7 @@ const RowBatchPicker = ({ value, onChange, courses, sessionList }: RowBatchPicke
 interface WaitingRoomSharedSnapshot {
     enableWaitingRoom: boolean;
     waitingRoomMinutes: string;
+    waitingRoomType?: string;
     waitingRoomThumbnailFileId?: string;
     waitingRoomMusicFileId?: string;
 }
@@ -2030,6 +2233,7 @@ interface WaitingRoomSharedSnapshot {
 interface RowWaitingRoomChange {
     enabled?: boolean;
     minutes?: string;
+    waitingRoomType?: string;
     thumbnailFileId?: string;
     musicFileId?: string;
     reset?: boolean;
@@ -2040,6 +2244,7 @@ interface RowWaitingRoomPickerProps {
     row: {
         waitingRoomEnabled?: boolean;
         waitingRoomMinutes?: string;
+        waitingRoomType?: string;
         waitingRoomThumbnailFileId?: string;
         waitingRoomMusicFileId?: string;
     } | null;
@@ -2052,6 +2257,9 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
     // the popover. If the row hasn't customised a field, fall back to shared.
     const effectiveEnabled = row?.waitingRoomEnabled ?? shared.enableWaitingRoom;
     const effectiveMinutes = row?.waitingRoomMinutes ?? shared.waitingRoomMinutes;
+    const effectiveWaitingRoomType =
+        row?.waitingRoomType ?? shared.waitingRoomType ?? WaitingRoomType.WAITING_ROOM;
+    const isPreJoining = effectiveWaitingRoomType === WaitingRoomType.PRE_JOINING;
     const effectiveThumb =
         row?.waitingRoomThumbnailFileId ?? shared.waitingRoomThumbnailFileId;
     const effectiveMusic =
@@ -2168,6 +2376,26 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
                     <div className="space-y-3 p-3">
                         <div>
                             <label className="text-xs font-medium text-neutral-600">
+                                Waiting room type
+                            </label>
+                            <Select
+                                value={effectiveWaitingRoomType}
+                                onValueChange={(v) => onChange({ waitingRoomType: v })}
+                            >
+                                <SelectTrigger className="mt-1 h-8 w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {WAITING_ROOM_TYPE_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt._id} value={opt.value}>
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium text-neutral-600">
                                 Open before start
                             </label>
                             <Select
@@ -2186,6 +2414,8 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
                                 </SelectContent>
                             </Select>
                         </div>
+                        {!isPreJoining && (
+                            <>
                         <div>
                             <label className="text-xs font-medium text-neutral-600">
                                 Thumbnail
@@ -2296,6 +2526,8 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
                                     </p>
                                 )}
                         </div>
+                            </>
+                        )}
                     </div>
                 )}
                 {isOverridden && (
@@ -2365,6 +2597,7 @@ const RowEditor = memo(function RowEditor({
     const [
         waitingRoomEnabled,
         waitingRoomMinutes,
+        waitingRoomType,
         waitingRoomThumbnailFileId,
         waitingRoomMusicFileId,
     ] = useWatch({
@@ -2372,6 +2605,7 @@ const RowEditor = memo(function RowEditor({
         name: [
             `rows.${index}.waitingRoomEnabled`,
             `rows.${index}.waitingRoomMinutes`,
+            `rows.${index}.waitingRoomType`,
             `rows.${index}.waitingRoomThumbnailFileId`,
             `rows.${index}.waitingRoomMusicFileId`,
         ] as const,
@@ -2535,6 +2769,7 @@ const RowEditor = memo(function RowEditor({
                     row={{
                         waitingRoomEnabled,
                         waitingRoomMinutes,
+                        waitingRoomType,
                         waitingRoomThumbnailFileId,
                         waitingRoomMusicFileId,
                     }}
@@ -2551,6 +2786,13 @@ const RowEditor = memo(function RowEditor({
                             form.setValue(
                                 `rows.${index}.waitingRoomMinutes` as const,
                                 patch.minutes,
+                                { shouldDirty: true }
+                            );
+                        }
+                        if ('waitingRoomType' in patch) {
+                            form.setValue(
+                                `rows.${index}.waitingRoomType` as const,
+                                patch.waitingRoomType as WaitingRoomType | undefined,
                                 { shouldDirty: true }
                             );
                         }
@@ -2576,6 +2818,11 @@ const RowEditor = memo(function RowEditor({
                             );
                             form.setValue(
                                 `rows.${index}.waitingRoomMinutes` as const,
+                                undefined,
+                                { shouldDirty: true }
+                            );
+                            form.setValue(
+                                `rows.${index}.waitingRoomType` as const,
                                 undefined,
                                 { shouldDirty: true }
                             );

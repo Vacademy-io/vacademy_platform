@@ -34,4 +34,5 @@ public class LiveSessionListProjectionImpl implements LiveSessionRepository.Live
     private String defaultClassName;
     private String linkType;
     private String providerMeetingId;
+    private String waitingRoomType;
 }

@@ -67,6 +67,7 @@ import { Route as StudyLibraryCoursesIndexRouteImport } from "./routes/study-lib
 import { Route as StudyLibraryAttendanceTrackerIndexRouteImport } from "./routes/study-library/attendance-tracker/index"
 import { Route as StudyLibraryAiCopilotIndexRouteImport } from "./routes/study-library/ai-copilot/index"
 import { Route as SignupOnboardingIndexRouteImport } from "./routes/signup/onboarding/index"
+import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/telephony/index"
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
@@ -587,6 +588,13 @@ const SignupOnboardingIndexRoute = SignupOnboardingIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/signup/onboarding/index.lazy").then((d) => d.Route),
+)
+const SettingsTelephonyIndexRoute = SettingsTelephonyIndexRouteImport.update({
+  id: "/settings/telephony/",
+  path: "/settings/telephony/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/settings/telephony/index.lazy").then((d) => d.Route),
 )
 const SettingsFeeManagementIndexRoute =
   SettingsFeeManagementIndexRouteImport.update({
@@ -1637,6 +1645,7 @@ export interface FileRoutesByFullPath {
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
+  "/settings/telephony/": typeof SettingsTelephonyIndexRoute
   "/signup/onboarding/": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot/": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/attendance-tracker/": typeof StudyLibraryAttendanceTrackerIndexRoute
@@ -1811,6 +1820,7 @@ export interface FileRoutesByTo {
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
+  "/settings/telephony": typeof SettingsTelephonyIndexRoute
   "/signup/onboarding": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/attendance-tracker": typeof StudyLibraryAttendanceTrackerIndexRoute
@@ -1987,6 +1997,7 @@ export interface FileRoutesById {
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
+  "/settings/telephony/": typeof SettingsTelephonyIndexRoute
   "/signup/onboarding/": typeof SignupOnboardingIndexRoute
   "/study-library/ai-copilot/": typeof StudyLibraryAiCopilotIndexRoute
   "/study-library/attendance-tracker/": typeof StudyLibraryAttendanceTrackerIndexRoute
@@ -2164,6 +2175,7 @@ export interface FileRouteTypes {
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
+    | "/settings/telephony/"
     | "/signup/onboarding/"
     | "/study-library/ai-copilot/"
     | "/study-library/attendance-tracker/"
@@ -2338,6 +2350,7 @@ export interface FileRouteTypes {
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
+    | "/settings/telephony"
     | "/signup/onboarding"
     | "/study-library/ai-copilot"
     | "/study-library/attendance-tracker"
@@ -2513,6 +2526,7 @@ export interface FileRouteTypes {
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
+    | "/settings/telephony/"
     | "/signup/onboarding/"
     | "/study-library/ai-copilot/"
     | "/study-library/attendance-tracker/"
@@ -2688,6 +2702,7 @@ export interface RootRouteChildren {
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
+  SettingsTelephonyIndexRoute: typeof SettingsTelephonyIndexRoute
   SignupOnboardingIndexRoute: typeof SignupOnboardingIndexRoute
   StudyLibraryAiCopilotIndexRoute: typeof StudyLibraryAiCopilotIndexRoute
   StudyLibraryAttendanceTrackerIndexRoute: typeof StudyLibraryAttendanceTrackerIndexRoute
@@ -3179,6 +3194,13 @@ declare module "@tanstack/react-router" {
       path: "/signup/onboarding"
       fullPath: "/signup/onboarding/"
       preLoaderRoute: typeof SignupOnboardingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/settings/telephony/": {
+      id: "/settings/telephony/"
+      path: "/settings/telephony"
+      fullPath: "/settings/telephony/"
+      preLoaderRoute: typeof SettingsTelephonyIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/settings/fee-management/": {
@@ -4103,6 +4125,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,
+  SettingsTelephonyIndexRoute: SettingsTelephonyIndexRoute,
   SignupOnboardingIndexRoute: SignupOnboardingIndexRoute,
   StudyLibraryAiCopilotIndexRoute: StudyLibraryAiCopilotIndexRoute,
   StudyLibraryAttendanceTrackerIndexRoute:

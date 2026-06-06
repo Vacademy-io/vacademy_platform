@@ -42,21 +42,41 @@ export function parseCustomFieldsFromJson(json: string | undefined): CustomField
 }
 
 /**
- * Generate a CSV template string with headers from the campaign's custom fields.
+ * Optional, well-known column headers the importer understands in addition to the
+ * campaign's custom fields. They are resolved against the institute's users / lead-status
+ * catalog rather than stored as custom field values.
  */
-export function generateCsvTemplate(customFields: CustomFieldConfig[]): string {
-    const headers = customFields.map((f) => f.fieldName);
-    const sampleRow = customFields.map((f) => {
-        const key = f.fieldKey.toLowerCase();
-        const name = f.fieldName.toLowerCase();
-        const isEmail = key.includes('email') || name.includes('email');
-        const isPhone =
-            key.includes('phone') || key.includes('mobile') || name.includes('phone') || name.includes('mobile');
-        if (isEmail) return 'john@example.com';
-        if (isPhone) return '+919876543210';
-        if (!isEmail && !isPhone && (key.includes('name') || name.includes('name'))) return 'John Doe';
-        return '';
-    });
+export const LEAD_OWNER_COLUMN = 'Lead Owner (Counsellor Email)';
+export const LEAD_STATUS_COLUMN = 'Lead Status';
+
+/**
+ * Generate a CSV template string with headers from the campaign's custom fields,
+ * plus the optional Lead Owner + Lead Status columns the importer can resolve.
+ * `statusSample` is the institute's default status label (shown in the sample row).
+ */
+export function generateCsvTemplate(
+    customFields: CustomFieldConfig[],
+    options?: { statusSample?: string }
+): string {
+    const headers = [...customFields.map((f) => f.fieldName), LEAD_OWNER_COLUMN, LEAD_STATUS_COLUMN];
+    const sampleRow = [
+        ...customFields.map((f) => {
+            const key = f.fieldKey.toLowerCase();
+            const name = f.fieldName.toLowerCase();
+            const isEmail = key.includes('email') || name.includes('email');
+            const isPhone =
+                key.includes('phone') ||
+                key.includes('mobile') ||
+                name.includes('phone') ||
+                name.includes('mobile');
+            if (isEmail) return 'john@example.com';
+            if (isPhone) return '+919876543210';
+            if (!isEmail && !isPhone && (key.includes('name') || name.includes('name'))) return 'John Doe';
+            return '';
+        }),
+        'counsellor@example.com',
+        options?.statusSample || 'New',
+    ];
 
     const escape = (v: string) => {
         if (v.includes(',') || v.includes('"') || v.includes('\n')) {
@@ -66,6 +86,168 @@ export function generateCsvTemplate(customFields: CustomFieldConfig[]): string {
     };
 
     return [headers.map(escape).join(','), sampleRow.map(escape).join(',')].join('\n');
+}
+
+const normalizeHeader = (s: string) =>
+    s
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_()-]+/g, '');
+
+// Header aliases for the two special columns. Matched case/space/punctuation-insensitively
+// so admins can label the columns naturally ("Counsellor", "Lead Owner Email", "Status", …).
+const OWNER_HEADER_ALIASES = new Set(
+    [
+        'leadowner',
+        'leadownercounselloremail',
+        'leadownercounseloremail',
+        'owner',
+        'counsellor',
+        'counselor',
+        'counsellorname',
+        'counselorname',
+        'counselloremail',
+        'counseloremail',
+    ].map((s) => s.replace(/[\s_()-]+/g, ''))
+);
+const STATUS_HEADER_ALIASES = new Set(['leadstatus', 'status'].map((s) => s.replace(/[\s_()-]+/g, '')));
+
+/** Find the CSV header that holds the lead owner, if present. */
+export function detectOwnerHeader(headers: string[]): string | null {
+    return headers.find((h) => OWNER_HEADER_ALIASES.has(normalizeHeader(h))) ?? null;
+}
+
+/** Find the CSV header that holds the lead status, if present. */
+export function detectStatusHeader(headers: string[]): string | null {
+    return headers.find((h) => STATUS_HEADER_ALIASES.has(normalizeHeader(h))) ?? null;
+}
+
+// ─── Owner (counsellor) resolution ──────────────────────────────────────────
+
+export interface CounsellorOption {
+    id: string;
+    full_name: string;
+    email?: string;
+}
+
+export interface CounsellorResolver {
+    byEmail: Map<string, CounsellorOption>;
+    byName: Map<string, CounsellorOption>;
+    /** Lowercased names shared by more than one counsellor — can't be resolved by name. */
+    ambiguousNames: Set<string>;
+    hasAny: boolean;
+}
+
+export function buildCounsellorResolver(users: CounsellorOption[]): CounsellorResolver {
+    const byEmail = new Map<string, CounsellorOption>();
+    const byName = new Map<string, CounsellorOption>();
+    const ambiguousNames = new Set<string>();
+
+    for (const u of users) {
+        if (!u.id) continue;
+        if (u.email) byEmail.set(u.email.trim().toLowerCase(), u);
+        const nameKey = (u.full_name || '').trim().toLowerCase();
+        if (!nameKey) continue;
+        if (byName.has(nameKey)) {
+            ambiguousNames.add(nameKey);
+        } else {
+            byName.set(nameKey, u);
+        }
+    }
+
+    return { byEmail, byName, ambiguousNames, hasAny: users.length > 0 };
+}
+
+export interface OwnerResolution {
+    counsellorId?: string;
+    counsellorName?: string;
+    error?: string;
+}
+
+/**
+ * Resolve a CSV owner cell (email or name) to a counsellor. Owner is optional — a blank
+ * cell resolves to nothing without error. Emails resolve exactly; names resolve only when
+ * unambiguous within the institute.
+ */
+export function resolveOwner(value: string, resolver: CounsellorResolver): OwnerResolution {
+    const raw = (value || '').trim();
+    if (!raw) return {};
+
+    if (raw.includes('@')) {
+        const match = resolver.byEmail.get(raw.toLowerCase());
+        if (match) return { counsellorId: match.id, counsellorName: match.full_name };
+        return { error: `Unknown counsellor email: ${raw}` };
+    }
+
+    const nameKey = raw.toLowerCase();
+    if (resolver.ambiguousNames.has(nameKey)) {
+        return { error: `Multiple counsellors named "${raw}" — use their email instead` };
+    }
+    const match = resolver.byName.get(nameKey);
+    if (match) return { counsellorId: match.id, counsellorName: match.full_name };
+    return { error: `Unknown counsellor: ${raw}` };
+}
+
+// ─── Lead status resolution ─────────────────────────────────────────────────
+
+export interface LeadStatusOption {
+    id: string;
+    status_key: string;
+    label: string;
+    is_default?: boolean;
+}
+
+export interface StatusResolver {
+    byKey: Map<string, LeadStatusOption>;
+    byLabel: Map<string, LeadStatusOption>;
+    /** status_key of the institute default, applied to blank cells. */
+    defaultKey: string | null;
+    hasAny: boolean;
+    /** Human-readable list of valid statuses, for error messages. */
+    validLabels: string[];
+}
+
+export function buildStatusResolver(statuses: LeadStatusOption[]): StatusResolver {
+    const byKey = new Map<string, LeadStatusOption>();
+    const byLabel = new Map<string, LeadStatusOption>();
+    let defaultKey: string | null = null;
+
+    for (const s of statuses) {
+        if (s.status_key) byKey.set(s.status_key.trim().toLowerCase(), s);
+        if (s.label) byLabel.set(s.label.trim().toLowerCase(), s);
+        if (s.is_default && !defaultKey) defaultKey = s.status_key;
+    }
+
+    return {
+        byKey,
+        byLabel,
+        defaultKey,
+        hasAny: statuses.length > 0,
+        validLabels: statuses.map((s) => s.label).filter(Boolean),
+    };
+}
+
+export interface StatusResolution {
+    leadStatusKey?: string;
+    error?: string;
+}
+
+/**
+ * Resolve a CSV status cell (label or key) to a status_key. A blank cell falls back to the
+ * institute default (so it shows as "New" rather than blank). An unrecognised value errors.
+ */
+export function resolveStatus(value: string, resolver: StatusResolver): StatusResolution {
+    const raw = (value || '').trim();
+    if (!raw) {
+        return resolver.defaultKey ? { leadStatusKey: resolver.defaultKey } : {};
+    }
+
+    const key = raw.toLowerCase();
+    const match = resolver.byLabel.get(key) ?? resolver.byKey.get(key);
+    if (match) return { leadStatusKey: match.status_key };
+
+    const valid = resolver.validLabels.length ? ` Valid: ${resolver.validLabels.join(', ')}` : '';
+    return { error: `Unknown lead status: ${raw}.${valid}` };
 }
 
 /**

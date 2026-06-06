@@ -1,0 +1,69 @@
+# =============================================================
+# BBB load generator — dedicated, short-lived test pods on the k3s cluster.
+# Runs in its own `loadtest` namespace so it never touches render/prod workloads
+# and is trivial to tear down (`kubectl delete ns loadtest`).
+#
+# Total simulated users = parallelism * (per-pod LISTEN_ONLY + MIC + WEBCAM).
+# Example below: 10 pods * (16 listen + 0 mic + 4 webcam) = 160 listen + 40 webcam
+# = 200 users with 40 cams — the incident profile.
+#
+# Before applying:
+#   1. Create the meeting:  python3 join_storm.py create   (note the meetingID)
+#   2. kubectl create namespace loadtest
+#   3. kubectl -n loadtest create secret generic bbb-loadtest \
+#        --from-literal=BBB_SECRET='<the BBB secret of the TEST clone>'
+#   4. Edit BBB_URL / BBB_MEETING_ID below, set parallelism, then:
+#        kubectl apply -f k8s-loadgen-job.yaml
+#   Watch:   kubectl -n loadtest get pods -w   and the BBB box's capture-metrics.sh
+#   Stop:    kubectl delete ns loadtest
+# =============================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bbb-loadgen
+  namespace: loadtest
+  labels: { app: bbb-loadgen, purpose: load-test }
+spec:
+  # parallelism = number of generator pods. completions = same (each runs once).
+  parallelism: 10
+  completions: 10
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800   # hard stop the whole Job after 30 min
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels: { app: bbb-loadgen }
+    spec:
+      restartPolicy: Never
+      # Pin generators to spare/dedicated nodes if you have a label for them:
+      # nodeSelector: { role: loadtest }
+      containers:
+        - name: loadgen
+          image: ghcr.io/vacademy-io/bbb-loadgen:latest   # built from this dir's Dockerfile
+          imagePullPolicy: Always
+          env:
+            - name: BBB_URL
+              value: "https://meet-test.vacademy.io/bigbluebutton/"   # <-- TEST clone, not prod
+            - name: BBB_MEETING_ID
+              value: "loadtest-001"                                    # <-- from join_storm.py create
+            - name: BBB_SECRET
+              valueFrom:
+                secretKeyRef: { name: bbb-loadtest, key: BBB_SECRET }
+            # Per-POD client counts (total = these * parallelism):
+            - name: BBB_CLIENTS_LISTEN_ONLY
+              value: "16"
+            - name: BBB_CLIENTS_MIC
+              value: "0"
+            - name: BBB_CLIENTS_WEBCAM
+              value: "4"
+            - name: BBB_TEST_DURATION
+              value: "900"   # seconds the simulated clients stay in the room
+          resources:
+            # ~webcam client peaks high; size per-pod for its client count and tune.
+            requests: { cpu: "1", memory: "3Gi" }
+            limits:   { cpu: "3", memory: "6Gi" }
+          volumeMounts:
+            - { name: dshm, mountPath: /dev/shm }   # Chrome needs a roomy /dev/shm
+      volumes:
+        - name: dshm
+          emptyDir: { medium: Memory, sizeLimit: 2Gi }

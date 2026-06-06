@@ -102,7 +102,19 @@ public class ApplicationSecurityConfig {
             // Zoom webhook callback (no JWT — verified by per-account HMAC signature)
             "/admin-core-service/live-sessions/provider/meeting/zoom-callback/**",
             // "Connect with Zoom" OAuth redirect (no JWT — CSRF-protected by the state record)
-            "/admin-core-service/live-sessions/provider/zoom/oauth/callback"
+            "/admin-core-service/live-sessions/provider/zoom/oauth/callback",
+            // Telephony provider StatusCallbacks (Exotel, Plivo, etc.) — auth via
+            // shared-secret ?token= + provider IP allowlist enforced in the handler.
+            "/admin-core-service/v1/telephony/webhook/**",
+            // Telephony call-event SSE stream — EventSource doesn't support auth
+            // headers; the callLogId UUID acts as the capability token (returned only
+            // to the counsellor who placed the call via /telephony/calls/connect).
+            "/admin-core-service/v1/telephony/calls/*/events",
+            // Inbound (lead -> counsellor) routing + status callbacks. The provider's
+            // Connect applet hits /inbound/route synchronously and /inbound/status
+            // when the call terminates; both auth via shared-secret ?token= verified
+            // by the matching provider handler.
+            "/admin-core-service/v1/telephony/inbound/**"
 
     };
     @Autowired

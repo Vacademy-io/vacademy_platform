@@ -213,6 +213,10 @@ export interface LearnerListColumnSettings {
     // Admins opt in per role; new custom fields added later default to hidden until
     // an admin toggles them on.
     enabledCustomFields?: string[];
+
+    // Whether the Total/Active/Inactive count badges show in the learner-list header
+    // (Student list + Course Details → Learner tab). Missing = visible (default true).
+    showCountBadges?: boolean;
 }
 
 export interface LiveClassSchedulingSettings {
@@ -312,6 +316,10 @@ export interface DisplaySettingsData {
         showCopyTo: boolean;
         showMoveTo: boolean;
         showDelete?: boolean;
+        // Show the "Add Question" button on video slides (in-video question authoring)
+        showAddVideoQuestion?: boolean;
+        // Show the "Convert to Split Screen" button on video slides
+        showConvertToSplitScreen?: boolean;
     };
 
     // 10b) Authored Courses card action visibility (Explore Courses → Authored tab)

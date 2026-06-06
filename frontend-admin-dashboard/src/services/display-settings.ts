@@ -403,11 +403,21 @@ function mergeDisplayWithDefaults(
         showCopyTo: true,
         showMoveTo: true,
         showDelete: true,
+        showAddVideoQuestion: true,
+        showConvertToSplitScreen: true,
     };
     merged.slideView = {
         showCopyTo: incoming?.slideView?.showCopyTo ?? defSlideView.showCopyTo,
         showMoveTo: incoming?.slideView?.showMoveTo ?? defSlideView.showMoveTo,
         showDelete: incoming?.slideView?.showDelete ?? defSlideView.showDelete ?? true,
+        showAddVideoQuestion:
+            incoming?.slideView?.showAddVideoQuestion ??
+            defSlideView.showAddVideoQuestion ??
+            true,
+        showConvertToSplitScreen:
+            incoming?.slideView?.showConvertToSplitScreen ??
+            defSlideView.showConvertToSplitScreen ??
+            true,
     };
 
     // Authored Courses Card Settings
@@ -534,6 +544,11 @@ function mergeDisplayWithDefaults(
             enabledCustomFields:
                 incoming?.learnerListColumns?.enabledCustomFields ??
                 defaults.learnerListColumns?.enabledCustomFields,
+            // Count badges show by default; only false when a role explicitly turns them off.
+            showCountBadges:
+                incoming?.learnerListColumns?.showCountBadges ??
+                defaults.learnerListColumns?.showCountBadges ??
+                true,
         };
     }
 

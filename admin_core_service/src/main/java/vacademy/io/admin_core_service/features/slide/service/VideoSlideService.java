@@ -136,13 +136,22 @@ public class VideoSlideService {
     private void saveVideoSlideQuestionAndOptions(List<VideoSlideQuestionDTO> questionDTOs, VideoSlide videoSlide) {
         List<VideoSlideQuestion> questionsToSave = new ArrayList<>();
         for (VideoSlideQuestionDTO questionDTO : questionDTOs) {
+            // question_type is a NOT NULL column and only binds from a properly
+            // converted (snake_case) payload. An unconverted camelCase question
+            // would leave it null and throw a NOT NULL violation that 500s the
+            // whole save (slide + every other question). Skip it instead so the
+            // rest of the save still succeeds.
+            if (!StringUtils.hasText(questionDTO.getQuestionType())) {
+                continue;
+            }
             VideoSlideQuestion videoSlideQuestion = createVideoSlideQuestion(videoSlide, questionDTO);
             questionsToSave.add(videoSlideQuestion);
         }
 
-
         // Save all questions in bulk
-        videoSlideQuestionRepository.saveAll(questionsToSave);
+        if (!questionsToSave.isEmpty()) {
+            videoSlideQuestionRepository.saveAll(questionsToSave);
+        }
     }
 
     private VideoSlideQuestion createVideoSlideQuestion(VideoSlide videoSlide, VideoSlideQuestionDTO videoSlideQuestionDTO) {
@@ -168,17 +177,21 @@ public class VideoSlideService {
             videoSlideQuestion.setMediaId(videoSlideQuestionDTO.getMediaId());
         }
 
-        if (StringUtils.hasText(videoSlideQuestionDTO.getQuestionResponseType())) {
-            videoSlideQuestion.setQuestionResponseType(videoSlideQuestionDTO.getQuestionResponseType());
-        }
+        // These three are NOT NULL columns. question_type is guaranteed present
+        // (callers skip questions without it); access_level and
+        // question_response_type fall back to the same constants the frontend
+        // converter emits so a question can never fail to insert on a null here.
+        videoSlideQuestion.setQuestionResponseType(
+                StringUtils.hasText(videoSlideQuestionDTO.getQuestionResponseType())
+                        ? videoSlideQuestionDTO.getQuestionResponseType()
+                        : "OPTION");
 
-        if (StringUtils.hasText(videoSlideQuestionDTO.getQuestionType())) {
-            videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
-        }
+        videoSlideQuestion.setQuestionType(videoSlideQuestionDTO.getQuestionType());
 
-        if (StringUtils.hasText(videoSlideQuestionDTO.getAccessLevel())) {
-            videoSlideQuestion.setAccessLevel(videoSlideQuestionDTO.getAccessLevel());
-        }
+        videoSlideQuestion.setAccessLevel(
+                StringUtils.hasText(videoSlideQuestionDTO.getAccessLevel())
+                        ? videoSlideQuestionDTO.getAccessLevel()
+                        : "PUBLIC");
 
         if (StringUtils.hasText(videoSlideQuestionDTO.getAutoEvaluationJson())) {
             videoSlideQuestion.setAutoEvaluationJson(videoSlideQuestionDTO.getAutoEvaluationJson());
@@ -245,39 +258,48 @@ public class VideoSlideService {
     }
 
     private void updateVideoSlideQuestionAndOptions(List<VideoSlideQuestionDTO> questionDTOs, VideoSlide videoSlide) {
+        // All questions currently persisted on this slide.
+        List<VideoSlideQuestion> currentQuestions =
+                videoSlideQuestionRepository.findByVideoSlideId(videoSlide.getId());
+        Map<String, VideoSlideQuestion> existingById = currentQuestions.stream()
+                .collect(Collectors.toMap(VideoSlideQuestion::getId, q -> q));
+
         Map<String, VideoSlideQuestionDTO> questionMap = new HashMap<>();
         List<VideoSlideQuestionDTO> toAdd = new ArrayList<>();
 
-        // Step 1: Separate new and existing questions
-        separateNewAndExistingQuestions(questionDTOs, toAdd, questionMap, videoSlide);
-
-        // Step 2: Save all new questions in bulk
-        saveVideoSlideQuestionAndOptions(toAdd, videoSlide);
-
-        // Step 3: Fetch existing questions
-        List<VideoSlideQuestion> videoSlideQuestions = fetchExistingQuestions(questionMap);
-        // Step 4: Update existing questions and their options
-        updateExistingQuestionsAndOptions(videoSlideQuestions, questionMap);
-    }
-
-    private void separateNewAndExistingQuestions(List<VideoSlideQuestionDTO> questionDTOs, List<VideoSlideQuestionDTO> toAdd, Map<String, VideoSlideQuestionDTO> questionMap, VideoSlide videoSlide) {
+        // Route by ACTUAL persistence, not the new_question flag. The load response
+        // does not reliably mark existing questions (new_question defaults to false
+        // on the DTO, but a re-saved question can arrive as new_question:true), so
+        // classifying by the flag could re-insert an existing question under a new
+        // id on every save — churning ids and orphaning learner analytics. A
+        // question whose id matches a persisted row is updated in place; everything
+        // else (client-generated or blank id) is inserted as new.
         for (VideoSlideQuestionDTO questionDTO : questionDTOs) {
-            if (questionDTO.isNewQuestion()) {
-                toAdd.add(questionDTO);
-            } else {
+            if (StringUtils.hasText(questionDTO.getId())
+                    && existingById.containsKey(questionDTO.getId())) {
                 questionMap.put(questionDTO.getId(), questionDTO);
+            } else {
+                toAdd.add(questionDTO);
             }
         }
-    }
 
-    private void saveNewQuestionsInBulk(List<VideoSlideQuestion> toAdd) {
-        if (!toAdd.isEmpty()) {
-            videoSlideQuestionRepository.saveAll(toAdd);
+        // Delete questions removed in the editor: persisted rows not referenced by
+        // the payload. Cascades to their options (orphanRemoval).
+        List<VideoSlideQuestion> toDelete = currentQuestions.stream()
+                .filter(q -> !questionMap.containsKey(q.getId()))
+                .collect(Collectors.toList());
+        if (!toDelete.isEmpty()) {
+            videoSlideQuestionRepository.deleteAll(toDelete);
         }
-    }
 
-    private List<VideoSlideQuestion> fetchExistingQuestions(Map<String, VideoSlideQuestionDTO> questionMap) {
-        return videoSlideQuestionRepository.findAllById(questionMap.keySet());
+        // Insert new questions.
+        saveVideoSlideQuestionAndOptions(toAdd, videoSlide);
+
+        // Update existing questions (and their options) in place — preserves ids.
+        List<VideoSlideQuestion> toUpdate = questionMap.keySet().stream()
+                .map(existingById::get)
+                .collect(Collectors.toList());
+        updateExistingQuestionsAndOptions(toUpdate, questionMap);
     }
 
     private void updateExistingQuestionsAndOptions(List<VideoSlideQuestion> videoSlideQuestions, Map<String, VideoSlideQuestionDTO> questionMap) {
@@ -291,15 +313,19 @@ public class VideoSlideService {
     }
 
     private void updateQuestionFields(VideoSlideQuestion videoSlideQuestion, VideoSlideQuestionDTO videoSlideQuestionDTO) {
-        if (videoSlideQuestionDTO.getTextData() != null) {
-            RichTextDataDTO parentRichTextDTO = videoSlideQuestionDTO.getTextData();
-            videoSlideQuestion.setParentRichText(new RichTextData(parentRichTextDTO));
-        }
+        // Update rich text in place (preserves ids, avoids orphan rows). The old
+        // code set parentRichText FROM text_data and never updated text_data, so
+        // edits to the question text / comprehension passage were silently lost.
+        videoSlideQuestion.setParentRichText(
+                applyRichText(videoSlideQuestion.getParentRichText(),
+                        videoSlideQuestionDTO.getParentRichText()));
+        videoSlideQuestion.setTextData(
+                applyRichText(videoSlideQuestion.getTextData(),
+                        videoSlideQuestionDTO.getTextData()));
+        videoSlideQuestion.setExplanationTextData(
+                applyRichText(videoSlideQuestion.getExplanationTextData(),
+                        videoSlideQuestionDTO.getExplanationTextData()));
         videoSlideQuestion.setCanSkip(videoSlideQuestionDTO.isCanSkip());
-        if (videoSlideQuestionDTO.getExplanationTextData() != null) {
-            RichTextDataDTO explanationTextDTO = videoSlideQuestionDTO.getExplanationTextData();
-            videoSlideQuestion.setExplanationTextData(new RichTextData(explanationTextDTO));
-        }
 
         if (StringUtils.hasText(videoSlideQuestionDTO.getStatus())){
             videoSlideQuestion.setStatus(videoSlideQuestionDTO.getStatus());
@@ -332,8 +358,31 @@ public class VideoSlideService {
         videoSlideQuestionRepository.save(videoSlideQuestion);
     }
 
+    // Updates a rich-text field from the DTO. When a row already exists it is
+    // mutated in place so its id is preserved and no orphan row is left behind;
+    // otherwise a new one is created. Returns null/existing unchanged when the
+    // DTO is absent so a missing field never wipes saved content.
+    private RichTextData applyRichText(RichTextData existing, RichTextDataDTO dto) {
+        if (dto == null) {
+            return existing;
+        }
+        if (existing == null) {
+            return new RichTextData(dto);
+        }
+        existing.setType(dto.getType());
+        existing.setContent(dto.getContent());
+        return existing;
+    }
+
     private void updateQuestionOptions(VideoSlideQuestion videoSlideQuestion, VideoSlideQuestionDTO videoSlideQuestionDTO) {
-        List<VideoSlideQuestionOption> existingOptions = videoSlideQuestion.getOptions();
+        // Without an evaluation payload there is nothing to reconcile, and
+        // readJson(null) below would throw — bail out instead of 500-ing.
+        if (!StringUtils.hasText(videoSlideQuestionDTO.getAutoEvaluationJson())) {
+            return;
+        }
+        List<VideoSlideQuestionOption> existingOptions = videoSlideQuestion.getOptions() != null
+                ? videoSlideQuestion.getOptions()
+                : new ArrayList<>();
         Map<String, VideoSlideQuestionOption> existingOptionMap = existingOptions.stream()
                 .collect(Collectors.toMap(VideoSlideQuestionOption::getId, option -> option));
 
@@ -350,13 +399,10 @@ public class VideoSlideService {
                     optionDTO.setId(UUID.randomUUID().toString());
                     option = new VideoSlideQuestionOption(optionDTO, videoSlideQuestion);
                 } else {
-                    // Update existing option
-                   if (optionDTO.getText() != null){
-                       option.setText(new RichTextData(optionDTO.getText()));
-                   }
-                   if (optionDTO.getExplanationTextData() != null){
-                       option.setExplanationTextData(new RichTextData(optionDTO.getExplanationTextData()));
-                   }
+                    // Update existing option text/explanation in place.
+                    option.setText(applyRichText(option.getText(), optionDTO.getText()));
+                    option.setExplanationTextData(
+                            applyRichText(option.getExplanationTextData(), optionDTO.getExplanationTextData()));
                 }
                 optionsToSave.add(option);
 

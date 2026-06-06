@@ -45,23 +45,25 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             ?.password || 'password not found'
     );
 
-    // Load custom fields and groups for Learner Profile location
+    // Load custom fields and groups for the side view. We gate on the "Learner's
+    // List" toggle so a single switch hides a custom field consistently across the
+    // side view, export, and import (all three read learnersList).
     useEffect(() => {
-        // Get all fields for Learner Profile
-        const fields = getFieldsForLocation('Learner Profile');
+        // Get all fields visible in the Learner's List
+        const fields = getFieldsForLocation("Learner's List");
         // Get the full settings to access groups
         const settings = getCustomFieldSettingsFromCache();
 
         if (settings) {
-            // Get the visibility key for Learner Profile
-            const visibilityKey = 'learnerProfile';
+            // Single source of truth for these admin learner surfaces
+            const visibilityKey = 'learnersList';
 
-            // Filter groups that have at least one field visible in Learner Profile
+            // Filter groups that have at least one field visible in the Learner's List
             const visibleGroups = settings.fieldGroups.filter((group) => {
                 return group.fields.some((field) => field.visibility[visibilityKey]);
             });
 
-            // For each visible group, filter to only include fields visible in Learner Profile
+            // For each visible group, keep only the fields visible in the Learner's List
             const filteredGroups = visibleGroups.map((group) => ({
                 ...group,
                 fields: group.fields.filter((field) => field.visibility[visibilityKey]),

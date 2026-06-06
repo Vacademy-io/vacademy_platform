@@ -1999,12 +1999,16 @@ function RecordingTranscribeAction({
         }
     }, [status, detectedLanguage, rec.recordingId]);
 
-    // Polling: only active while a job is in flight. Halts on terminal state.
-    // We still do one initial fetch on mount even when COMPLETED so we can
-    // load the sourceTextUrl/englishTextUrl needed by the viewer modal —
-    // the list endpoint doesn't include those fields.
+    // Status lifecycle. The recordings-list payload's transcriptStatus can be
+    // stale or null, so we ALWAYS fetch the live status once on mount — this is
+    // what makes an in-progress job (or an already-finished transcript) surface
+    // automatically, without the user having to click "Process Recording" to
+    // find out. While a job is in flight we poll every 10s so the row
+    // auto-advances QUEUED/RUNNING → COMPLETED/FAILED; polling halts on a
+    // terminal state. We also re-check when the tab regains focus. The mount
+    // fetch additionally loads the sourceTextUrl/englishTextUrl the list endpoint
+    // omits (needed by the viewer modal).
     const polling = status === 'QUEUED' || status === 'RUNNING';
-    const needsUrls = status === 'COMPLETED' && !sourceTextUrl && !englishTextUrl;
     useQuery({
         queryKey: ['recording-transcribe', rec.scheduleId, rec.recordingId],
         queryFn: async () => {
@@ -2012,9 +2016,12 @@ function RecordingTranscribeAction({
             handleData(data);
             return data;
         },
-        enabled: polling || needsUrls,
-        refetchInterval: polling ? 30_000 : false,
-        refetchOnWindowFocus: false,
+        enabled: true,
+        refetchInterval: (query) => {
+            const s = query.state.data?.status;
+            return s === 'QUEUED' || s === 'RUNNING' ? 10_000 : false;
+        },
+        refetchOnWindowFocus: true,
     });
 
     const { mutate, isPending } = useMutation({
@@ -2128,6 +2135,10 @@ function RecordingTranscribeAction({
     }
 
     const inFlight = polling || isPending;
+    // Stage-specific label so the admin can see what's actually happening,
+    // not just a generic spinner.
+    const processingLabel =
+        status === 'QUEUED' ? 'Queued…' : status === 'RUNNING' ? 'Transcribing…' : 'Processing…';
 
     // Hide the "Process Recording" entry point when the institute has the
     // transcription feature disabled. We only gate the *new-job* affordance —
@@ -2162,9 +2173,9 @@ function RecordingTranscribeAction({
                 title="Generate transcript (English + source language) and detect the audio language"
             >
                 <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
-                {inFlight ? 'Processing…' : 'Process Recording'}
+                {inFlight ? processingLabel : 'Process Recording'}
             </button>
-            {rec.durationSeconds > 0 && (
+            {rec.durationSeconds > 0 && !inFlight && (
                 <ToolCostBadge
                     credits={transcriptionPreview.credits}
                     sufficient={transcriptionPreview.sufficient}

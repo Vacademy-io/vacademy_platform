@@ -95,6 +95,9 @@ export interface CallActivity {
     provider?: string;
     /** Vendor call id (SID). */
     externalCallId?: string;
+    /** Our telephony_call_log row id — set when the note was created from the
+     *  Call History panel, so the note can be linked back to that specific call. */
+    telephonyCallLogId?: string;
     recording?: CallRecording;
 }
 
@@ -117,6 +120,10 @@ export const CALL_METADATA_KEYS = [
     'phone_number',
     'call_provider',
     'external_call_id',
+    // Internal telephony_call_log row id — set when the note was created from a
+    // specific call in the Call History panel. Lets us later look up which
+    // notes belong to which call without scanning all timeline events.
+    'telephony_call_log_id',
 ] as const;
 
 export function callActivityToMetadata(call: CallActivity): Record<string, unknown> {
@@ -126,6 +133,7 @@ export function callActivityToMetadata(call: CallActivity): Record<string, unkno
     if (call.phoneNumber?.trim()) m.phone_number = call.phoneNumber.trim();
     if (call.provider) m.call_provider = call.provider;
     if (call.externalCallId) m.external_call_id = call.externalCallId;
+    if (call.telephonyCallLogId) m.telephony_call_log_id = call.telephonyCallLogId;
     if (call.recording) {
         m.recording_source = call.recording.source;
         m.recording_url = call.recording.url;
@@ -162,6 +170,7 @@ export function callActivityFromMetadata(
         phoneNumber: metadata.phone_number as string | undefined,
         provider: metadata.call_provider as string | undefined,
         externalCallId: metadata.external_call_id as string | undefined,
+        telephonyCallLogId: metadata.telephony_call_log_id as string | undefined,
         recording,
     };
 }

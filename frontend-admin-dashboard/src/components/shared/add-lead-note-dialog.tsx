@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     Dialog,
@@ -43,6 +43,15 @@ interface AddLeadNoteDialogProps {
      *  the Follow Up tab is disabled with an inline hint. */
     audienceResponseId?: string;
     onSuccess?: () => void;
+    /** Pre-select an action tab when the dialog opens (e.g. CALL_LOG when
+     *  invoked from a row in the Call History panel). */
+    initialActionType?: string;
+    /** Pre-fill the CallActivity (direction, phone, telephonyCallLogId, …) when
+     *  the dialog opens from a specific call row. */
+    initialCallActivity?: CallActivity | null;
+    /** Hide the Record/Upload audio controls — true when the linked call already
+     *  carries its own recording from the telephony provider. */
+    hideCallRecordingControls?: boolean;
 }
 
 export const AddLeadNoteDialog = ({
@@ -52,10 +61,27 @@ export const AddLeadNoteDialog = ({
     userName,
     audienceResponseId,
     onSuccess,
+    initialActionType,
+    initialCallActivity,
+    hideCallRecordingControls = false,
 }: AddLeadNoteDialogProps) => {
     const [noteText, setNoteText] = useState('');
-    const [actionType, setActionType] = useState('NOTE');
-    const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
+    const [actionType, setActionType] = useState(initialActionType ?? 'NOTE');
+    const [callActivity, setCallActivity] = useState<CallActivity | null>(
+        initialCallActivity ?? null
+    );
+    // Re-seed state on the *transition* from closed → open. Doing it on every
+    // change to `initialCallActivity` would wipe the counsellor's typing every
+    // time the parent re-renders (the call-history query refetching mid-edit,
+    // say), since the parent rebuilds the initial object inline.
+    const wasOpenRef = useRef(open);
+    useEffect(() => {
+        if (open && !wasOpenRef.current) {
+            setActionType(initialActionType ?? 'NOTE');
+            setCallActivity(initialCallActivity ?? null);
+        }
+        wasOpenRef.current = open;
+    }, [open, initialActionType, initialCallActivity]);
     // Counsellor-set callback time when Follow Up is the active tab. Stored as the
     // raw <input type="datetime-local"> value (browser-local "YYYY-MM-DDTHH:mm"),
     // converted to ISO at submit-time so the backend receives a UTC timestamp.
@@ -102,6 +128,11 @@ export const AddLeadNoteDialog = ({
             resetState();
             queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
             queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
+            // Lead Journey timeline (used in student-lead-profile side view)
+            // reads via 'lead-all-events' — without invalidating it, a note
+            // added from the Call History row wouldn't appear in Lead Journey
+            // until the user manually refreshed.
+            queryClient.invalidateQueries({ queryKey: ['lead-all-events', userId] });
             onSuccess?.();
             onOpenChange(false);
         },
@@ -129,6 +160,7 @@ export const AddLeadNoteDialog = ({
             queryClient.invalidateQueries({ queryKey: ['campaign-users'] });
             queryClient.invalidateQueries({ queryKey: ['latest-notes-batch'] });
             queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
+            queryClient.invalidateQueries({ queryKey: ['lead-all-events', userId] });
             onSuccess?.();
             onOpenChange(false);
         },
@@ -241,7 +273,11 @@ export const AddLeadNoteDialog = ({
                     </div>
 
                     {actionType === 'CALL_LOG' && (
-                        <CallRecordingInput value={callActivity} onChange={setCallActivity} />
+                        <CallRecordingInput
+                            value={callActivity}
+                            onChange={setCallActivity}
+                            hideRecordingControls={hideCallRecordingControls}
+                        />
                     )}
                 </div>
 

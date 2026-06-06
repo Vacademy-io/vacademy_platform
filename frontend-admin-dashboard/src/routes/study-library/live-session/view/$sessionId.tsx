@@ -9,7 +9,6 @@ import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syn
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus, AssessmentArtifact } from '../-services/utils';
 import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { TranscriptActionsDialog } from '../-components/TranscriptActionsDialog';
-import { ToolCostBadge } from '@/components/common/ai-credits/ToolCostBadge';
 import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
 import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
@@ -46,6 +45,7 @@ import {
     Warning as AlertTriangle,
     FileAudio,
     Translate as Languages,
+    Sparkle,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { SessionCalendarView } from '../-components/session-calendar-view';
@@ -2173,15 +2173,27 @@ function RecordingTranscribeAction({
                 title="Generate transcript (English + source language) and detect the audio language"
             >
                 <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
-                {inFlight ? processingLabel : 'Process Recording'}
+                <span>{inFlight ? processingLabel : 'Process Recording'}</span>
+                {/* Cost folded INTO the button: "Process Recording │ ✨ ≈N credits".
+                    Hidden while a job is in flight (it's a pre-run estimate);
+                    turns amber when the balance wouldn't cover it. */}
+                {!inFlight && rec.durationSeconds > 0 && (
+                    <span
+                        className={cn(
+                            'ml-1 inline-flex items-center gap-0.5 border-l pl-2 font-semibold',
+                            transcriptionPreview.sufficient === false
+                                ? 'text-amber-700'
+                                : 'text-purple-700'
+                        )}
+                    >
+                        <Sparkle className="size-3" weight="fill" />≈{' '}
+                        {transcriptionPreview.isLoading || transcriptionPreview.credits == null
+                            ? '…'
+                            : transcriptionPreview.credits}{' '}
+                        credits
+                    </span>
+                )}
             </button>
-            {rec.durationSeconds > 0 && !inFlight && (
-                <ToolCostBadge
-                    credits={transcriptionPreview.credits}
-                    sufficient={transcriptionPreview.sufficient}
-                    loading={transcriptionPreview.isLoading}
-                />
-            )}
             <ToolCostConfirmDialog
                 open={transcribeConfirmOpen}
                 onOpenChange={setTranscribeConfirmOpen}

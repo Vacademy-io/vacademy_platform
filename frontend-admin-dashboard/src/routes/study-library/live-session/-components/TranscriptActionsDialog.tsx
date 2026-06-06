@@ -670,7 +670,12 @@ export function TranscriptActionsDialog({
         try {
             // Authenticated call: the ai-service derives the actor + institute
             // from the JWT and charges credits (academy-credits). institute_id is
-            // sent only as a fallback; idempotency_key dedups retries per recording.
+            // sent only as a fallback. The idempotency_key is per-ATTEMPT (not per
+            // recording): every deliberate (re)generate is a fresh LLM call and
+            // must be charged, so we mint a new key on each click. The button is
+            // disabled while a generation is in flight, so a single click still
+            // can't double-charge. (A recording-stable key would have made every
+            // Regenerate free.)
             const resp = await authenticatedAxiosInstance.post(GENERATE_TRANSCRIPT_NOTES_URL, {
                 transcript_text: transcriptForLlm,
                 title_hint: recordingTitle,
@@ -679,7 +684,7 @@ export function TranscriptActionsDialog({
                         ? 'en'
                         : (detectedLanguage ?? 'en').toLowerCase(),
                 institute_id: getCurrentInstituteId(),
-                idempotency_key: `notes:${recordingId}`,
+                idempotency_key: `notes:${recordingId}:${Date.now()}`,
             });
             const data = resp.data as { markdown: string };
             if (!data.markdown || !data.markdown.trim()) {

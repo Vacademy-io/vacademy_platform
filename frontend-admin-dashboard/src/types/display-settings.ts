@@ -234,6 +234,11 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
 // Missing keys default to true so existing institutes are unaffected.
 export interface TeamManagementSettings {
     visibleRoles: Record<string, boolean>;
+    // Whether the Org Chart tab shows up on /manage-institute/teams. Defaults
+    // to FALSE (hidden) so the feature is opt-in per institute until we are
+    // confident it works for that institute's users. Admins flip this on
+    // from Settings → Admin Display Settings when they're ready to roll it out.
+    orgChartTabVisible?: boolean;
 }
 
 export interface DisplaySettingsData {

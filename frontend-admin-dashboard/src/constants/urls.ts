@@ -905,3 +905,19 @@ export const CREATE_PRODUCT_PAGE_CUSTOM_FIELD = (productPageId: string) =>
 export const COUPON_BASE = `${BASE_URL}/admin-core-service/v1/coupon`;
 export const COUPON_DETAIL = (couponId: string) => `${COUPON_BASE}/${couponId}`;
 export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/validate`;
+
+// =============================================================================
+// Organization Teams — hierarchical team graph on top of institute-teams.
+// admin_core_service proxies to /auth-service/internal/organization-team/* —
+// team data lives in auth_service alongside users/roles (V12 migration).
+// =============================================================================
+export const ORG_TEAM_BASE = `${BASE_URL}/admin-core-service/v1/organization-team`;
+export const ORG_TEAM_BY_ID = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}`;
+export const ORG_TEAM_CHART = (instituteId: string) =>
+    `${ORG_TEAM_BASE}/chart?instituteId=${instituteId}`;
+export const ORG_TEAM_ANCESTORS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/ancestors`;
+export const ORG_TEAM_DESCENDANTS = (teamId: string, flat: boolean = true) =>
+    `${ORG_TEAM_BASE}/${teamId}/descendants?flat=${flat}`;
+export const ORG_TEAM_MEMBERS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/members`;
+export const ORG_TEAM_MEMBER_BY_ID = (teamId: string, mappingId: string) =>
+    `${ORG_TEAM_BASE}/${teamId}/members/${mappingId}`;

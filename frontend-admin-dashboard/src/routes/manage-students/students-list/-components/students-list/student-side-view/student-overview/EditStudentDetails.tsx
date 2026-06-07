@@ -747,10 +747,11 @@ export const EditStudentDetails = () => {
         />
     );
 
-    // Accepts FieldForLocation (the shape getFieldsForLocation returns) — it only
-    // reads id/name/type/options/required, all of which CustomField also has, so
-    // grouped CustomField[] fields pass through fine too.
-    const renderCustomField = (customField: FieldForLocation) => {
+    // Accepts EITHER shape — grouped fields come through as CustomField[] while
+    // ungrouped fields are FieldForLocation[]; the two differ only in fields this
+    // function never reads (e.g. groupName: string|null vs string|undefined). It
+    // only uses id/name/type/options/required, common to both, so the union is safe.
+    const renderCustomField = (customField: CustomField | FieldForLocation) => {
         if (customField.type === 'dropdown') {
             const dropdownOptions =
                 customField.options?.map((option) => ({ id: option, name: option })) || [];

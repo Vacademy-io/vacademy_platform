@@ -52,7 +52,7 @@ jobs:
           echo "Docker Image Link = $ECR_REGISTRY/$REPOSITORY:$IMAGE_TAG"
 
       - name: Connect to Hetzner k3s kubernetes cluster
-        if: github.event_name == 'push'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         id: connect-to-k8s-cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
@@ -60,7 +60,7 @@ jobs:
           kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG }}
 
       - name: Restart deployment if it exists
-        if: github.event_name == 'push'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         env:
           DEPLOYMENT_NAME: ai-service
           NAMESPACE: default

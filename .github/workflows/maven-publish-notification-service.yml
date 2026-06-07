@@ -110,7 +110,7 @@ jobs:
       # replace global kubeconfig with service account's kubeconfig
       # https://nicwortel.nl/blog/2022/continuous-deployment-to-kubernetes-with-github-actions
       - name: Connect to Hetzner k3s kubernetes cluster
-        if: github.event_name == 'push'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         id: connect-to-k8s-cluster
         uses: Azure/k8s-set-context@v4.0.0
         with:
@@ -118,7 +118,7 @@ jobs:
           kubeconfig: ${{ secrets.VACADEMY_PROD_KUBECONFIG}}
 
       - name: Deploy to Kubernetes
-        if: github.event_name == 'push'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           kubectl set env deployment/notification-service \
             DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
@@ -154,7 +154,7 @@ jobs:
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Restart deployment
-        if: github.event_name == 'push'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         id: restart-deployment
         env:
           DEPLOYMENT_NAME: notification-service

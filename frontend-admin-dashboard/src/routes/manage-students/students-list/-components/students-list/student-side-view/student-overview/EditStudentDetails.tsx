@@ -19,8 +19,19 @@ import { useStudentSidebar } from '@/routes/manage-students/students-list/-conte
 import { useGetStudentDetails } from '@/services/get-student-details';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { DropdownValueType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
-import { Menu, Transition } from '@headlessui/react';
-import { Pencil, Upload, Trash2 } from 'lucide-react';
+import {
+    PencilSimple,
+    Upload,
+    Trash,
+    UserCircle,
+    Phone,
+    MapPin,
+    Buildings,
+    UsersThree,
+    Image as ImageIcon,
+    SlidersHorizontal,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import {
@@ -28,7 +39,9 @@ import {
     type CustomField,
     type FieldGroup,
 } from '@/services/custom-field-settings';
-import { getFieldsForLocation } from '@/lib/custom-fields/utils';
+import { getFieldsForLocation, type FieldForLocation } from '@/lib/custom-fields/utils';
+import { getSystemFieldColumnVisibility } from '@/components/design-system/utils/constants/system-field-columns';
+import { cn } from '@/lib/utils';
 
 const EditStudentDetailsFormSchema = z.object({
     user_id: z.string().min(1, 'This field is required'),
@@ -36,7 +49,7 @@ const EditStudentDetailsFormSchema = z.object({
     email: z.string().email('Invalid email address'),
     full_name: z.string().min(1, 'This field is required'),
     contact_number: z.string().min(1, 'This field is required'),
-    gender: z.string().min(1, 'This field is required'),
+    gender: z.string().optional(),
     date_of_birth: z.string().optional(),
     address_line: z.string().optional(),
     state: z.string().optional(),
@@ -54,6 +67,82 @@ const EditStudentDetailsFormSchema = z.object({
 });
 
 export type EditStudentDetailsFormValues = z.infer<typeof EditStudentDetailsFormSchema>;
+
+// ── Local presentational helpers ──────────────────────────────────────────────
+
+const FormCard = ({
+    icon: Icon,
+    title,
+    helper,
+    children,
+}: {
+    icon: PhosphorIcon;
+    title: string;
+    helper?: string;
+    children: React.ReactNode;
+}) => (
+    <section className="rounded-lg border border-neutral-200 bg-white p-5">
+        <header className="mb-4 flex items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+                <Icon className="size-5" weight="duotone" />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+                <h3 className="text-base font-semibold text-neutral-900">{title}</h3>
+                {helper && <p className="mt-0.5 text-xs text-neutral-500">{helper}</p>}
+            </div>
+        </header>
+        <div className="flex flex-col gap-4">{children}</div>
+    </section>
+);
+
+const Grid2 = ({ children }: { children: React.ReactNode }) => (
+    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
+);
+
+const Grid3 = ({ children }: { children: React.ReactNode }) => (
+    <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">{children}</div>
+);
+
+const SubGroupTitle = ({ children }: { children: React.ReactNode }) => (
+    <div className="flex items-center gap-2 border-t border-neutral-100 pt-3 first:border-t-0 first:pt-0">
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            {children}
+        </span>
+    </div>
+);
+
+// Style block that normalizes PhoneInputField to the same chrome as MyInput.
+//
+// react-phone-input-2 bundles its own bootstrap.css with rules like:
+//   `.react-tel-input .form-control { width: 300px; padding: 18.5px 14px 18.5px 60px; font-size: 16px; }`
+// These are loaded at runtime via the import in PhoneInputField, and Tailwind's
+// arbitrary-variant overrides DON'T reliably win because of CSS cascade timing
+// — bootstrap may load AFTER Tailwind's bundle, beating equal-specificity rules.
+//
+// The only bulletproof fix is an explicit `!important` rule keyed on a unique
+// class. Targeting `.efp-phone` ensures these rules only apply to phone inputs
+// inside THIS form, never bleeding into PhoneInputField's 8 other consumers.
+const PHONE_INPUT_OVERRIDE_CSS = `
+.efp-phone > div { display: flex; flex-direction: column; row-gap: 4px; }
+.efp-phone .react-tel-input { width: 100% !important; font-size: 14px !important; }
+.efp-phone .react-tel-input .form-control {
+  width: 100% !important;
+  height: 36px !important;
+  padding: 4px 12px 4px 52px !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}
+.efp-phone .react-tel-input .flag-dropdown,
+.efp-phone .react-tel-input .selected-flag {
+  height: 36px !important;
+}
+`;
+
+const FullWidth = ({ children }: { children: React.ReactNode }) => (
+    <div className="efp-phone w-full">{children}</div>
+);
+
+// ── Main component ───────────────────────────────────────────────────────────
 
 export const EditStudentDetails = () => {
     const { selectedStudent, setSelectedStudent } = useStudentSidebar();
@@ -77,55 +166,45 @@ export const EditStudentDetails = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
     const [openDialog, setOpenDialog] = useState(false);
-    const [removedImage, setRemovedImage] = useState(false); // 🆕 new state for tracking unsaved removal
+    const [removedImage, setRemovedImage] = useState(false);
 
-    // Fetch custom fields for both Learner List and Learner Enrollment locations
+    // Gate custom fields on the SAME "Learner's List" visibility toggle the
+    // Overview tab uses, so a field hidden there is also hidden here when editing.
+    // (Previously this also merged in "Learner's Enrollment" fields, so a field
+    // toggled off for the Learner's List still appeared in the edit form.)
     const customFieldsData = useMemo(() => {
-        const learnerListFields = getFieldsForLocation("Learner's List");
-        const learnerEnrollmentFields = getFieldsForLocation("Learner's Enrollment");
+        const fields = getFieldsForLocation("Learner's List");
 
-        // Merge and deduplicate by field ID
-        const allFieldsMap = new Map();
-        [...learnerListFields, ...learnerEnrollmentFields].forEach((field) => {
-            allFieldsMap.set(field.id, field);
-        });
-        const customFields = Array.from(allFieldsMap.values());
-
-        // Get the full settings to access groups
         const settings = getCustomFieldSettingsFromCache();
-
         if (!settings) {
-            return { customFields, fieldGroups: [], individualFields: customFields };
+            return { customFields: fields, fieldGroups: [], individualFields: fields };
         }
 
-        // Get visibility keys for both locations
-        const visibilityKeys = ['learnerList', 'learnerEnrollment'];
-
-        // Filter groups that have at least one field visible in either location
-        const visibleGroups = settings.fieldGroups.filter((group) => {
-            return group.fields.some((field) =>
-                visibilityKeys.some((key) => field.visibility[key as keyof typeof field.visibility])
-            );
-        });
-
-        // For each visible group, filter to only include fields visible in either location
+        const visibilityKey = 'learnersList';
+        const visibleGroups = settings.fieldGroups.filter((group) =>
+            group.fields.some((field) => field.visibility[visibilityKey])
+        );
         const filteredGroups = visibleGroups.map((group) => ({
             ...group,
-            fields: group.fields.filter((field) =>
-                visibilityKeys.some((key) => field.visibility[key as keyof typeof field.visibility])
-            ),
+            fields: group.fields.filter((field) => field.visibility[visibilityKey]),
         }));
-
-        // Get field IDs that are in groups
         const fieldIdsInGroups = new Set(
             filteredGroups.flatMap((group) => group.fields.map((f) => f.id))
         );
+        const individualFields = fields.filter((field) => !fieldIdsInGroups.has(field.id));
 
-        // Filter out fields that are already in groups
-        const individualFields = customFields.filter((field) => !fieldIdsInGroups.has(field.id));
-
-        return { customFields, fieldGroups: filteredGroups, individualFields };
+        return { customFields: fields, fieldGroups: filteredGroups, individualFields };
     }, []);
+
+    const hasCustomFields =
+        customFieldsData.fieldGroups.length > 0 || customFieldsData.individualFields.length > 0;
+
+    // Gate the optional system fields (address, institute, parents/guardians) by
+    // the SAME visibility toggle the Overview uses — a field turned off in
+    // settings should be hidden in the edit form too. Required core fields
+    // (name, email, mobile, gender) always show since the form needs them.
+    const sysVisible = getSystemFieldColumnVisibility();
+    const showField = (accessor: string) => sysVisible[accessor] !== false;
 
     const loadImage = async (fileId: string) => {
         if (fileId) {
@@ -136,10 +215,8 @@ export const EditStudentDetails = () => {
 
     useEffect(() => {
         if (selectedStudent && openDialog) {
-            // Prefer API-fetched details over list-row data
             const s = studentDetails || selectedStudent;
 
-            // Prepare custom fields object
             const customFieldsValues: Record<string, string> = {};
             const customFieldsSource = s.custom_fields || selectedStudent.custom_fields;
             if (customFieldsSource) {
@@ -193,11 +270,12 @@ export const EditStudentDetails = () => {
             if (faceFileId && !removedImage) {
                 loadImage(faceFileId);
             } else {
-                setFaceUrl(null); // fallback if image was removed
+                setFaceUrl(null);
             }
 
-            setRemovedImage(false); // reset on open
+            setRemovedImage(false);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedStudent, openDialog, studentDetails]);
 
     const handleFileSubmit = async (file: File) => {
@@ -212,7 +290,7 @@ export const EditStudentDetails = () => {
 
         if (fileId) {
             await loadImage(fileId);
-            setValue('face_file_id', fileId);
+            setValue('face_file_id', fileId, { shouldDirty: true });
         }
 
         setIsUploading(false);
@@ -220,11 +298,15 @@ export const EditStudentDetails = () => {
 
     const handleRemoveImage = () => {
         setFaceUrl(null);
-        setValue('face_file_id', '');
-        setRemovedImage(true); // 🆕 flag to remember removal
+        setValue('face_file_id', '', { shouldDirty: true });
+        setRemovedImage(true);
     };
 
     const handleDialogChange = (isOpen: boolean) => {
+        if (!isOpen && form.formState.isDirty) {
+            const ok = window.confirm('Discard unsaved changes?');
+            if (!ok) return;
+        }
         setOpenDialog(isOpen);
     };
 
@@ -232,7 +314,6 @@ export const EditStudentDetails = () => {
     const onSubmit = async (values: EditStudentDetailsFormValues) => {
         try {
             const face_file_id = form.getValues('face_file_id') ?? '';
-
             const payload = { ...values, face_file_id };
 
             await editStudentDetailsMutation.mutateAsync(payload);
@@ -245,9 +326,8 @@ export const EditStudentDetails = () => {
                     mobile_number: payload.contact_number,
                     region: payload.state ?? null,
                     linked_institute_name: payload.institute_name ?? null,
-                    face_file_id: payload.face_file_id ?? '', // Ensure it's a string
+                    face_file_id: payload.face_file_id ?? '',
                 };
-
                 setSelectedStudent(updatedStudent);
             }
 
@@ -255,7 +335,7 @@ export const EditStudentDetails = () => {
                 const newFaceUrl = await getPublicUrl(face_file_id);
                 setFaceUrl(newFaceUrl || '');
             } else {
-                setFaceUrl(null); // if image was removed
+                setFaceUrl(null);
             }
 
             setOpenDialog(false);
@@ -264,734 +344,698 @@ export const EditStudentDetails = () => {
         }
     };
 
-    const submitButton = (
-        <MyButton
-            onAsyncClick={async () => {
-                // Trigger form validation and submission
-                const isValid = await form.trigger();
-                if (isValid) {
-                    await form.handleSubmit(onSubmit)();
-                }
-            }}
-            loadingText="Saving..."
-        >
-            Save Changes
-        </MyButton>
+    const isDirty = form.formState.isDirty;
+
+    const footer = (
+        <>
+            <span
+                className={cn(
+                    'mr-auto flex items-center gap-1.5 text-xs font-medium',
+                    isDirty ? 'text-primary-600' : 'text-neutral-400'
+                )}
+            >
+                <span
+                    className={cn(
+                        'flex size-1.5 rounded-full',
+                        isDirty ? 'bg-primary-500' : 'bg-success-500'
+                    )}
+                />
+                {isDirty ? 'Unsaved changes' : 'All changes saved'}
+            </span>
+            <MyButton
+                type="button"
+                buttonType="secondary"
+                scale="medium"
+                onClick={() => handleDialogChange(false)}
+            >
+                Cancel
+            </MyButton>
+            <MyButton
+                onAsyncClick={async () => {
+                    const isValid = await form.trigger();
+                    if (isValid) await form.handleSubmit(onSubmit)();
+                }}
+                disable={!isDirty}
+                loadingText="Saving..."
+            >
+                Save Changes
+            </MyButton>
+        </>
     );
 
-    return selectedStudent ? (
+    // ── Field cells — declared once, reused inside the layout ────────────────
+
+    const fullNameField = (
+        <FormField
+            control={form.control}
+            name="full_name"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="e.g. Himang Sharma"
+                            className="w-full sm:w-full"
+                            required={true}
+                            label="Full Name"
+                            error={form.formState.errors.full_name?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const genderField = (
+        <FormField
+            control={form.control}
+            name="gender"
+            render={({ field }) => {
+                const selectedGender = field.value
+                    ? genderList.find(
+                          (g) =>
+                              (typeof g === 'object' && 'name' in g && g.name === field.value) ||
+                              g === field.value
+                      )
+                    : undefined;
+                return (
+                    <FormItem className="w-full sm:w-full">
+                        <FormControl>
+                            <div className="flex w-full flex-col gap-1">
+                                <label className="text-sm font-medium text-neutral-700">
+                                    Gender
+                                </label>
+                                <MyDropdown
+                                    currentValue={selectedGender}
+                                    dropdownList={genderList}
+                                    handleChange={(value) => {
+                                        if (typeof value === 'object' && 'name' in value) {
+                                            field.onChange(value.name);
+                                        } else if (typeof value === 'string') {
+                                            field.onChange(value);
+                                        }
+                                    }}
+                                    placeholder="Select Gender"
+                                    error={form.formState.errors.gender?.message}
+                                    required={false}
+                                />
+                            </div>
+                        </FormControl>
+                    </FormItem>
+                );
+            }}
+        />
+    );
+
+    const emailField = (
+        <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="name@example.com"
+                            className="w-full sm:w-full"
+                            required={true}
+                            label="Email"
+                            error={form.formState.errors.email?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const mobileField = (
+        <FormField
+            control={form.control}
+            name="contact_number"
+            render={() => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl>
+                        <FullWidth>
+                            <PhoneInputField
+                                label="Mobile Number"
+                                placeholder="123 456 7890"
+                                name="contact_number"
+                                control={form.control}
+                                required={true}
+                            />
+                            {form.formState.errors.contact_number?.message && (
+                                <p className="mt-1 text-caption text-danger-600">
+                                    {form.formState.errors.contact_number?.message}
+                                </p>
+                            )}
+                        </FullWidth>
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const addressLineField = (
+        <FormField
+            control={form.control}
+            name="address_line"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="House / street / locality"
+                            className="w-full sm:w-full"
+                            label="Address Line"
+                            error={form.formState.errors.address_line?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const cityField = (
+        <FormField
+            control={form.control}
+            name="city"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="City"
+                            className="w-full sm:w-full"
+                            label="City"
+                            error={form.formState.errors.city?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const stateField = (
+        <FormField
+            control={form.control}
+            name="state"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="State"
+                            className="w-full sm:w-full"
+                            label="State"
+                            error={form.formState.errors.state?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const pinField = (
+        <FormField
+            control={form.control}
+            name="pin_code"
+            render={({ field: { onChange, value, ...field } }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        {/* Pincode rendered as text — `type="number"` adds a stepper
+                            and strips leading zeros, both wrong for a postal code.
+                            `inputMode="numeric"` keeps the numeric keypad on mobile. */}
+                        <MyInput
+                            inputType="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            label="Pincode"
+                            inputPlaceholder="e.g. 425562"
+                            input={value}
+                            onChangeFunction={onChange}
+                            className="w-full sm:w-full"
+                            {...field}
+                            error={form.formState.errors.pin_code?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const instituteField = (
+        <FormField
+            control={form.control}
+            name="institute_name"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="School / College / Institute"
+                            className="w-full sm:w-full"
+                            label="Institute Name"
+                            error={form.formState.errors.institute_name?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const fathersNameField = (
+        <FormField
+            control={form.control}
+            name="fathers_name"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="Father / male guardian name"
+                            className="w-full sm:w-full"
+                            label="Name"
+                            error={form.formState.errors.fathers_name?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const fatherMobileField = (
+        <FormField
+            control={form.control}
+            name="father_mobile_number"
+            render={() => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl>
+                        <FullWidth>
+                            <PhoneInputField
+                                label="Mobile Number"
+                                placeholder="123 456 7890"
+                                name="father_mobile_number"
+                                control={form.control}
+                                required={false}
+                            />
+                        </FullWidth>
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const fatherEmailField = (
+        <FormField
+            control={form.control}
+            name="father_email"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="email"
+                            inputPlaceholder="name@example.com"
+                            className="w-full sm:w-full"
+                            label="Email"
+                            error={form.formState.errors.father_email?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const mothersNameField = (
+        <FormField
+            control={form.control}
+            name="mothers_name"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="text"
+                            inputPlaceholder="Mother / female guardian name"
+                            className="w-full sm:w-full"
+                            label="Name"
+                            error={form.formState.errors.mothers_name?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const motherMobileField = (
+        <FormField
+            control={form.control}
+            name="mother_mobile_number"
+            render={() => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl>
+                        <FullWidth>
+                            <PhoneInputField
+                                label="Mobile Number"
+                                placeholder="123 456 7890"
+                                name="mother_mobile_number"
+                                control={form.control}
+                                required={false}
+                            />
+                        </FullWidth>
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    const motherEmailField = (
+        <FormField
+            control={form.control}
+            name="mother_email"
+            render={({ field }) => (
+                <FormItem className="w-full sm:w-full">
+                    <FormControl className="w-full sm:w-full">
+                        <MyInput
+                            input={field.value}
+                            onChangeFunction={(e) => field.onChange(e.target.value)}
+                            inputType="email"
+                            inputPlaceholder="name@example.com"
+                            className="w-full sm:w-full"
+                            label="Email"
+                            error={form.formState.errors.mother_email?.message}
+                        />
+                    </FormControl>
+                </FormItem>
+            )}
+        />
+    );
+
+    // Accepts EITHER shape — grouped fields come through as CustomField[] while
+    // ungrouped fields are FieldForLocation[]; the two differ only in fields this
+    // function never reads (e.g. groupName: string|null vs string|undefined). It
+    // only uses id/name/type/options/required, common to both, so the union is safe.
+    const renderCustomField = (customField: CustomField | FieldForLocation) => {
+        if (customField.type === 'dropdown') {
+            const dropdownOptions =
+                customField.options?.map((option) => ({ id: option, name: option })) || [];
+            return (
+                <FormField
+                    key={customField.id}
+                    control={form.control}
+                    name="custom_fields"
+                    render={({ field }) => {
+                        const currentValue = field.value?.[customField.id];
+                        const selectedOption = currentValue
+                            ? { id: currentValue, name: currentValue }
+                            : undefined;
+                        return (
+                            <FormItem className="w-full sm:w-full">
+                                <FormControl>
+                                    <div className="flex w-full flex-col gap-1">
+                                        <label className="text-sm font-medium text-neutral-700">
+                                            {customField.name}
+                                            {customField.required && (
+                                                <span className="ml-1 text-danger-500">*</span>
+                                            )}
+                                        </label>
+                                        <MyDropdown
+                                            currentValue={selectedOption}
+                                            dropdownList={dropdownOptions}
+                                            handleChange={(value) => {
+                                                if (typeof value === 'object' && 'id' in value) {
+                                                    const next = {
+                                                        ...(field.value || {}),
+                                                        [customField.id]: value.id,
+                                                    };
+                                                    field.onChange(next);
+                                                }
+                                            }}
+                                            placeholder={`Select ${customField.name}`}
+                                            required={customField.required}
+                                            disable={false}
+                                        />
+                                    </div>
+                                </FormControl>
+                            </FormItem>
+                        );
+                    }}
+                />
+            );
+        }
+
+        return (
+            <FormField
+                key={customField.id}
+                control={form.control}
+                name="custom_fields"
+                render={({ field }) => (
+                    <FormItem className="w-full sm:w-full">
+                        <FormControl>
+                            <MyInput
+                                inputType={customField.type === 'number' ? 'number' : 'text'}
+                                label={customField.name}
+                                inputPlaceholder={`Enter ${customField.name}`}
+                                input={field.value?.[customField.id] || ''}
+                                onChangeFunction={(e) => {
+                                    const next = {
+                                        ...(field.value || {}),
+                                        [customField.id]: e.target.value,
+                                    };
+                                    field.onChange(next);
+                                }}
+                                required={customField.required}
+                                className="w-full sm:w-full"
+                            />
+                        </FormControl>
+                    </FormItem>
+                )}
+            />
+        );
+    };
+
+    // ── Render ───────────────────────────────────────────────────────────────
+
+    if (!selectedStudent) return <p>No Student Found</p>;
+
+    return (
         <MyDialog
             trigger={
-                <div className="flex w-full justify-center">
-                    <MyButton buttonType="secondary" scale="medium">
-                        ✏️ Edit Details
-                    </MyButton>
-                </div>
+                <MyButton buttonType="secondary" scale="medium">
+                    <PencilSimple className="size-4" />
+                    Edit Details
+                </MyButton>
             }
-            footer={submitButton}
-            heading={`Edit ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Details`}
+            footer={footer}
+            heading={`Edit ${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
             open={openDialog}
             onOpenChange={handleDialogChange}
-            dialogWidth="w-[35vw]"
+            dialogWidth="max-w-2xl"
         >
             <FormProvider {...form}>
+                {/* Phone-input chrome override — see PHONE_INPUT_OVERRIDE_CSS. */}
+                <style dangerouslySetInnerHTML={{ __html: PHONE_INPUT_OVERRIDE_CSS }} />
                 <form
                     ref={formRef}
                     onSubmit={form.handleSubmit(onSubmit)}
-                    className="flex max-h-[80vh] w-full flex-col items-center gap-4"
+                    className="flex flex-col gap-5"
                 >
-                    <div className="flex flex-col items-center">
-                        {isUploading ? (
-                            <DashboardLoader />
-                        ) : (
-                            <div className="relative">
-                                {faceUrl ? (
-                                    <img
-                                        src={faceUrl}
-                                        alt="Profile"
-                                        className="size-[300px] rounded-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="flex size-[320px] items-center justify-center rounded-full bg-neutral-100">
-                                        <EnrollFormUploadImage />
-                                    </div>
-                                )}
+                    {/* PROFILE PHOTO */}
+                    <FormCard
+                        icon={ImageIcon}
+                        title="Profile photo"
+                        helper="Square image, at least 200×200. Max 5 MB."
+                    >
+                        <div className="flex items-center gap-4">
+                            {isUploading ? (
+                                <div className="flex size-20 items-center justify-center">
+                                    <DashboardLoader />
+                                </div>
+                            ) : faceUrl ? (
+                                <img
+                                    src={faceUrl}
+                                    alt="Profile"
+                                    className="size-20 shrink-0 rounded-full object-cover ring-2 ring-primary-100"
+                                />
+                            ) : (
+                                <div className="flex size-20 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-neutral-200 bg-neutral-50">
+                                    <EnrollFormUploadImage />
+                                </div>
+                            )}
 
-                                {faceUrl && (
-                                    <div className="absolute bottom-3 right-3 z-10">
-                                        <Menu as="div" className="relative inline-block text-left">
-                                            <Menu.Button className="rounded-full bg-white p-1 shadow hover:bg-neutral-100">
-                                                <Pencil className="size-5 text-neutral-700" />
-                                            </Menu.Button>
-                                            <Transition
-                                                enter="transition ease-out duration-100"
-                                                enterFrom="transform opacity-0 scale-95"
-                                                enterTo="transform opacity-100 scale-100"
-                                                leave="transition ease-in duration-75"
-                                                leaveFrom="transform opacity-100 scale-100"
-                                                leaveTo="transform opacity-0 scale-95"
-                                            >
-                                                <Menu.Items className="absolute bottom-10 right-0 z-20 w-40 origin-bottom-right divide-y divide-gray-100 rounded-md bg-white shadow-lg ring-1 ring-black/5 focus:outline-none">
-                                                    <div className="p-1">
-                                                        <Menu.Item>
-                                                            {({ active }) => (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() =>
-                                                                        fileInputRef.current?.click()
-                                                                    }
-                                                                    className={`${
-                                                                        active
-                                                                            ? 'bg-neutral-100'
-                                                                            : ''
-                                                                    } group flex w-full items-center gap-2 rounded-md p-2 text-sm`}
-                                                                >
-                                                                    <Upload className="size-4" />
-                                                                    Upload New
-                                                                </button>
-                                                            )}
-                                                        </Menu.Item>
-                                                        <Menu.Item>
-                                                            {({ active }) => (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handleRemoveImage}
-                                                                    className={`${
-                                                                        active
-                                                                            ? 'bg-neutral-100'
-                                                                            : ''
-                                                                    } group flex w-full items-center gap-2 rounded-md p-2 text-sm text-red-600`}
-                                                                >
-                                                                    <Trash2 className="size-4" />
-                                                                    Remove Image
-                                                                </button>
-                                                            )}
-                                                        </Menu.Item>
-                                                    </div>
-                                                </Menu.Items>
-                                            </Transition>
-                                        </Menu>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        <FileUploadComponent
-                            fileInputRef={fileInputRef}
-                            onFileSubmit={handleFileSubmit}
-                            control={form.control}
-                            name="face_file_id"
-                            acceptedFileTypes="image/*"
-                        />
-
-                        {!faceUrl && (
-                            <div className="mt-2">
+                            <div className="flex flex-wrap gap-2">
                                 <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
                                     onClick={() => fileInputRef.current?.click()}
                                     disable={isUploading}
-                                    buttonType="secondary"
-                                    layoutVariant="default"
-                                    scale="large"
-                                    type="button"
                                 >
-                                    Upload Image
+                                    <Upload className="size-4" />
+                                    {faceUrl ? 'Replace' : 'Upload'}
                                 </MyButton>
-                            </div>
-                        )}
-                    </div>
-                    {/* Form Fields */}
-                    <FormField
-                        control={form.control}
-                        name="full_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Full Name"
-                                        className="w-full"
-                                        required={true}
-                                        label="Full Name"
-                                        error={form.formState.errors.full_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="email"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Email"
-                                        className="w-full"
-                                        required={true}
-                                        label="Email"
-                                        error={form.formState.errors.email?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="contact_number"
-                        render={() => (
-                            <FormItem className="w-full">
-                                <FormControl>
-                                    <div className="flex flex-col gap-1">
-                                        <PhoneInputField
-                                            label="Mobile Number"
-                                            placeholder="123 456 7890"
-                                            name="contact_number"
-                                            control={form.control}
-                                            required={true}
-                                        />
-                                        <p className="text-subtitle text-danger-600">
-                                            {form.formState.errors.contact_number?.message}
-                                        </p>
-                                    </div>
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="gender"
-                        render={({ field }) => {
-                            const selectedGender = field.value
-                                ? genderList.find(
-                                      (g) =>
-                                          (typeof g === 'object' &&
-                                              'name' in g &&
-                                              g.name === field.value) ||
-                                          g === field.value
-                                  )
-                                : undefined;
-
-                            return (
-                                <FormItem className="w-full">
-                                    <FormControl>
-                                        <div className="flex flex-col gap-1">
-                                            <div>
-                                                Gender{' '}
-                                                <span className="text-subtitle text-danger-600">
-                                                    *
-                                                </span>
-                                            </div>
-                                            <MyDropdown
-                                                currentValue={selectedGender}
-                                                dropdownList={genderList}
-                                                handleChange={(value) => {
-                                                    if (
-                                                        typeof value === 'object' &&
-                                                        'name' in value
-                                                    ) {
-                                                        field.onChange(value.name);
-                                                    } else if (typeof value === 'string') {
-                                                        field.onChange(value);
-                                                    }
-                                                }}
-                                                placeholder="Select Gender"
-                                                error={form.formState.errors.gender?.message}
-                                                required={true}
-                                            />
-                                        </div>
-                                    </FormControl>
-                                </FormItem>
-                            );
-                        }}
-                    />{' '}
-                    <FormField
-                        control={form.control}
-                        name="address_line"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Address Line"
-                                        className="w-full"
-                                        label="Address Line"
-                                        error={form.formState.errors.address_line?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="city"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="City"
-                                        className="w-full"
-                                        label="City"
-                                        error={form.formState.errors.city?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="state"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="State"
-                                        className="w-full"
-                                        label="State"
-                                        error={form.formState.errors.state?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="pin_code"
-                        render={({ field: { onChange, value, ...field } }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        inputType="number"
-                                        label="Pincode"
-                                        inputPlaceholder="Eg.425562"
-                                        input={value}
-                                        onChangeFunction={onChange}
-                                        size="large"
-                                        className="w-full"
-                                        {...field}
-                                        error={form.formState.errors.pin_code?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="institute_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Institute Name"
-                                        className="w-full"
-                                        label="Institute Name"
-                                        error={form.formState.errors.institute_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="fathers_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Father/Male Gardian Name"
-                                        className="w-full"
-                                        label="Father/Male Gardian Name"
-                                        error={form.formState.errors.fathers_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="mothers_name"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="text"
-                                        inputPlaceholder="Mother/Female Gardian Name"
-                                        className="w-full"
-                                        label="Mother/Female Gardian Name"
-                                        error={form.formState.errors.mothers_name?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="father_mobile_number"
-                        render={() => (
-                            <FormItem className="w-full">
-                                <FormControl>
-                                    <PhoneInputField
-                                        label="Father/Male Guardian Mobile Number"
-                                        placeholder="123 456 7890"
-                                        name="father_mobile_number"
-                                        control={form.control}
-                                        required={false}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="father_email"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="email"
-                                        inputPlaceholder="Father/Male Guardian Email"
-                                        className="w-full"
-                                        label="Father/Male Guardian Email"
-                                        error={form.formState.errors.father_email?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="mother_mobile_number"
-                        render={() => (
-                            <FormItem className="w-full">
-                                <FormControl>
-                                    <PhoneInputField
-                                        label="Mother/Female Guardian Mobile Number"
-                                        placeholder="123 456 7890"
-                                        name="mother_mobile_number"
-                                        control={form.control}
-                                        required={false}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="mother_email"
-                        render={({ field }) => (
-                            <FormItem className="w-full">
-                                <FormControl className="w-full">
-                                    <MyInput
-                                        input={field.value}
-                                        onChangeFunction={(e) => field.onChange(e.target.value)}
-                                        inputType="email"
-                                        inputPlaceholder="Mother/Female Guardian Email"
-                                        className="w-full"
-                                        label="Mother/Female Guardian Email"
-                                        error={form.formState.errors.mother_email?.message}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                    {/* Custom Fields Section */}
-                    {(customFieldsData.fieldGroups.length > 0 ||
-                        customFieldsData.individualFields.length > 0) && (
-                        <>
-                            <div className="mt-6 w-full border-t pt-6">
-                                <h3 className="text-h6 mb-4 font-semibold text-neutral-700">
-                                    Additional Information
-                                </h3>
+                                {faceUrl && (
+                                    <MyButton
+                                        type="button"
+                                        buttonType="text"
+                                        scale="small"
+                                        onClick={handleRemoveImage}
+                                        disable={isUploading}
+                                    >
+                                        <Trash className="size-4" />
+                                        Remove
+                                    </MyButton>
+                                )}
                             </div>
 
-                            {/* Field Groups */}
+                            <FileUploadComponent
+                                fileInputRef={fileInputRef}
+                                onFileSubmit={handleFileSubmit}
+                                control={form.control}
+                                name="face_file_id"
+                                acceptedFileTypes="image/*"
+                            />
+                        </div>
+                    </FormCard>
+
+                    {/* IDENTITY */}
+                    <FormCard
+                        icon={UserCircle}
+                        title="Identity"
+                        helper="Their name and basic info."
+                    >
+                        <Grid2>
+                            {fullNameField}
+                            {genderField}
+                        </Grid2>
+                    </FormCard>
+
+                    {/* CONTACT */}
+                    <FormCard
+                        icon={Phone}
+                        title="Contact"
+                        helper="Primary channels for reach-out."
+                    >
+                        <Grid2>
+                            {emailField}
+                            {mobileField}
+                        </Grid2>
+                    </FormCard>
+
+                    {/* ADDRESS — each field gated by its visibility toggle; the
+                        whole card hides when every address field is off. */}
+                    {(showField('address_line') ||
+                        showField('city') ||
+                        showField('region') ||
+                        showField('pin_code')) && (
+                        <FormCard icon={MapPin} title="Address" helper="Where they live.">
+                            {showField('address_line') && addressLineField}
+                            <Grid3>
+                                {showField('city') && cityField}
+                                {showField('region') && stateField}
+                                {showField('pin_code') && pinField}
+                            </Grid3>
+                        </FormCard>
+                    )}
+
+                    {/* INSTITUTE */}
+                    {showField('linked_institute_name') && (
+                        <FormCard
+                            icon={Buildings}
+                            title="Institute"
+                            helper="Their primary place of study."
+                        >
+                            {instituteField}
+                        </FormCard>
+                    )}
+
+                    {/* FAMILY — subgroups + the whole card hide when their fields
+                        are toggled off. */}
+                    {(showField('fathers_name') ||
+                        showField('parents_mobile_number') ||
+                        showField('parents_email') ||
+                        showField('mothers_name') ||
+                        showField('parents_to_mother_mobile_number') ||
+                        showField('parents_to_mother_email')) && (
+                        <FormCard
+                            icon={UsersThree}
+                            title="Family"
+                            helper="Guardians and emergency contacts."
+                        >
+                            {/* Father */}
+                            {(showField('fathers_name') ||
+                                showField('parents_mobile_number') ||
+                                showField('parents_email')) && (
+                                <>
+                                    <SubGroupTitle>Father / Male guardian</SubGroupTitle>
+                                    {showField('fathers_name') && fathersNameField}
+                                    <Grid2>
+                                        {showField('parents_mobile_number') && fatherMobileField}
+                                        {showField('parents_email') && fatherEmailField}
+                                    </Grid2>
+                                </>
+                            )}
+                            {/* Mother */}
+                            {(showField('mothers_name') ||
+                                showField('parents_to_mother_mobile_number') ||
+                                showField('parents_to_mother_email')) && (
+                                <>
+                                    <SubGroupTitle>Mother / Female guardian</SubGroupTitle>
+                                    {showField('mothers_name') && mothersNameField}
+                                    <Grid2>
+                                        {showField('parents_to_mother_mobile_number') &&
+                                            motherMobileField}
+                                        {showField('parents_to_mother_email') && motherEmailField}
+                                    </Grid2>
+                                </>
+                            )}
+                        </FormCard>
+                    )}
+
+                    {/* CUSTOM */}
+                    {hasCustomFields && (
+                        <FormCard
+                            icon={SlidersHorizontal}
+                            title="Additional info"
+                            helper="Custom fields configured for your institute."
+                        >
                             {customFieldsData.fieldGroups.map((group: FieldGroup) => (
-                                <div key={group.id} className="mb-6 w-full">
-                                    <h4 className="mb-3 text-sm font-semibold text-neutral-600">
-                                        {group.name}
-                                    </h4>
-                                    <div className="flex w-full flex-col gap-4 border-l-2 border-neutral-200 pl-2">
-                                        {group.fields.map((customField: CustomField) => {
-                                            if (customField.type === 'dropdown') {
-                                                const dropdownOptions =
-                                                    customField.options?.map((option) => ({
-                                                        id: option,
-                                                        name: option,
-                                                    })) || [];
-
-                                                return (
-                                                    <FormField
-                                                        key={customField.id}
-                                                        control={form.control}
-                                                        name="custom_fields"
-                                                        render={({ field }) => {
-                                                            const currentValue =
-                                                                field.value?.[customField.id];
-                                                            const selectedOption = currentValue
-                                                                ? {
-                                                                      id: currentValue,
-                                                                      name: currentValue,
-                                                                  }
-                                                                : undefined;
-
-                                                            return (
-                                                                <FormItem className="w-full">
-                                                                    <FormControl>
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <label className="text-sm font-medium">
-                                                                                {customField.name}
-                                                                                {customField.required && (
-                                                                                    <span className="ml-1 text-danger-600">
-                                                                                        *
-                                                                                    </span>
-                                                                                )}
-                                                                            </label>
-                                                                            <MyDropdown
-                                                                                currentValue={
-                                                                                    selectedOption
-                                                                                }
-                                                                                dropdownList={
-                                                                                    dropdownOptions
-                                                                                }
-                                                                                handleChange={(
-                                                                                    value
-                                                                                ) => {
-                                                                                    if (
-                                                                                        typeof value ===
-                                                                                            'object' &&
-                                                                                        'id' in
-                                                                                            value
-                                                                                    ) {
-                                                                                        const newCustomFields =
-                                                                                            {
-                                                                                                ...(field.value ||
-                                                                                                    {}),
-                                                                                                [customField.id]:
-                                                                                                    value.id,
-                                                                                            };
-                                                                                        field.onChange(
-                                                                                            newCustomFields
-                                                                                        );
-                                                                                    }
-                                                                                }}
-                                                                                placeholder={`Select ${customField.name}`}
-                                                                                required={
-                                                                                    customField.required
-                                                                                }
-                                                                                disable={false}
-                                                                            />
-                                                                        </div>
-                                                                    </FormControl>
-                                                                </FormItem>
-                                                            );
-                                                        }}
-                                                    />
-                                                );
-                                            }
-
-                                            // Text/Number custom fields
-                                            return (
-                                                <FormField
-                                                    key={customField.id}
-                                                    control={form.control}
-                                                    name="custom_fields"
-                                                    render={({ field }) => (
-                                                        <FormItem className="w-full">
-                                                            <FormControl>
-                                                                <MyInput
-                                                                    inputType={
-                                                                        customField.type ===
-                                                                        'number'
-                                                                            ? 'number'
-                                                                            : 'text'
-                                                                    }
-                                                                    label={customField.name}
-                                                                    inputPlaceholder={`Enter ${customField.name}`}
-                                                                    input={
-                                                                        field.value?.[
-                                                                            customField.id
-                                                                        ] || ''
-                                                                    }
-                                                                    onChangeFunction={(e) => {
-                                                                        const newCustomFields = {
-                                                                            ...(field.value || {}),
-                                                                            [customField.id]:
-                                                                                e.target.value,
-                                                                        };
-                                                                        field.onChange(
-                                                                            newCustomFields
-                                                                        );
-                                                                    }}
-                                                                    required={customField.required}
-                                                                    size="large"
-                                                                    className="w-full"
-                                                                />
-                                                            </FormControl>
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                            );
-                                        })}
+                                <div key={group.id} className="flex flex-col gap-3">
+                                    <SubGroupTitle>{group.name}</SubGroupTitle>
+                                    <div className="flex w-full flex-col gap-4">
+                                        {group.fields.map((cf: CustomField) =>
+                                            renderCustomField(cf)
+                                        )}
                                     </div>
                                 </div>
                             ))}
-
-                            {/* Individual Custom Fields */}
                             {customFieldsData.individualFields.length > 0 && (
-                                <div className="flex w-full flex-col gap-4">
-                                    {customFieldsData.individualFields.map(
-                                        (customField: CustomField) => {
-                                            if (customField.type === 'dropdown') {
-                                                const dropdownOptions =
-                                                    customField.options?.map((option) => ({
-                                                        id: option,
-                                                        name: option,
-                                                    })) || [];
-
-                                                return (
-                                                    <FormField
-                                                        key={customField.id}
-                                                        control={form.control}
-                                                        name="custom_fields"
-                                                        render={({ field }) => {
-                                                            const currentValue =
-                                                                field.value?.[customField.id];
-                                                            const selectedOption = currentValue
-                                                                ? {
-                                                                      id: currentValue,
-                                                                      name: currentValue,
-                                                                  }
-                                                                : undefined;
-
-                                                            return (
-                                                                <FormItem className="w-full">
-                                                                    <FormControl>
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <label className="text-sm font-medium">
-                                                                                {customField.name}
-                                                                                {customField.required && (
-                                                                                    <span className="ml-1 text-danger-600">
-                                                                                        *
-                                                                                    </span>
-                                                                                )}
-                                                                            </label>
-                                                                            <MyDropdown
-                                                                                currentValue={
-                                                                                    selectedOption
-                                                                                }
-                                                                                dropdownList={
-                                                                                    dropdownOptions
-                                                                                }
-                                                                                handleChange={(
-                                                                                    value
-                                                                                ) => {
-                                                                                    if (
-                                                                                        typeof value ===
-                                                                                            'object' &&
-                                                                                        'id' in
-                                                                                            value
-                                                                                    ) {
-                                                                                        const newCustomFields =
-                                                                                            {
-                                                                                                ...(field.value ||
-                                                                                                    {}),
-                                                                                                [customField.id]:
-                                                                                                    value.id,
-                                                                                            };
-                                                                                        field.onChange(
-                                                                                            newCustomFields
-                                                                                        );
-                                                                                    }
-                                                                                }}
-                                                                                placeholder={`Select ${customField.name}`}
-                                                                                required={
-                                                                                    customField.required
-                                                                                }
-                                                                                disable={false}
-                                                                            />
-                                                                        </div>
-                                                                    </FormControl>
-                                                                </FormItem>
-                                                            );
-                                                        }}
-                                                    />
-                                                );
-                                            }
-
-                                            // Text/Number custom fields
-                                            return (
-                                                <FormField
-                                                    key={customField.id}
-                                                    control={form.control}
-                                                    name="custom_fields"
-                                                    render={({ field }) => (
-                                                        <FormItem className="w-full">
-                                                            <FormControl>
-                                                                <MyInput
-                                                                    inputType={
-                                                                        customField.type ===
-                                                                        'number'
-                                                                            ? 'number'
-                                                                            : 'text'
-                                                                    }
-                                                                    label={customField.name}
-                                                                    inputPlaceholder={`Enter ${customField.name}`}
-                                                                    input={
-                                                                        field.value?.[
-                                                                            customField.id
-                                                                        ] || ''
-                                                                    }
-                                                                    onChangeFunction={(e) => {
-                                                                        const newCustomFields = {
-                                                                            ...(field.value || {}),
-                                                                            [customField.id]:
-                                                                                e.target.value,
-                                                                        };
-                                                                        field.onChange(
-                                                                            newCustomFields
-                                                                        );
-                                                                    }}
-                                                                    required={customField.required}
-                                                                    size="large"
-                                                                    className="w-full"
-                                                                />
-                                                            </FormControl>
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                            );
-                                        }
+                                <div className="flex flex-col gap-4">
+                                    {customFieldsData.individualFields.map((cf) =>
+                                        renderCustomField(cf)
                                     )}
                                 </div>
                             )}
-                        </>
+                        </FormCard>
                     )}
                 </form>
             </FormProvider>
         </MyDialog>
-    ) : (
-        <p>No Student Found</p>
     );
 };

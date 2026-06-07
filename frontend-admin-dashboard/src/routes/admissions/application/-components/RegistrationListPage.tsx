@@ -208,7 +208,8 @@ function RegistrationListPageInner({
     };
 
     const handleViewDetails = (applicant: Applicant) => {
-        setSelectedStudent(mapApplicantToStudent(applicant));
+        // Open the compact side-view sheet, NOT the fullscreen overlay.
+        setSelectedStudent(mapApplicantToStudent(applicant), { openOverlay: false });
         setSelectedApplicantId(applicant.applicant_id);
         setIsSidebarOpen(true);
     };

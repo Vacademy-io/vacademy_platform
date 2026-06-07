@@ -78,6 +78,13 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
         linked_institute_name: contact.linked_institute_name || null,
         updated_at: '',
         package_session_id: contact.package_session_id || '',
+        // Carry the user's full enrollment list so the side view's "Open portal
+        // for" picker can offer every membership (matches the students-list,
+        // which gets this via raw-object spread). Falls back to the singular id.
+        all_package_session_ids:
+            contact.all_package_session_ids ??
+            contact.package_session_ids ??
+            (contact.package_session_id ? [contact.package_session_id] : []),
         institute_enrollment_id: contact.institute_enrollment_number || '',
         status: (contact.status as 'ACTIVE' | 'TERMINATED' | 'INACTIVE') || 'INACTIVE',
         session_expiry_days: 0,
@@ -101,14 +108,24 @@ const mapContactToStudent = (contact: ContactUser): StudentTable => {
 const DetailsCell = ({ row }: { row: Row<ContactUser> }) => {
     const { setSelectedStudent } = useStudentSidebar();
 
-    const handleClick = async () => {
-        setSelectedStudent(mapContactToStudent(row.original));
+    const handleOpenDrawer = () => {
+        // Open the compact side-view sheet (via SidebarTrigger), NOT the
+        // fullscreen overlay — matches the student-list Details arrow.
+        setSelectedStudent(mapContactToStudent(row.original), { openOverlay: false });
     };
 
     return (
-        <SidebarTrigger onClick={handleClick}>
-            <ArrowSquareOut className="size-10 cursor-pointer text-neutral-600" />
-        </SidebarTrigger>
+        <div className="flex items-center gap-1">
+            <SidebarTrigger onClick={handleOpenDrawer}>
+                <span
+                    className="flex size-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700"
+                    title="Open side panel"
+                    aria-label="Open side panel"
+                >
+                    <ArrowSquareOut className="size-4" />
+                </span>
+            </SidebarTrigger>
+        </div>
     );
 };
 

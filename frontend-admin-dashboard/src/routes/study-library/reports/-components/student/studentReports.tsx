@@ -7,8 +7,12 @@ import { Route } from '@/routes/study-library/reports';
 
 export default function StudentReports() {
     const search = useSearch({ from: Route.id });
+    // The Tabs values below are lowercase ('timeline' / 'progress'); profile
+    // navigation now sends lowercase too but old links may still use uppercase
+    // 'TIMELINE' / 'PROGRESS'. Normalize so either form selects the right tab.
+    const requestedTab = (search.studentReport?.learningTab || '').toLowerCase();
     const [learningData, setLearningData] = useState(
-        search.studentReport ? search.studentReport.learningTab : 'timeline'
+        requestedTab === 'progress' ? 'progress' : 'timeline'
     );
 
     return (

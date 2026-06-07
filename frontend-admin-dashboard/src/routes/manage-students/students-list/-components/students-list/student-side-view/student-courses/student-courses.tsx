@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 import {
     useLearnerPackagesQuery,
     type PackageDetailDTO,
 } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { getInstituteId } from '@/constants/helper';
 import { MyButton } from '@/components/design-system/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Check, CaretDown, FunnelSimple, X } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu';
 import { AssignCourseDialog } from './assign-course-dialog';
 import { DeassignCourseDialog } from './deassign-course-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -19,91 +21,26 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { useNavigate } from '@tanstack/react-router';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    BookOpen,
+    CheckCircle,
+    ClockCounterClockwise,
+    GraduationCap,
+    CaretLeft,
+    CaretRight,
+    Funnel,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import {
+    ProfileSectionCard,
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileHeroStat,
+    ProfileMiniBar,
+} from '../profile-ui';
 
 const ITEMS_PER_PAGE = 20;
-
-const isInactive = (course: PackageDetailDTO) =>
-    course.enrollment_status === 'INACTIVE' || course.enrollment_status === 'TERMINATED';
-
-/**
- * Shows a small status pill when the learner is NOT actively enrolled in this
- * course's batch — e.g. admin marked them INACTIVE but their plan is still active,
- * or the enrollment was terminated. Returns null for ACTIVE / INVITED / missing
- * statuses (those don't need a flag here).
- */
-const EnrollmentStatusPill = ({
-    status,
-}: {
-    status?: PackageDetailDTO['enrollment_status'];
-}) => {
-    if (!status || status === 'ACTIVE' || status === 'INVITED') return null;
-    const label = status === 'TERMINATED' ? 'Enrollment Terminated' : 'Course Inactive';
-    return (
-        <span className="rounded-full bg-danger-50 px-2 py-0.5 text-xs font-medium text-danger-700 ring-1 ring-danger-200">
-            {label}
-        </span>
-    );
-};
-
-const formatDate = (iso?: string | null): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
-// Static tone classes (don't construct Tailwind class names dynamically — JIT
-// only picks up complete literal strings).
-const DAYS_TONE = {
-    success: { text: 'text-success-700', bar: 'bg-success-500' },
-    warning: { text: 'text-warning-700', bar: 'bg-warning-500' },
-    danger: { text: 'text-danger-700', bar: 'bg-danger-500' },
-} as const;
-
-/**
- * Days-access indicator — shows how many days of access remain out of the
- * original validity window, with a tiny progress bar. Renders nothing if the
- * row has no expiry_date.
- */
-const DaysAccessBar = ({ course }: { course: PackageDetailDTO }) => {
-    if (!course.expiry_date) return null;
-    const now = Date.now();
-    const expiry = new Date(course.expiry_date).getTime();
-    if (Number.isNaN(expiry)) return null;
-    const enrolled = course.enrolled_date ? new Date(course.enrolled_date).getTime() : null;
-    const daysRemaining = Math.max(0, Math.floor((expiry - now) / (1000 * 60 * 60 * 24)));
-    const totalDays =
-        enrolled && expiry > enrolled
-            ? Math.max(1, Math.floor((expiry - enrolled) / (1000 * 60 * 60 * 24)))
-            : Math.max(daysRemaining, 1);
-    const percent = Math.min(100, Math.max(0, (daysRemaining / totalDays) * 100));
-    const tone =
-        daysRemaining >= 180 ? 'success' : daysRemaining >= 30 ? 'warning' : 'danger';
-    const c = DAYS_TONE[tone];
-    return (
-        <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-neutral-500">Access remaining</span>
-                <span className={`font-semibold ${c.text}`}>{daysRemaining} days</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-                <div
-                    className={`h-full ${c.bar} transition-all duration-500`}
-                    // Width is data-driven and inherently dynamic.
-                    style={{ width: `${percent}%` }}
-                />
-            </div>
-        </div>
-    );
-};
-
-const InactiveSinceLine = ({ course }: { course: PackageDetailDTO }) => {
-    const when = formatDate(course.enrollment_status_updated_at);
-    if (!when) return null;
-    return (
-        <p className="mt-2 text-xs text-danger-700">Marked inactive on {when}</p>
-    );
-};
 
 export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmissionTab?: boolean; packageSessionId?: string }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -115,13 +52,13 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [deassignOpen, setDeassignOpen] = useState(false);
-    const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+    const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
     const [levelMenuOpen, setLevelMenuOpen] = useState(false);
     const [progressPage, setProgressPage] = useState(0);
     const [completedPage, setCompletedPage] = useState(0);
     const [pastPage, setPastPage] = useState(0);
 
-    const levelIds = selectedLevelId ? [selectedLevelId] : [];
+    const levelIds = selectedLevelIds;
     const packageSessionIds = packageSessionId ? [packageSessionId] : [];
 
     const {
@@ -176,17 +113,30 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     });
 
     if (!selectedStudent || !instituteId) {
-        return <p>Student details unavailable</p>;
+        return (
+            <ProfileEmpty
+                icon={GraduationCap}
+                title="Student details unavailable"
+                hint="No learner is selected or the institute could not be determined."
+            />
+        );
     }
 
     if (isLoadingProgress || isLoadingCompleted || isLoadingPast) {
-        return <DashboardLoader />;
+        return <ProfileSkeleton blocks={3} />;
     }
 
     const allActiveCourses: PackageDetailDTO[] = [
         ...(progressCourses?.content || []),
         ...(completedCourses?.content || []),
     ];
+
+    // Hero stat counts — derived from paginated totals (totalElements) when available,
+    // falling back to the length of the current page content.
+    const progressCount = progressCourses?.totalElements ?? progressCourses?.content?.length ?? 0;
+    const completedCount = completedCourses?.totalElements ?? completedCourses?.content?.length ?? 0;
+    const pastCount = pastCourses?.totalElements ?? pastCourses?.content?.length ?? 0;
+    const totalCount = progressCount + completedCount + pastCount;
 
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ['GET_LEARNER_PACKAGES'] });
@@ -206,266 +156,229 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
             }
         }
 
+        // Land on the full Course Details page (layout sidebar + course
+        // header / tabs), the same experience users get when opening a course
+        // from the study-library list — not the stripped `/subjects`
+        // deep-link.
         navigate({
-            to: '/study-library/courses/course-details/subjects',
+            to: '/study-library/courses/course-details',
             search: { courseId, levelId, sessionId },
         });
     };
 
-    const handleLevelFilter = (levelId: string | null) => {
-        setSelectedLevelId(levelId);
+    // Reset all three section pages whenever the level filter changes — the
+    // result sets shift, so stale page indices would point past the new data.
+    const resetPages = () => {
         setProgressPage(0);
         setCompletedPage(0);
         setPastPage(0);
     };
+    // Multi-select: toggle a level in/out of the filter set.
+    const toggleLevel = (levelId: string) => {
+        setSelectedLevelIds((prev) =>
+            prev.includes(levelId) ? prev.filter((id) => id !== levelId) : [...prev, levelId]
+        );
+        resetPages();
+    };
+    // "All" clears the filter set (empty = no level filter applied).
+    const clearLevels = () => {
+        setSelectedLevelIds([]);
+        resetPages();
+    };
+
+    const courseTermSingular = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const courseTermPlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+
+    // When there are no courses at all, show a dedicated empty state with primary action.
+    if (totalCount === 0 && !isLoadingProgress && !isLoadingCompleted && !isLoadingPast) {
+        return (
+            <div className="flex flex-col gap-3">
+                <ProfileEmpty
+                    icon={BookOpen}
+                    title={`No ${courseTermPlural.toLowerCase()} assigned`}
+                    hint="Assign a program to get started."
+                    action={
+                        <>
+                            <MyButton
+                                buttonType="primary"
+                                scale="small"
+                                onClick={() => setAssignOpen(true)}
+                            >
+                                + Assign to {courseTermSingular}
+                            </MyButton>
+                            <AssignCourseDialog
+                                userId={userId}
+                                userName={selectedStudent?.full_name || 'Student'}
+                                open={assignOpen}
+                                onOpenChange={setAssignOpen}
+                                onSuccess={handleRefresh}
+                            />
+                        </>
+                    }
+                />
+            </div>
+        );
+    }
 
     return (
-        <div className="flex flex-col gap-3 sm:gap-6">
-            {/* Action buttons — stacked on narrow side-view (mobile sheet ~288px),
-                row layout on wider desktop side-view (565px). */}
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+        <div className="flex flex-col gap-3">
+            {/* Hero stat grid — passive counters per handoff CoursesSection.
+                Click-to-filter has been dropped: the 3 sections below always
+                render, so these tiles are purely orientation/status read-outs. */}
+            <div className="grid grid-cols-3 gap-2">
+                <ProfileHeroStat
+                    label="In Progress"
+                    value={progressCount}
+                    tone="primary"
+                    icon={BookOpen}
+                />
+                <ProfileHeroStat
+                    label="Completed"
+                    value={completedCount}
+                    tone="success"
+                    icon={CheckCircle}
+                />
+                <ProfileHeroStat
+                    label="Past"
+                    value={pastCount}
+                    tone="neutral"
+                    icon={ClockCounterClockwise}
+                />
+            </div>
+
+            {/* Combined action + filter row per handoff — Assign / Remove
+                buttons sit alongside the level filter chips so the controls
+                are one mental group, not two stacked bars. */}
+            <div className="flex flex-wrap items-center gap-2">
                 <MyButton
                     buttonType="primary"
                     scale="small"
                     onClick={() => setAssignOpen(true)}
-                    className="w-full md:w-auto"
                 >
-                    + Assign to {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                    + Assign to {courseTermSingular}
                 </MyButton>
                 <MyButton
                     buttonType="secondary"
                     scale="small"
                     onClick={() => setDeassignOpen(true)}
                     disable={allActiveCourses.length === 0}
-                    className="w-full md:w-auto"
                 >
-                    Remove from {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+                    Remove from {courseTermSingular}
                 </MyButton>
+                {availableLevels.length > 0 && (
+                    // Collapsed by default into a Filter button; the level list
+                    // opens in a dropdown so a long list of levels no longer eats
+                    // vertical space in the panel.
+                    // - modal={false}: a modal dropdown re-dispatches the click as
+                    //   it tears down, which was closing the side-view panel. Non-modal
+                    //   avoids the body pointer-lock + that stray click.
+                    // - onSelect preventDefault on each item keeps the menu open so
+                    //   multiple levels can be toggled in one go.
+                    <DropdownMenu
+                        open={levelMenuOpen}
+                        onOpenChange={setLevelMenuOpen}
+                        modal={false}
+                    >
+                        <DropdownMenuTrigger asChild>
+                            <MyButton buttonType="secondary" scale="small" className="ml-auto">
+                                <Funnel className="size-3.5" />
+                                {selectedLevelIds.length > 0
+                                    ? `Filter (${selectedLevelIds.length})`
+                                    : 'Filter'}
+                            </MyButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            align="end"
+                            className="max-h-72 w-56 overflow-y-auto"
+                        >
+                            <DropdownMenuCheckboxItem
+                                checked={selectedLevelIds.length === 0}
+                                onCheckedChange={() => clearLevels()}
+                                onSelect={(e) => e.preventDefault()}
+                            >
+                                All
+                            </DropdownMenuCheckboxItem>
+                            {availableLevels.map((level) => (
+                                <DropdownMenuCheckboxItem
+                                    key={level.id}
+                                    checked={selectedLevelIds.includes(level.id)}
+                                    onCheckedChange={() => toggleLevel(level.id)}
+                                    onSelect={(e) => e.preventDefault()}
+                                >
+                                    {level.level_name}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
 
-            {/* Level Filter — Popover with inline (non-portal) content so clicks inside
-                the menu stay within the side-panel sheet's DOM and don't trigger its
-                click-outside dismissal. */}
-            {availableLevels.length > 0 && (() => {
-                const selectedLevel = availableLevels.find((l) => l.id === selectedLevelId);
-                const triggerLabel = selectedLevel?.level_name ?? 'All levels';
-                return (
-                    <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-neutral-600">Filter:</span>
-                        <Popover open={levelMenuOpen} onOpenChange={setLevelMenuOpen}>
-                            <PopoverTrigger asChild>
-                                <button
-                                    type="button"
-                                    className={cn(
-                                        'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors focus:outline-none',
-                                        selectedLevelId
-                                            ? 'border-primary-300 bg-primary-50 text-primary-700 hover:border-primary-400'
-                                            : 'border-neutral-300 bg-white text-neutral-600 hover:border-primary-200'
-                                    )}
-                                >
-                                    <FunnelSimple className="size-3.5" />
-                                    <span className="capitalize">{triggerLabel}</span>
-                                    <CaretDown className="size-3.5" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                                portal={false}
-                                align="start"
-                                className="w-56 p-1"
-                            >
-                                <div className="max-h-72 overflow-y-auto">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            handleLevelFilter(null);
-                                            setLevelMenuOpen(false);
-                                        }}
-                                        className={cn(
-                                            'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs font-medium hover:bg-primary-50',
-                                            selectedLevelId === null
-                                                ? 'bg-primary-50 text-primary-700'
-                                                : 'text-neutral-700'
-                                        )}
-                                    >
-                                        All levels
-                                        {selectedLevelId === null && (
-                                            <Check className="size-3.5 text-primary-600" />
-                                        )}
-                                    </button>
-                                    {availableLevels.map((level) => (
-                                        <button
-                                            key={level.id}
-                                            type="button"
-                                            onClick={() => {
-                                                handleLevelFilter(level.id);
-                                                setLevelMenuOpen(false);
-                                            }}
-                                            className={cn(
-                                                'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-xs font-medium capitalize hover:bg-primary-50',
-                                                selectedLevelId === level.id
-                                                    ? 'bg-primary-50 text-primary-700'
-                                                    : 'text-neutral-700'
-                                            )}
-                                        >
-                                            {level.level_name}
-                                            {selectedLevelId === level.id && (
-                                                <Check className="size-3.5 text-primary-600" />
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                        {selectedLevelId && (
-                            <button
-                                type="button"
-                                onClick={() => handleLevelFilter(null)}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-700"
-                                aria-label="Clear level filter"
-                            >
-                                <X className="size-3.5" />
-                                Clear
-                            </button>
-                        )}
-                    </div>
-                );
-            })()}
-
-            {/* Split the in-progress page client-side: ACTIVE rows render in their
-                normal section; INACTIVE/TERMINATED rows are collected into a
-                dedicated "Inactive Courses" section below. Pagination still applies
-                to the underlying page; for typical learners (1-2 inactive courses
-                in the whole institute) this is fine. */}
-            {(() => {
-                const progressContent = progressCourses?.content || [];
-                const activeProgress = progressContent.filter((c) => !isInactive(c));
-                const inactiveCourses = progressContent.filter(isInactive);
-                const courseTerm = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
-                const getSessionNameFn = (course: PackageDetailDTO) => {
+            {/* All three sections render unconditionally per handoff —
+                counsellors see the full enrolment story without toggling. */}
+            <InProgressSection
+                courseTermPlural={courseTermPlural}
+                courses={progressCourses?.content || []}
+                page={progressPage}
+                totalPages={progressCourses?.totalPages || 0}
+                onPageChange={setProgressPage}
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
                     if (!course.package_session_id) return null;
-                    const details = getDetailsFromPackageSessionId({
-                        packageSessionId: course.package_session_id,
-                    });
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
                     return details?.session.session_name || null;
-                };
-                return (
-                    <>
-                        {/* In Progress Courses */}
-                        <CourseSection
-                            title={`In Progress ${courseTerm}`}
-                            courses={activeProgress}
-                            emptyMessage={`No ${courseTerm.toLowerCase()} in progress`}
-                            onCourseClick={handleCourseClick}
-                            getSessionName={getSessionNameFn}
-                            renderBadge={(course) => (
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {course.level_name && (
-                                        <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                            {course.level_name}
-                                        </span>
-                                    )}
-                                    <span className="shrink-0 whitespace-nowrap rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                                        {Number(Math.min(Math.max(course.percentage_completed ?? 0, 0), 100).toFixed(2))}%
-                                    </span>
-                                </div>
-                            )}
-                            renderExtra={(course) => (
-                                <>
-                                    <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-neutral-100">
-                                        <div
-                                            className="h-2 rounded-full bg-blue-500 transition-all duration-500"
-                                            style={{
-                                                width: `${Math.min(Math.max(course.percentage_completed ?? 0, 0), 100)}%`,
-                                            }}
-                                        />
-                                    </div>
-                                    <DaysAccessBar course={course} />
-                                </>
-                            )}
-                            page={progressPage}
-                            totalPages={progressCourses?.totalPages || 0}
-                            onPageChange={setProgressPage}
-                        />
+                }}
+            />
 
-                        {/* Completed Courses */}
-                        <CourseSection
-                            title={`Completed ${courseTerm}`}
-                            courses={completedCourses?.content || []}
-                            emptyMessage={`No completed ${courseTerm.toLowerCase()}`}
-                            onCourseClick={handleCourseClick}
-                            getSessionName={getSessionNameFn}
-                            renderBadge={(course) => (
-                                <div className="flex items-center gap-2">
-                                    {course.level_name && (
-                                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                            {course.level_name}
-                                        </span>
-                                    )}
-                                    <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-                                        Completed
-                                    </span>
-                                </div>
-                            )}
-                            renderExtra={(course) => <DaysAccessBar course={course} />}
-                            page={completedPage}
-                            totalPages={completedCourses?.totalPages || 0}
-                            onPageChange={setCompletedPage}
-                        />
+            <CourseSection
+                title={`Completed ${courseTermPlural}`}
+                icon={CheckCircle}
+                courses={completedCourses?.content || []}
+                emptyMessage={`No completed ${courseTermPlural.toLowerCase()}`}
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
+                renderBadge={(course) => (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {course.level_name && (
+                            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
+                                {course.level_name}
+                            </span>
+                        )}
+                        <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700">
+                            Completed
+                        </span>
+                    </div>
+                )}
+                page={completedPage}
+                totalPages={completedCourses?.totalPages || 0}
+                onPageChange={setCompletedPage}
+            />
 
-                        {/* Past Courses */}
-                        <CourseSection
-                            title={`Past ${courseTerm}`}
-                            courses={pastCourses?.content || []}
-                            emptyMessage={`No past ${courseTerm.toLowerCase()}`}
-                            onCourseClick={handleCourseClick}
-                            getSessionName={getSessionNameFn}
-                            renderBadge={(course) => (
-                                <div className="flex items-center gap-2">
-                                    {course.level_name && (
-                                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                            {course.level_name}
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                            renderExtra={(course) => <DaysAccessBar course={course} />}
-                            page={pastPage}
-                            totalPages={pastCourses?.totalPages || 0}
-                            onPageChange={setPastPage}
-                        />
-
-                        {/* Inactive Courses — surfaces enrollments where the admin has
-                            deactivated this learner from a course they still have plan/
-                            access to. Pulled client-side from the PROGRESS response. */}
-                        <CourseSection
-                            title={`Inactive ${courseTerm}`}
-                            courses={inactiveCourses}
-                            emptyMessage={`No inactive ${courseTerm.toLowerCase()}`}
-                            onCourseClick={handleCourseClick}
-                            getSessionName={getSessionNameFn}
-                            renderBadge={(course) => (
-                                <div className="flex items-center gap-2">
-                                    {course.level_name && (
-                                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
-                                            {course.level_name}
-                                        </span>
-                                    )}
-                                    <EnrollmentStatusPill status={course.enrollment_status} />
-                                </div>
-                            )}
-                            renderExtra={(course) => (
-                                <>
-                                    <InactiveSinceLine course={course} />
-                                    <DaysAccessBar course={course} />
-                                </>
-                            )}
-                            page={0}
-                            totalPages={0}
-                            onPageChange={() => {}}
-                        />
-                    </>
-                );
-            })()}
+            <CourseSection
+                title={`Past ${courseTermPlural}`}
+                icon={GraduationCap}
+                courses={pastCourses?.content || []}
+                emptyMessage={`No past ${courseTermPlural.toLowerCase()}`}
+                onCourseClick={handleCourseClick}
+                getSessionName={(course) => {
+                    if (!course.package_session_id) return null;
+                    const details = getDetailsFromPackageSessionId({ packageSessionId: course.package_session_id });
+                    return details?.session.session_name || null;
+                }}
+                renderBadge={(course) =>
+                    course.level_name ? (
+                        <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium capitalize text-neutral-600">
+                            {course.level_name}
+                        </span>
+                    ) : null
+                }
+                page={pastPage}
+                totalPages={pastCourses?.totalPages || 0}
+                onPageChange={setPastPage}
+            />
 
             {/* Dialogs */}
             <AssignCourseDialog
@@ -487,12 +400,116 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
     );
 };
 
+// ── In Progress section (hero visual weight, ProfileMiniBar per row) ───────────
+
+const InProgressSection = ({
+    courseTermPlural,
+    courses,
+    page,
+    totalPages,
+    onPageChange,
+    onCourseClick,
+    getSessionName,
+}: {
+    courseTermPlural: string;
+    courses: PackageDetailDTO[];
+    page: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    onCourseClick: (course: PackageDetailDTO) => void;
+    getSessionName: (course: PackageDetailDTO) => string | null;
+}) => {
+    const sessionTermSingular = getTerminology(ContentTerms.Session, SystemTerms.Session);
+
+    return (
+        <ProfileSectionCard icon={BookOpen} heading={`In Progress ${courseTermPlural}`}>
+            {courses.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                    {courses.map((course) => {
+                        const sessionName = getSessionName(course);
+                        const pct = Math.min(Math.max(course.percentage_completed ?? 0, 0), 100);
+                        return (
+                            <button
+                                type="button"
+                                key={course.id + (course.package_session_id || '')}
+                                onClick={() => onCourseClick(course)}
+                                className="flex w-full flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 text-left transition-shadow hover:border-primary-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                            >
+                                {/* Single-line summary per handoff: name (flex-1)
+                                    + level badge + percentage chip. Per-row
+                                    Trash removed — Remove from {course} lives
+                                    in the top action bar. */}
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <p
+                                        className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-800"
+                                        title={course.package_name || 'Unnamed Course'}
+                                    >
+                                        {course.package_name || 'Unnamed Course'}
+                                    </p>
+                                    {course.level_name && (
+                                        <span className="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium capitalize text-primary-700">
+                                            {course.level_name}
+                                        </span>
+                                    )}
+                                    <span className="shrink-0 tabular-nums text-sm font-semibold text-card-foreground">
+                                        {pct}%
+                                    </span>
+                                </div>
+                                {sessionName && (
+                                    <span className="text-xs text-neutral-500">
+                                        {sessionTermSingular}: {sessionName}
+                                    </span>
+                                )}
+                                {/* Progress mini-bar */}
+                                <ProfileMiniBar value={pct} />
+                            </button>
+                        );
+                    })}
+
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => onPageChange(page - 1)}
+                                disable={page === 0}
+                            >
+                                <CaretLeft className="size-3.5" />
+                                Prev
+                            </MyButton>
+                            <span className="text-xs text-neutral-500">
+                                {page + 1} / {totalPages}
+                            </span>
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => onPageChange(page + 1)}
+                                disable={page >= totalPages - 1}
+                            >
+                                Next
+                                <CaretRight className="size-3.5" />
+                            </MyButton>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <ProfileEmpty
+                    icon={BookOpen}
+                    title={`No ${courseTermPlural.toLowerCase()} in progress`}
+                />
+            )}
+        </ProfileSectionCard>
+    );
+};
+
+// ── Generic course section (Completed / Past — less visual weight) ─────────────
+
 const CourseSection = ({
     title,
+    icon,
     courses,
     emptyMessage,
     renderBadge,
-    renderExtra,
     page,
     totalPages,
     onPageChange,
@@ -500,77 +517,86 @@ const CourseSection = ({
     getSessionName,
 }: {
     title: string;
+    icon: PhosphorIcon;
     courses: PackageDetailDTO[];
     emptyMessage: string;
     renderBadge: (course: PackageDetailDTO) => React.ReactNode;
-    renderExtra?: (course: PackageDetailDTO) => React.ReactNode;
     page: number;
     totalPages: number;
     onPageChange: (page: number) => void;
     onCourseClick?: (course: PackageDetailDTO) => void;
     getSessionName?: (course: PackageDetailDTO) => string | null;
 }) => {
+    const sessionTermSingular = getTerminology(ContentTerms.Session, SystemTerms.Session);
+
     return (
-        <div className="flex flex-col gap-4">
-            <h3 className="border-b border-neutral-200 pb-2 text-lg font-semibold text-neutral-800">
-                {title}
-            </h3>
-            <div className="flex flex-col gap-4">
-                {courses.length > 0 ? (
-                    <>
-                        {courses.map((course) => {
-                            const sessionName = getSessionName?.(course);
-                            return (
-                            <div
+        <ProfileSectionCard icon={icon} heading={title}>
+            {courses.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                    {courses.map((course) => {
+                        const sessionName = getSessionName?.(course);
+                        return (
+                            <button
                                 key={course.id + (course.package_session_id || '')}
-                                className={`flex flex-col rounded-xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md ${onCourseClick ? 'cursor-pointer hover:border-primary-300' : ''}`}
+                                type="button"
+                                className={cn(
+                                    'flex w-full flex-col rounded-lg border border-neutral-200 bg-white p-3 text-left transition-shadow',
+                                    onCourseClick && 'cursor-pointer hover:border-primary-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400'
+                                )}
                                 onClick={() => onCourseClick?.(course)}
                             >
-                                <div className="flex items-start justify-between">
-                                    <div>
-                                        <h4 className="font-semibold text-neutral-900">
+                                <div className="flex min-w-0 items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <p
+                                            className="truncate text-sm font-semibold text-neutral-800"
+                                            title={course.package_name || 'Unnamed Course'}
+                                        >
                                             {course.package_name || 'Unnamed Course'}
-                                        </h4>
+                                        </p>
                                         {sessionName && (
-                                            <p className="mt-0.5 text-xs text-neutral-500">
-                                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}: {sessionName}
+                                            <p className="mt-0.5 truncate text-xs text-neutral-500">
+                                                {sessionTermSingular}: {sessionName}
                                             </p>
                                         )}
                                     </div>
                                     {renderBadge(course)}
                                 </div>
-                                {renderExtra?.(course)}
-                            </div>
-                            );
-                        })}
-                        {totalPages > 1 && (
-                            <div className="flex items-center justify-center gap-2 pt-2">
-                                <button
-                                    onClick={() => onPageChange(page - 1)}
-                                    disabled={page === 0}
-                                    className="rounded px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 disabled:hover:bg-transparent"
-                                >
-                                    Previous
-                                </button>
-                                <span className="text-sm text-neutral-500">
-                                    Page {page + 1} of {totalPages}
-                                </span>
-                                <button
-                                    onClick={() => onPageChange(page + 1)}
-                                    disabled={page >= totalPages - 1}
-                                    className="rounded px-3 py-1 text-sm text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 disabled:hover:bg-transparent"
-                                >
-                                    Next
-                                </button>
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <div className="rounded-lg bg-neutral-50 py-6 text-center text-neutral-500">
-                        {emptyMessage}
-                    </div>
-                )}
-            </div>
-        </div>
+                            </button>
+                        );
+                    })}
+
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => onPageChange(page - 1)}
+                                disable={page === 0}
+                            >
+                                <CaretLeft className="size-3.5" />
+                                Prev
+                            </MyButton>
+                            <span className="text-xs text-neutral-500">
+                                {page + 1} / {totalPages}
+                            </span>
+                            <MyButton
+                                buttonType="text"
+                                scale="small"
+                                onClick={() => onPageChange(page + 1)}
+                                disable={page >= totalPages - 1}
+                            >
+                                Next
+                                <CaretRight className="size-3.5" />
+                            </MyButton>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <ProfileEmpty
+                    icon={icon}
+                    title={emptyMessage}
+                />
+            )}
+        </ProfileSectionCard>
     );
 };

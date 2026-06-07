@@ -291,7 +291,8 @@ const EnquiryTableInner = ({
             (e) => (e.enquiry_id || e.audience_response_id) === enquiryItemId
         );
         if (item) {
-            setSelectedStudent(mapEnquiryToStudent(item));
+            // Open the compact side-view sheet, NOT the fullscreen overlay.
+            setSelectedStudent(mapEnquiryToStudent(item), { openOverlay: false });
         }
         setSelectedEnquiryId(enquiryItemId);
         setIsSidebarOpen(true);

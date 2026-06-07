@@ -104,6 +104,38 @@ export default function ProgressReports() {
         }
     }, [data]);
 
+    // Prefill the form when the user lands here from the learner profile's
+    // "Learning Progress" button — see the matching block in timelineReports.tsx
+    // for the cascading-effect rationale.
+    const prefill = search.studentReport;
+    useEffect(() => {
+        if (prefill?.courseId) {
+            setValue('course', prefill.courseId);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    useEffect(() => {
+        if (
+            prefill?.sessionId &&
+            sessionList.some((s) => s.id === prefill.sessionId)
+        ) {
+            setValue('session', prefill.sessionId);
+        }
+    }, [sessionList, prefill?.sessionId, setValue]);
+    useEffect(() => {
+        if (prefill?.levelId && levelList.some((l) => l.id === prefill.levelId)) {
+            setValue('level', prefill.levelId);
+        }
+    }, [levelList, prefill?.levelId, setValue]);
+    useEffect(() => {
+        if (
+            prefill?.userId &&
+            studentList.some((s) => s.user_id === prefill.userId)
+        ) {
+            setValue('student', prefill.userId);
+        }
+    }, [studentList, prefill?.userId, setValue]);
+
     useEffect(() => {
         if (selectedCourse) {
             setSessionList(getSessionFromPackage({ courseId: selectedCourse }));

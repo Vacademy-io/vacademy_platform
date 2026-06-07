@@ -275,6 +275,81 @@ export const StatusChips = ({
     );
 };
 
+/**
+ * ChipToggleGroup — single-select row of toggle chips.
+ *
+ * Use for inline "All / Pending / Completed / Live"-style filters where exactly
+ * one option is active at a time. Replaces the hand-rolled patterns previously
+ * inlined in Tests, Courses (level filter), and Full History. Different from
+ * `FilterChips` above, which is a popover-based multi-select.
+ *
+ * @example
+ *   <ChipToggleGroup
+ *     value={activeFilter}
+ *     onChange={setActiveFilter}
+ *     options={[
+ *       { value: 'ALL', label: 'All' },
+ *       { value: 'PENDING', label: 'Pending', icon: Clock },
+ *       { value: 'LIVE', label: 'Live', icon: Radio },
+ *     ]}
+ *   />
+ */
+export interface ChipToggleOption<V extends string = string> {
+    value: V;
+    label: string;
+    icon?: React.ComponentType<{ className?: string }>;
+}
+
+export interface ChipToggleGroupProps<V extends string = string> {
+    value: V;
+    onChange: (value: V) => void;
+    options: ChipToggleOption<V>[];
+    disabled?: boolean;
+    className?: string;
+    ariaLabel?: string;
+}
+
+export function ChipToggleGroup<V extends string = string>({
+    value,
+    onChange,
+    options,
+    disabled,
+    className,
+    ariaLabel,
+}: ChipToggleGroupProps<V>) {
+    return (
+        <div
+            role="group"
+            aria-label={ariaLabel}
+            className={cn('flex flex-wrap items-center gap-1.5', className)}
+        >
+            {options.map((opt) => {
+                const active = opt.value === value;
+                const Icon = opt.icon;
+                return (
+                    <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => !disabled && onChange(opt.value)}
+                        disabled={disabled}
+                        aria-pressed={active}
+                        className={cn(
+                            'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                            active
+                                ? 'border-primary-500 bg-primary-500 text-neutral-50'
+                                : 'border-border bg-card text-muted-foreground hover:border-primary-300 hover:text-primary-600',
+                            disabled && 'cursor-not-allowed opacity-50'
+                        )}
+                    >
+                        {Icon && <Icon className="size-2.5" />}
+                        {opt.label}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export const PaymentStatusChips = ({ status }: { status: string }) => {
     const statusData = ActivityStatusData[status as ActivityStatus];
     console.log('statusData', statusData);

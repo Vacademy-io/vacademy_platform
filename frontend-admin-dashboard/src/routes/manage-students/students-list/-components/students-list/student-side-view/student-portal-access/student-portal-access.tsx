@@ -187,7 +187,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                                     openIndividualShareCredentialsDialog(selectedStudent);
                                 }
                             }}
-                            className="h-auto min-h-0 cursor-pointer px-2 py-1 text-[10px]"
+                            className="h-auto min-h-0 cursor-pointer px-2 py-1 text-2xs"
                             style={{ pointerEvents: 'auto', zIndex: 10 }}
                         >
                             <Shield className="mr-1 size-2.5" />
@@ -267,7 +267,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                                 <h4 className="text-xs font-medium text-neutral-700">
                                     Learner Portal
                                 </h4>
-                                <p className="text-[10px] text-neutral-500">
+                                <p className="text-2xs text-neutral-500">
                                     Access learner portal directly
                                 </p>
                             </div>
@@ -297,7 +297,7 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
                                 <h4 className="text-xs font-medium text-neutral-700">
                                     Reset Password
                                 </h4>
-                                <p className="text-[10px] text-neutral-500">
+                                <p className="text-2xs text-neutral-500">
                                     Send password reset email
                                 </p>
                             </div>

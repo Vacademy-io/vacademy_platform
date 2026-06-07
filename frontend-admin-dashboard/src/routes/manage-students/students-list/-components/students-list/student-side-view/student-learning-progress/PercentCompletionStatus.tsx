@@ -9,14 +9,16 @@ const chartConfig = {
     },
     safari: {
         label: 'Safari',
-        color: '#F6B97B',
+        // Uses primary-300 token (HSL var) so the chart stays on-brand and
+        // auto-updates when the design-system palette changes.
+        color: 'hsl(var(--primary-300))',
     },
 } satisfies ChartConfig;
 
 export const PercentCompletionStatus = ({ percentage }: { percentage: number }) => {
     const angle = (360 * percentage) / 100;
     return (
-        <ChartContainer config={chartConfig} className="h-[100px] w-[80px]">
+        <ChartContainer config={chartConfig} className="h-28 w-20">
             <RadialBarChart
                 data={chartData}
                 startAngle={0}

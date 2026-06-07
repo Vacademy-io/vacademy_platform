@@ -1,8 +1,9 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
-import { X } from '@phosphor-icons/react';
-import { useState, useEffect, useRef } from 'react';
+import { useCompactMode } from '@/hooks/use-compact-mode';
+import { X, ArrowsOutSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -42,6 +43,9 @@ import {
     TAB_ID_TO_VISIBILITY_KEY,
     STUDENT_SIDE_VIEW_TAB_LABELS as TAB_LABELS,
 } from '@/constants/display-settings/student-side-view-tabs';
+import { ProfileQuickContact } from './profile-ui';
+import { GroupedNavRail } from './grouped-nav-rail';
+import { SECTION_REGISTRY } from './nav-groups';
 
 // Resolve which tab should open when the side view first renders. Honours
 // the saved default tab when it's still visible, otherwise falls back to
@@ -113,7 +117,13 @@ export const StudentSidebar = ({
     defaultLeadProfile?: boolean;
 }) => {
     const { state, setOpen, setOpenMobile } = useSidebar();
+    const { isCompact } = useCompactMode();
     const [category, setCategory] = useState('overview');
+    // Tab-bar scroll affordance: track whether more tabs sit off either edge so
+    // we can show clickable chevrons — the plain fade wasn't a clear enough cue
+    // that the tab row is horizontally scrollable.
+    const [tabCanScrollLeft, setTabCanScrollLeft] = useState(false);
+    const [tabCanScrollRight, setTabCanScrollRight] = useState(false);
     // Explicitly close both desktop + mobile sidebar state. Using `toggleSidebar`
     // hit a stale-closure case where `isMobile` could be wrong post-hydration,
     // so the X click flipped the wrong state on touch viewports.
@@ -123,8 +133,27 @@ export const StudentSidebar = ({
     };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
-    const { selectedStudent } = useStudentSidebar();
+    const { selectedStudent, openOverlay, isOverlayOpen } = useStudentSidebar();
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
+    /**
+     * navStyle — selects between the horizontal tab bar (default) and the
+     * grouped left-rail navigation per the Vacademy design handoff.
+     * Now read directly from the typed StudentSideViewSettings.profileNavStyle
+     * field. Defaults to 'tabs' for back-compat.
+     */
+    const navStyle: 'tabs' | 'grouped' = tabSettings?.profileNavStyle ?? 'tabs';
+    /**
+     * Per-tenant feature-module toggles per the handoff GROUP_TO_MODULE
+     * mapping. Missing or undefined entries fall back to true so existing
+     * clients see no change.
+     */
+    const enabledModules = {
+        learning: tabSettings?.profileModules?.learning ?? true,
+        finance: tabSettings?.profileModules?.finance ?? true,
+        crm: tabSettings?.profileModules?.crm ?? true,
+        account: tabSettings?.profileModules?.account ?? true,
+        records: tabSettings?.profileModules?.records ?? true,
+    };
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const leadSettings = useLeadSettings();
@@ -222,110 +251,154 @@ export const StudentSidebar = ({
         }
     }, [category]);
 
+    // Track tab-bar overflow so the scroll chevrons appear only when there are
+    // tabs hidden off an edge. Recomputes on scroll, resize, and tab changes.
+    const updateTabScroll = useCallback(() => {
+        const el = tabContainerRef.current;
+        if (!el) return;
+        setTabCanScrollLeft(el.scrollLeft > 4);
+        setTabCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    }, []);
+
+    useEffect(() => {
+        updateTabScroll();
+        const el = tabContainerRef.current;
+        if (!el) return;
+        el.addEventListener('scroll', updateTabScroll, { passive: true });
+        window.addEventListener('resize', updateTabScroll);
+        return () => {
+            el.removeEventListener('scroll', updateTabScroll);
+            window.removeEventListener('resize', updateTabScroll);
+        };
+    }, [updateTabScroll, tabSettings, category, selectedStudent?.sub_org_name]);
+
+    const scrollTabs = (dir: 1 | -1) =>
+        tabContainerRef.current?.scrollBy({ left: dir * 160, behavior: 'smooth' });
+
+    // The Vacademy design handoff defines ONE primary surface for the learner
+    // profile — the fullscreen overlay. The right-side drawer remains mounted
+    // only for callers that still use it programmatically (refresh hooks,
+    // legacy entry points); whenever the overlay is open we render null so
+    // the drawer never visually competes with the overlay. Placed AFTER all
+    // hooks per Rules of Hooks.
+    if (isOverlayOpen) return null;
+
     return (
         <Sidebar
             side="right"
             preventOutsideClose
-            className={cn('!top-14 md:!top-20', className)}
+            // Align sidebar top to navbar bottom (compact 48px / default 56px mobile / 72px desktop, see top-navbar.tsx).
+            className={cn(
+                isCompact ? '!top-12' : '!top-14 md:!top-[72px]', // design-lint-ignore: mirrors navbar's md:h-[72px]
+                className
+            )}
         >
             <SidebarContent
-                className={`sidebar-content flex flex-col border-l border-neutral-200 bg-white text-neutral-700`}
+                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700`}
             >
-                <SidebarHeader className="sticky top-0 z-10 border-b border-neutral-100 bg-white/95 shadow-sm backdrop-blur-sm">
-                    <div className="flex flex-col gap-2 px-3 pb-2 pt-0">
-                        {/* Compact title row: label + avatar + name + status + close */}
+                <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
+                    <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">
+                        {/* Identity row: avatar + name/status + actions */}
                         <div className="flex items-center gap-2">
-                            <div className="h-5 w-0.5 shrink-0 rounded-full bg-gradient-to-b from-primary-500 to-primary-400"></div>
-
-                            <div className="group relative shrink-0">
-                                <div className="relative flex size-7 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 ring-1 ring-primary-500/20 transition-all duration-300 group-hover:ring-primary-500/40">
-                                    {faceLoader ? (
-                                        <div className="size-3 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                                    ) : imageUrl ? (
-                                        <img
-                                            src={imageUrl}
-                                            alt="Profile"
-                                            className="size-full object-cover"
-                                        />
-                                    ) : (
-                                        <DummyProfile className="size-5 text-neutral-400" />
-                                    )}
-                                </div>
-                                <div className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-white bg-green-500"></div>
-                            </div>
-
-                            <div className="flex min-w-0 flex-1 flex-col leading-tight">
-                                <span className="truncate text-xs font-medium uppercase tracking-wide text-neutral-500">
-                                    {`${getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Profile`}
-                                </span>
-                                {selectedStudent?.full_name && (
-                                    <h2 className="truncate bg-gradient-to-r from-neutral-800 to-neutral-600 bg-clip-text text-sm font-semibold text-transparent">
-                                        {selectedStudent.full_name}
-                                    </h2>
+                            <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 ring-1 ring-primary-100">
+                                {faceLoader ? (
+                                    <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                                ) : imageUrl ? (
+                                    <img
+                                        src={imageUrl}
+                                        alt={selectedStudent?.full_name || 'Profile'}
+                                        className="size-full object-cover"
+                                    />
+                                ) : (
+                                    <DummyProfile className="size-6 text-neutral-400" />
                                 )}
                             </div>
 
-                            {selectedStudent?.status && (
-                                <div className="shrink-0">
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                                <h2
+                                    className={cn(
+                                        'truncate text-base font-semibold leading-tight',
+                                        selectedStudent?.full_name
+                                            ? 'text-neutral-900'
+                                            : 'text-neutral-400'
+                                    )}
+                                    title={selectedStudent?.full_name}
+                                >
+                                    {selectedStudent?.full_name || 'Unknown'}
+                                </h2>
+                                {selectedStudent?.status && (
                                     <StatusChips status={selectedStudent.status} />
-                                </div>
-                            )}
+                                )}
+                            </div>
 
                             <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    closeSidebar();
-                                }}
-                                className="group shrink-0 rounded-lg p-1 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 active:scale-95"
-                                aria-label="Close"
+                                onClick={() => openOverlay()}
+                                className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-primary-50 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                aria-label="Open full profile"
+                                title="Open full profile"
                             >
-                                <X className="size-4 text-neutral-500 transition-colors duration-200 group-hover:text-red-500" />
+                                <ArrowsOutSimple className="size-5" />
+                            </button>
+                            <button
+                                onClick={closeSidebar}
+                                className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                                aria-label="Close panel"
+                            >
+                                <X className="size-5" />
                             </button>
                         </div>
+
+                        {/* Quick contact — mailto / tel / wa.me. Renders nothing when no
+                            usable contact data exists, so it stays out of the way for
+                            unlinked entries (e.g. submission-only respondents). */}
+                        <ProfileQuickContact
+                            email={selectedStudent?.email}
+                            phone={selectedStudent?.mobile_number}
+                        />
 
                         {/* Sub Organization and Roles Badges */}
                         {(selectedStudent?.sub_org_name ||
                             selectedStudent?.comma_separated_org_roles) && (
                             <div className="flex flex-wrap items-center gap-1.5">
                                 {selectedStudent?.sub_org_name && (
-                                    <div className="flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                        <span>{selectedStudent.sub_org_name}</span>
-                                    </div>
+                                    <span className="rounded-full bg-info-50 px-2 py-0.5 text-xs font-medium text-info-600">
+                                        {selectedStudent.sub_org_name}
+                                    </span>
                                 )}
-                                {selectedStudent?.comma_separated_org_roles && (
-                                    <>
-                                        {selectedStudent.comma_separated_org_roles
-                                            .split(',')
-                                            .map((role, index) => {
-                                                const r = role.trim().toUpperCase();
-                                                const label =
-                                                    r === 'ADMIN'
-                                                        ? 'Practice Admin'
-                                                        : r === 'LEARNER'
-                                                          ? 'Practice Staff'
-                                                          : role.trim();
-                                                return (
-                                                    <div
-                                                        key={index}
-                                                        className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-                                                    >
-                                                        {label}
-                                                    </div>
-                                                );
-                                            })}
-                                    </>
-                                )}
+                                {selectedStudent?.comma_separated_org_roles &&
+                                    selectedStudent.comma_separated_org_roles
+                                        .split(',')
+                                        .map((role, index) => {
+                                            const r = role.trim().toUpperCase();
+                                            const label =
+                                                r === 'ADMIN'
+                                                    ? 'Practice Admin'
+                                                    : r === 'LEARNER'
+                                                      ? 'Practice Staff'
+                                                      : role.trim().toLowerCase().replace(/_/g, ' ');
+                                            return (
+                                                <span
+                                                    key={index}
+                                                    className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
+                                                >
+                                                    {label}
+                                                </span>
+                                            );
+                                        })}
                             </div>
                         )}
 
-                        {/* Enhanced tab navigation with modern design */}
-                        {!isEnrollRequestStudentList && tabSettings && (
-                            <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-neutral-50 to-neutral-100 p-0.5 shadow-inner">
-                                {/* Scrollable tabs container */}
+                        {/* Tab navigation — flat segmented, horizontally scrollable.
+                            The right-edge fade hints that more tabs exist off-screen.
+                            Hidden when navStyle === 'grouped' (the left-rail handles
+                            navigation in that mode). */}
+                        {navStyle === 'tabs' && !isEnrollRequestStudentList && tabSettings && (
+                            <div className="relative">
                                 <div
                                     ref={tabContainerRef}
-                                    className="scrollbar-hide flex gap-0.5 overflow-x-auto scroll-smooth"
+                                    role="tablist"
+                                    aria-label="Profile sections"
+                                    className="scrollbar-hide flex gap-1 overflow-x-auto scroll-smooth pr-6"
                                 >
                                     {orderedVisibleTabIds(tabSettings).map((tabId) => {
                                         // lead/fullHistory require the lead system to be enabled
@@ -342,20 +415,20 @@ export const StudentSidebar = ({
                                                       SystemTerms.Course
                                                   )
                                                 : TAB_LABELS[tabId];
+                                        const isActive = category === tabId;
                                         return (
                                             <button
                                                 key={tabId}
-                                                type="button"
-                                                ref={category === tabId ? activeTabRef : null}
-                                                className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
-                                                    category === tabId
-                                                        ? 'bg-white text-primary-500 shadow-sm'
-                                                        : 'text-neutral-600 hover:text-neutral-800'
-                                                }`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setCategory(tabId);
-                                                }}
+                                                role="tab"
+                                                aria-selected={isActive}
+                                                ref={isActive ? activeTabRef : null}
+                                                className={cn(
+                                                    'shrink-0 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                                                    isActive
+                                                        ? 'bg-primary-500 text-white shadow-sm'
+                                                        : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-800'
+                                                )}
+                                                onClick={() => setCategory(tabId)}
                                             >
                                                 {label}
                                             </button>
@@ -366,28 +439,99 @@ export const StudentSidebar = ({
                                         student belongs to one — it has no settings flag of its own. */}
                                     {selectedStudent?.sub_org_name && (
                                         <button
-                                            type="button"
+                                            role="tab"
+                                            aria-selected={category === 'subOrg'}
                                             ref={category === 'subOrg' ? activeTabRef : null}
-                                            className={`group relative z-10 shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200 ${
+                                            className={cn(
+                                                'shrink-0 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                                                 category === 'subOrg'
-                                                    ? 'bg-white text-primary-500 shadow-sm'
-                                                    : 'text-neutral-600 hover:text-neutral-800'
-                                            }`}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setCategory('subOrg');
-                                            }}
+                                                    ? 'bg-primary-500 text-white shadow-sm'
+                                                    : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-800'
+                                            )}
+                                            onClick={() => setCategory('subOrg')}
                                         >
                                             SubOrg
                                         </button>
                                     )}
                                 </div>
+                                {/* Scroll chevrons — shown only when tabs overflow
+                                    that edge, so it's clear the row scrolls. */}
+                                {tabCanScrollLeft && (
+                                    <button
+                                        type="button"
+                                        aria-label="Scroll tabs left"
+                                        onClick={() => scrollTabs(-1)}
+                                        className="absolute inset-y-0 left-0 flex items-center bg-gradient-to-r from-white via-white to-transparent pr-5 text-neutral-500 transition-colors hover:text-primary-600"
+                                    >
+                                        <CaretLeft className="size-4" weight="bold" />
+                                    </button>
+                                )}
+                                {tabCanScrollRight && (
+                                    <button
+                                        type="button"
+                                        aria-label="Scroll tabs right"
+                                        onClick={() => scrollTabs(1)}
+                                        className="absolute inset-y-0 right-0 flex items-center bg-gradient-to-l from-white via-white to-transparent pl-5 text-neutral-500 transition-colors hover:text-primary-600"
+                                    >
+                                        <CaretRight className="size-4" weight="bold" />
+                                    </button>
+                                )}
                             </div>
                         )}
+
                     </div>
                 </SidebarHeader>
 
-                <div className="flex-1 overflow-y-auto p-3">
+                {/* Body wrapper — grouped mode renders the left-rail nav next
+                    to the scrollable content; tabs mode keeps content full-width. */}
+                <div
+                    className={
+                        navStyle === 'grouped'
+                            ? 'flex min-h-0 min-w-0 flex-1'
+                            : // Real bounded flex column (not display:contents): gives the
+                              // scroll body below a definite height so it scrolls vertically
+                              // instead of growing past the panel.
+                              'flex min-h-0 min-w-0 flex-1 flex-col'
+                    }
+                >
+                    {navStyle === 'grouped' && tabSettings && (
+                        <GroupedNavRail
+                            activeId={category}
+                            onSelect={(id) => setCategory(id)}
+                            visibleIds={
+                                new Set(
+                                    SECTION_REGISTRY.filter((s) => {
+                                        const flag =
+                                            s.id === 'subOrg'
+                                                ? !!selectedStudent?.sub_org_name
+                                                : tabSettings[
+                                                      TAB_ID_TO_VISIBILITY_KEY[
+                                                          s.id as keyof typeof TAB_ID_TO_VISIBILITY_KEY
+                                                      ]
+                                                  ] === true;
+                                        const isLeadGated =
+                                            s.id === 'lead' || s.id === 'fullHistory';
+                                        if (
+                                            isLeadGated &&
+                                            (!leadSettings.enabled || leadSettings.isLoading)
+                                        )
+                                            return false;
+                                        return flag;
+                                    }).map((s) => s.id)
+                                )
+                            }
+                            enabledModules={enabledModules}
+                        />
+                    )}
+                {/* The single scroll container for the tab body.
+                    - min-h-0 : lets this flex child shrink below its content so
+                      overflow-y-auto actually scrolls (vertical scroll fix).
+                    - min-w-0 + overflow-x-hidden : hard guarantee the body never
+                      scrolls horizontally — wide children (tables, long strings,
+                      email HTML) are contained, not allowed to push the panel
+                      wider. Each tab wraps/truncates its own content so nothing
+                      is clipped. */}
+                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
                     {/* Audience-form responses card — only on the Lead tab.
                         Renders only when the side view was opened from a lead
                         row (campaign-users / recent-leads); manage-students
@@ -477,6 +621,7 @@ export const StudentSidebar = ({
                                 <StudentFullHistory studentUserId={selectedStudent.user_id} />
                             )}
                     </ErrorBoundary>
+                </div>
                 </div>
             </SidebarContent>
         </Sidebar>

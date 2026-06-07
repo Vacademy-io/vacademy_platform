@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
-import { StatusChips } from '@/components/design-system/chips';
+import { ChipToggleGroup, StatusChips } from '@/components/design-system/chips';
 import { TestReportDialog } from './test-report-dialog';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -10,121 +10,57 @@ import {
     handleStudentReportData,
     viewStudentReport,
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyPagination } from '@/components/design-system/pagination';
-import { AssessmentDetailsSearchComponent } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-components/SearchComponent';
 import { getSubjectNameById } from '@/routes/assessment/question-papers/-utils/helper';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { AssessmentReportStudentInterface } from '@/types/assessments/assessment-overview';
 import { getAssessmentDetailsData } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { Steps } from '@/types/assessments/assessment-data-type';
 import {
-    Shield,
-    Warning,
-    X,
-    ArrowClockwise,
-    FileX,
-    ShieldCheck,
-    Info,
+    Trophy,
+    CheckCircle,
+    Clock,
+    Radio,
 } from '@phosphor-icons/react';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import {
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileHero,
+} from '../profile-ui';
 
 export interface StudentReportFilterInterface {
     name: string;
     status: string[];
-    sort_columns: Record<string, string>; // Assuming it can have dynamic keys with any value
+    sort_columns: Record<string, string>;
 }
 
-// Enhanced Error Component
-const ErrorDisplay = ({
-    error,
-    onRetry,
-    context = 'data',
-}: {
-    // eslint-disable-next-line
-    error: any;
-    onRetry: () => void;
-    context?: string;
-}) => {
-    const isUnauthorized = error?.response?.status === 403;
-    const isServerError = error?.response?.status >= 500;
+// ── Score-tone helper ─────────────────────────────────────────────────────────
+// Derives a tone class from the raw score percentage.
+// >=80 → success, >=50 → primary, >=30 → warning, else → danger
+type ScoreTone = 'success' | 'primary' | 'warning' | 'danger';
 
-    return (
-        <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-            <div
-                className={`mb-4 rounded-full p-4 ${
-                    isUnauthorized ? 'bg-orange-100' : isServerError ? 'bg-red-100' : 'bg-gray-100'
-                }`}
-            >
-                {isUnauthorized ? (
-                    <Shield className="size-8 text-orange-600" />
-                ) : isServerError ? (
-                    <X className="size-8 text-red-600" />
-                ) : (
-                    <Warning className="size-8 text-gray-600" />
-                )}
-            </div>
+function scoreTone(pct: number): ScoreTone {
+    if (pct >= 80) return 'success';
+    if (pct >= 50) return 'primary';
+    if (pct >= 30) return 'warning';
+    return 'danger';
+}
 
-            <h3 className="mb-2 text-lg font-semibold text-neutral-800">
-                {isUnauthorized
-                    ? 'Access Restricted'
-                    : isServerError
-                      ? 'Server Error'
-                      : 'Unable to Load Data'}
-            </h3>
+// Filter chip definitions — drives the secondary control bar.
+type FilterKey = 'ALL' | 'ENDED' | 'PENDING' | 'LIVE';
 
-            <p className="mb-4 max-w-md text-sm text-neutral-600">
-                {isUnauthorized
-                    ? `You don't have permission to view ${context}. Please contact your administrator for access.`
-                    : isServerError
-                      ? `There's a problem with our servers. Please try again later.`
-                      : `We're having trouble loading the ${context}. Please check your connection and try again.`}
-            </p>
-
-            {!isUnauthorized && (
-                <MyButton
-                    onClick={onRetry}
-                    buttonType="secondary"
-                    scale="medium"
-                    className="flex items-center gap-2"
-                >
-                    <ArrowClockwise className="size-4" />
-                    Try Again
-                </MyButton>
-            )}
-
-            {isUnauthorized && (
-                <div className="mt-4 max-w-md rounded-lg border border-orange-200 bg-orange-50 p-3">
-                    <div className="flex items-start gap-2">
-                        <Info className="mt-0.5 size-4 shrink-0 text-orange-600" />
-                        <div className="text-xs text-orange-700">
-                            <p className="mb-1 font-medium">Need access?</p>
-                            <p>
-                                Contact your system administrator to grant permissions for viewing
-                                test records.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Empty State Component
-const EmptyState = () => (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="mb-4 rounded-full bg-neutral-100 p-4">
-            <FileX className="size-8 text-neutral-400" />
-        </div>
-        <h3 className="mb-2 text-lg font-semibold text-neutral-700">No Test Records</h3>
-        <p className="max-w-md text-sm text-neutral-500">
-            This student hasn&apos;t taken any assessments yet, or the test records are not
-            available.
-        </p>
-    </div>
-);
+const FILTER_CHIPS: {
+    key: FilterKey;
+    label: string;
+    statuses: string[];
+    icon?: React.ComponentType<{ className?: string }>;
+}[] = [
+    { key: 'ALL', label: 'All', statuses: [] },
+    { key: 'ENDED', label: 'Completed', statuses: ['ENDED'], icon: CheckCircle },
+    { key: 'PENDING', label: 'Pending', statuses: ['PENDING'], icon: Clock },
+    { key: 'LIVE', label: 'Live', statuses: ['LIVE'], icon: Radio },
+];
 
 export const StudentTestRecord = ({
     selectedTab,
@@ -143,7 +79,6 @@ export const StudentTestRecord = ({
         refetch: refetchInstitute,
     } = useQuery(useInstituteQuery());
 
-    const [searchText, setSearchText] = useState('');
     const [selectedFilter] = useState<StudentReportFilterInterface>({
         name: '',
         status: isStudentList
@@ -162,6 +97,9 @@ export const StudentTestRecord = ({
     const [pageNo, setPageNo] = useState(0);
     const instituteId = getInstituteId();
 
+    // Active filter chip — drives filter chip bar; updates mutation on change
+    const [activeFilter, setActiveFilter] = useState<FilterKey>('ALL');
+
     // Student report data with error handling
     const {
         data,
@@ -178,9 +116,7 @@ export const StudentTestRecord = ({
         }),
         // eslint-disable-next-line
         retry: (failureCount, error: any) => {
-            // Don't retry on 403 errors
             if (error?.response?.status === 403) return false;
-            // Retry up to 2 times for other errors
             return failureCount < 2;
         },
         retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -225,7 +161,6 @@ export const StudentTestRecord = ({
                 setAssessmentDetails(assessData);
             } catch (error) {
                 console.error('Failed to fetch assessment details:', error);
-                // Continue with partial data instead of failing completely
             }
         },
         // eslint-disable-next-line
@@ -274,41 +209,24 @@ export const StudentTestRecord = ({
         },
     });
 
-    const clearSearch = () => {
-        setSearchText('');
-        selectedFilter['name'] = '';
+    // Apply filter chip selection — re-fetches with the chosen status array
+    const handleFilterChip = (chipKey: FilterKey) => {
+        setActiveFilter(chipKey);
+        const chip = FILTER_CHIPS.find((c) => c.key === chipKey)!;
+        const statusFilter = chip.statuses.length
+            ? chip.statuses
+            : selectedFilter.status;
         getStudentReportMutation.mutate({
             studentId: selectedStudent?.id,
             instituteId,
-            pageNo,
+            pageNo: 0,
             pageSize: 10,
             selectedFilter: {
                 ...selectedFilter,
-                name: '',
+                status: statusFilter,
             },
         });
-    };
-
-    const handleSearch = (searchValue: string) => {
-        setSearchText(searchValue);
-        getStudentReportMutation.mutate({
-            studentId: selectedStudent?.id,
-            instituteId,
-            pageNo,
-            pageSize: 10,
-            selectedFilter: {
-                ...selectedFilter,
-                name: searchValue,
-            },
-        });
-    };
-
-    const handleRetryReport = () => {
-        refetchReport();
-    };
-
-    const handleRetryInstitute = () => {
-        refetchInstitute();
+        setPageNo(0);
     };
 
     useEffect(() => {
@@ -317,121 +235,195 @@ export const StudentTestRecord = ({
         }
     }, [data]);
 
-    // Show loading state
+    // ── Four-state guards ──────────────────────────────────────────────────────
+
     if (isLoading || instituteLoading || viewStudentTestReportMutation.status === 'pending') {
-        return <DashboardLoader />;
+        return <ProfileSkeleton blocks={4} />;
     }
 
-    // Show institute error
     if (instituteError) {
+        // eslint-disable-next-line
+        const err = instituteError as any;
+        const isUnauthorized = err?.response?.status === 403;
         return (
-            <ErrorDisplay
-                error={instituteError}
-                onRetry={handleRetryInstitute}
-                context="institute details"
+            <ProfileError
+                title={isUnauthorized ? 'Access Restricted' : "Couldn't load institute details"}
+                hint={
+                    isUnauthorized
+                        ? "You don't have permission to view institute details. Contact your administrator."
+                        : 'Something went wrong fetching institute details. Please try again.'
+                }
+                onRetry={isUnauthorized ? undefined : () => refetchInstitute()}
             />
         );
     }
 
-    // Show report error
     if (reportError) {
+        // eslint-disable-next-line
+        const err = reportError as any;
+        const isUnauthorized = err?.response?.status === 403;
         return (
-            <ErrorDisplay error={reportError} onRetry={handleRetryReport} context="test records" />
+            <ProfileError
+                title={isUnauthorized ? 'Access Restricted' : "Couldn't load test records"}
+                hint={
+                    isUnauthorized
+                        ? "You don't have permission to view test records. Contact your administrator."
+                        : 'Something went wrong fetching test records. Please try again.'
+                }
+                onRetry={isUnauthorized ? undefined : () => refetchReport()}
+            />
         );
     }
 
+    const allRecords: AssessmentReportStudentInterface[] = studentReportData.content ?? [];
+
+    // ── Derived stat values ────────────────────────────────────────────────────
+    const attemptedRecords = allRecords.filter((r) => r.attempt_status === 'ENDED');
+    const attemptedCount = attemptedRecords.length;
+
+    // Avg score: mean of (total_marks) across completed records.
+    // total_marks is the raw score; we display it as "X pts avg" since max isn't known per row.
+    const avgScore =
+        attemptedCount > 0
+            ? attemptedRecords.reduce((sum, r) => sum + r.total_marks, 0) / attemptedCount
+            : 0;
+
+    // Apply active filter chip client-side for the visible list
+    const records: AssessmentReportStudentInterface[] =
+        activeFilter === 'ALL'
+            ? allRecords
+            : allRecords.filter((r) => r.attempt_status === activeFilter);
+
     return (
-        <div className="animate-fadeIn flex flex-col gap-6">
-            {/* Enhanced header with better styling */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <ShieldCheck className="text-primary-600 size-5" />
-                    <h3 className="text-lg font-semibold text-neutral-800">Test Records</h3>
-                </div>
-                <AssessmentDetailsSearchComponent
-                    onSearch={handleSearch}
-                    searchText={searchText}
-                    setSearchText={setSearchText}
-                    clearSearch={clearSearch}
-                    placeholderText="Search test, subject"
+        <div className="flex flex-col gap-3">
+            {/* ── Hero zone (Vacademy design handoff: TestsSection) ──────────
+                Hero is a PASSIVE summary card — the average score IS the
+                title, attempt count is the subtitle, no per-row action. */}
+            <ProfileHero
+                eyebrow="TEST PERFORMANCE"
+                icon={Trophy}
+                tone={
+                    attemptedCount > 0
+                        ? (scoreTone(avgScore) as
+                              | 'success'
+                              | 'primary'
+                              | 'warning'
+                              | 'danger')
+                        : 'neutral'
+                }
+                title={
+                    attemptedCount > 0 ? (
+                        <span className="text-subtitle font-semibold leading-none text-card-foreground">
+                            {avgScore.toFixed(1)} avg score
+                        </span>
+                    ) : (
+                        <span className="text-body font-semibold leading-none text-muted-foreground">
+                            No attempts yet
+                        </span>
+                    )
+                }
+                subtitle={
+                    attemptedCount > 0
+                        ? `${attemptedCount} test${attemptedCount === 1 ? '' : 's'} recorded`
+                        : 'Tests assigned to this learner will appear below.'
+                }
+            />
+
+            {/* Stat-tile row removed per design handoff — the avg score is
+                already surfaced as the hero title above, and the handoff's
+                TestsSection has no separate stat row. */}
+
+            {/* ── Filter chips (no search per handoff) ───────────────────────── */}
+            <div className="flex flex-wrap items-center gap-2">
+                <ChipToggleGroup<FilterKey>
+                    value={activeFilter}
+                    onChange={handleFilterChip}
+                    options={FILTER_CHIPS.map((c) => ({
+                        value: c.key,
+                        label: c.label,
+                        icon: c.icon,
+                    }))}
+                    ariaLabel="Filter test attempts by status"
                 />
             </div>
 
-            {/* Content area */}
-            <div className="flex flex-col gap-6">
-                {studentReportData.content && studentReportData.content.length > 0 ? (
-                    studentReportData.content.map(
-                        (studentReport: AssessmentReportStudentInterface, index: number) => (
-                            <div
-                                className="group flex w-full flex-col gap-4 rounded-xl border border-neutral-200 bg-gradient-to-br from-white to-neutral-50/30 p-4 transition-all duration-300 hover:border-primary-200 hover:shadow-lg"
-                                key={index}
-                            >
-                                <div className="flex w-full items-start gap-4">
-                                    <div className="group-hover:text-primary-700 flex-1 text-base font-medium text-neutral-800 transition-colors duration-300">
-                                        {studentReport.assessment_name}
+            {/* ── Body ──────────────────────────────────────────────────────── */}
+            {records.length === 0 ? (
+                <ProfileEmpty
+                    icon={Trophy}
+                    title="No tests yet"
+                    hint="This learner hasn't taken any assessments yet."
+                />
+            ) : (
+                <div className="flex flex-col gap-2.5">
+                    {records.map(
+                        (studentReport: AssessmentReportStudentInterface, index: number) => {
+                            const isEnded = studentReport.attempt_status === 'ENDED';
+                            const isPending = studentReport.attempt_status === 'PENDING';
+
+                            const subjectName =
+                                getSubjectNameById(
+                                    instituteDetails?.subjects || [],
+                                    studentReport.subject_id
+                                ) || 'N/A';
+
+                            // Subtitle date: prefer attempt_date for ENDED rows,
+                            // fall back to scheduled start_time so every card shows
+                            // "subject · date" per handoff.
+                            const subtitleDateSource = isEnded
+                                ? studentReport.attempt_date
+                                : studentReport.start_time;
+                            const subtitleDate = subtitleDateSource
+                                ? extractDateTime(
+                                      convertToLocalDateTime(subtitleDateSource)
+                                  ).date
+                                : '';
+
+                            return (
+                                <div
+                                    key={index}
+                                    className="flex items-center gap-3 rounded-lg border border-border bg-card p-4"
+                                >
+                                    {/* Left block: name + subject · date */}
+                                    <div className="min-w-0 flex-1">
+                                        <div
+                                            className="block truncate text-h5 font-bold leading-snug text-card-foreground"
+                                            title={studentReport.assessment_name}
+                                        >
+                                            {studentReport.assessment_name}
+                                        </div>
+                                        <div className="mt-0.5 text-caption text-muted-foreground">
+                                            {subjectName}
+                                            {subtitleDate && (
+                                                <>
+                                                    {' · '}
+                                                    {subtitleDate}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="transition-all duration-300 group-hover:scale-105">
+
+                                    {/* Right block: score (large) + status pill + action */}
+                                    <div className="flex shrink-0 flex-col items-end gap-1">
+                                        {isEnded && (
+                                            <div className="text-h4 font-bold leading-none text-primary-600">
+                                                {studentReport.total_marks.toFixed(1)}
+                                            </div>
+                                        )}
                                         <StatusChips
                                             status={
-                                                studentReport.attempt_status === 'PENDING'
+                                                isPending
                                                     ? 'pending'
-                                                    : studentReport.attempt_status === 'ENDED'
+                                                    : isEnded
                                                       ? 'Attempted'
                                                       : 'Not Attempted'
                                             }
                                         />
-                                    </div>
-                                </div>
-
-                                {studentReport.attempt_status === 'ENDED' ? (
-                                    <div className="flex w-full flex-col gap-4">
-                                        <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Subject:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {getSubjectNameById(
-                                                        instituteDetails?.subjects || [],
-                                                        studentReport.subject_id
-                                                    ) || 'N/A'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Attempted:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {
-                                                        extractDateTime(
-                                                            convertToLocalDateTime(
-                                                                studentReport.attempt_date
-                                                            )
-                                                        ).date
-                                                    }
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Marks:</span>
-                                                <span className="text-primary-600 font-semibold">
-                                                    {studentReport.total_marks.toFixed(2)}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Duration:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {Math.floor(
-                                                        studentReport.duration_in_seconds / 60
-                                                    )}{' '}
-                                                    min{' '}
-                                                    {(
-                                                        studentReport.duration_in_seconds % 60
-                                                    ).toFixed(0)}{' '}
-                                                    sec
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="flex w-full justify-end">
+                                        {isEnded && (
                                             <MyButton
-                                                buttonType="secondary"
+                                                buttonType="text"
+                                                scale="small"
                                                 layoutVariant="default"
-                                                scale="medium"
                                                 onClick={() =>
                                                     handleViewReport(
                                                         studentReport.assessment_id,
@@ -439,80 +431,44 @@ export const StudentTestRecord = ({
                                                         studentReport
                                                     )
                                                 }
-                                                className="transition-transform duration-200 hover:scale-105"
                                             >
-                                                📊 View Report
+                                                View Report
                                             </MyButton>
-                                        </div>
-                                        {selectedTest && selectedStudentReport && (
-                                            <TestReportDialog
-                                                isOpen={!!selectedTest}
-                                                onClose={() => {
-                                                    setSelectedTest(null);
-                                                    setSelectedStudentReport(null);
-                                                }}
-                                                testReport={selectedTest}
-                                                studentReport={selectedStudentReport}
-                                                assessmentDetails={assessmentDetails!}
-                                            />
+                                        )}
+                                        {isPending && (
+                                            <MyButton
+                                                buttonType="text"
+                                                scale="small"
+                                                layoutVariant="default"
+                                            >
+                                                Send Reminder
+                                            </MyButton>
                                         )}
                                     </div>
-                                ) : (
-                                    <div className="flex w-full flex-col gap-4">
-                                        <div className="grid grid-cols-1 gap-3 text-sm">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">
-                                                    {getTerminology(
-                                                        ContentTerms.Subjects,
-                                                        SystemTerms.Subjects
-                                                    )}
-                                                    :
-                                                </span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {getSubjectNameById(
-                                                        instituteDetails?.subjects || [],
-                                                        studentReport.subject_id
-                                                    ) || 'N/A'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-neutral-600">Schedule:</span>
-                                                <span className="font-medium text-neutral-800">
-                                                    {convertToLocalDateTime(
-                                                        studentReport.start_time
-                                                    )}
-                                                    <span className="mx-2 text-neutral-500">
-                                                        to
-                                                    </span>
-                                                    {convertToLocalDateTime(studentReport.end_time)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        {studentReport.attempt_status === 'PENDING' && (
-                                            <div className="flex w-full justify-end">
-                                                <MyButton
-                                                    scale="medium"
-                                                    buttonType="secondary"
-                                                    layoutVariant="default"
-                                                    className="transition-transform duration-200 hover:scale-105"
-                                                >
-                                                    🔔 Send Reminder
-                                                </MyButton>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )
-                    )
-                ) : (
-                    <EmptyState />
-                )}
-            </div>
+                                </div>
+                            );
+                        }
+                    )}
+                </div>
+            )}
 
-            {/* Enhanced pagination */}
+            {/* Report dialog — hoisted outside the list so only one instance renders */}
+            {selectedTest && selectedStudentReport && (
+                <TestReportDialog
+                    isOpen={!!selectedTest}
+                    onClose={() => {
+                        setSelectedTest(null);
+                        setSelectedStudentReport(null);
+                    }}
+                    testReport={selectedTest}
+                    studentReport={selectedStudentReport}
+                    assessmentDetails={assessmentDetails!}
+                />
+            )}
+
+            {/* ── Pagination ────────────────────────────────────────────────── */}
             {studentReportData.total_pages > 1 && (
-                <div className="flex justify-center pt-4">
+                <div className="flex justify-center pt-2">
                     <MyPagination
                         currentPage={pageNo}
                         totalPages={studentReportData.total_pages}

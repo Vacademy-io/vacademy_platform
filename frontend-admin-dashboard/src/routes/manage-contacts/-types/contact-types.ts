@@ -75,6 +75,12 @@ export interface ContactUser {
     sub_org_id?: string;
     comma_separated_org_roles?: string;
     package_session_id?: string;
+    // Full list of package sessions the user is enrolled in (latest first). The
+    // backend returns this for institute users; the side view's "Open portal for"
+    // batch picker needs it to offer all memberships. `package_session_ids` is the
+    // alternate name some endpoints use.
+    all_package_session_ids?: string[];
+    package_session_ids?: string[];
     institute_enrollment_number?: string;
     payment_status?: string;
     institute_id?: string;

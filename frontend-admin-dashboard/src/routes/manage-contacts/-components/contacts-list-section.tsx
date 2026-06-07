@@ -51,18 +51,22 @@ export const ContactsListSection = () => {
     // Close sidebar on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            // Side-view panel + any portaled overlay (dialog, menu, popover/select,
+            // toast) render at <body>, outside tableRef. Treat clicks inside them as
+            // "inside" so e.g. closing the Assign-Course dialog's X doesn't also
+            // close the side view.
+            if (
+                target?.closest(
+                    '[data-sidebar="sidebar"],[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper],[data-sonner-toaster]'
+                )
+            )
+                return;
             if (
                 tableRef.current &&
                 !tableRef.current.contains(event.target as Node) &&
                 isSidebarOpen
             ) {
-                // Check if the click was on the sidebar itself, if not close it
-                // Actually SidebarProvider handles some of this, but StudentListSection had this logic.
-                // We'll rely on SidebarProvider's onOpenChange for now, or the trigger.
-
-                // If the sidebar is rendered inside SidebarProvider which is inside "tableRef" div...
-                // The logical "outside" might be tricky.
-                // StudentListSection implements this, so let's keep it if needed.
                 setIsSidebarOpen(false);
             }
         };

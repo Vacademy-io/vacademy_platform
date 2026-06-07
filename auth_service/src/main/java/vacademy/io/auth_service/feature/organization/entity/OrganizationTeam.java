@@ -65,6 +65,18 @@ public class OrganizationTeam {
     @Column(name = "updated_at")
     private Timestamp updatedAt;
 
+    /**
+     * Stamp updated_at on the very first insert too. The column is NOT NULL
+     * in V12; Postgres only applies its DEFAULT NOW() when Hibernate omits
+     * the column from the INSERT — but Hibernate always sends every mapped
+     * field, so an unset Timestamp went in as NULL and the constraint
+     * rejected the row. PrePersist guarantees a value is present at insert.
+     */
+    @PrePersist
+    protected void onCreate() {
+        if (updatedAt == null) updatedAt = new Timestamp(System.currentTimeMillis());
+    }
+
     @PreUpdate
     protected void onUpdate() {
         updatedAt = new Timestamp(System.currentTimeMillis());

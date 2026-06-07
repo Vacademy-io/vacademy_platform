@@ -25,6 +25,7 @@ import { AutomationSettings } from '../-components/Automations';
 import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
 import CouponSettings from '../-components/Coupons/CouponSettings';
 import TelephonySettings from '../-components/TelephonySettings';
+import PaymentGatewaySettings from '../-components/PaymentGatewaySettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -160,6 +161,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Telephony,
             value: 'Calling (Telephony)',
             component: TelephonySettings,
+        },
+        {
+            tab: SettingsTabs.PaymentGateways,
+            value: 'Payment Gateways',
+            component: PaymentGatewaySettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

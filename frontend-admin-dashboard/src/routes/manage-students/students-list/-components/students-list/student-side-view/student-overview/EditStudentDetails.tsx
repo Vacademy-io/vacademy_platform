@@ -40,6 +40,7 @@ import {
     type FieldGroup,
 } from '@/services/custom-field-settings';
 import { getFieldsForLocation } from '@/lib/custom-fields/utils';
+import { getSystemFieldColumnVisibility } from '@/components/design-system/utils/constants/system-field-columns';
 import { cn } from '@/lib/utils';
 
 const EditStudentDetailsFormSchema = z.object({
@@ -48,7 +49,7 @@ const EditStudentDetailsFormSchema = z.object({
     email: z.string().email('Invalid email address'),
     full_name: z.string().min(1, 'This field is required'),
     contact_number: z.string().min(1, 'This field is required'),
-    gender: z.string().min(1, 'This field is required'),
+    gender: z.string().optional(),
     date_of_birth: z.string().optional(),
     address_line: z.string().optional(),
     state: z.string().optional(),
@@ -167,44 +168,43 @@ export const EditStudentDetails = () => {
     const [openDialog, setOpenDialog] = useState(false);
     const [removedImage, setRemovedImage] = useState(false);
 
-    // Fetch custom fields for both Learner List and Learner Enrollment locations
+    // Gate custom fields on the SAME "Learner's List" visibility toggle the
+    // Overview tab uses, so a field hidden there is also hidden here when editing.
+    // (Previously this also merged in "Learner's Enrollment" fields, so a field
+    // toggled off for the Learner's List still appeared in the edit form.)
     const customFieldsData = useMemo(() => {
-        const learnerListFields = getFieldsForLocation("Learner's List");
-        const learnerEnrollmentFields = getFieldsForLocation("Learner's Enrollment");
-
-        const allFieldsMap = new Map();
-        [...learnerListFields, ...learnerEnrollmentFields].forEach((field) => {
-            allFieldsMap.set(field.id, field);
-        });
-        const customFields = Array.from(allFieldsMap.values());
+        const fields = getFieldsForLocation("Learner's List");
 
         const settings = getCustomFieldSettingsFromCache();
         if (!settings) {
-            return { customFields, fieldGroups: [], individualFields: customFields };
+            return { customFields: fields, fieldGroups: [], individualFields: fields };
         }
 
-        const visibilityKeys = ['learnerList', 'learnerEnrollment'];
-        const visibleGroups = settings.fieldGroups.filter((group) => {
-            return group.fields.some((field) =>
-                visibilityKeys.some((key) => field.visibility[key as keyof typeof field.visibility])
-            );
-        });
+        const visibilityKey = 'learnersList';
+        const visibleGroups = settings.fieldGroups.filter((group) =>
+            group.fields.some((field) => field.visibility[visibilityKey])
+        );
         const filteredGroups = visibleGroups.map((group) => ({
             ...group,
-            fields: group.fields.filter((field) =>
-                visibilityKeys.some((key) => field.visibility[key as keyof typeof field.visibility])
-            ),
+            fields: group.fields.filter((field) => field.visibility[visibilityKey]),
         }));
         const fieldIdsInGroups = new Set(
             filteredGroups.flatMap((group) => group.fields.map((f) => f.id))
         );
-        const individualFields = customFields.filter((field) => !fieldIdsInGroups.has(field.id));
+        const individualFields = fields.filter((field) => !fieldIdsInGroups.has(field.id));
 
-        return { customFields, fieldGroups: filteredGroups, individualFields };
+        return { customFields: fields, fieldGroups: filteredGroups, individualFields };
     }, []);
 
     const hasCustomFields =
         customFieldsData.fieldGroups.length > 0 || customFieldsData.individualFields.length > 0;
+
+    // Gate the optional system fields (address, institute, parents/guardians) by
+    // the SAME visibility toggle the Overview uses — a field turned off in
+    // settings should be hidden in the edit form too. Required core fields
+    // (name, email, mobile, gender) always show since the form needs them.
+    const sysVisible = getSystemFieldColumnVisibility();
+    const showField = (accessor: string) => sysVisible[accessor] !== false;
 
     const loadImage = async (fileId: string) => {
         if (fileId) {
@@ -425,7 +425,7 @@ export const EditStudentDetails = () => {
                         <FormControl>
                             <div className="flex w-full flex-col gap-1">
                                 <label className="text-sm font-medium text-neutral-700">
-                                    Gender <span className="text-danger-500">*</span>
+                                    Gender
                                 </label>
                                 <MyDropdown
                                     currentValue={selectedGender}
@@ -439,7 +439,7 @@ export const EditStudentDetails = () => {
                                     }}
                                     placeholder="Select Gender"
                                     error={form.formState.errors.gender?.message}
-                                    required={true}
+                                    required={false}
                                 />
                             </div>
                         </FormControl>
@@ -934,46 +934,75 @@ export const EditStudentDetails = () => {
                         </Grid2>
                     </FormCard>
 
-                    {/* ADDRESS */}
-                    <FormCard icon={MapPin} title="Address" helper="Where they live.">
-                        {addressLineField}
-                        <Grid3>
-                            {cityField}
-                            {stateField}
-                            {pinField}
-                        </Grid3>
-                    </FormCard>
+                    {/* ADDRESS — each field gated by its visibility toggle; the
+                        whole card hides when every address field is off. */}
+                    {(showField('address_line') ||
+                        showField('city') ||
+                        showField('region') ||
+                        showField('pin_code')) && (
+                        <FormCard icon={MapPin} title="Address" helper="Where they live.">
+                            {showField('address_line') && addressLineField}
+                            <Grid3>
+                                {showField('city') && cityField}
+                                {showField('region') && stateField}
+                                {showField('pin_code') && pinField}
+                            </Grid3>
+                        </FormCard>
+                    )}
 
                     {/* INSTITUTE */}
-                    <FormCard
-                        icon={Buildings}
-                        title="Institute"
-                        helper="Their primary place of study."
-                    >
-                        {instituteField}
-                    </FormCard>
+                    {showField('linked_institute_name') && (
+                        <FormCard
+                            icon={Buildings}
+                            title="Institute"
+                            helper="Their primary place of study."
+                        >
+                            {instituteField}
+                        </FormCard>
+                    )}
 
-                    {/* FAMILY */}
-                    <FormCard
-                        icon={UsersThree}
-                        title="Family"
-                        helper="Guardians and emergency contacts."
-                    >
-                        {/* Father */}
-                        <SubGroupTitle>Father / Male guardian</SubGroupTitle>
-                        {fathersNameField}
-                        <Grid2>
-                            {fatherMobileField}
-                            {fatherEmailField}
-                        </Grid2>
-                        {/* Mother */}
-                        <SubGroupTitle>Mother / Female guardian</SubGroupTitle>
-                        {mothersNameField}
-                        <Grid2>
-                            {motherMobileField}
-                            {motherEmailField}
-                        </Grid2>
-                    </FormCard>
+                    {/* FAMILY — subgroups + the whole card hide when their fields
+                        are toggled off. */}
+                    {(showField('fathers_name') ||
+                        showField('parents_mobile_number') ||
+                        showField('parents_email') ||
+                        showField('mothers_name') ||
+                        showField('parents_to_mother_mobile_number') ||
+                        showField('parents_to_mother_email')) && (
+                        <FormCard
+                            icon={UsersThree}
+                            title="Family"
+                            helper="Guardians and emergency contacts."
+                        >
+                            {/* Father */}
+                            {(showField('fathers_name') ||
+                                showField('parents_mobile_number') ||
+                                showField('parents_email')) && (
+                                <>
+                                    <SubGroupTitle>Father / Male guardian</SubGroupTitle>
+                                    {showField('fathers_name') && fathersNameField}
+                                    <Grid2>
+                                        {showField('parents_mobile_number') && fatherMobileField}
+                                        {showField('parents_email') && fatherEmailField}
+                                    </Grid2>
+                                </>
+                            )}
+                            {/* Mother */}
+                            {(showField('mothers_name') ||
+                                showField('parents_to_mother_mobile_number') ||
+                                showField('parents_to_mother_email')) && (
+                                <>
+                                    <SubGroupTitle>Mother / Female guardian</SubGroupTitle>
+                                    {showField('mothers_name') && mothersNameField}
+                                    <Grid2>
+                                        {showField('parents_to_mother_mobile_number') &&
+                                            motherMobileField}
+                                        {showField('parents_to_mother_email') && motherEmailField}
+                                    </Grid2>
+                                </>
+                            )}
+                        </FormCard>
+                    )}
 
                     {/* CUSTOM */}
                     {hasCustomFields && (

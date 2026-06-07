@@ -23,18 +23,26 @@ export const StudentSidebarProvider = ({ children }: StudentSidebarProviderProps
      * student (same user_id, fresh data) does NOT re-open the overlay — so
      * the user closing the overlay stays closed even if a query refresh
      * re-emits the selection. Passing null clears + closes.
+     *
+     * Pass `{ openOverlay: false }` to update the selection WITHOUT opening the
+     * overlay — used by the Details-column arrow, which opens the compact
+     * side-view sheet (via SidebarTrigger) instead of the fullscreen overlay.
      */
-    const setSelectedStudent = useCallback((student: StudentTable | null) => {
-        _setSelectedStudent((prev) => {
-            if (!student) {
-                setIsOverlayOpen(false);
-                return null;
-            }
-            const isFreshSelection = prev?.user_id !== student.user_id;
-            if (isFreshSelection) setIsOverlayOpen(true);
-            return student;
-        });
-    }, []);
+    const setSelectedStudent = useCallback(
+        (student: StudentTable | null, options?: { openOverlay?: boolean }) => {
+            const shouldOpenOverlay = options?.openOverlay ?? true;
+            _setSelectedStudent((prev) => {
+                if (!student) {
+                    setIsOverlayOpen(false);
+                    return null;
+                }
+                const isFreshSelection = prev?.user_id !== student.user_id;
+                if (isFreshSelection && shouldOpenOverlay) setIsOverlayOpen(true);
+                return student;
+            });
+        },
+        []
+    );
 
     const openOverlay = useCallback((student?: StudentTable) => {
         if (student) _setSelectedStudent(student);

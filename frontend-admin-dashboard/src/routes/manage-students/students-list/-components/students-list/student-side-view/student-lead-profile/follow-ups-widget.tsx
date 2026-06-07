@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, formatDistanceToNow } from 'date-fns';
 import { CalendarCheck, CheckCircle, Clock } from '@phosphor-icons/react';
-import { MyButton } from '@/components/design-system/button';
+import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_LEAD_FOLLOWUPS, CLOSE_LEAD_FOLLOWUP, CREATE_LEAD_FOLLOWUP } from '@/constants/urls';
@@ -10,7 +10,6 @@ import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
 import { parseHtmlToString } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { ProfileSectionCard, ProfileEmpty } from '../profile-ui';
 
 export interface LeadFollowup {
     id: string;
@@ -28,12 +27,11 @@ export interface LeadFollowup {
     updated_at: string;
 }
 
-/** Maps follow-up status to semantic token classes. */
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-    PENDING:   { label: 'Pending',   className: 'bg-info-100 text-info-700' },
-    ONGOING:   { label: 'Ongoing',   className: 'bg-warning-100 text-warning-700' },
-    OVERDUE:   { label: 'Overdue',   className: 'bg-danger-100 text-danger-700' },
-    COMPLETED: { label: 'Completed', className: 'bg-success-100 text-success-700' },
+    PENDING:   { label: 'Pending',   className: 'bg-blue-100 text-blue-700' },
+    ONGOING:   { label: 'Ongoing',   className: 'bg-amber-100 text-amber-700' },
+    OVERDUE:   { label: 'Overdue',   className: 'bg-red-100 text-red-700' },
+    COMPLETED: { label: 'Completed', className: 'bg-emerald-100 text-emerald-700' },
 };
 
 async function fetchFollowups(audienceResponseId: string): Promise<LeadFollowup[]> {
@@ -109,7 +107,7 @@ function CompletePopover({
             <PopoverTrigger asChild>
                 <button
                     type="button"
-                    className="flex cursor-pointer items-center gap-1 rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-success-300 hover:bg-success-50 hover:text-success-700"
+                    className="flex cursor-pointer items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-medium text-neutral-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
                 >
                     <CheckCircle weight="regular" className="size-3.5" />
                     Mark complete
@@ -154,17 +152,18 @@ function CompletePopover({
                 )}
 
                 <div className="mt-2 flex justify-end gap-1.5">
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs"
                         onClick={resetAndClose}
                         disabled={isBusy}
                     >
                         Cancel
-                    </MyButton>
-                    <MyButton
-                        buttonType="primary"
-                        scale="small"
+                    </Button>
+                    <Button
+                        size="sm"
+                        className="h-7 bg-emerald-600 px-2.5 text-xs text-white hover:bg-emerald-700"
                         onClick={() => closeMutation.mutate()}
                         disabled={!canSubmit}
                     >
@@ -174,8 +173,8 @@ function CompletePopover({
                               ? 'Scheduling…'
                               : scheduleNext
                                 ? 'Done & Schedule next'
-                                : 'Done'}
-                    </MyButton>
+                                : 'Done ✓'}
+                    </Button>
                 </div>
             </PopoverContent>
         </Popover>
@@ -206,7 +205,7 @@ function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: st
         : null;
 
     return (
-        <div className="rounded-lg border border-neutral-100 bg-white p-3 shadow-sm">
+        <div className="rounded-xl border border-neutral-100 bg-white p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2">
                 <span
                     className={cn(
@@ -240,7 +239,7 @@ function FollowUpCard({ followup, userId }: { followup: LeadFollowup; userId: st
             )}
 
             {followup.is_closed && followup.closer_reason && (
-                <p className="mt-1.5 text-xs italic text-neutral-400">
+                <p className="mt-1.5 text-xs text-neutral-400 italic">
                     Closed: {followup.closer_reason}
                 </p>
             )}
@@ -266,25 +265,27 @@ export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetP
     const open = followups.filter((f) => !f.is_closed);
 
     return (
-        <ProfileSectionCard
-            icon={CalendarCheck}
-            heading="Follow-ups"
-            action={
-                open.length > 0 ? (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+        <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+                <div className="h-3.5 w-1 rounded-full bg-primary-500" />
+                <h4 className="text-sm font-semibold text-neutral-700">Follow-ups</h4>
+                {open.length > 0 && (
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
                         {open.length} open
                     </span>
-                ) : undefined
-            }
-        >
-            {isLoading && <div className="h-16 animate-pulse rounded-lg bg-neutral-100" />}
+                )}
+            </div>
+
+            {isLoading && <div className="h-16 animate-pulse rounded-xl bg-neutral-100" />}
 
             {!isLoading && open.length === 0 && (
-                <ProfileEmpty
-                    icon={CalendarCheck}
-                    title="No open follow-ups"
-                    hint="Schedule one below using the Follow Up tab"
-                />
+                <div className="flex flex-col items-center gap-1.5 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-5 text-center">
+                    <CalendarCheck weight="fill" className="size-7 text-neutral-300" />
+                    <p className="text-xs font-medium text-neutral-500">No open follow-ups</p>
+                    <p className="text-caption text-neutral-400">
+                        Schedule one below using the Follow Up tab
+                    </p>
+                </div>
             )}
 
             {!isLoading && open.length > 0 && (
@@ -294,6 +295,6 @@ export function FollowUpsWidget({ audienceResponseId, userId }: FollowUpsWidgetP
                     ))}
                 </div>
             )}
-        </ProfileSectionCard>
+        </div>
     );
 }

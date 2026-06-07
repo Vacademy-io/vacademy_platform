@@ -6,7 +6,12 @@ import {
 } from '@/routes/manage-students/students-list/-services/getLearnerPackages';
 import { getInstituteId } from '@/constants/helper';
 import { MyButton } from '@/components/design-system/button';
-import { ChipToggleGroup } from '@/components/design-system/chips';
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu';
 import { AssignCourseDialog } from './assign-course-dialog';
 import { DeassignCourseDialog } from './deassign-course-dialog';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
@@ -47,13 +52,13 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     const [assignOpen, setAssignOpen] = useState(false);
     const [deassignOpen, setDeassignOpen] = useState(false);
-    const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+    const [selectedLevelIds, setSelectedLevelIds] = useState<string[]>([]);
     const [levelMenuOpen, setLevelMenuOpen] = useState(false);
     const [progressPage, setProgressPage] = useState(0);
     const [completedPage, setCompletedPage] = useState(0);
     const [pastPage, setPastPage] = useState(0);
 
-    const levelIds = selectedLevelId ? [selectedLevelId] : [];
+    const levelIds = selectedLevelIds;
     const packageSessionIds = packageSessionId ? [packageSessionId] : [];
 
     const {
@@ -161,11 +166,24 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
         });
     };
 
-    const handleLevelFilter = (levelId: string | null) => {
-        setSelectedLevelId(levelId);
+    // Reset all three section pages whenever the level filter changes — the
+    // result sets shift, so stale page indices would point past the new data.
+    const resetPages = () => {
         setProgressPage(0);
         setCompletedPage(0);
         setPastPage(0);
+    };
+    // Multi-select: toggle a level in/out of the filter set.
+    const toggleLevel = (levelId: string) => {
+        setSelectedLevelIds((prev) =>
+            prev.includes(levelId) ? prev.filter((id) => id !== levelId) : [...prev, levelId]
+        );
+        resetPages();
+    };
+    // "All" clears the filter set (empty = no level filter applied).
+    const clearLevels = () => {
+        setSelectedLevelIds([]);
+        resetPages();
     };
 
     const courseTermSingular = getTerminology(ContentTerms.Course, SystemTerms.Course);
@@ -248,21 +266,50 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                     Remove from {courseTermSingular}
                 </MyButton>
                 {availableLevels.length > 0 && (
-                    <div className="ml-auto flex items-center gap-1.5">
-                        <Funnel className="size-3.5 shrink-0 text-muted-foreground" />
-                        <ChipToggleGroup<string>
-                            value={selectedLevelId ?? '__ALL__'}
-                            onChange={(v) => handleLevelFilter(v === '__ALL__' ? null : v)}
-                            options={[
-                                { value: '__ALL__', label: 'All' },
-                                ...availableLevels.map((level) => ({
-                                    value: level.id,
-                                    label: level.level_name,
-                                })),
-                            ]}
-                            ariaLabel="Filter courses by level"
-                        />
-                    </div>
+                    // Collapsed by default into a Filter button; the level list
+                    // opens in a dropdown so a long list of levels no longer eats
+                    // vertical space in the panel.
+                    // - modal={false}: a modal dropdown re-dispatches the click as
+                    //   it tears down, which was closing the side-view panel. Non-modal
+                    //   avoids the body pointer-lock + that stray click.
+                    // - onSelect preventDefault on each item keeps the menu open so
+                    //   multiple levels can be toggled in one go.
+                    <DropdownMenu
+                        open={levelMenuOpen}
+                        onOpenChange={setLevelMenuOpen}
+                        modal={false}
+                    >
+                        <DropdownMenuTrigger asChild>
+                            <MyButton buttonType="secondary" scale="small" className="ml-auto">
+                                <Funnel className="size-3.5" />
+                                {selectedLevelIds.length > 0
+                                    ? `Filter (${selectedLevelIds.length})`
+                                    : 'Filter'}
+                            </MyButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            align="end"
+                            className="max-h-72 w-56 overflow-y-auto"
+                        >
+                            <DropdownMenuCheckboxItem
+                                checked={selectedLevelIds.length === 0}
+                                onCheckedChange={() => clearLevels()}
+                                onSelect={(e) => e.preventDefault()}
+                            >
+                                All
+                            </DropdownMenuCheckboxItem>
+                            {availableLevels.map((level) => (
+                                <DropdownMenuCheckboxItem
+                                    key={level.id}
+                                    checked={selectedLevelIds.includes(level.id)}
+                                    onCheckedChange={() => toggleLevel(level.id)}
+                                    onSelect={(e) => e.preventDefault()}
+                                >
+                                    {level.level_name}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 )}
             </div>
 

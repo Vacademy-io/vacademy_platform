@@ -10,6 +10,7 @@ import { formatDistanceToNow, format } from 'date-fns';
 import {
     ChatsCircle,
     Envelope,
+    EnvelopeSimple,
     WhatsappLogo,
     BellRinging,
     ChatTeardrop,
@@ -27,8 +28,6 @@ import {
     ProfileSkeleton,
     ProfileEmpty,
     ProfileError,
-    ProfileHero,
-    ProfileActionBar,
     ProfileTimeline,
     type ProfileTimelineItem,
 } from '../profile-ui';
@@ -64,8 +63,12 @@ const htmlToPreviewText = (html: string, maxLen = 140): string => {
         // leak into the preview
         .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
-        // strip every remaining tag
-        .replace(/<[^>]+>/g, ' ');
+        // strip every remaining complete tag
+        .replace(/<[^>]+>/g, ' ')
+        // strip a dangling/unclosed tag — backend previews are often HTML cut
+        // mid-tag (e.g. "<table align='center' width='600' style='...mar"), which
+        // has no closing ">" so the rule above can't remove it.
+        .replace(/<[^>]*$/g, ' ');
     const text = decodeEntities(stripped).replace(/\s+/g, ' ').trim();
     if (!text) return '';
     return text.length > maxLen ? `${text.slice(0, maxLen).trimEnd()}…` : text;
@@ -261,30 +264,73 @@ function ExpandedDetail({
     item: CommunicationItem;
     onCollapse: () => void;
 }) {
+    const isEmail = item.channel === 'EMAIL';
+    const subject = isEmail
+        ? extractEmailSubject(item.title, item.fullBody || item.bodyPreview)
+        : item.title;
+
     return (
         <div
             className="mt-2 space-y-3 border-t border-neutral-100 pt-3"
             onClick={(e) => e.stopPropagation()}
         >
-            {/* Full body */}
-            {item.fullBody && (
-                <div className="rounded-md border border-neutral-100 bg-neutral-50 p-2.5">
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                        Message
-                    </p>
-                    {item.channel === 'EMAIL' ? (
-                        // Render the email's own HTML inside a white container so
-                        // its inline styles don't mix with the timeline card background.
-                        <div
-                            className="max-h-80 overflow-y-auto rounded border border-neutral-200 bg-white p-2 text-xs text-neutral-800"
-                            dangerouslySetInnerHTML={{ __html: item.fullBody }}
-                        />
-                    ) : (
+            {/* EMAIL → render as an email-client card (Gmail-like): a sender row
+                with a red envelope avatar + from/date/to, then the subject, then
+                the email's own HTML body. Non-email channels keep the plain
+                Message box. */}
+            {isEmail && item.fullBody ? (
+                <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                    {/* Header: sender identity + timestamp + recipient */}
+                    <div className="flex items-start gap-2.5 border-b border-neutral-100 bg-neutral-50/70 px-3 py-2.5">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-danger-50 text-danger-600">
+                            <EnvelopeSimple weight="fill" className="size-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                                <span
+                                    className="truncate text-xs font-semibold text-neutral-800"
+                                    title={item.senderInfo || undefined}
+                                >
+                                    {item.senderInfo || 'Email'}
+                                </span>
+                                <span className="shrink-0 text-2xs text-neutral-400">
+                                    {format(new Date(item.timestamp), 'MMM d, h:mm a')}
+                                </span>
+                            </div>
+                            {item.recipientInfo && (
+                                <div
+                                    className="truncate text-2xs text-neutral-500"
+                                    title={item.recipientInfo}
+                                >
+                                    to {item.recipientInfo}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {/* Subject */}
+                    {subject && (
+                        <p className="px-3 pt-2.5 text-xs font-semibold text-neutral-900">
+                            {subject}
+                        </p>
+                    )}
+                    {/* Body — the email's own HTML, contained so wide markup scrolls
+                        inside this box instead of widening the panel. */}
+                    <div
+                        className="max-h-96 max-w-full overflow-auto px-3 pb-3 pt-2 text-xs text-neutral-800 [&_img]:max-w-full [&_table]:max-w-full"
+                        dangerouslySetInnerHTML={{ __html: item.fullBody }}
+                    />
+                </div>
+            ) : (
+                item.fullBody && (
+                    <div className="rounded-md border border-neutral-100 bg-neutral-50 p-2.5">
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                            Message
+                        </p>
                         <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
                             {item.fullBody}
                         </p>
-                    )}
-                </div>
+                    </div>
+                )
             )}
 
             {/* Template name */}
@@ -297,15 +343,16 @@ function ExpandedDetail({
                 </div>
             )}
 
-            {/* Sender / Recipient / Source */}
+            {/* Sender / Recipient / Source — From/To already live in the email
+                header above, so for email we only surface Source here. */}
             <div className="space-y-1 text-xs">
-                {item.senderInfo && (
+                {!isEmail && item.senderInfo && (
                     <div className="flex gap-2">
                         <span className="font-medium text-neutral-500">From:</span>
                         <span className="text-neutral-700">{item.senderInfo}</span>
                     </div>
                 )}
-                {item.recipientInfo && (
+                {!isEmail && item.recipientInfo && (
                     <div className="flex gap-2">
                         <span className="font-medium text-neutral-500">To:</span>
                         <span className="text-neutral-700">{item.recipientInfo}</span>
@@ -363,7 +410,12 @@ function CommItemBody({ item }: { item: CommunicationItem }) {
     const isInbound = item.direction === 'INBOUND';
 
     const isEmail = item.channel === 'EMAIL';
-    const rawPreview = item.bodyPreview || (isEmail ? item.fullBody : '') || '';
+    // For emails prefer the COMPLETE fullBody — the backend's bodyPreview is often
+    // HTML truncated mid-tag, which has no real text to extract. Fall back to
+    // bodyPreview when fullBody is absent.
+    const rawPreview = isEmail
+        ? item.fullBody || item.bodyPreview || ''
+        : item.bodyPreview || '';
     const displayPreview = looksLikeHtml(rawPreview)
         ? htmlToPreviewText(rawPreview, 160)
         : rawPreview;
@@ -537,57 +589,50 @@ export const StudentCommunicationTimeline = () => {
         {} as Record<string, number>
     );
 
-    // Hero subtitle: relative time of most recent message
-    const mostRecent = communications[0];
-    const heroSubtitle = mostRecent
-        ? `Last interaction ${formatDistanceToNow(new Date(mostRecent.timestamp), { addSuffix: true })}`
-        : 'No interactions yet';
-
-    const totalCount = timelineData?.totalElements ?? communications.length;
-
-    // ─── Send action bar (lives in the hero's action slot) ──────────────────
-    const sendBar = (
-        <ProfileActionBar>
-            <MyButton
-                type="button"
-                buttonType="secondary"
-                scale="small"
-                disable={!selectedStudent?.email}
-                onClick={() => {
-                    if (selectedStudent) setSendDialog('EMAIL');
-                }}
-                className="flex items-center gap-1.5"
-            >
-                <Envelope className="size-3.5" />
-                Email
-            </MyButton>
-            <MyButton
-                type="button"
-                buttonType="secondary"
-                scale="small"
-                disable={!selectedStudent?.mobile_number}
-                onClick={() => {
-                    if (selectedStudent) setSendDialog('WHATSAPP');
-                }}
-                className="flex items-center gap-1.5"
-            >
-                <WhatsappLogo className="size-3.5" />
-                WhatsApp
-            </MyButton>
-        </ProfileActionBar>
-    );
-
     return (
         <div className="flex flex-col gap-4">
-            {/* ── Hero ────────────────────────────────────────────────────── */}
-            <ProfileHero
-                eyebrow="COMMUNICATIONS"
-                title={`${totalCount} interaction${totalCount !== 1 ? 's' : ''}`}
-                subtitle={heroSubtitle}
-                icon={ChatsCircle}
-                tone="primary"
-                action={sendBar}
-            />
+            {/* ── Send Notification card (matches production) ──────────────── */}
+            <div className="rounded-lg border border-neutral-200 bg-card p-3">
+                <div className="mb-2 flex items-center gap-2.5">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-info-50 text-info-600">
+                        <BellRinging className="size-4" weight="duotone" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-semibold text-neutral-800">
+                            Send Notification
+                        </h4>
+                        <p className="text-2xs text-neutral-500">Email or WhatsApp message</p>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        disable={!selectedStudent?.email}
+                        onClick={() => {
+                            if (selectedStudent) setSendDialog('EMAIL');
+                        }}
+                        className="flex flex-1 items-center justify-center gap-1.5 border-info-200 text-info-700 hover:border-info-300 hover:bg-info-50"
+                    >
+                        <Envelope className="size-3.5" />
+                        Email
+                    </MyButton>
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        scale="small"
+                        disable={!selectedStudent?.mobile_number}
+                        onClick={() => {
+                            if (selectedStudent) setSendDialog('WHATSAPP');
+                        }}
+                        className="flex flex-1 items-center justify-center gap-1.5 border-success-200 text-success-700 hover:border-success-300 hover:bg-success-50"
+                    >
+                        <WhatsappLogo className="size-3.5" />
+                        WhatsApp
+                    </MyButton>
+                </div>
+            </div>
 
             {/* ── Channel filter chips ─────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-2">

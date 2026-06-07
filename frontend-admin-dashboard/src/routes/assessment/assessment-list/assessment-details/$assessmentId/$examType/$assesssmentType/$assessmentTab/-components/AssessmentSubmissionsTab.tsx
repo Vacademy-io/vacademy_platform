@@ -828,6 +828,17 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as Element | null;
+            // Side-view panel + any portaled overlay (dialog, menu, popover/select,
+            // toast) render at <body>, outside tableRef. Treat clicks inside them as
+            // "inside" so e.g. closing the Assign-Course dialog doesn't also close
+            // the side view.
+            if (
+                target?.closest(
+                    '[data-sidebar="sidebar"],[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper],[data-sonner-toaster]'
+                )
+            )
+                return;
             if (
                 tableRef.current &&
                 !tableRef.current.contains(event.target as Node) &&

@@ -277,7 +277,7 @@ export const StudentProfileOverlay = () => {
                    per the design handoff fullscreen card (--r-2xl ≈
                    rounded-2xl). The dim background is owned by the Dialog
                    primitive (DialogOverlay). */
-                className="dialog-no-close-icon flex flex-col gap-0 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-0 shadow-2xl sm:max-w-none"
+                className="dialog-no-close-icon flex flex-col gap-0 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-0 font-app shadow-2xl sm:max-w-none"
                 /* Viewport-relative sizing isn't tokenizable. Handoff spec:
                    100% width / height with a 22px gutter around the card,
                    capped at 1240px wide so the layout stays readable on
@@ -436,7 +436,7 @@ export const StudentProfileOverlay = () => {
                             items={
                                 [
                                     selectedStudent.institute_enrollment_number && {
-                                        label: 'ID',
+                                        label: 'Enrollment No',
                                         value: selectedStudent.institute_enrollment_number,
                                     },
                                     selectedStudent.created_at && {

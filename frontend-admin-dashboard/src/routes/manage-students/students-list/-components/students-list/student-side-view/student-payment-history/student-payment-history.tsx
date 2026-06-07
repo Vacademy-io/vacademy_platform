@@ -137,78 +137,74 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
     }
 
     return (
-        // overflow-x-auto so the trailing Status + Action columns are reachable
-        // by horizontal scroll on narrow side-panels. The earlier overflow-hidden
-        // clipped them — the Download button was rendered but never visible.
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Invoice #</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Due Date</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Amount</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
-                        <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Action</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                    {paged.map((inv) => (
-                        <tr key={inv.id} className="transition-colors hover:bg-gray-50">
-                            <td
-                                className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900"
-                                title={inv.invoice_number || inv.id}
-                            >
-                                {/* Synthetic invoice numbers carry a status prefix + full SFP UUID
-                                    (e.g. "PARTIAL-1f2f1396-…"). Showing the full string pushes
-                                    the Action column off-screen in narrow side-panels. Truncate
-                                    visually but expose the full id via title= for forensics. */}
-                                {shortInvoiceLabel(inv.invoice_number, inv.id)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-600">
-                                {/* Prefer due_date so each row matches its installment's
-                                    deadline. Falls back to invoice_date for legacy /
-                                    non-CPO real Invoice rows that may not carry one. */}
-                                {formatDate(inv.due_date || inv.invoice_date)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900">
-                                {formatCurrency(inv.total_amount, inv.currency)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5">
-                                {getStatusBadge(inv.status)}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                                {(inv.pdf_url || inv.pdf_file_id) && (
-                                    <button
-                                        onClick={() => handleDownload(inv)}
-                                        className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-                                        title="Download Invoice PDF"
+        // Card-list (not a <table>): a 5-column table can't fit the ~288px mobile
+        // / 565px desktop side-panel without horizontal scroll. Each invoice is a
+        // self-contained row that wraps + truncates, so the panel never scrolls
+        // sideways and the Download action is always reachable.
+        <div className="overflow-hidden rounded-lg border border-neutral-200">
+            <ul className="divide-y divide-neutral-100">
+                {paged.map((inv) => {
+                    const canDownload = !!(inv.pdf_url || inv.pdf_file_id);
+                    return (
+                        <li
+                            key={inv.id}
+                            className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-neutral-50"
+                        >
+                            <div className="min-w-0 flex-1">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    {/* Synthetic invoice numbers carry a status prefix + full
+                                        SFP UUID (e.g. "PARTIAL-1f2f1396-…"). Truncate visually
+                                        but expose the full id via title= for forensics. */}
+                                    <span
+                                        className="min-w-0 truncate text-sm font-medium text-neutral-900"
+                                        title={inv.invoice_number || inv.id}
                                     >
-                                        <DownloadSimple className="size-3.5" />
-                                        Download
-                                    </button>
-                                )}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+                                        {shortInvoiceLabel(inv.invoice_number, inv.id)}
+                                    </span>
+                                    <span className="shrink-0">{getStatusBadge(inv.status)}</span>
+                                </div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
+                                    {/* Prefer due_date so each row matches its installment's
+                                        deadline. Falls back to invoice_date for legacy /
+                                        non-CPO real Invoice rows that may not carry one. */}
+                                    <span>{formatDate(inv.due_date || inv.invoice_date)}</span>
+                                    <span aria-hidden>·</span>
+                                    <span className="font-medium text-neutral-700">
+                                        {formatCurrency(inv.total_amount, inv.currency)}
+                                    </span>
+                                </div>
+                            </div>
+                            {canDownload && (
+                                <button
+                                    onClick={() => handleDownload(inv)}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-300 bg-white px-2.5 py-1 text-xs font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"
+                                    title="Download Invoice PDF"
+                                >
+                                    <DownloadSimple className="size-3.5" />
+                                    Download
+                                </button>
+                            )}
+                        </li>
+                    );
+                })}
+            </ul>
             {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-3 py-2">
-                    <span className="text-xs text-gray-500">
+                <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50 px-3 py-2">
+                    <span className="text-xs text-neutral-500">
                         {page * INVOICES_PER_PAGE + 1}–{Math.min((page + 1) * INVOICES_PER_PAGE, invoices.length)} of {invoices.length}
                     </span>
                     <div className="flex gap-1">
                         <button
                             onClick={() => setPage((p) => Math.max(0, p - 1))}
                             disabled={page === 0}
-                            className="rounded p-1 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
+                            className="rounded p-1 text-neutral-500 hover:bg-neutral-200 disabled:opacity-40"
                         >
                             <CaretLeft className="size-4" />
                         </button>
                         <button
                             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                             disabled={page >= totalPages - 1}
-                            className="rounded p-1 text-gray-500 hover:bg-gray-200 disabled:opacity-40"
+                            className="rounded p-1 text-neutral-500 hover:bg-neutral-200 disabled:opacity-40"
                         >
                             <CaretRight className="size-4" />
                         </button>

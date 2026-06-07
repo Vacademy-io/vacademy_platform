@@ -2,8 +2,8 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCompactMode } from '@/hooks/use-compact-mode';
-import { X, ArrowsOutSimple } from '@phosphor-icons/react';
-import { useState, useEffect, useRef } from 'react';
+import { X, ArrowsOutSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -43,7 +43,7 @@ import {
     TAB_ID_TO_VISIBILITY_KEY,
     STUDENT_SIDE_VIEW_TAB_LABELS as TAB_LABELS,
 } from '@/constants/display-settings/student-side-view-tabs';
-import { ProfileQuickContact, ProfileContextStrip, type ContextStripItem } from './profile-ui';
+import { ProfileQuickContact } from './profile-ui';
 import { GroupedNavRail } from './grouped-nav-rail';
 import { SECTION_REGISTRY } from './nav-groups';
 
@@ -119,6 +119,11 @@ export const StudentSidebar = ({
     const { state, setOpen, setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
     const [category, setCategory] = useState('overview');
+    // Tab-bar scroll affordance: track whether more tabs sit off either edge so
+    // we can show clickable chevrons — the plain fade wasn't a clear enough cue
+    // that the tab row is horizontally scrollable.
+    const [tabCanScrollLeft, setTabCanScrollLeft] = useState(false);
+    const [tabCanScrollRight, setTabCanScrollRight] = useState(false);
     // Explicitly close both desktop + mobile sidebar state. Using `toggleSidebar`
     // hit a stale-closure case where `isMobile` could be wrong post-hydration,
     // so the X click flipped the wrong state on touch viewports.
@@ -246,6 +251,30 @@ export const StudentSidebar = ({
         }
     }, [category]);
 
+    // Track tab-bar overflow so the scroll chevrons appear only when there are
+    // tabs hidden off an edge. Recomputes on scroll, resize, and tab changes.
+    const updateTabScroll = useCallback(() => {
+        const el = tabContainerRef.current;
+        if (!el) return;
+        setTabCanScrollLeft(el.scrollLeft > 4);
+        setTabCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    }, []);
+
+    useEffect(() => {
+        updateTabScroll();
+        const el = tabContainerRef.current;
+        if (!el) return;
+        el.addEventListener('scroll', updateTabScroll, { passive: true });
+        window.addEventListener('resize', updateTabScroll);
+        return () => {
+            el.removeEventListener('scroll', updateTabScroll);
+            window.removeEventListener('resize', updateTabScroll);
+        };
+    }, [updateTabScroll, tabSettings, category, selectedStudent?.sub_org_name]);
+
+    const scrollTabs = (dir: 1 | -1) =>
+        tabContainerRef.current?.scrollBy({ left: dir * 160, behavior: 'smooth' });
+
     // The Vacademy design handoff defines ONE primary surface for the learner
     // profile — the fullscreen overlay. The right-side drawer remains mounted
     // only for callers that still use it programmatically (refresh hooks,
@@ -265,7 +294,7 @@ export const StudentSidebar = ({
             )}
         >
             <SidebarContent
-                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white text-neutral-700`}
+                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700`}
             >
                 <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">
@@ -425,43 +454,46 @@ export const StudentSidebar = ({
                                         </button>
                                     )}
                                 </div>
-                                <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-white to-transparent" />
+                                {/* Scroll chevrons — shown only when tabs overflow
+                                    that edge, so it's clear the row scrolls. */}
+                                {tabCanScrollLeft && (
+                                    <button
+                                        type="button"
+                                        aria-label="Scroll tabs left"
+                                        onClick={() => scrollTabs(-1)}
+                                        className="absolute inset-y-0 left-0 flex items-center bg-gradient-to-r from-white via-white to-transparent pr-5 text-neutral-500 transition-colors hover:text-primary-600"
+                                    >
+                                        <CaretLeft className="size-4" weight="bold" />
+                                    </button>
+                                )}
+                                {tabCanScrollRight && (
+                                    <button
+                                        type="button"
+                                        aria-label="Scroll tabs right"
+                                        onClick={() => scrollTabs(1)}
+                                        className="absolute inset-y-0 right-0 flex items-center bg-gradient-to-l from-white via-white to-transparent pl-5 text-neutral-500 transition-colors hover:text-primary-600"
+                                    >
+                                        <CaretRight className="size-4" weight="bold" />
+                                    </button>
+                                )}
                             </div>
                         )}
 
-                        {/* Context strip — at-a-glance learner context that stays visible
-                            on every tab. Items that lack data are filtered inside the
-                            primitive, so the strip self-hides on minimal entries. */}
-                        <ProfileContextStrip
-                            items={
-                                [
-                                    selectedStudent?.institute_enrollment_number && {
-                                        label: 'ID',
-                                        value: selectedStudent.institute_enrollment_number,
-                                    },
-                                    selectedStudent?.created_at && {
-                                        label: 'Joined',
-                                        value: new Date(
-                                            selectedStudent.created_at
-                                        ).toLocaleDateString(undefined, {
-                                            day: 'numeric',
-                                            month: 'short',
-                                            year: 'numeric',
-                                        }),
-                                    },
-                                    selectedStudent?.city && {
-                                        label: 'City',
-                                        value: selectedStudent.city,
-                                    },
-                                ] as Array<ContextStripItem | false | null | undefined>
-                            }
-                        />
                     </div>
                 </SidebarHeader>
 
                 {/* Body wrapper — grouped mode renders the left-rail nav next
                     to the scrollable content; tabs mode keeps content full-width. */}
-                <div className={navStyle === 'grouped' ? 'flex min-h-0 flex-1' : 'contents'}>
+                <div
+                    className={
+                        navStyle === 'grouped'
+                            ? 'flex min-h-0 min-w-0 flex-1'
+                            : // Real bounded flex column (not display:contents): gives the
+                              // scroll body below a definite height so it scrolls vertically
+                              // instead of growing past the panel.
+                              'flex min-h-0 min-w-0 flex-1 flex-col'
+                    }
+                >
                     {navStyle === 'grouped' && tabSettings && (
                         <GroupedNavRail
                             activeId={category}
@@ -491,7 +523,15 @@ export const StudentSidebar = ({
                             enabledModules={enabledModules}
                         />
                     )}
-                <div className="flex-1 overflow-y-auto p-3">
+                {/* The single scroll container for the tab body.
+                    - min-h-0 : lets this flex child shrink below its content so
+                      overflow-y-auto actually scrolls (vertical scroll fix).
+                    - min-w-0 + overflow-x-hidden : hard guarantee the body never
+                      scrolls horizontally — wide children (tables, long strings,
+                      email HTML) are contained, not allowed to push the panel
+                      wider. Each tab wraps/truncates its own content so nothing
+                      is clipped. */}
+                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
                     {/* Audience-form responses card — only on the Lead tab.
                         Renders only when the side view was opened from a lead
                         row (campaign-users / recent-leads); manage-students

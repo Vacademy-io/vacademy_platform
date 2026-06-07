@@ -20,6 +20,7 @@ import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
 import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { MyButton } from '@/components/design-system/button';
+import { Button } from '@/components/ui/button';
 import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { parseHtmlToString } from '@/lib/utils';
 import DOMPurify from 'dompurify';
@@ -33,7 +34,7 @@ import {
     isCallActivityEmpty,
 } from '@/components/shared/lead-calls/call-activity';
 import { toast } from 'sonner';
-import { format, differenceInDays } from 'date-fns';
+import { format } from 'date-fns';
 import {
     ChartBar,
     PencilSimple,
@@ -56,21 +57,15 @@ import {
     GitMerge,
     ListBullets,
     CalendarDot,
-    Plus,
-    Crosshair,
-    Fire,
+    CaretDown,
 } from '@phosphor-icons/react';
 import {
-    ProfileSectionCard,
-    ProfileFieldRow,
-    ProfileSkeleton,
-    ProfileEmpty,
-    ProfileError,
-    ProfileHero,
-    ProfileHeroStat,
-    ProfileActionBar,
-    ProfileMiniBar,
-} from '../profile-ui';
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+} from '@/components/ui/dropdown-menu';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -211,15 +206,14 @@ function formatDate(iso: string | null | undefined): string {
     });
 }
 
-/** Maps conversion_status to a semantic token pill. */
-function statusPill(status: string): { label: string; className: string } {
+function statusLabel(status: string): { label: string; className: string } {
     switch (status) {
         case 'CONVERTED':
-            return { label: 'Converted', className: 'bg-success-100 text-success-700' };
+            return { label: 'Converted', className: 'bg-green-100 text-green-700' };
         case 'LOST':
-            return { label: 'Lost', className: 'bg-danger-100 text-danger-700' };
+            return { label: 'Lost', className: 'bg-red-100 text-red-700' };
         default:
-            return { label: 'Lead', className: 'bg-info-100 text-info-700' };
+            return { label: 'Lead', className: 'bg-blue-100 text-blue-700' };
     }
 }
 
@@ -234,49 +228,12 @@ function sourceLabel(source: string | null): string {
 function campaignStatusChip(status: string | null) {
     const s = (status ?? '').toUpperCase();
     const map: Record<string, string> = {
-        ACTIVE: 'bg-success-100 text-success-700',
-        PAUSED: 'bg-warning-100 text-warning-700',
+        ACTIVE: 'bg-green-100 text-green-700',
+        PAUSED: 'bg-amber-100 text-amber-700',
         COMPLETED: 'bg-neutral-100 text-neutral-600',
         ARCHIVED: 'bg-neutral-100 text-neutral-500',
     };
     return map[s] ?? 'bg-neutral-100 text-neutral-500';
-}
-
-/**
- * Derives a "Next Best Action" hint from existing profile data — purely client-side.
- * Priority order:
- *  1. No activity in 7+ days → prompt follow-up
- *  2. High score (≥80) but tier is not HOT → schedule a demo
- *  3. Cold lead (score < 40) → light nurture
- *  4. Default → regular nurture
- */
-function deriveNextBestAction(profile: UserLeadProfile): string {
-    const daysSinceActivity = profile.last_activity_at
-        ? differenceInDays(new Date(), new Date(profile.last_activity_at))
-        : 999;
-
-    if (daysSinceActivity >= 7) {
-        return 'No activity in 7d — log a follow-up';
-    }
-    if (profile.best_score >= 80 && profile.lead_tier !== 'HOT') {
-        return 'Hot signal — schedule a demo';
-    }
-    if (profile.best_score < 40) {
-        return 'Cold lead — nurture lightly';
-    }
-    return 'Continue regular nurture';
-}
-
-/** Hero tone derived from lead tier / score. */
-function heroTone(profile: UserLeadProfile): 'danger' | 'warning' | 'info' | 'primary' {
-    const tier = profile.lead_tier;
-    if (tier === 'HOT') return 'danger';
-    if (tier === 'WARM') return 'warning';
-    if (tier === 'COLD') return 'info';
-    // fall back to score
-    if (profile.best_score >= 80) return 'danger';
-    if (profile.best_score >= 50) return 'warning';
-    return 'primary';
 }
 
 // Picks the most recently submitted audience response — used as a fallback when
@@ -419,20 +376,8 @@ function ManualScoreEditor({ responseId }: { responseId: string }) {
     );
 }
 
-function ScoreBreakdownPanel({
-    responseId,
-    hideToggle = false,
-}: {
-    responseId: string;
-    /**
-     * When true, the internal toggle button is hidden and the breakdown is
-     * always rendered. Use this when the disclosure is controlled at a
-     * higher level (e.g. the parent ProfileSectionCard's action slot).
-     */
-    hideToggle?: boolean;
-}) {
-    const [internalOpen, setInternalOpen] = useState(false);
-    const open = hideToggle ? true : internalOpen;
+function ScoreBreakdownPanel({ responseId }: { responseId: string }) {
+    const [open, setOpen] = useState(false);
 
     const { data, isLoading } = useQuery<LeadScoreDetail>({
         queryKey: ['lead-score-breakdown', responseId],
@@ -448,24 +393,17 @@ function ScoreBreakdownPanel({
     const isManualData = data?.is_manual_override ?? false;
 
     return (
-        <div className={hideToggle ? '' : 'mt-2'}>
-            {!hideToggle && (
-                <button
-                    onClick={() => setInternalOpen((v) => !v)}
-                    className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
-                >
-                    <ChartBar size={13} weight="bold" />
-                    {open ? 'Hide breakdown' : 'Score breakdown'}
-                </button>
-            )}
+        <div className="mt-2">
+            <button
+                onClick={() => setOpen((v) => !v)}
+                className="flex items-center gap-1 text-xs text-neutral-400 transition-colors hover:text-primary-600"
+            >
+                <ChartBar size={13} weight="bold" />
+                {open ? 'Hide breakdown' : 'Score breakdown'}
+            </button>
 
             {open && (
-                <div
-                    className={cn(
-                        'rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-xs',
-                        !hideToggle && 'mt-2'
-                    )}
-                >
+                <div className="mt-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-xs">
                     {isLoading && (
                         <div className="flex items-center gap-2 text-neutral-400">
                             <div className="size-3 animate-spin rounded-full border border-neutral-400 border-t-transparent" />
@@ -543,73 +481,97 @@ function ScoreBreakdownPanel({
     );
 }
 
+// ── Stat card ─────────────────────────────────────────────────────────────────
+
+function StatCard({
+    icon,
+    label,
+    value,
+}: {
+    icon: React.ReactNode;
+    label: string;
+    value: React.ReactNode;
+}) {
+    return (
+        <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-500 shadow-sm">
+                {icon}
+            </div>
+            <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="truncate text-sm font-semibold text-neutral-800">{value}</p>
+            </div>
+        </div>
+    );
+}
+
 // ── Timeline Action Config ────────────────────────────────────────────────────
 
 const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: string }> = {
     NOTE: {
         icon: <NotePencil weight="fill" className="size-4" />,
-        color: 'text-info-600',
-        bgColor: 'bg-info-100',
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-100',
     },
     CALL_LOG: {
         icon: <Phone weight="fill" className="size-4" />,
-        color: 'text-primary-600',
-        bgColor: 'bg-primary-100',
+        color: 'text-teal-600',
+        bgColor: 'bg-teal-100',
     },
     FOLLOW_UP: {
         icon: <CalendarCheck weight="fill" className="size-4" />,
-        color: 'text-primary-600',
-        bgColor: 'bg-primary-100',
+        color: 'text-violet-600',
+        bgColor: 'bg-violet-100',
     },
     MEETING: {
         icon: <Buildings weight="fill" className="size-4" />,
-        color: 'text-warning-600',
-        bgColor: 'bg-warning-100',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
     },
     NOTE_ADDED: {
         icon: <NotePencil weight="fill" className="size-4" />,
-        color: 'text-info-600',
-        bgColor: 'bg-info-100',
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-100',
     },
     STATUS_CHANGE: {
         icon: <ArrowsClockwise weight="fill" className="size-4" />,
-        color: 'text-warning-600',
-        bgColor: 'bg-warning-100',
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-100',
     },
     COUNSELOR_ASSIGNED: {
         icon: <User weight="fill" className="size-4" />,
-        color: 'text-primary-600',
-        bgColor: 'bg-primary-100',
+        color: 'text-purple-600',
+        bgColor: 'bg-purple-100',
     },
     APPLICATION_SUBMITTED: {
         icon: <ClipboardText weight="fill" className="size-4" />,
-        color: 'text-success-600',
-        bgColor: 'bg-success-100',
+        color: 'text-green-600',
+        bgColor: 'bg-green-100',
     },
     APPLICATION_TRANSITIONED: {
         icon: <ArrowRight weight="bold" className="size-4" />,
-        color: 'text-info-600',
-        bgColor: 'bg-info-100',
+        color: 'text-indigo-600',
+        bgColor: 'bg-indigo-100',
     },
     PHONE_CALL: {
         icon: <Phone weight="fill" className="size-4" />,
-        color: 'text-primary-600',
-        bgColor: 'bg-primary-100',
+        color: 'text-teal-600',
+        bgColor: 'bg-teal-100',
     },
     EMAIL_SENT: {
         icon: <EnvelopeSimple weight="fill" className="size-4" />,
-        color: 'text-info-600',
-        bgColor: 'bg-info-100',
+        color: 'text-sky-600',
+        bgColor: 'bg-sky-100',
     },
     PAYMENT_SUCCESS: {
         icon: <CurrencyCircleDollar weight="fill" className="size-4" />,
-        color: 'text-success-600',
-        bgColor: 'bg-success-100',
+        color: 'text-emerald-600',
+        bgColor: 'bg-emerald-100',
     },
     CAMPUS_VISIT: {
         icon: <Buildings weight="fill" className="size-4" />,
-        color: 'text-warning-600',
-        bgColor: 'bg-warning-100',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
     },
     DUPLICATE_MERGED: {
         icon: <GitMerge weight="fill" className="size-4" />,
@@ -618,13 +580,13 @@ const ACTION_CONFIG: Record<string, { icon: ReactNode; color: string; bgColor: s
     },
     FOLLOW_UP_SCHEDULED: {
         icon: <CalendarDot weight="fill" className="size-4" />,
-        color: 'text-primary-600',
-        bgColor: 'bg-primary-100',
+        color: 'text-violet-600',
+        bgColor: 'bg-violet-100',
     },
     FOLLOW_UP_COMPLETED: {
         icon: <CheckCircle weight="fill" className="size-4" />,
-        color: 'text-success-600',
-        bgColor: 'bg-success-100',
+        color: 'text-emerald-600',
+        bgColor: 'bg-emerald-100',
     },
     FOLLOW_UP_CANCELLED: {
         icon: <CalendarCheck weight="fill" className="size-4" />,
@@ -668,11 +630,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
         <div className="group relative flex gap-3 pb-5 last:pb-0">
             <div className="absolute -bottom-0 left-4 top-9 w-px bg-neutral-200 group-last:hidden" />
             <div
-                className={cn(
-                    'z-10 flex size-9 shrink-0 items-center justify-center rounded-full text-sm',
-                    config.bgColor,
-                    config.color
-                )}
+                className={`z-10 flex size-9 shrink-0 items-center justify-center rounded-full text-sm ${config.bgColor} ${config.color}`}
             >
                 {config.icon}
             </div>
@@ -683,7 +641,7 @@ function TimelineEventItem({ event }: { event: TimelineEvent }) {
                             <PushPin
                                 size={12}
                                 weight="fill"
-                                className="mr-1 inline text-warning-500"
+                                className="mr-1 inline text-amber-500"
                             />
                         )}
                         {event.title}
@@ -749,15 +707,12 @@ interface AddNoteFormProps {
     userId: string;
     /** The best audience response id — required to schedule a follow-up. */
     audienceResponseId?: string | null;
-    /** Pre-select an action type and expand immediately (presentational only). */
-    defaultActionType?: string;
-    autoExpand?: boolean;
 }
 
-function AddNoteForm({ userId, audienceResponseId, defaultActionType, autoExpand }: AddNoteFormProps) {
+function AddNoteForm({ userId, audienceResponseId }: AddNoteFormProps) {
     const [noteText, setNoteText] = useState('');
-    const [actionType, setActionType] = useState(defaultActionType ?? 'NOTE');
-    const [isExpanded, setIsExpanded] = useState(autoExpand ?? false);
+    const [actionType, setActionType] = useState('NOTE');
+    const [isExpanded, setIsExpanded] = useState(false);
     const [callActivity, setCallActivity] = useState<CallActivity | null>(null);
     const [scheduleTime, setScheduleTime] = useState('');
     const queryClient = useQueryClient();
@@ -844,27 +799,34 @@ function AddNoteForm({ userId, audienceResponseId, defaultActionType, autoExpand
         return (
             <button
                 onClick={() => setIsExpanded(true)}
-                className="flex w-full items-center gap-2 rounded-lg border-2 border-dashed border-neutral-200 bg-neutral-50 px-4 py-2.5 text-sm text-neutral-500 transition-all hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600"
+                className="flex w-full items-center gap-2 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 px-4 py-2.5 text-sm text-neutral-500 transition-all hover:border-primary-300 hover:bg-primary-50/30 hover:text-primary-600"
             >
-                <Plus className="size-4" weight="bold" />
+                <svg
+                    className="size-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
                 Add a note or log activity…
             </button>
         );
     }
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
+        <div className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 {NOTE_ACTION_TYPES.map((type) => (
                     <button
                         key={type.value}
                         onClick={() => setActionType(type.value)}
-                        className={cn(
-                            'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all',
+                        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
                             actionType === type.value
                                 ? 'bg-primary-100 text-primary-700 ring-1 ring-primary-300'
                                 : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
-                        )}
+                        }`}
                     >
                         {type.icon}
                         {type.label}
@@ -895,7 +857,7 @@ function AddNoteForm({ userId, audienceResponseId, defaultActionType, autoExpand
                         />
                     </div>
                     {!audienceResponseId && (
-                        <p className="text-caption text-warning-600">
+                        <p className="text-caption text-amber-600">
                             No campaign response linked — follow-up cannot be scheduled.
                         </p>
                     )}
@@ -928,21 +890,22 @@ function AddNoteForm({ userId, audienceResponseId, defaultActionType, autoExpand
                     {isFollowUp ? 'Schedule time is required' : 'Ctrl+Enter to submit'}
                 </span>
                 <div className="flex items-center gap-2">
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-3 text-xs text-neutral-500"
                         onClick={resetForm}
                     >
                         Cancel
-                    </MyButton>
-                    <MyButton
-                        buttonType="primary"
-                        scale="small"
+                    </Button>
+                    <Button
+                        size="sm"
+                        className="h-7 bg-primary-500 px-3 text-xs text-white hover:bg-primary-600"
                         onClick={handleSubmit}
                         disabled={isPending || !canSubmit}
                     >
                         {isPending ? 'Saving…' : isFollowUp ? 'Schedule Follow-up' : 'Add Note'}
-                    </MyButton>
+                    </Button>
                 </div>
             </div>
         </div>
@@ -960,17 +923,20 @@ function AudienceListSection({ userId }: { userId: string }) {
     });
 
     if (isLoading) {
-        return <div className="h-20 animate-pulse rounded-lg bg-neutral-100" />;
+        return <div className="h-20 animate-pulse rounded-xl bg-neutral-100" />;
     }
 
     if (!audiences || audiences.length === 0) return null;
 
     return (
-        <ProfileSectionCard icon={Megaphone} heading="Linked Campaigns" action={
-            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
-                {audiences.length}
-            </span>
-        }>
+        <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+                <div className="h-3.5 w-1 rounded-full bg-primary-500" />
+                <h4 className="text-sm font-semibold text-neutral-700">Linked Campaigns</h4>
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
+                    {audiences.length}
+                </span>
+            </div>
             <div className="flex flex-col gap-1.5">
                 {audiences.map((a) => (
                     <div
@@ -991,10 +957,7 @@ function AudienceListSection({ userId }: { userId: string }) {
                                 <LeadScoreBadge score={a.lead_score} size="sm" />
                             )}
                             <span
-                                className={cn(
-                                    'rounded-full px-2 py-0.5 text-caption font-medium',
-                                    campaignStatusChip(a.campaign_status)
-                                )}
+                                className={`rounded-full px-2 py-0.5 text-caption font-medium ${campaignStatusChip(a.campaign_status)}`}
                             >
                                 {a.campaign_status ?? '—'}
                             </span>
@@ -1002,7 +965,7 @@ function AudienceListSection({ userId }: { userId: string }) {
                     </div>
                 ))}
             </div>
-        </ProfileSectionCard>
+        </div>
     );
 }
 
@@ -1011,11 +974,9 @@ function AudienceListSection({ userId }: { userId: string }) {
 function CrossStageTimeline({
     userId,
     audienceResponseId,
-    noteFormProps,
 }: {
     userId: string;
     audienceResponseId?: string | null;
-    noteFormProps?: Pick<AddNoteFormProps, 'defaultActionType' | 'autoExpand'>;
 }) {
     const [page, setPage] = useState(0);
     const pageSize = 5;
@@ -1028,78 +989,76 @@ function CrossStageTimeline({
     });
 
     return (
-        <ProfileSectionCard
-            icon={NotePencil}
-            heading="Activity & Notes"
-            action={
-                data?.totalElements !== undefined ? (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold text-neutral-500">
+        <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+                <div className="h-3.5 w-1 rounded-full bg-primary-500" />
+                <h4 className="text-sm font-semibold text-neutral-700">Activity & Notes</h4>
+                {data?.totalElements !== undefined && (
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-neutral-500">
                         {data.totalElements}
                     </span>
-                ) : undefined
-            }
-        >
-            <div className="flex flex-col gap-3">
-                <AddNoteForm
-                    userId={userId}
-                    audienceResponseId={audienceResponseId}
-                    {...noteFormProps}
-                />
-
-                {isLoading && (
-                    <div className="flex items-center justify-center py-6">
-                        <div className="flex items-center gap-2 text-sm text-neutral-500">
-                            <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
-                            Loading activity…
-                        </div>
-                    </div>
-                )}
-
-                {data && data.content.length > 0 && (
-                    <div className="rounded-lg border border-neutral-100 bg-white p-4 shadow-sm">
-                        {data.content.map((event) => (
-                            <TimelineEventItem key={event.id} event={event} />
-                        ))}
-
-                        {data.totalPages > 1 && (
-                            <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
-                                <span className="text-caption text-neutral-400">
-                                    Page {page + 1} of {data.totalPages}
-                                </span>
-                                <div className="flex gap-1.5">
-                                    <MyButton
-                                        buttonType="secondary"
-                                        scale="small"
-                                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                                        disabled={page === 0}
-                                    >
-                                        Previous
-                                    </MyButton>
-                                    <MyButton
-                                        buttonType="secondary"
-                                        scale="small"
-                                        onClick={() =>
-                                            setPage((p) => Math.min(data.totalPages - 1, p + 1))
-                                        }
-                                        disabled={page >= data.totalPages - 1}
-                                    >
-                                        Next
-                                    </MyButton>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {data && data.content.length === 0 && (
-                    <ProfileEmpty
-                        icon={ListBullets}
-                        title="No activity yet"
-                        hint="Notes, status changes, and other events will appear here"
-                    />
                 )}
             </div>
-        </ProfileSectionCard>
+
+            <AddNoteForm userId={userId} audienceResponseId={audienceResponseId} />
+
+            {isLoading && (
+                <div className="flex items-center justify-center py-6">
+                    <div className="flex items-center gap-2 text-sm text-neutral-500">
+                        <div className="size-4 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
+                        Loading activity…
+                    </div>
+                </div>
+            )}
+
+            {data && data.content.length > 0 && (
+                <div className="rounded-xl border border-neutral-100 bg-white p-4 shadow-sm">
+                    {data.content.map((event) => (
+                        <TimelineEventItem key={event.id} event={event} />
+                    ))}
+
+                    {data.totalPages > 1 && (
+                        <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-3">
+                            <span className="text-caption text-neutral-400">
+                                Page {page + 1} of {data.totalPages}
+                            </span>
+                            <div className="flex gap-1.5">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-caption"
+                                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                                    disabled={page === 0}
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-caption"
+                                    onClick={() =>
+                                        setPage((p) => Math.min(data.totalPages - 1, p + 1))
+                                    }
+                                    disabled={page >= data.totalPages - 1}
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {data && data.content.length === 0 && (
+                <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-6 text-center">
+                    <ListBullets weight="fill" className="size-8 text-neutral-300" />
+                    <p className="text-sm font-medium text-neutral-500">No activity yet</p>
+                    <p className="text-xs text-neutral-400">
+                        Notes, status changes, and other events will appear here
+                    </p>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -1113,14 +1072,6 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
     const [showAssignCounselor, setShowAssignCounselor] = useState(false);
-    // Score Details disclosure — default to the compact view (badge + tier only).
-    // The manual override editor + score breakdown live behind a single
-    // "Show details" affordance wired into the SectionCard action slot.
-    const [showScoreDetails, setShowScoreDetails] = useState(false);
-
-    // Hero action bar — which note form action type to pre-select when user
-    // clicks one of the 3 hero action buttons. Null = no pre-selection (default collapse).
-    const [heroNoteAction, setHeroNoteAction] = useState<string | null>(null);
 
     const queryKey = ['user-lead-profile', userId, instituteId];
 
@@ -1128,7 +1079,6 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         data: profile,
         isLoading,
         isError,
-        refetch,
     } = useQuery({
         queryKey,
         queryFn: () => fetchUserLeadProfile(userId, instituteId),
@@ -1171,35 +1121,26 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         onError: () => toast.error('Failed to update lead tier'),
     });
 
-    // ── States ────────────────────────────────────────────────────────────────
-
     if (isLoading) {
-        return <ProfileSkeleton blocks={4} />;
-    }
-
-    if (isError) {
         return (
-            <div className="flex flex-col gap-4">
-                <ProfileError
-                    title="Couldn't load lead profile"
-                    hint="Something went wrong. Please try again."
-                    onRetry={() => refetch()}
-                />
-                {/* Still show audience list and note form even on error */}
-                <AudienceListSection userId={userId} />
-                <AddNoteForm userId={userId} audienceResponseId={null} />
+            <div className="flex flex-col gap-3 p-2">
+                {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-14 animate-pulse rounded-xl bg-neutral-100" />
+                ))}
             </div>
         );
     }
 
-    if (!profile) {
+    if (isError || !profile) {
         return (
-            <div className="flex flex-col gap-4">
-                <ProfileEmpty
-                    icon={ChartBar}
-                    title="No lead profile yet"
-                    hint="A profile will appear once this user submits an enquiry or is scored."
-                />
+            <div className="flex flex-col gap-6">
+                <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-neutral-200 bg-neutral-50/50 py-10 text-center">
+                    <ChartBar weight="fill" className="size-10 text-neutral-300" />
+                    <p className="text-sm font-medium text-neutral-500">No lead profile yet</p>
+                    <p className="text-xs text-neutral-400">
+                        A profile will appear once this user submits an enquiry or is scored.
+                    </p>
+                </div>
                 {/* Still show audience list and note form even without a lead profile */}
                 <AudienceListSection userId={userId} />
                 <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
@@ -1207,332 +1148,221 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         );
     }
 
-    const { label: sLabel, className: sClass } = statusPill(profile.conversion_status);
+    const { label: sLabel, className: sClass } = statusLabel(profile.conversion_status);
     const isConverted = profile.conversion_status === 'CONVERTED';
-    // Hero tone is hard-coded to warning per design handoff — the score itself
-    // and the tier pill carry the heat signal; the hero card frames the whole
-    // lead-interest summary with a consistent attention-tone surface.
-    // (Was `heroTone(profile)` — kept the helper for the badge-color logic.)
-    const tone: 'warning' = 'warning';
-    const nextBestAction = deriveNextBestAction(profile);
-
-    // Tier pill tokens
-    const tierPillActive = {
-        HOT: 'bg-danger-100 text-danger-700 ring-1 ring-danger-300',
-        WARM: 'bg-warning-100 text-warning-700 ring-1 ring-warning-300',
-        COLD: 'bg-info-100 text-info-700 ring-1 ring-info-300',
-    } as const;
-    const tierPillHover = {
-        HOT: 'bg-neutral-50 text-neutral-500 hover:bg-danger-50',
-        WARM: 'bg-neutral-50 text-neutral-500 hover:bg-warning-50',
-        COLD: 'bg-neutral-50 text-neutral-500 hover:bg-info-50',
-    } as const;
-
-    // Active tier label (may be null if not yet set — infer from score).
-    const activeTier =
-        profile.lead_tier ??
-        (profile.best_score >= 80 ? 'HOT' : profile.best_score >= 50 ? 'WARM' : 'COLD');
 
     return (
-        <div className="flex flex-col gap-4">
-
-            {/* ── Hero ── */}
-            <ProfileHero
-                eyebrow="LEAD INTEREST"
-                icon={Crosshair}
-                tone={tone}
-                title={
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold tabular-nums text-neutral-900">
-                            {profile.best_score} / 100
-                        </span>
-                        <span
-                            className={cn(
-                                'rounded-full px-2 py-0.5 text-xs font-semibold',
-                                activeTier === 'HOT'
-                                    ? 'bg-danger-100 text-danger-700'
-                                    : activeTier === 'WARM'
-                                      ? 'bg-warning-100 text-warning-700'
-                                      : 'bg-info-100 text-info-700'
-                            )}
-                        >
-                            {activeTier}
-                        </span>
-                        <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', sClass)}>
-                            {sLabel}
-                        </span>
-                    </div>
-                }
-                subtitle={nextBestAction}
-                action={
-                    profile.last_calculated_at ? (
-                        <span className="text-xs text-neutral-400" title={new Date(profile.last_calculated_at).toLocaleString()}>
-                            Scored {format(new Date(profile.last_calculated_at), 'MMM d')}
-                        </span>
-                    ) : undefined
-                }
-            >
-                {/* Score bar — data-driven width; cannot be expressed as a static token */}
-                <ProfileMiniBar value={profile.best_score} label={`${profile.best_score} / 100`} />
-            </ProfileHero>
-
-            {/* ── Action bar ── */}
-            <ProfileActionBar>
-                <MyButton
-                    buttonType="primary"
-                    scale="small"
-                    onClick={() => {
-                        setHeroNoteAction('NOTE');
-                        // Scroll to the activity section after a tick
-                        setTimeout(() => {
-                            document.getElementById('lead-activity-section')?.scrollIntoView({ behavior: 'smooth' });
-                        }, 50);
-                    }}
-                >
-                    <NotePencil className="size-4" weight="fill" />
-                    Add Note
-                </MyButton>
-                <MyButton
-                    buttonType="secondary"
-                    scale="small"
-                    onClick={() => {
-                        setHeroNoteAction('FOLLOW_UP');
-                        setTimeout(() => {
-                            document.getElementById('lead-activity-section')?.scrollIntoView({ behavior: 'smooth' });
-                        }, 50);
-                    }}
-                >
-                    <CalendarCheck className="size-4" weight="fill" />
-                    Schedule Follow-up
-                </MyButton>
-                <MyButton
-                    buttonType="text"
-                    scale="small"
-                    onClick={() => setShowAssignCounselor(true)}
-                >
-                    <User className="size-4" weight="fill" />
-                    Assign Counsellor
-                </MyButton>
-            </ProfileActionBar>
-
-            {/* ── 4-stat grid (always rendered per handoff — zero values still
-                read as data; primary/neutral tone tells you which dimension is
-                empty without hiding the slot). ── */}
-            <div className="grid grid-cols-2 gap-2">
-                <ProfileHeroStat
-                    label="Campaigns"
-                    value={profile.campaign_count}
-                    icon={Megaphone}
-                    tone={profile.campaign_count > 0 ? 'primary' : 'neutral'}
-                />
-                <ProfileHeroStat
-                    label="Timeline Events"
-                    value={profile.total_timeline_events}
-                    icon={Lightning}
-                    tone={profile.total_timeline_events > 0 ? 'primary' : 'neutral'}
-                />
-                <ProfileHeroStat
-                    label="Demo Attendance"
-                    value={profile.demo_attendance_count}
-                    icon={CalendarCheck}
-                    tone={profile.demo_attendance_count > 0 ? 'primary' : 'neutral'}
-                />
-                <ProfileHeroStat
-                    label="Best Source"
-                    value={sourceLabel(profile.best_source_type)}
-                    icon={Fire}
-                    tone={profile.best_source_type ? 'primary' : 'neutral'}
-                />
-            </div>
-
-            {/* ── Key Dates + Lead Status side-by-side (handoff layout) ───
-                Per design handoff: Key Dates lives next to Lead Status in a
-                2-col grid so the at-a-glance view shows lifecycle dates and
-                pipeline stage together. Last Activity moved out — the hero
-                already surfaces "Scored {date}" and the Activity timeline
-                covers recent touch points. */}
-            <div className="grid gap-3 md:grid-cols-2">
-                <ProfileSectionCard heading="Key Dates">
-                    <dl className="divide-y divide-neutral-100">
-                        <ProfileFieldRow label="Lead Since" value={formatDate(profile.created_at)} />
-                        {isConverted && (
-                            <ProfileFieldRow
-                                label="Converted On"
-                                value={
-                                    <span className="text-success-700">
-                                        {formatDate(profile.converted_at)}
-                                    </span>
-                                }
-                            />
-                        )}
-                        <ProfileFieldRow label="Score Updated" value={formatDate(profile.last_calculated_at)} />
-                    </dl>
-                </ProfileSectionCard>
-
-                <ProfileSectionCard heading="Lead Status & Tier">
-                    <div className="flex flex-col gap-3">
-                        <div>
-                            <div className="mb-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                                Status
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {leadStatuses.map((s) => {
-                                    const active = profile.conversion_status === s.status_key;
-                                    return (
-                                        <button
-                                            key={s.id}
-                                            onClick={() => changeStatus(s.status_key)}
-                                            disabled={changingStatus}
-                                            className={cn(
-                                                'rounded-md px-3 py-1 text-xs font-medium transition-all',
-                                                !active && 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
-                                            )}
-                                            // Inline style: status colour is an admin-picked hex (active state only).
-                                            style={
-                                                active
-                                                    ? {
-                                                          backgroundColor: `${s.color}1A`,
-                                                          color: s.color,
-                                                          boxShadow: `inset 0 0 0 1px ${s.color}55`,
-                                                      }
-                                                    : undefined
-                                            }
-                                        >
-                                            {s.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="mb-1.5 text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                                Tier
-                            </div>
-                            <div className="flex gap-1.5">
-                                {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
-                                    const isActive =
-                                        profile.lead_tier === tier ||
-                                        (!profile.lead_tier &&
-                                            ((tier === 'HOT' && profile.best_score >= 80) ||
-                                                (tier === 'WARM' &&
-                                                    profile.best_score >= 50 &&
-                                                    profile.best_score < 80) ||
-                                                (tier === 'COLD' && profile.best_score < 50)));
-                                    return (
-                                        <button
-                                            key={tier}
-                                            onClick={() => changeTier(tier)}
-                                            disabled={changingTier}
-                                            className={cn(
-                                                'rounded-md px-3 py-1 text-xs font-medium transition-all',
-                                                isActive ? tierPillActive[tier] : tierPillHover[tier]
-                                            )}
-                                        >
-                                            {tier}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                        {isConverted && (
-                            <p className="text-caption text-success-600">
-                                Score updates are frozen while converted.
-                            </p>
-                        )}
-                    </div>
-                </ProfileSectionCard>
-            </div>
-
-            {/* ── Score Details + Assigned Counselor side-by-side ───
-                Per design handoff: these two cards sit BELOW the Key Dates +
-                Lead Status grid in their own 2-col row. Score Details defaults
-                to a compact view (badge + tier) with the manual override
-                editor and breakdown hidden behind a single card-level
-                "Show details" disclosure (wired into the action slot).
-                Assigned Counselor wires its Reassign control into the
-                SectionCard action slot so the body holds only the avatar +
-                name + role stack. items-stretch + h-full keep the card
-                frames equalised when their bodies have different heights. */}
-            <div className="grid items-stretch gap-3 md:grid-cols-2">
-                <ProfileSectionCard
-                    icon={ChartBar}
-                    heading="Score Details"
-                    className="h-full"
-                    action={
-                        profile.best_score_response_id ? (
-                            <MyButton
-                                buttonType="text"
-                                scale="small"
-                                className="!min-w-0"
-                                onClick={() => setShowScoreDetails((v) => !v)}
-                            >
-                                {showScoreDetails ? 'Hide details' : 'Show details'}
-                            </MyButton>
-                        ) : undefined
-                    }
-                >
-                    <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-5">
+            {/* ── Score + Tier control ── */}
+            <div className="rounded-xl border border-neutral-100 bg-gradient-to-r from-neutral-50 to-white p-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="mb-1 text-xs text-muted-foreground">Lead Interest Score</p>
                         <LeadScoreBadge
                             score={profile.best_score}
                             tier={profile.lead_tier}
                             size="md"
                         />
-                        {profile.best_score_response_id && showScoreDetails && (
-                            <div className="flex flex-col gap-3">
-                                <ManualScoreEditor
-                                    responseId={profile.best_score_response_id}
-                                />
-                                <ScoreBreakdownPanel
-                                    responseId={profile.best_score_response_id}
-                                    hideToggle
-                                />
-                            </div>
+                        {profile.last_calculated_at && (
+                            <p
+                                className="mt-1 text-caption text-neutral-400"
+                                title={new Date(profile.last_calculated_at).toLocaleString()}
+                            >
+                                Last calculated{' '}
+                                {format(new Date(profile.last_calculated_at), 'MMM d, h:mm a')}
+                            </p>
+                        )}
+                        {profile.best_score_response_id && (
+                            <>
+                                <ManualScoreEditor responseId={profile.best_score_response_id} />
+                                <ScoreBreakdownPanel responseId={profile.best_score_response_id} />
+                            </>
                         )}
                     </div>
-                </ProfileSectionCard>
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${sClass}`}>
+                        {sLabel}
+                    </span>
+                </div>
+                <div className="mt-3 border-t border-neutral-100 pt-3">
+                    <p className="mb-1.5 text-xs text-muted-foreground">Set Tier</p>
+                    <div className="flex gap-1.5">
+                        {(['HOT', 'WARM', 'COLD'] as const).map((tier) => {
+                            const isActive =
+                                profile.lead_tier === tier ||
+                                (!profile.lead_tier &&
+                                    ((tier === 'HOT' && profile.best_score >= 80) ||
+                                        (tier === 'WARM' &&
+                                            profile.best_score >= 50 &&
+                                            profile.best_score < 80) ||
+                                        (tier === 'COLD' && profile.best_score < 50)));
+                            const colors = {
+                                HOT: isActive
+                                    ? 'bg-red-100 text-red-700 ring-1 ring-red-300'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-red-50',
+                                WARM: isActive
+                                    ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-amber-50',
+                                COLD: isActive
+                                    ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300'
+                                    : 'bg-neutral-50 text-neutral-500 hover:bg-blue-50',
+                            };
+                            return (
+                                <button
+                                    key={tier}
+                                    onClick={() => changeTier(tier)}
+                                    disabled={changingTier}
+                                    className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${colors[tier]}`}
+                                >
+                                    {tier}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
 
-                <ProfileSectionCard
-                    icon={User}
-                    heading="Assigned Counselor"
-                    className="h-full"
-                    action={
-                        profile.assigned_counselor_name ? (
-                            <MyButton
-                                buttonType="text"
-                                scale="small"
-                                className="!min-w-0"
-                                onClick={() => setShowAssignCounselor(true)}
+            {/* ── Stat grid ── */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <StatCard
+                    icon={<Megaphone size={18} />}
+                    label="Campaigns"
+                    value={profile.campaign_count}
+                />
+                <StatCard
+                    icon={<Lightning size={18} />}
+                    label="Timeline Events"
+                    value={profile.total_timeline_events}
+                />
+                <StatCard
+                    icon={<CalendarCheck size={18} />}
+                    label="Demo Attendance"
+                    value={profile.demo_attendance_count}
+                />
+                <StatCard
+                    icon={<ChartBar size={18} />}
+                    label="Best Source"
+                    value={sourceLabel(profile.best_source_type)}
+                />
+            </div>
+
+            {/* ── Dates ── */}
+            <div className="space-y-2 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-sm">
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Last Activity</span>
+                    <span className="font-medium">{formatDate(profile.last_activity_at)}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Lead Since</span>
+                    <span className="font-medium">{formatDate(profile.created_at)}</span>
+                </div>
+                {isConverted && (
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Converted On</span>
+                        <span className="font-medium text-green-700">
+                            {formatDate(profile.converted_at)}
+                        </span>
+                    </div>
+                )}
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Score Updated</span>
+                    <span className="font-medium">{formatDate(profile.last_calculated_at)}</span>
+                </div>
+            </div>
+
+            {/* ── Status control ── */}
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                <p className="mb-2 text-xs text-muted-foreground">Lead Status</p>
+                {(() => {
+                    // Dropdown instead of a wall of chips — there can be dozens of
+                    // statuses. Selecting one updates the lead status immediately.
+                    const current = leadStatuses.find(
+                        (s) => s.status_key === profile.conversion_status
+                    );
+                    return (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    disabled={changingStatus}
+                                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        {current && (
+                                            <span
+                                                className="size-2 shrink-0 rounded-full"
+                                                // Status colour is arbitrary user-picked hex.
+                                                style={{ backgroundColor: current.color }}
+                                            />
+                                        )}
+                                        <span className="truncate">
+                                            {current?.label ?? 'Select status'}
+                                        </span>
+                                    </span>
+                                    <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="start"
+                                className="max-h-72 w-64 overflow-y-auto"
                             >
-                                Reassign
-                            </MyButton>
-                        ) : undefined
-                    }
-                >
-                    {profile.assigned_counselor_name ? (
-                        <div className="flex items-center gap-2.5">
-                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-body font-semibold text-primary-700">
+                                <DropdownMenuRadioGroup
+                                    value={profile.conversion_status ?? ''}
+                                    onValueChange={(v) => changeStatus(v)}
+                                >
+                                    {leadStatuses.map((s) => (
+                                        <DropdownMenuRadioItem
+                                            key={s.id}
+                                            value={s.status_key}
+                                            className="gap-2"
+                                        >
+                                            <span
+                                                className="size-2 shrink-0 rounded-full"
+                                                // Status colour is arbitrary user-picked hex.
+                                                style={{ backgroundColor: s.color }}
+                                            />
+                                            {s.label}
+                                        </DropdownMenuRadioItem>
+                                    ))}
+                                </DropdownMenuRadioGroup>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    );
+                })()}
+                {isConverted && (
+                    <p className="mt-2 text-caption text-green-600">
+                        Score updates are frozen while converted.
+                    </p>
+                )}
+            </div>
+
+            {/* ── Assigned Counselor ── */}
+            <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
+                <p className="mb-1.5 text-xs text-muted-foreground">Assigned Counselor</p>
+                {profile.assigned_counselor_name ? (
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="flex size-7 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700">
                                 {profile.assigned_counselor_name[0]?.toUpperCase()}
                             </div>
-                            <div className="flex min-w-0 flex-col">
-                                <span className="truncate text-body font-medium text-card-foreground">
-                                    {profile.assigned_counselor_name}
-                                </span>
-                                <span className="text-caption text-muted-foreground">
-                                    Counsellor
-                                </span>
-                            </div>
+                            <span className="text-sm font-medium text-neutral-800">
+                                {profile.assigned_counselor_name}
+                            </span>
                         </div>
-                    ) : (
                         <button
-                            type="button"
                             onClick={() => setShowAssignCounselor(true)}
-                            className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-border py-2 text-caption text-muted-foreground transition-colors hover:border-primary-300 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                            className="text-caption text-neutral-400 hover:text-primary-600"
                         >
-                            <Plus className="size-3.5" />
-                            Assign a Counselor
+                            Reassign
                         </button>
-                    )}
-                </ProfileSectionCard>
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => setShowAssignCounselor(true)}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-neutral-200 py-2 text-xs text-neutral-500 hover:border-primary-300 hover:text-primary-600"
+                    >
+                        + Assign a Counselor
+                    </button>
+                )}
             </div>
 
             {showAssignCounselor && (
@@ -1553,18 +1383,8 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 <FollowUpsWidget audienceResponseId={effectiveResponseId} userId={userId} />
             )}
 
-            {/* ── Activity & Notes ── */}
-            <div id="lead-activity-section">
-                <CrossStageTimeline
-                    userId={userId}
-                    audienceResponseId={profile?.best_score_response_id}
-                    noteFormProps={
-                        heroNoteAction
-                            ? { defaultActionType: heroNoteAction, autoExpand: true }
-                            : undefined
-                    }
-                />
-            </div>
+            {/* ── Add Note / Log Activity ── */}
+            <AddNoteForm userId={userId} audienceResponseId={effectiveResponseId} />
 
             {/* ── Lead Journey Timeline ── */}
             <LeadJourneyTimeline userId={userId} responseId={effectiveResponseId} />

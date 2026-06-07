@@ -334,14 +334,14 @@ export function ChipToggleGroup<V extends string = string>({
                         disabled={disabled}
                         aria-pressed={active}
                         className={cn(
-                            'inline-flex items-center gap-1 rounded-full border px-3 py-1 text-caption font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
+                            'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-2xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400',
                             active
                                 ? 'border-primary-500 bg-primary-500 text-neutral-50'
                                 : 'border-border bg-card text-muted-foreground hover:border-primary-300 hover:text-primary-600',
                             disabled && 'cursor-not-allowed opacity-50'
                         )}
                     >
-                        {Icon && <Icon className="size-3" />}
+                        {Icon && <Icon className="size-2.5" />}
                         {opt.label}
                     </button>
                 );

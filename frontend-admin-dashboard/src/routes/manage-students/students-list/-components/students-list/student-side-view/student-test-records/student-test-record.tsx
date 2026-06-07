@@ -313,11 +313,11 @@ export const StudentTestRecord = ({
                 }
                 title={
                     attemptedCount > 0 ? (
-                        <span className="text-h2 font-semibold leading-none text-card-foreground">
+                        <span className="text-subtitle font-semibold leading-none text-card-foreground">
                             {avgScore.toFixed(1)} avg score
                         </span>
                     ) : (
-                        <span className="text-h3 font-semibold leading-none text-muted-foreground">
+                        <span className="text-body font-semibold leading-none text-muted-foreground">
                             No attempts yet
                         </span>
                     )

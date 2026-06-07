@@ -46,20 +46,20 @@ export const ProfileSectionCard = ({
 }) => (
     <section
         className={cn(
-            'rounded-lg border border-border bg-card p-3 shadow-sm',
+            'rounded-lg border border-border bg-card p-2.5 shadow-sm',
             className
         )}
     >
         {(heading || action) && (
-            <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2.5">
+            <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1.5">
                     {Icon && (
-                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
-                            <Icon className="size-4" weight="duotone" />
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+                            <Icon className="size-3.5" weight="duotone" />
                         </span>
                     )}
                     {heading && (
-                        <h3 className="truncate text-subtitle font-semibold text-card-foreground">
+                        <h3 className="truncate text-caption font-semibold text-card-foreground">
                             {heading}
                         </h3>
                     )}
@@ -84,14 +84,20 @@ export const ProfileFieldRow = ({
     copied?: boolean;
     onCopy?: () => void;
 }) => {
+    // A value counts as "empty" — rendered as an em-dash with NO copy icon — when
+    // it's nullish or a blank/placeholder string (whitespace, N/A, null, a dash).
+    // Non-string nodes (badges, links) are always treated as present.
     const isEmpty =
-        value === null || value === undefined || value === '' || value === 'N/A';
+        value === null ||
+        value === undefined ||
+        (typeof value === 'string' &&
+            ['', 'n/a', 'null', 'undefined', '-', '—'].includes(value.trim().toLowerCase()));
     return (
-        <div className="group flex items-center justify-between gap-3 rounded-md py-1.5 transition-colors hover:bg-muted/40">
-            <dt className="shrink-0 text-caption text-muted-foreground">{label}</dt>
+        <div className="group flex items-center justify-between gap-3 rounded-md py-1 transition-colors hover:bg-muted/40">
+            <dt className="shrink-0 text-2xs text-muted-foreground">{label}</dt>
             <dd
                 className={cn(
-                    'flex min-w-0 items-center justify-end gap-1.5 text-right text-body',
+                    'flex min-w-0 items-center justify-end gap-1.5 text-right text-2xs font-medium',
                     isEmpty ? 'text-muted-foreground' : 'text-card-foreground'
                 )}
             >
@@ -319,39 +325,39 @@ export const ProfileHero = ({
 }) => (
     <section
         className={cn(
-            'overflow-hidden rounded-lg border border-border bg-card p-5 shadow-sm',
+            'overflow-hidden rounded-lg border border-border bg-card p-3 shadow-sm',
             className
         )}
     >
         <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
                 {Icon && (
                     <span
                         className={cn(
-                            'flex size-10 shrink-0 items-center justify-center rounded-lg',
+                            'flex size-6 shrink-0 items-center justify-center rounded-md',
                             TONE_BG[tone],
                             TONE_TEXT[tone]
                         )}
                     >
-                        <Icon className="size-5" weight="duotone" />
+                        <Icon className="size-3.5" weight="duotone" />
                     </span>
                 )}
                 <div className="min-w-0 flex-1">
                     {eyebrow && (
                         <span
                             className={cn(
-                                'text-caption font-semibold',
+                                'text-2xs font-semibold',
                                 TONE_TEXT[tone]
                             )}
                         >
                             {eyebrow}
                         </span>
                     )}
-                    <div className="text-h3 font-semibold leading-tight text-card-foreground">
+                    <div className="text-body font-semibold leading-tight text-card-foreground">
                         {title}
                     </div>
                     {subtitle && (
-                        <div className="mt-0.5 text-caption text-muted-foreground">
+                        <div className="mt-0.5 text-2xs text-muted-foreground">
                             {subtitle}
                         </div>
                     )}
@@ -359,7 +365,7 @@ export const ProfileHero = ({
             </div>
             {action && <div className="shrink-0">{action}</div>}
         </div>
-        {children && <div className="mt-4">{children}</div>}
+        {children && <div className="mt-3">{children}</div>}
     </section>
 );
 
@@ -623,20 +629,21 @@ export const ProfileTimeline = ({
                             />
                         </span>
                         <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium text-neutral-800">
-                                    {it.title}
-                                </div>
-                                {it.body && (
-                                    <div className="mt-0.5 text-xs text-neutral-500">
-                                        {it.body}
-                                    </div>
-                                )}
+                            {/* truncate so a long title (e.g. an email subject) is
+                                clipped to one line instead of overflowing on top of
+                                the meta/timestamp on the right. */}
+                            <div className="min-w-0 flex-1 truncate text-sm font-medium text-neutral-800">
+                                {it.title}
                             </div>
                             {it.meta && (
                                 <div className="shrink-0 text-xs text-neutral-400">{it.meta}</div>
                             )}
                         </div>
+                        {/* Body sits BELOW the title+meta row so it spans the full
+                            width — the meta no longer reserves space beside it. */}
+                        {it.body && (
+                            <div className="mt-1.5 text-xs text-neutral-500">{it.body}</div>
+                        )}
                     </li>
                 );
             })}

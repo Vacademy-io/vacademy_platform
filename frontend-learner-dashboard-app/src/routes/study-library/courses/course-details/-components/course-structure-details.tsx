@@ -2477,7 +2477,7 @@ export const CourseStructureDetails = ({
                   </div>
                   <div className="flex flex-col gap-1 p-3 flex-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
@@ -2538,7 +2538,7 @@ export const CourseStructureDetails = ({
                   </div>
                   <div className="flex flex-col gap-1 p-3 flex-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
                       title={toTitleCase(m.module.module_name)}
                     >
                       {toTitleCase(m.module.module_name)}
@@ -2621,7 +2621,7 @@ export const CourseStructureDetails = ({
                         </div>
                         <div className="flex flex-col gap-1 p-3 flex-1">
                           <h3
-                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
                             title={toTitleCase(ch.chapter_name)}
                           >
                             {toTitleCase(ch.chapter_name)}

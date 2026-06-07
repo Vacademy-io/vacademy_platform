@@ -529,7 +529,7 @@ function RouteComponent() {
           )}
         </div>
 
-        {selectedTab === 'orgChart' && orgChartTabVisible ? (
+        {selectedTab === 'orgChart' && orgChartTabVisible && instituteId ? (
           <OrgChartTab instituteId={instituteId} />
         ) : (
         <>

@@ -57,6 +57,17 @@ public class OrganizationTeamController {
         return ResponseEntity.ok(client.getChart(instituteId));
     }
 
+    /**
+     * Nested tree with each node's ACTIVE members embedded. Single round-trip
+     * to auth_service; the "Tree view" mode in the org-chart UI uses this so
+     * the whole org renders without N+1 member fetches.
+     */
+    @GetMapping("/chart-with-members")
+    public ResponseEntity<List<OrgTeamNodeDTO>> getChartWithMembers(
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(client.getChartWithMembers(instituteId));
+    }
+
     @GetMapping("/{teamId}/ancestors")
     public ResponseEntity<List<OrgTeamDTO>> getAncestors(@PathVariable String teamId) {
         return ResponseEntity.ok(client.getAncestors(teamId));

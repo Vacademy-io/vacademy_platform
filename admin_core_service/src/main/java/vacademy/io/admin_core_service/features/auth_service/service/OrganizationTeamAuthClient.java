@@ -70,6 +70,11 @@ public class OrganizationTeamAuthClient {
         return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
     }
 
+    public List<OrgTeamNodeDTO> getChartWithMembers(String instituteId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_CHART_WITH_MEMBERS + "?instituteId=" + instituteId;
+        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
+    }
+
     public List<OrgTeamDTO> getAncestors(String teamId) {
         String endpoint = AuthServiceRoutes.ORG_TEAM_ANCESTORS.replace("{teamId}", teamId);
         return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});

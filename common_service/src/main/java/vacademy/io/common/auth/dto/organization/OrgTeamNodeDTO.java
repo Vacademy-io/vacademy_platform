@@ -30,4 +30,11 @@ public class OrgTeamNodeDTO {
 
     @Builder.Default
     private List<OrgTeamNodeDTO> children = new ArrayList<>();
+
+    /**
+     * Members of this team. Populated only by /chart-with-members; the plain
+     * /chart endpoint leaves this null so existing callers see no payload
+     * difference. Used by the org-chart "Tree view" mode in the UI.
+     */
+    private List<TeamMemberDTO> members;
 }

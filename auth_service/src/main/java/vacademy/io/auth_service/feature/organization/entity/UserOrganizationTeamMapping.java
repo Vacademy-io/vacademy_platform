@@ -58,6 +58,13 @@ public class UserOrganizationTeamMapping {
     @Column(name = "updated_at")
     private Timestamp updatedAt;
 
+    /** Stamp updated_at on insert too — column is NOT NULL in V12 and
+     *  Hibernate sends every mapped field, so DEFAULT NOW() never fires. */
+    @PrePersist
+    protected void onCreate() {
+        if (updatedAt == null) updatedAt = new Timestamp(System.currentTimeMillis());
+    }
+
     @PreUpdate
     protected void onUpdate() {
         updatedAt = new Timestamp(System.currentTimeMillis());

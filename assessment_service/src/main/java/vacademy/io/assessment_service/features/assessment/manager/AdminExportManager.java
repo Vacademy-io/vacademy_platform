@@ -21,11 +21,13 @@ import vacademy.io.assessment_service.features.assessment.dto.export.MarkRankExp
 import vacademy.io.assessment_service.features.assessment.dto.export.ParticipantsDetailExportDto;
 import vacademy.io.assessment_service.features.assessment.dto.export.RespondentExportDto;
 import vacademy.io.assessment_service.features.assessment.entity.Assessment;
+import vacademy.io.assessment_service.features.assessment.entity.Section;
 import vacademy.io.assessment_service.features.assessment.enums.AssessmentVisibility;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationFilterEnum;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentUserRegistrationRepository;
+import vacademy.io.assessment_service.features.assessment.repository.SectionRepository;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.assessment.service.HtmlBuilderService;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -33,7 +35,10 @@ import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.TimeZone;
 
 @Component
 public class AdminExportManager {
@@ -52,6 +57,9 @@ public class AdminExportManager {
 
     @Autowired
     AssessmentRepository assessmentRepository;
+
+    @Autowired
+    SectionRepository sectionRepository;
 
     public static String convertToReadableTime(Long timeInSeconds) {
         if (Objects.isNull(timeInSeconds) || timeInSeconds < 0) {
@@ -139,8 +147,14 @@ public class AdminExportManager {
     public ResponseEntity<byte[]> getRegisteredCsvExport(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
+        // Empty registration_source means "all sources" — used by the result
+        // export feature to get every participant regardless of how they enrolled.
+        if (filter.getRegistrationSource() == null || filter.getRegistrationSource().isEmpty()) {
+            return handleCaseForAllSourcesResultExport(instituteId, assessmentId);
+        }
+
         // Determine whether to fetch participants for an open or closed assessment
-        if (filter.getAssessmentType().equals(AssessmentVisibility.PUBLIC.name())) {
+        if (AssessmentVisibility.PUBLIC.name().equals(filter.getAssessmentType())) {
             return handleCaseForPublicAssessment(instituteId, assessmentId, filter);
         } else {
             return handleCaseForPrivateAssessment(instituteId, assessmentId, filter);
@@ -181,11 +195,11 @@ public class AdminExportManager {
         Pageable pageable = null;
 
         //Handle Case for BATCH REGISTRATION
-        if (filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())) {
+        if (UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name().equals(filter.getRegistrationSource())) {
             participantsDetailsDtos = handleCaseForBatchRegistration(assessmentId, instituteId, filter);
         }
         //Handle Case for ADMIN PRE REGISTRATION
-        else if (filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())) {
+        else if (UserRegistrationSources.ADMIN_PRE_REGISTRATION.name().equals(filter.getRegistrationSource())) {
             participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter);
         } else throw new VacademyException("Invalid Source Request");
 
@@ -193,16 +207,100 @@ public class AdminExportManager {
     }
 
     private List<ParticipantsDetailExportDto> createExportDtoFromParticipantsDto(List<ParticipantsDetailsDto> participantsDetailsDtos) {
+        return createExportDtoFromParticipantsDtoWithTotalMarks(participantsDetailsDtos, null);
+    }
+
+    private List<ParticipantsDetailExportDto> createExportDtoFromParticipantsDtoWithTotalMarks(
+            List<ParticipantsDetailsDto> participantsDetailsDtos, Double totalMarks) {
         List<ParticipantsDetailExportDto> response = new ArrayList<>();
-        participantsDetailsDtos.forEach(participantsDetailsDto -> {
+        // Results arrive sorted by score DESC (ORDER BY in query), so index+1 = rank.
+        for (int i = 0; i < participantsDetailsDtos.size(); i++) {
+            ParticipantsDetailsDto dto = participantsDetailsDtos.get(i);
+            Double obtained = dto.getScore();
+            String pct = (totalMarks != null && totalMarks > 0 && obtained != null)
+                    ? String.format("%.2f%%", (obtained / totalMarks) * 100)
+                    : "";
+            String durationFormatted = dto.getDuration() != null
+                    ? convertToReadableTime(dto.getDuration())
+                    : "";
             response.add(ParticipantsDetailExportDto.builder()
-                    .attemptDate(participantsDetailsDto.getAttemptDate())
-                    .duration(participantsDetailsDto.getDuration())
-                    .endTime(participantsDetailsDto.getEndTime())
-                    .score(participantsDetailsDto.getScore())
-                    .studentName(participantsDetailsDto.getStudentName()).build());
-        });
+                    .name(dto.getStudentName())
+                    .email(dto.getUserEmail() != null ? dto.getUserEmail() : "")
+                    .marksObtained(obtained)
+                    .totalMarks(totalMarks)
+                    .percentage(pct)
+                    .rank(i + 1)
+                    .duration(durationFormatted)
+                    .attemptDate(dto.getAttemptDate())
+                    .build());
+        }
         return response;
+    }
+
+    // Fetch ALL participants across every registration source and build an
+    // enriched result CSV: Name, Email, Marks Obtained, Total Marks, Percentage,
+    // Rank, Duration, Attempt Date (converted to IST).
+    private ResponseEntity<byte[]> handleCaseForAllSourcesResultExport(String instituteId, String assessmentId) {
+        List<ParticipantsDetailsDto> participants = assessmentUserRegistrationRepository
+                .findAllEndedParticipantsForResultExport(assessmentId, instituteId);
+
+        if (participants.isEmpty()) {
+            String emptyCsv = "Name,Email,Marks Obtained,Total Marks,Percentage,Rank,Duration,Attempt Date\n";
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"results.csv\"")
+                    .header("Content-Type", "text/plain")
+                    .body(emptyCsv.getBytes(StandardCharsets.UTF_8));
+        }
+
+        // Compute total marks from section configuration.
+        List<Section> sections = sectionRepository.findByAssessmentIdAndStatusNotIn(
+                assessmentId, List.of("DELETED"));
+        double totalMarks = sections.stream()
+                .mapToDouble(s -> s.getTotalMarks() != null ? s.getTotalMarks() : 0.0)
+                .sum();
+
+        // Date formatter — converts UTC Date to IST for display.
+        SimpleDateFormat sdf = new SimpleDateFormat("dd MMM yyyy hh:mm a");
+        sdf.setTimeZone(TimeZone.getTimeZone("Asia/Kolkata"));
+
+        StringBuilder csv = new StringBuilder();
+        csv.append("Name,Email,Marks Obtained,Total Marks,Percentage,Rank,Duration,Attempt Date\n");
+
+        // Rows arrive sorted by score DESC (ORDER BY in query) → index+1 = rank.
+        for (int i = 0; i < participants.size(); i++) {
+            ParticipantsDetailsDto p = participants.get(i);
+            Double obtained = p.getScore() != null ? p.getScore() : 0.0;
+            String pct = totalMarks > 0
+                    ? String.format("%.2f%%", (obtained / totalMarks) * 100)
+                    : "";
+            String duration = p.getDuration() != null ? convertToReadableTime(p.getDuration()) : "";
+            String attemptDate = p.getAttemptDate() != null ? sdf.format(p.getAttemptDate()) : "";
+            String email = p.getUserEmail() != null ? p.getUserEmail() : "";
+            String name = p.getStudentName() != null ? p.getStudentName() : "";
+
+            csv.append(escapeCsvField(name)).append(",")
+                    .append(escapeCsvField(email)).append(",")
+                    .append(obtained).append(",")
+                    .append(totalMarks).append(",")
+                    .append(pct).append(",")
+                    .append(i + 1).append(",")
+                    .append(escapeCsvField(duration)).append(",")
+                    .append(escapeCsvField(attemptDate)).append("\n");
+        }
+
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"results.csv\"")
+                .header("Content-Type", "text/plain")
+                .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String escapeCsvField(String value) {
+        if (value == null) return "";
+        // Wrap in quotes if the value contains comma, quote, or newline.
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 
     private List<ParticipantsDetailsDto> handleCaseForAdminPreRegistration(String assessmentId, String instituteId, AssessmentUserFilter filter) {
@@ -218,10 +316,10 @@ public class AdminExportManager {
                             filter.getRegistrationSource());
 
         } else {
-            // If no results found, search for users based on batch, attempt type, and registration source
+            // If no results found, search for users based on status, attempt type, and registration source
             ParticipantsDetailsDtos = assessmentUserRegistrationRepository
                     .findUserRegistrationWithFilterForSourceExport(
-                            assessmentId, instituteId, filter.getBatches(),
+                            assessmentId, instituteId, filter.getStatus(),
                             filter.getAttemptType(), filter.getRegistrationSource());
         }
 
@@ -242,21 +340,21 @@ public class AdminExportManager {
     }
 
     private boolean isPendingAttempt(AssessmentUserFilter filter) {
-        // Return false if the filter is null
-        if (Objects.isNull(filter)) {
+        // Return false if the filter or its attempt types are missing
+        if (Objects.isNull(filter) || Objects.isNull(filter.getAttemptType())) {
             return false;
         }
 
         // Check if the only attempt type in the filter is "PENDING"
         return filter.getAttemptType().size() == 1 &&
-                filter.getAttemptType().get(0).equals(UserRegistrationFilterEnum.PENDING.name());
+                UserRegistrationFilterEnum.PENDING.name().equals(filter.getAttemptType().get(0));
     }
 
     public ResponseEntity<InputStreamResource> getRegisteredPdfExport(CustomUserDetails user, String instituteId, String assessmentId, AssessmentUserFilter filter) {
         if (Objects.isNull(filter)) throw new VacademyException("Invalid Request");
 
         // Determine whether to fetch participants for an open or closed assessment
-        if (filter.getAssessmentType().equals(AssessmentVisibility.PUBLIC.name())) {
+        if (AssessmentVisibility.PUBLIC.name().equals(filter.getAssessmentType())) {
             return handleCaseForPublicAssessmentPdfExport(instituteId, assessmentId, filter);
         } else {
             return handleCaseForPrivateAssessmentPdfExport(instituteId, assessmentId, filter);
@@ -302,11 +400,11 @@ public class AdminExportManager {
         List<ParticipantsDetailsDto> participantsDetailsDtos = new ArrayList<>();
 
         //Handle Case for BATCH REGISTRATION
-        if (filter.getRegistrationSource().equals(UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name())) {
+        if (UserRegistrationSources.BATCH_PREVIEW_REGISTRATION.name().equals(filter.getRegistrationSource())) {
             participantsDetailsDtos = handleCaseForBatchRegistration(assessmentId, instituteId, filter);
         }
         //Handle Case for ADMIN PRE REGISTRATION
-        else if (filter.getRegistrationSource().equals(UserRegistrationSources.ADMIN_PRE_REGISTRATION.name())) {
+        else if (UserRegistrationSources.ADMIN_PRE_REGISTRATION.name().equals(filter.getRegistrationSource())) {
             participantsDetailsDtos = handleCaseForAdminPreRegistration(assessmentId, instituteId, filter);
         } else throw new VacademyException("Invalid Source Request");
 

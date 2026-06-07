@@ -120,41 +120,51 @@ const FileUploadSection = ({
                     Expected document formatting
                 </p>
                 <p className="mb-3 text-xs text-neutral-600">
-                    Your document is parsed using these fixed markers. Make sure each line in
-                    the source file follows this pattern:
+                    Each question is read from these markers, one per line. Answer, explanation and
+                    tags are optional — you can tag each question with a subject/topic.
                 </p>
                 <ul className="space-y-1.5 text-xs text-neutral-700">
                     <li className="flex gap-2">
-                        <span className="min-w-[90px] font-medium">Question:</span>
-                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                        <span className="w-24 shrink-0 font-medium">Question:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             (1.) Your question text…
                         </code>
                     </li>
                     <li className="flex gap-2">
-                        <span className="min-w-[90px] font-medium">Options:</span>
-                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                        <span className="w-24 shrink-0 font-medium">Options:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             (a.) … &nbsp;(b.) … &nbsp;(c.) … &nbsp;(d.) …
                         </code>
                     </li>
                     <li className="flex gap-2">
-                        <span className="min-w-[90px] font-medium">Answer:</span>
-                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
-                            Ans: (A)
+                        <span className="w-24 shrink-0 font-medium">Answer:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono">
+                            Ans: A
                         </code>
                         <span className="text-neutral-500">
-                            — a single letter wrapped in parentheses
+                            — the correct option&apos;s letter (Ans: (A) also works)
                         </span>
                     </li>
                     <li className="flex gap-2">
-                        <span className="min-w-[90px] font-medium">Explanation:</span>
-                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                        <span className="w-24 shrink-0 font-medium">Explanation:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono">
                             Exp: Your explanation…
                         </code>
                     </li>
+                    <li className="flex gap-2">
+                        <span className="w-24 shrink-0 font-medium">Tags:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono">
+                            Tags: Algebra, Trigonometry
+                        </code>
+                        <span className="text-neutral-500">— optional, comma-separated</span>
+                    </li>
                 </ul>
-                <p className="mt-3 text-[11px] text-neutral-500">
-                    Lines that don&apos;t match these markers will be flagged after upload so you can
-                    fix or skip them.
+                <p className="mt-3 text-xs text-neutral-500">
+                    Minor variations are also accepted — e.g.{' '}
+                    <code className="font-mono">1.)</code>,{' '}
+                    <code className="font-mono">(A)</code> options, and a singular{' '}
+                    <code className="font-mono">Tag:</code> line. Lines that don&apos;t match are
+                    flagged after upload so you can fix or skip them.
                 </p>
             </div>
 
@@ -210,7 +220,7 @@ const FileUploadSection = ({
                                                     </p>
                                                     <X
                                                         size={16}
-                                                        className={`mt-[2px] ${isProgress ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+                                                        className={`mt-0.5 ${isProgress ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
                                                         onClick={() => {
                                                             if (!isProgress) onRemoveFile();
                                                         }}
@@ -247,7 +257,7 @@ const FileUploadSection = ({
                                                     )}
                                                 </div>
                                                 {isProcessingOnServer && (
-                                                    <p className="mt-1 text-[11px] text-neutral-500">
+                                                    <p className="mt-1 text-xs text-neutral-500">
                                                         Server is parsing your document. Larger
                                                         files may take up to a minute.
                                                     </p>
@@ -382,7 +392,7 @@ const ActionButtons = ({
                         : !formValidation.isFormValidWhenUploaded
                                         }
                                         type="submit"
-                                        className="ml-[1.8rem] w-56 bg-primary-500 text-white"
+                                        className="ml-7 w-56 bg-primary-500 text-white"
                                     >
                                         Done
                                     </Button>
@@ -739,7 +749,7 @@ export const QuestionPaperUpload = ({
             <FormProvider {...form}>
                 <form
                     onSubmit={form.handleSubmit(onSubmit, onInvalid)}
-                    className="no-scrollbar max-h-[60vh] space-y-8 overflow-y-auto p-4 pt-2"
+                    className={/* design-lint-ignore: viewport-relative scroll cap, no token equivalent */ 'no-scrollbar max-h-[60vh] space-y-8 overflow-y-auto p-4 pt-2'}
                 >
                     {!isFormSubmitting ? (
                         <>

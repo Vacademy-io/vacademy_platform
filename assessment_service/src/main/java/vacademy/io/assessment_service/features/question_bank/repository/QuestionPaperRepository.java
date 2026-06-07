@@ -35,6 +35,12 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
                     "AND (:levelIds IS NULL OR iq.level_id IN (:levelIds)) " +
                     "AND (:subjectIds IS NULL OR iq.subject_id IN (:subjectIds)) " +
                     "AND (:instituteIds IS NULL OR iq.institute_id IN (:instituteIds)) " +
+                    "AND (:tagIdsCsv IS NULL OR EXISTS (" +
+                    "    SELECT 1 FROM question_question_paper_mapping qqpm " +
+                    "    JOIN entity_tags et ON et.entity_id = qqpm.question_id " +
+                    "        AND et.entity_name = 'QUESTION' AND et.tag_source = 'SUBJECT' " +
+                    "    WHERE qqpm.question_paper_id = qp.id " +
+                    "        AND et.tag_id = ANY(string_to_array(:tagIdsCsv, ',')))) " +
                     "AND (:createdByUserId IS NULL OR qp.created_by_user_id = :createdByUserId)",
             countQuery = "SELECT COUNT(qp) FROM question_paper qp " +
                     "LEFT JOIN institute_question_paper iq ON qp.id = iq.question_paper_id " +
@@ -43,6 +49,12 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
                     "AND (:levelIds IS NULL OR iq.level_id IN (:levelIds)) " +
                     "AND (:subjectIds IS NULL OR iq.subject_id IN (:subjectIds)) " +
                     "AND (:instituteIds IS NULL OR iq.institute_id IN (:instituteIds)) " +
+                    "AND (:tagIdsCsv IS NULL OR EXISTS (" +
+                    "    SELECT 1 FROM question_question_paper_mapping qqpm " +
+                    "    JOIN entity_tags et ON et.entity_id = qqpm.question_id " +
+                    "        AND et.entity_name = 'QUESTION' AND et.tag_source = 'SUBJECT' " +
+                    "    WHERE qqpm.question_paper_id = qp.id " +
+                    "        AND et.tag_id = ANY(string_to_array(:tagIdsCsv, ',')))) " +
                     "AND (:createdByUserId IS NULL OR qp.created_by_user_id = :createdByUserId)",
             nativeQuery = true
     )
@@ -53,6 +65,7 @@ public interface QuestionPaperRepository extends JpaRepository<QuestionPaper, St
             @Param("subjectIds") List<String> subjectIds,
             @Param("createdByUserId") String createdByUserId,
             @Param("instituteIds") List<String> instituteIds,
+            @Param("tagIdsCsv") String tagIdsCsv,
             Pageable pageable
     );
 

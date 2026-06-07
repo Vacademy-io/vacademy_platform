@@ -42,6 +42,7 @@ public class QuestionDTO {
     private List<String> errors = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();
     private List<String> tags;
+    private List<String> subjectTags = new ArrayList<>();
 
     public QuestionDTO(String questionNumber) {
         this.previewId = questionNumber;

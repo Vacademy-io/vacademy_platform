@@ -6,11 +6,14 @@ import { QuestionPapersSearchComponent } from './QuestionPapersSearchComponent';
 import { QuestionPapersDateRangeComponent } from './QuestionPapersDateRangeComponent';
 import { EmptyQuestionPapers } from '@/svgs';
 import { QuestionPapersList } from './QuestionPapersList';
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { FilterOption } from '@/types/assessments/question-paper-filter';
 import { MyButton } from '@/components/design-system/button';
-import { getQuestionPaperDataWithFilters } from '../-utils/question-paper-services';
+import {
+    getQuestionPaperDataWithFilters,
+    getQuestionTagsQuery,
+} from '../-utils/question-paper-services';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useRefetchStore } from '../-global-states/refetch-store';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -34,6 +37,7 @@ interface QuestionPapersTabsProps {
     currentQuestionIndex: number;
     setCurrentQuestionIndex: Dispatch<SetStateAction<number>>;
     examType?: string; // Add exam type prop
+    onManualSelectionReady?: (questions: import('@/types/assessments/question-paper-form').MyQuestion[]) => void;
 }
 
 export const QuestionPapersTabs = ({
@@ -45,6 +49,7 @@ export const QuestionPapersTabs = ({
     currentQuestionIndex,
     setCurrentQuestionIndex,
     examType,
+    onManualSelectionReady,
 }: QuestionPapersTabsProps) => {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const data = getTokenDecodedData(accessToken);
@@ -62,6 +67,12 @@ export const QuestionPapersTabs = ({
     const setHandleRefetchData = useRefetchStore((state) => state.setHandleRefetchData);
 
     const { YearClassFilterData, SubjectFilterData } = useFilterDataForAssesment(instituteDetails);
+
+    const { data: questionTags } = useQuery(getQuestionTagsQuery(INSTITUTE_ID));
+    const TagFilterData: FilterOption[] = (questionTags ?? []).map((tag) => ({
+        id: tag.tag_id,
+        name: tag.tag_name,
+    }));
 
     const getFilteredData = useMutation({
         mutationFn: ({
@@ -280,6 +291,14 @@ export const QuestionPapersTabs = ({
                         selectedItems={selectedQuestionPaperFilters['subject_ids'] || []}
                         onSelectionChange={(items) => handleFilterChange('subject_ids', items)}
                     />
+                    {TagFilterData.length > 0 && (
+                        <QuestionPapersFilter
+                            label="Tags"
+                            data={TagFilterData}
+                            selectedItems={selectedQuestionPaperFilters['tag_ids'] || []}
+                            onSelectionChange={(items) => handleFilterChange('tag_ids', items)}
+                        />
+                    )}
                     {Object.keys(selectedQuestionPaperFilters).length > 0 && (
                         <div className="flex gap-6">
                             <MyButton
@@ -342,6 +361,7 @@ export const QuestionPapersTabs = ({
                         currentQuestionIndex={currentQuestionIndex}
                         setCurrentQuestionIndex={setCurrentQuestionIndex}
                         examType={examType}
+                        onManualSelectionReady={onManualSelectionReady}
                     />
                 ) : (
                     <div className="flex h-screen flex-col items-center justify-center">

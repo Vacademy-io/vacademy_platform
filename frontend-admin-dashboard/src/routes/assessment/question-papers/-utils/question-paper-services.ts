@@ -2,6 +2,7 @@ import {
     ADD_QUESTION_PAPER,
     GET_QUESTION_PAPER_BY_ID,
     GET_QUESTION_PAPER_FILTERED_DATA,
+    GET_QUESTION_TAGS,
     MARK_QUESTION_PAPER_STATUS,
     UPDATE_QUESTION_PAPER,
 } from '@/constants/urls';
@@ -68,6 +69,34 @@ export const markQuestionPaperStatus = async (
         throw new Error(`${error}`);
     }
 };
+
+export interface QuestionTag {
+    tag_id: string;
+    tag_name: string;
+}
+
+export const getQuestionTags = async (
+    instituteId: string | undefined,
+    search?: string
+): Promise<QuestionTag[]> => {
+    try {
+        const response = await authenticatedAxiosInstance({
+            method: 'GET',
+            url: `${GET_QUESTION_TAGS}`,
+            params: { instituteId, ...(search ? { search } : {}) },
+        });
+        return response?.data ?? [];
+    } catch (error: unknown) {
+        throw new Error(`${error}`);
+    }
+};
+
+export const getQuestionTagsQuery = (instituteId: string | undefined) => ({
+    queryKey: ['GET_QUESTION_TAGS', instituteId],
+    queryFn: () => getQuestionTags(instituteId),
+    staleTime: 5 * 60 * 1000,
+    enabled: !!instituteId,
+});
 
 export const getQuestionPaperById = async (questionPaperId: string | undefined) => {
     try {

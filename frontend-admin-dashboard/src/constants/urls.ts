@@ -113,12 +113,7 @@ export const TELEPHONY_CONNECT_CALL = `${BASE_URL}/admin-core-service/v1/telepho
 export const TELEPHONY_CALL_OPTIONS = (instituteId: string, userId?: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/options?instituteId=${encodeURIComponent(instituteId)}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`;
 // userId + instituteId are both required — the backend rejects cross-institute lookups.
-export const TELEPHONY_CALLS_BY_USER = (
-    userId: string,
-    instituteId: string,
-    page = 0,
-    size = 20
-) =>
+export const TELEPHONY_CALLS_BY_USER = (userId: string, instituteId: string, page = 0, size = 20) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls?userId=${encodeURIComponent(userId)}&instituteId=${encodeURIComponent(instituteId)}&page=${page}&size=${size}`;
 export const TELEPHONY_CALL_RECORDING = (callLogId: string, instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/telephony/calls/${encodeURIComponent(callLogId)}/recording?instituteId=${encodeURIComponent(instituteId)}`;
@@ -215,7 +210,7 @@ export const FORGOT_PASSWORD = `${BASE_URL}/auth-service/v1/send-password`;
 
 export const REFRESH_TOKEN_URL = `${BASE_URL}/auth-service/v1/refresh-token`;
 
-export const UPLOAD_DOCS_FILE_URL = `${BASE_URL}/media-service/convert/doc-to-html`;
+export const UPLOAD_DOCS_FILE_URL = `${'http://localhost:8075'}/media-service/convert/doc-to-html`;
 export const CONVERT_PPT_TO_PDF_URL = `${BASE_URL}/media-service/convert/ppt-to-pdf`;
 export const SUBMIT_RATING_URL = `${BASE_URL}/admin-core-service/rating`;
 export const GET_ALL_USER_RATINGS = `${BASE_URL}/admin-core-service/rating/get-source-ratings-admin`;
@@ -277,6 +272,7 @@ export const UPDATE_INVITE_URL = `${BASE_URL}/admin-core-service/v1/enroll-invit
 export const GET_QUESTION_PAPER_FILTERED_DATA = `${BASE_URL}/assessment-service/question-paper/view/v1/get-with-filters`;
 export const MARK_QUESTION_PAPER_STATUS = `${BASE_URL}/assessment-service/question-paper/manage/v1/mark-status`;
 export const GET_QUESTION_PAPER_BY_ID = `${BASE_URL}/assessment-service/question-paper/view/v1/get-by-id`;
+export const GET_QUESTION_TAGS = `${BASE_URL}/assessment-service/question-paper/view/v1/question-tags`;
 export const ADD_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/add`;
 export const UPDATE_QUESTION_PAPER = `${BASE_URL}/assessment-service/question-paper/manage/v1/edit`;
 export const STEP1_ASSESSMENT_URL = `${BASE_URL}/assessment-service/assessment/basic/create/v1/submit`;

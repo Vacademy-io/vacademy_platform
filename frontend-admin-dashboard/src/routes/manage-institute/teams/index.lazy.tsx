@@ -27,6 +27,7 @@ import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { OrgChartTab } from './-components/OrgChartTab';
 
 export interface RoleTypeSelectedFilter {
   roles: { id: string; name: string }[];
@@ -64,7 +65,7 @@ export interface PaginatedTeamResponse {
 }
 
 // Type for tabs
-type TabKey = 'instituteUsers' | 'invites';
+type TabKey = 'instituteUsers' | 'invites' | 'orgChart';
 
 export const Route = createLazyFileRoute('/manage-institute/teams/')({
   component: RouteComponent,
@@ -100,14 +101,20 @@ function RouteComponent() {
   // Resolve the viewer's effective display settings (admin or teacher cache,
   // matching the layout-container pattern). Custom-role users fall through to
   // teacher settings, which is the same baseline used elsewhere.
-  const viewerVisibleRoles = useMemo(() => {
+  const viewerTeamManagement = useMemo(() => {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const viewerRoles = getUserRoles(accessToken);
     const isAdmin = viewerRoles.includes('ADMIN');
     const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
     const ds = getDisplaySettingsFromCache(roleKey);
-    return ds?.teamManagement?.visibleRoles ?? {};
+    return ds?.teamManagement;
   }, []);
+
+  const viewerVisibleRoles = viewerTeamManagement?.visibleRoles ?? {};
+
+  // Org Chart tab is opt-in per institute. Default false so it stays hidden
+  // until an admin explicitly flips it on under Settings → Admin Display Settings.
+  const orgChartTabVisible = viewerTeamManagement?.orgChartTabVisible === true;
 
   // All roles from the API for filters and dropdowns. Exclude STUDENT and any
   // roles the viewer's display settings have hidden — self-role is never
@@ -230,6 +237,14 @@ function RouteComponent() {
   };
 
   const handleTabChange = (value: string) => {
+    if (value === 'orgChart') {
+      // Defence in depth: if the flag is off, do not switch to the org tab
+      // even if some stale URL/router state asks for it.
+      if (!orgChartTabVisible) return;
+      setSelectedTab('orgChart');
+      // Org chart owns its own data fetching; skip the dashboard users mutation.
+      return;
+    }
     if (value === 'instituteUsers' || value === 'invites') {
       setSelectedTab(value as TabKey);
       setPage(0);
@@ -495,10 +510,29 @@ function RouteComponent() {
                 {dashboardUsers.invites?.total_elements || 0}
               </Badge>
             </TabsTrigger>
+            {orgChartTabVisible && (
+              <TabsTrigger
+                value="orgChart"
+                className={`flex gap-1.5 rounded-none px-12 py-2 !shadow-none ${selectedTab === 'orgChart'
+                  ? 'rounded-t-sm border !border-b-0 border-primary-200 !bg-primary-50'
+                  : 'border-none bg-transparent'
+                  }`}
+              >
+                <span className={`${selectedTab === 'orgChart' ? 'text-primary-500' : ''}`}>
+                  Org Chart
+                </span>
+              </TabsTrigger>
+            )}
           </TabsList>
-          <InviteUsersComponent refetchData={handleRefetchData} availableRoles={allRoles} />
+          {selectedTab !== 'orgChart' && (
+            <InviteUsersComponent refetchData={handleRefetchData} availableRoles={allRoles} />
+          )}
         </div>
 
+        {selectedTab === 'orgChart' && orgChartTabVisible ? (
+          <OrgChartTab instituteId={instituteId} />
+        ) : (
+        <>
         <div className="mb-4 flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
           <div className="flex w-[320px] items-center gap-2">
             <div className="flex-1"
@@ -691,6 +725,8 @@ function RouteComponent() {
             </div>
           )}
         </div>
+        </>
+        )}
       </Tabs>
     </LayoutContainer>
   );

@@ -3,6 +3,7 @@ import {
     ArrowsClockwise,
     CheckCircle,
     CircleNotch,
+    Copy,
     CreditCard,
     Eye,
     EyeSlash,
@@ -42,6 +43,7 @@ import {
 } from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
 import { getInstituteId } from '@/constants/helper';
+import { BACKEND_BASE_URL } from '@/config/baseUrl';
 import {
     PaymentGatewayMapping,
     PaymentVendor,
@@ -74,7 +76,16 @@ interface VendorSchema {
     description: string;
     docsUrl?: string;
     fields: VendorFieldSchema[];
+    /**
+     * Returns the webhook URL the admin must paste into the vendor's dashboard.
+     * Omit (undefined) for vendors that don't use webhooks (e.g. Eway, which polls).
+     * Stripe and Razorpay don't need the instituteId in the URL because the
+     * backend extracts it from the payload metadata.
+     */
+    webhookUrl?: (instituteId: string) => string;
 }
+
+const WEBHOOK_BASE = `${BACKEND_BASE_URL}/admin-core-service/payments/webhook/callback`;
 
 const VENDOR_SCHEMAS: VendorSchema[] = [
     {
@@ -107,6 +118,7 @@ const VENDOR_SCHEMAS: VendorSchema[] = [
                 helper: 'Optional. Used to verify incoming webhook callbacks.',
             },
         ],
+        webhookUrl: () => `${WEBHOOK_BASE}/stripe`,
     },
     {
         vendor: 'RAZORPAY',
@@ -137,6 +149,7 @@ const VENDOR_SCHEMAS: VendorSchema[] = [
                     'Set this on the Razorpay Webhooks page. Without it, payment status callbacks are rejected with 404 and async confirmation never reaches the platform.',
             },
         ],
+        webhookUrl: () => `${WEBHOOK_BASE}/razorpay`,
     },
     {
         vendor: 'PHONEPE',
@@ -168,6 +181,8 @@ const VENDOR_SCHEMAS: VendorSchema[] = [
                 placeholder: 'https://api.phonepe.com/apis/pg-sandbox',
             },
         ],
+        webhookUrl: (instituteId) =>
+            `${WEBHOOK_BASE}/phonepe?instituteId=${instituteId}`,
     },
     {
         vendor: 'CASHFREE',
@@ -193,6 +208,8 @@ const VENDOR_SCHEMAS: VendorSchema[] = [
                 required: true,
             },
         ],
+        webhookUrl: (instituteId) =>
+            `${WEBHOOK_BASE}/cashfree?instituteId=${instituteId}`,
     },
     {
         vendor: 'EWAY',
@@ -403,7 +420,7 @@ const GatewayDialog = ({
 
     return (
         <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-            <DialogContent className="max-h-screen overflow-y-auto sm:max-w-lg">
+            <DialogContent className="max-h-screen overflow-y-auto sm:max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>
                         {mode === 'create' ? 'Add payment gateway' : `Edit ${schema?.label ?? ''}`}
@@ -468,6 +485,32 @@ const GatewayDialog = ({
                                 .
                             </AlertDescription>
                         </Alert>
+                    )}
+
+                    {/* Webhook URL — paste into the vendor's webhooks page */}
+                    {schema?.webhookUrl && instituteId && (
+                        <div className="space-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <Label className="text-caption font-medium text-slate-600">
+                                    Webhook URL — paste into the {schema.label} dashboard
+                                </Label>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const url = schema.webhookUrl!(instituteId);
+                                        navigator.clipboard.writeText(url);
+                                        toast.success('Webhook URL copied');
+                                    }}
+                                    className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                                    title="Copy URL"
+                                >
+                                    <Copy className="size-4" />
+                                </button>
+                            </div>
+                            <code className="block break-all rounded border border-slate-200 bg-white px-2 py-1.5 text-caption font-mono text-slate-700">
+                                {schema.webhookUrl(instituteId)}
+                            </code>
+                        </div>
                     )}
 
                     {/* Dynamic fields */}
@@ -630,6 +673,32 @@ const MappingCard = ({ mapping, onEdit, onDelete }: MappingCardProps) => {
                         })
                     )}
                 </div>
+
+                {schema?.webhookUrl && (
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                        <div className="min-w-0 flex-1">
+                            <p className="text-caption font-medium text-slate-500">
+                                Webhook URL
+                            </p>
+                            <code className="block truncate text-caption font-mono text-slate-700">
+                                {schema.webhookUrl(mapping.institute_id)}
+                            </code>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                navigator.clipboard.writeText(
+                                    schema.webhookUrl!(mapping.institute_id)
+                                );
+                                toast.success('Webhook URL copied');
+                            }}
+                            className="shrink-0 rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                            title="Copy webhook URL"
+                        >
+                            <Copy className="size-4" />
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

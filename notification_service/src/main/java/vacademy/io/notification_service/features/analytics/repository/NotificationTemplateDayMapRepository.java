@@ -86,7 +86,7 @@ public interface NotificationTemplateDayMapRepository extends JpaRepository<Noti
         FROM notification_template_day_map ntdm
         LEFT JOIN notification_log nl
             ON ntdm.sender_business_channel_id = nl.sender_business_channel_id
-            AND nl.body = ntdm.template_identifier
+            AND LOWER(TRIM(nl.body)) = LOWER(TRIM(ntdm.template_identifier))
             AND nl.notification_type = ntdm.notification_type
             AND (COALESCE(:startDate, '') = '' OR nl.created_at >= CAST(:startDate AS TIMESTAMP))
             AND (COALESCE(:endDate, '') = '' OR nl.created_at <= CAST(:endDate AS TIMESTAMP))
@@ -155,7 +155,7 @@ public interface NotificationTemplateDayMapRepository extends JpaRepository<Noti
         FROM notification_template_day_map ntdm
         LEFT JOIN notification_log nl
             ON ntdm.sender_business_channel_id = nl.sender_business_channel_id
-            AND nl.body = ntdm.template_identifier
+            AND LOWER(TRIM(nl.body)) = LOWER(TRIM(ntdm.template_identifier))
             AND nl.notification_type = ntdm.notification_type
             AND nl.channel_id IS NOT NULL
             AND (COALESCE(:startDate, '') = '' OR nl.created_at >= CAST(:startDate AS TIMESTAMP))
@@ -188,7 +188,7 @@ public interface NotificationTemplateDayMapRepository extends JpaRepository<Noti
         FROM notification_template_day_map ntdm
         INNER JOIN notification_log nl
             ON ntdm.sender_business_channel_id = nl.sender_business_channel_id
-            AND nl.body = ntdm.template_identifier
+            AND LOWER(TRIM(nl.body)) = LOWER(TRIM(ntdm.template_identifier))
             AND nl.notification_type = ntdm.notification_type
             AND nl.channel_id IS NOT NULL
             AND (COALESCE(:startDate, '') = '' OR nl.created_at >= CAST(:startDate AS TIMESTAMP))

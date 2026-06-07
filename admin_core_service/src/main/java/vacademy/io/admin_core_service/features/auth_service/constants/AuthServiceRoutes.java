@@ -58,6 +58,7 @@ public class AuthServiceRoutes {
     public static final String ORG_TEAM_BASE = "/auth-service/internal/organization-team";
     public static final String ORG_TEAM_BY_ID = "/auth-service/internal/organization-team/{teamId}";
     public static final String ORG_TEAM_CHART = "/auth-service/internal/organization-team/chart";
+    public static final String ORG_TEAM_CHART_WITH_MEMBERS = "/auth-service/internal/organization-team/chart-with-members";
     public static final String ORG_TEAM_ANCESTORS = "/auth-service/internal/organization-team/{teamId}/ancestors";
     public static final String ORG_TEAM_DESCENDANTS = "/auth-service/internal/organization-team/{teamId}/descendants";
     public static final String ORG_TEAM_SUBTREE = "/auth-service/internal/organization-team/{teamId}/subtree";

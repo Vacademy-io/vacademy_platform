@@ -134,6 +134,36 @@ public class OrganizationTeamService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Same as {@link #getChart(String)} but each node also carries its
+     * ACTIVE members. Total cost: 2 DB reads (all teams + all mappings
+     * across the institute), regardless of tree depth — no N+1.
+     */
+    public List<OrgTeamNodeDTO> getChartWithMembers(String instituteId) {
+        List<OrgTeamNodeDTO> tree = getChart(instituteId);
+        if (tree.isEmpty()) return tree;
+        Map<String, OrgTeamNodeDTO> byId = new HashMap<>();
+        collectNodes(tree, byId);
+        if (byId.isEmpty()) return tree;
+        // Seed empty lists so the UI can tell "no members" from "not loaded".
+        byId.values().forEach(n -> n.setMembers(new ArrayList<>()));
+        var mappings = mappingRepo.findActiveByTeamIds(byId.keySet());
+        for (var m : mappings) {
+            OrgTeamNodeDTO node = byId.get(m.getTeamId());
+            if (node != null) node.getMembers().add(toMemberDTO(m));
+        }
+        return tree;
+    }
+
+    private void collectNodes(List<OrgTeamNodeDTO> nodes, Map<String, OrgTeamNodeDTO> out) {
+        for (OrgTeamNodeDTO n : nodes) {
+            out.put(n.getId(), n);
+            if (n.getChildren() != null && !n.getChildren().isEmpty()) {
+                collectNodes(n.getChildren(), out);
+            }
+        }
+    }
+
     public List<OrgTeamNodeDTO> getChart(String instituteId) {
         List<OrganizationTeam> all = teamRepo.findAllActive(instituteId);
         if (all.isEmpty()) return Collections.emptyList();

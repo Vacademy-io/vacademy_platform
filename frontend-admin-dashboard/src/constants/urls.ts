@@ -915,6 +915,8 @@ export const ORG_TEAM_BASE = `${BASE_URL}/admin-core-service/v1/organization-tea
 export const ORG_TEAM_BY_ID = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}`;
 export const ORG_TEAM_CHART = (instituteId: string) =>
     `${ORG_TEAM_BASE}/chart?instituteId=${instituteId}`;
+export const ORG_TEAM_CHART_WITH_MEMBERS = (instituteId: string) =>
+    `${ORG_TEAM_BASE}/chart-with-members?instituteId=${instituteId}`;
 export const ORG_TEAM_ANCESTORS = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}/ancestors`;
 export const ORG_TEAM_DESCENDANTS = (teamId: string, flat: boolean = true) =>
     `${ORG_TEAM_BASE}/${teamId}/descendants?flat=${flat}`;

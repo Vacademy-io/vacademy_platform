@@ -3,6 +3,7 @@ import {
     ORG_TEAM_BASE,
     ORG_TEAM_BY_ID,
     ORG_TEAM_CHART,
+    ORG_TEAM_CHART_WITH_MEMBERS,
     ORG_TEAM_MEMBERS,
     ORG_TEAM_MEMBER_BY_ID,
 } from '@/constants/urls';
@@ -18,6 +19,8 @@ export interface OrgTeamNode {
     sort_order: number;
     member_count: number;
     children: OrgTeamNode[];
+    /** Populated only by fetchOrgChartWithMembers; null on the plain chart endpoint. */
+    members?: TeamMember[] | null;
 }
 
 export interface TeamMember {
@@ -61,6 +64,17 @@ export interface UpdateMemberPayload {
 
 export async function fetchOrgChart(instituteId: string): Promise<OrgTeamNode[]> {
     const res = await authenticatedAxiosInstance.get<OrgTeamNode[]>(ORG_TEAM_CHART(instituteId));
+    return res.data;
+}
+
+/**
+ * Same nested tree as fetchOrgChart, but each node also carries its
+ * ACTIVE members. Single round-trip — backend joins teams + mappings.
+ */
+export async function fetchOrgChartWithMembers(instituteId: string): Promise<OrgTeamNode[]> {
+    const res = await authenticatedAxiosInstance.get<OrgTeamNode[]>(
+        ORG_TEAM_CHART_WITH_MEMBERS(instituteId)
+    );
     return res.data;
 }
 

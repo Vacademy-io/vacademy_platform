@@ -13,7 +13,6 @@ import vacademy.io.admin_core_service.features.domain_routing.service.DomainRout
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.white_label.dto.*;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
@@ -41,7 +40,10 @@ public class WhiteLabelService {
     private static final String ROLE_ADMIN = "ADMIN";
     private static final String ROLE_TEACHER = "TEACHER";
 
-    private static final Set<String> SYSTEM_ROLES = Set.of(ROLE_LEARNER, ROLE_ADMIN, ROLE_TEACHER);
+    // Role names are simple uppercase tokens (system roles like LEARNER/ADMIN/TEACHER
+    // and institute custom roles like MANAGE_LEAD). Used to sanity-check request tokens.
+    private static final java.util.regex.Pattern ROLE_TOKEN_PATTERN =
+            java.util.regex.Pattern.compile("[A-Z0-9_]+");
 
     @Value("${cloudflare.learner.target:learner.vacademy.io}")
     private String learnerCnameTarget;
@@ -62,7 +64,6 @@ public class WhiteLabelService {
     private final DomainRoutingAdminService domainRoutingAdminService;
     private final CloudflareService cloudflareService;
     private final UserRoleRepository userRoleRepository;
-    private final RoleRepository roleRepository;
 
     // ── Setup ─────────────────────────────────────────────────────────────────
 
@@ -86,18 +87,14 @@ public class WhiteLabelService {
             throw new VacademyException("At least one domain entry is required");
         }
 
-        // Cache of valid role names for this institute (system + custom), used to validate
-        // each token in an entry's comma-separated role list.
-        Set<String> allowedRoleNames = loadAllowedRoleNames(instituteId);
-
         // Validate domains and validate+canonicalize role strings (comma-separated lists).
         // After this loop, each entry.role is a canonical "ROLE1,ROLE2" string with
-        // unique, sorted, upper-cased tokens — each one a known system or custom role.
+        // unique, sorted, upper-cased tokens.
         for (WhiteLabelSetupRequest.DomainEntry e : entries) {
             if (!StringUtils.hasText(e.getDomain())) {
                 throw new VacademyException("Domain is required for each entry");
             }
-            e.setRole(validateAndCanonicalizeRoles(e.getRole(), allowedRoleNames));
+            e.setRole(validateAndCanonicalizeRoles(e.getRole()));
             e.setDomain(e.getDomain().trim().toLowerCase()
                     .replaceFirst("^https?://", "")
                     .replaceFirst("/.*$", ""));
@@ -352,36 +349,23 @@ public class WhiteLabelService {
     // ── Role helpers ──────────────────────────────────────────────────────────
 
     /**
-     * Loads the full set of valid role names for an institute: all system roles
-     * (roles.institute_id IS NULL) plus the institute's own custom roles
-     * (roles.institute_id = :instituteId). Uppercased for case-insensitive
-     * comparison against tokens from the request.
-     */
-    private Set<String> loadAllowedRoleNames(String instituteId) {
-        Set<String> allowed = new HashSet<>();
-        roleRepository.findAllByInstituteIdIsNull()
-                .forEach(r -> { if (r.getName() != null) allowed.add(r.getName().toUpperCase().trim()); });
-        if (StringUtils.hasText(instituteId)) {
-            roleRepository.findAllByInstituteId(instituteId)
-                    .forEach(r -> { if (r.getName() != null) allowed.add(r.getName().toUpperCase().trim()); });
-        }
-        // Always allow the hardcoded system roles as a safety net, even if the
-        // roles table is empty on a fresh deployment.
-        allowed.addAll(SYSTEM_ROLES);
-        return allowed;
-    }
-
-    /**
      * Validates a comma-separated role string and returns its canonical form:
      * tokens trimmed, uppercased, deduped, sorted alphabetically and rejoined
      * with a single comma. Sorting makes "ADMIN,MANAGE_LEAD" and
      * "MANAGE_LEAD,ADMIN" collapse to one canonical value so upserts match.
      *
-     * Throws VacademyException with a clear message if the string is empty or
-     * contains any token that isn't a known system or institute-scoped custom
-     * role.
+     * Role names are NOT validated against the `roles` table: that table lives
+     * in the auth service's database and is not reachable from
+     * admin_core_service's database. Instead we enforce a simple token format,
+     * which covers both system roles (LEARNER/ADMIN/TEACHER) and any institute
+     * custom role (e.g. MANAGE_LEAD). An unrecognized token simply produces a
+     * routing row that no user matches — harmless and editable — so we don't
+     * need an authoritative role list here.
+     *
+     * Throws VacademyException if the string is empty or contains a malformed
+     * token.
      */
-    private String validateAndCanonicalizeRoles(String roleStr, Set<String> allowedRoleNames) {
+    private String validateAndCanonicalizeRoles(String roleStr) {
         if (!StringUtils.hasText(roleStr)) {
             throw new VacademyException("Role is required for each entry");
         }
@@ -389,10 +373,9 @@ public class WhiteLabelService {
         for (String raw : roleStr.split(",")) {
             String token = raw == null ? "" : raw.trim().toUpperCase();
             if (token.isEmpty()) continue;
-            if (!allowedRoleNames.contains(token)) {
-                throw new VacademyException("Unknown role '" + token + "'. "
-                        + "Allowed system roles are LEARNER, ADMIN, TEACHER. "
-                        + "Custom roles must be created first from the Manage Custom Teams page.");
+            if (!ROLE_TOKEN_PATTERN.matcher(token).matches()) {
+                throw new VacademyException("Invalid role '" + token + "'. "
+                        + "Role names may contain only letters, digits and underscores.");
             }
             tokens.add(token);
         }

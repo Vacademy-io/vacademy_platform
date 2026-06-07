@@ -1023,7 +1023,7 @@ export const CourseStructureDetails = ({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search slides…"
+                placeholder={`Search ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}…`}
                 className="h-8 w-48"
               />
               <div className="flex items-center gap-2 text-xs text-neutral-600">
@@ -1060,7 +1060,7 @@ export const CourseStructureDetails = ({
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search slides…"
+              placeholder={`Search ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}…`}
               className="h-9 flex-1 min-w-0"
             />
             <div className="flex items-center gap-2 text-xs text-neutral-600 shrink-0">
@@ -2235,7 +2235,7 @@ export const CourseStructureDetails = ({
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                              No slides in this chapter.
+                                              No {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)} in this {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}.
                                             </div>
                                           ) : (
                                             (slidesMap[ch.id] ?? []).map(
@@ -2376,7 +2376,7 @@ export const CourseStructureDetails = ({
               setSelectedChapterId(null);
             }}
           >
-            Subjects
+            {getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects)}
           </button>
 
           {selectedSubjectId && (
@@ -2396,7 +2396,7 @@ export const CourseStructureDetails = ({
                 setSelectedChapterId(null);
               }}
             >
-              Modules
+              {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
             </button>
           )}
 
@@ -2416,7 +2416,7 @@ export const CourseStructureDetails = ({
                 setSelectedChapterId(null);
               }}
             >
-              Chapters
+              {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
             </button>
           )}
 
@@ -2426,7 +2426,7 @@ export const CourseStructureDetails = ({
 
           {selectedChapterId && (
             <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
-              Slides
+              {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
             </span>
           )}
         </div>

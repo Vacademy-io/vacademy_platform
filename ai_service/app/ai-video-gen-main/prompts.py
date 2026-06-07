@@ -280,10 +280,17 @@ Any hex code (`#XXXXXX` format like `#0D0D0D` or `#C9A84C`) that appears in the 
 
 Requirements:
 - **MATCH vocabulary and examples to the target audience's age/grade level.**
-- Tone: upbeat, authoritative, and human. More playful for younger, more professional for older.
-- **MATCH the narration length PRECISELY to the target duration above.** If user asked for 1 minute, write ~155 words. No more, no less.
-- For longer videos (5+ minutes), break into clear sections with transitions like "Now let's look at..." or "Next, we'll explore..."
-- Include a short CTA at the end encouraging viewers to apply what they learned.
+- **VOICE — match the register to the `intent` you choose below; do NOT give every video the same upbeat tone:**
+  - `ad` / `trailer`: confident, a little cocky; short punchy declaratives; build to a payoff line.
+  - `explainer`: curious and clear — an expert genuinely excited, never a textbook; lead with the surprising part.
+  - `tutorial`: calm, direct, second-person ("you"); concrete verbs, no hype.
+  - `news_recap`: measured, factual, present-tense urgency; let the facts carry the weight.
+  - `story`: hushed, sensory, present-tense; let images breathe; no sales pitch.
+  - `announcement`: warm, proud, specific; name the thing once and make it land.
+  Then adjust for audience age/grade (more playful for younger, more precise for older) WITHOUT collapsing back to a generic tone.
+- **MATCH the narration length PRECISELY to the target duration above** using the per-second word budget stated above (it is voice-specific) — not a fixed word count.
+- For longer videos (5+ minutes), break into clear sections — but VARY how you bridge them. Do NOT lean on stock connectors like "Now let's look at...", "Next, we'll explore...", or "Now that we understand X...". Bridge with a question, a contrast, or a concrete image.
+- **Closing depends on `intent`:** for `explainer` / `tutorial` / `announcement`, end with a short, earned CTA; for `ad` build to a payoff line; for `story` / `trailer`, do NOT tack on a CTA — close on a line or image that lingers. Use "" for the `cta` key when there is no CTA.
 - Provide a concise beat outline to help designers understand key turns.
 - **IMPORTANT**: Write the script, title, and summaries ENTIRELY in **{language}**.
 - If the language is not English, ensure the tone remains natural for that language.
@@ -293,9 +300,14 @@ Requirements:
 
 **EMOTIONAL ANCHORING (builds engagement)**:
 - **Hook**: Start with a relatable question, surprising fact, or "imagine you are..." scenario to spark curiosity.
-- **Tension**: Include a "Common Mistake" section that creates mild tension ("Most students think X, but actually...").
+- **Tension**: Include a "Common Mistake" section that creates mild tension ("Most students assume X — but the truth is...").
 - **Resolution**: Follow immediately with the correct understanding, giving satisfaction.
 - **Takeaway**: End with a clear, positive Key Takeaway that the learner can remember.
+
+**BANNED OPENERS & PHRASES (the #1 tell of generic AI narration — never use them):**
+- Banned openers (do not start the script or any beat with these): "Have you ever wondered", "Imagine a world where", "In today's video", "Did you know", "Let's dive in", "Picture this", "Today we'll learn".
+- Banned filler/cliché anywhere: "fascinating", "important to note", "as we can see", "it turns out", "at the end of the day", "delve", "unlock", "journey" (as a metaphor), "game-changer", "basically", "actually", "in conclusion".
+- Open instead with: a cold concrete scene, a contradiction/reversal ("They told you X. They were wrong."), a single arresting number, an in-medias-res moment, or a sharp non-rhetorical question. Show, don't assert — never tell the viewer something is interesting, make it interesting.
 
 **RECAP MARKERS**: If the video covers 3+ distinct concepts, add `"needs_recap": true` on the beat AFTER the last concept, so the system can optionally insert a visual summary.
 
@@ -415,7 +427,7 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 
 **Improvement checklist — apply ALL that are relevant:**
 
-1. **Hook strength**: Is the opening sentence genuinely attention-grabbing? If it starts with "Today we'll learn…" or similar generic phrases, rewrite it with a surprising fact, a thought-provoking question, or a vivid "imagine you are…" scenario.
+1. **Hook strength & banned phrases**: Is the opening genuinely attention-grabbing? REWRITE any opener that uses a banned tell ("Have you ever wondered", "Imagine a world where", "In today's video", "Did you know", "Let's dive in", "Today we'll learn", "Picture this") into a cold concrete scene, a contradiction/reversal, a single arresting number, or a sharp question. Also strip banned filler anywhere in the script: "fascinating", "important to note", "as we can see", "it turns out", "delve", "unlock", "journey" (metaphor), "game-changer", "basically", "actually", "in conclusion".
 
 2. **Transitions**: Check that each beat flows naturally into the next. Add bridging phrases ("Now that we understand X, let's see how it connects to Y…") where transitions feel abrupt.
 
@@ -423,7 +435,7 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 
 4. **Pacing**: Check word count against the target duration (the chosen TTS voice paces at ~{wps_int} words/minute, so a {ex_30s}-word script renders ~30 seconds, an {ex_60s}-word script renders ~1 minute, etc.). Trim fluff or expand thin sections. Trim filler words and hedging phrases ('basically', 'actually', 'kind of', 'you know') that slow pacing without adding value. **DO NOT pad the script just to hit a higher wpm benchmark — fewer words at this voice's pace is correct.**
 
-5. **Emotional arc**: Verify the beat `emotion` fields create a varied arc (not all "calm" or all "excitement"). Adjust if monotone.
+5. **Emotional arc — does it BUILD, not just vary?**: The `emotion` sequence must form a deliberate arc — a withhold before a reveal, a calm before a turn, escalation toward a payoff — NOT a random rotation of labels over monotone prose. Name the single biggest turn and verify the narration actually earns it. Flag any run of beats that all sit at the same intensity.
 
 6. **Visual variety**: Check beat `visual_type` fields — ensure at least 3 different types are used across all beats. Adjust if too repetitive.
 
@@ -645,45 +657,6 @@ SEGMENT_CONTEXT_ADDON = """
 {next_context}
 {diversity_context}
 Ensure visual continuity with adjacent segments while keeping this segment self-contained.
-"""
-
-# NOTE: Style guide prompts below are NOT actively used by the pipeline.
-# The pipeline uses BACKGROUND_PRESETS directly via _generate_style_guide().
-# Kept for reference only — do not rely on these for video generation.
-STYLE_GUIDE_SYSTEM_PROMPT = (
-    "You are a Creative Director. Create a JSON style guide for an educational video based on the provided script. "
-    "Define a color palette (background, text, accent), font choices (use Google Fonts, default to Inter), "
-    "and a general shape/border-radius aesthetic. "
-    "The style should be modern, clean, and accessible. "
-    "Fonts: Use 'Montserrat' for Headings (Bold/Black) and 'Inter' or 'Lato' for Body."
-)
-
-STYLE_GUIDE_USER_PROMPT_TEMPLATE = """
-Script excerpt:
----
-{script_excerpt}...
----
-
-Return JSON ONLY:
-{{
-  "palette": {{
-    "background": "#0f172a",
-    "text": "#f8fafc",
-    "primary": "#3b82f6",
-    "secondary": "#1e293b",
-    "accent": "#38bdf8",
-    "error": "#ef4444",
-    "warning": "#f59e0b",
-    "success": "#10b981"
-  }},
-  "fonts": {{
-    "primary": "Montserrat",
-    "secondary": "Inter",
-    "code": "Fira Code"
-  }},
-  "borderRadius": "8px",
-  "notes": "Clean educational aesthetic. No shadows. High contrast text."
-}}
 """
 
 HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
@@ -1700,6 +1673,9 @@ PER_SHOT_USER_PROMPT_TEMPLATE = """SHOT #{shot_index} of {total_shots} | {shot_t
 - Entrance transition: {transition_in}
 - Background treatment: {background_treatment} (honor this — see core preamble rule)
 
+**CREATIVE DIRECTION — the shot's INTENT (compose to SERVE this; don't just decorate it)**:
+{creative_direction}
+
 **WRAPPER ENTRANCE ANIMATION**:
 The shot's outermost `<div>` MUST have `id="shot-root"` and `style="position:relative;width:100%;height:100%;overflow:hidden"`.
 Inject this as the FIRST `<script>` block (before per-element animations):
@@ -1821,6 +1797,24 @@ TRANSITION_CSS_BLOCKS: dict = {
         "gsap.set('#shot-root',{clipPath:'inset(50% 0% 50% 0%)'});"
         "gsap.to('#shot-root',{clipPath:'inset(0% 0% 0% 0%)',"
         "duration:0.55,ease:'power3.inOut'});"
+    ),
+    # smash_cut: instant cut + a brief white impact flash. Surprises / hard facts
+    # / high-energy hits. Overlay is appended INSIDE #shot-root (shadow-safe).
+    "smash_cut": (
+        "(function(){var host=document.getElementById('shot-root')||document.body;"
+        "var fl=document.createElement('div');fl.style.cssText='position:absolute;inset:0;"
+        "background:#fff;opacity:0.85;pointer-events:none;z-index:9999';host.appendChild(fl);"
+        "gsap.to(fl,{opacity:0,duration:0.16,ease:'power2.out',"
+        "onComplete:function(){if(fl&&fl.remove)fl.remove();}});})();"
+    ),
+    # dip_to_black: fade IN from a black cover. A deliberate time / topic jump.
+    "dip_to_black": (
+        "(function(){var host=document.getElementById('shot-root')||document.body;"
+        "var dv=document.createElement('div');dv.style.cssText='position:absolute;inset:0;"
+        "background:#000;opacity:1;pointer-events:none;z-index:9999';host.appendChild(dv);"
+        "gsap.fromTo('#shot-root',{opacity:0},{opacity:1,duration:0.3,ease:'power2.out'});"
+        "gsap.to(dv,{opacity:0,duration:0.42,ease:'power2.inOut',"
+        "onComplete:function(){if(dv&&dv.remove)dv.remove();}});})();"
     ),
 }
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import base64
 import concurrent.futures
+import threading
 import json
 import os
 import random
@@ -281,8 +282,6 @@ try:
         SCRIPT_REVIEW_USER_PROMPT_TEMPLATE,
         build_visual_preferences_script_block,
         build_visual_preferences_shot_block,
-        STYLE_GUIDE_SYSTEM_PROMPT,
-        STYLE_GUIDE_USER_PROMPT_TEMPLATE,
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
         HTML_GENERATION_SAFE_AREA,
         get_html_generation_safe_area,
@@ -631,6 +630,55 @@ def _resolve_voice_wps(provider: Optional[str], voice_id: Optional[str]) -> floa
     return 2.0
 
 
+# ── Cheap-model quality engine: pure helpers (best-of-N selection) ───────────
+# All pure + side-effect-free → unit-testable without importing the heavy module.
+_HIGH_IMPACT_ROLES = {"hook", "cta", "moment", "climax", "payoff"}
+_GSAP_TWEEN_RE = re.compile(r"gsap\.(?:to|from|fromTo|set|timeline)\b")
+_KEYFRAMES_RE = re.compile(r"@keyframes")
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_COLOR_TOKEN_RE = re.compile(r"var\(--[a-z0-9-]+\)|#[0-9a-fA-F]{3,8}")
+
+
+def _shot_is_high_impact(shot: Dict[str, Any], shot_idx: int, total_shots: int) -> bool:
+    """Should this shot get best-of-N? Highest-impact = hook / CTA / the 'moment'
+    payoff / any *_HERO shot / the opener + closer. Pure predicate."""
+    if not isinstance(shot, dict):
+        return False
+    role = (shot.get("intent_role") or "").strip().lower()
+    if role in _HIGH_IMPACT_ROLES:
+        return True
+    if "HERO" in (shot.get("shot_type") or "").upper():
+        return True
+    if shot_idx == 0 or (total_shots > 1 and shot_idx == total_shots - 1):
+        return True
+    return False
+
+
+def _select_best_of_n_shots(shots: List[Dict[str, Any]], max_shots: int, total_shots: int) -> set:
+    """The set of shot indices to run best-of-N on, capped at max_shots,
+    prioritizing high-impact shots in plan order. Deterministic + pure."""
+    if max_shots <= 0 or not shots:
+        return set()
+    ranked = [i for i, s in enumerate(shots) if _shot_is_high_impact(s, i, total_shots)]
+    return set(ranked[:max_shots])
+
+
+def _summarize_shot_html_for_judge(html: str, max_text: int = 240) -> str:
+    """Compact regex digest of a candidate shot's HTML for the best-of-N judge —
+    keeps the judge prompt small (never dump full HTML for N candidates). Pure."""
+    html = html or ""
+    tweens = len(_GSAP_TWEEN_RE.findall(html))
+    keyframes = len(_KEYFRAMES_RE.findall(html))
+    elements = html.count("<")
+    colors = sorted(set(_COLOR_TOKEN_RE.findall(html)))[:8]
+    text = _HTML_TAG_RE.sub(" ", html)
+    text = re.sub(r"\s+", " ", text).strip()[:max_text]
+    return (
+        f"gsap_tweens={tweens} | css_keyframes={keyframes} | elements~{elements} | "
+        f"colors={colors}\ntext: {text}"
+    )
+
+
 # Sarvam-supported language → BCP-47 code
 SARVAM_LANG_CODES = {
     "hindi": "hi-IN", "bengali": "bn-IN", "tamil": "ta-IN", "telugu": "te-IN",
@@ -784,6 +832,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "ai_video_eligible": False,
     },
     "premium": {
+        # ── Cheap-model quality engine (frontier concept + prompt-divergence) ──
+        "concept_model": "anthropic/claude-opus-4-8",   # frontier model for the creative-concept/plan call
+        "concept_temperature": 0.8,                      # hot ideation temp for the plan call
+        "shot_planner_verbalized_sampling": True,        # internal 3-option concept divergence (prompt-only)
+        "shot_denial_prompting": True,                   # per-shot anti-repetition (prompt-only)
         "script_temperature": 0.6,
         "script_max_tokens": 24000,
         "html_temperature": 0.7,
@@ -826,6 +879,20 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "ai_video_eligible": False,
     },
     "ultra": {
+        # ── Cheap-model quality engine ──
+        "concept_model": "anthropic/claude-opus-4-8",
+        "concept_temperature": 0.8,
+        "shot_planner_verbalized_sampling": True,
+        "shot_denial_prompting": True,
+        "best_of_n_enabled": True,                       # divergent→select on hero/hook/close shots
+        "best_of_n_count": 3,
+        "best_of_n_max_shots": 3,
+        "best_of_n_run_cost_cap_usd": 0.30,
+        "best_of_n_temperature": 0.7,                    # cool execution temp for candidates
+        "shot_creativity_critic": True,                  # director's-eye elevation gate (hero shots)
+        "creativity_critic_run_cost_cap_usd": 0.40,
+        "creativity_critic_min_score": 3,
+        "edit_choreographer_enabled": True,              # LLM authors transitions; picker validates
         "script_temperature": 0.6,
         "script_max_tokens": 32000,
         "html_temperature": 0.7,
@@ -921,6 +988,20 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
     },
     "super_ultra": {
+        # ── Cheap-model quality engine ──
+        "concept_model": "anthropic/claude-opus-4-8",
+        "concept_temperature": 0.8,
+        "shot_planner_verbalized_sampling": True,
+        "shot_denial_prompting": True,
+        "best_of_n_enabled": True,
+        "best_of_n_count": 3,
+        "best_of_n_max_shots": 4,
+        "best_of_n_run_cost_cap_usd": 0.45,
+        "best_of_n_temperature": 0.7,
+        "shot_creativity_critic": True,
+        "creativity_critic_run_cost_cap_usd": 0.60,
+        "creativity_critic_min_score": 3,
+        "edit_choreographer_enabled": True,
         "script_temperature": 0.6,
         "script_max_tokens": 32000,
         "html_temperature": 0.82,
@@ -1567,7 +1648,8 @@ class GoogleCloudTTSClient:
         output_path: Path, 
         raw_json_path: Path,
         voice_name: str = "en-US-Journey-F",
-        language_code: str = "en-US"
+        language_code: str = "en-US",
+        speaking_rate: float = 1.0,
     ) -> None:
         try:
             from google.cloud import texttospeech_v1beta1 as texttospeech
@@ -1629,9 +1711,17 @@ class GoogleCloudTTSClient:
             language_code=language_code,
             name=voice_name
         )
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3
-        )
+        # speaking_rate: Journey/Studio/Chirp/Chirp3-HD/Polyglot voices return HTTP
+        # 400 if the field is present AT ALL (even 1.0). Only set it on voice
+        # families that support it AND when it actually differs from 1.0.
+        _ac_kwargs = {"audio_encoding": texttospeech.AudioEncoding.MP3}
+        _v_parts = voice_name.split("-") if voice_name else []
+        _v_family = _v_parts[2] if len(_v_parts) >= 3 else ""
+        _rate_unsupported = ("Journey", "Studio", "Chirp", "Chirp3", "Polyglot")
+        _supports_rate = not any(_v_family.startswith(p) for p in _rate_unsupported)
+        if _supports_rate and abs(float(speaking_rate) - 1.0) > 1e-3:
+            _ac_kwargs["speaking_rate"] = float(speaking_rate)
+        audio_config = texttospeech.AudioConfig(**_ac_kwargs)
 
         # Voices that do NOT support SSML <mark> tags / timepoints
         # Journey, Studio, and Polyglot voices return 400 with SSML marks
@@ -2123,6 +2213,40 @@ class VideoGenerationPipeline:
         },
     }
 
+    # ── Speaking-pace profiles by video type (the FELT narration pace) ──
+    # `register` → NarrationWriter `brand_voice.tonal_register` (voice character).
+    # `wpm`      → target felt speaking pace. The TTS speaking-rate is DERIVED
+    #              from this target vs the chosen voice's natural pace, so a
+    #              denser "ad" script still fits its shots and a documentary
+    #              breathes — voice-agnostic, keeps script length ≈ render time.
+    # `rate` is a speaking-rate MULTIPLIER relative to the voice's NATURAL pace
+    # (1.0 = no change). Voice-agnostic: explainer/default = 1.0 so the common
+    # case never alters the baseline (and never trips slow voices like Sarvam into
+    # the clamp). Only ad/news/documentary deviate.
+    _SPEAKING_PACE_BY_TYPE: Dict[str, Dict[str, Any]] = {
+        "product_promo":    {"register": "ad",          "rate": 1.13},
+        "pitch":            {"register": "ad",          "rate": 1.12},
+        "reel":             {"register": "ad",          "rate": 1.15},
+        "listicle":         {"register": "ad",          "rate": 1.10},
+        "news_recap":       {"register": "news",        "rate": 1.08},
+        "explainer":        {"register": "explainer",   "rate": 1.00},
+        "tutorial":         {"register": "tutorial",    "rate": 0.97},
+        "demo_walkthrough": {"register": "tutorial",    "rate": 0.97},
+        "case_study":       {"register": "explainer",   "rate": 0.99},
+        "documentary":      {"register": "documentary", "rate": 0.90},
+        "story":            {"register": "documentary", "rate": 0.91},
+    }
+    _SPEAKING_PACE_BY_CADENCE: Dict[str, Dict[str, Any]] = {
+        "reel":        {"register": "ad",          "rate": 1.13},
+        "marketing":   {"register": "ad",          "rate": 1.08},
+        "education":   {"register": "explainer",   "rate": 1.00},
+        "documentary": {"register": "documentary", "rate": 0.90},
+    }
+    _SPEAKING_PACE_DEFAULT: Dict[str, Any] = {"register": "explainer", "rate": 1.00}
+    # Clamp the derived TTS speaking-rate to a natural range (±~15-18%).
+    _TTS_RATE_MIN: float = 0.85
+    _TTS_RATE_MAX: float = 1.18
+
     @staticmethod
     def _derive_pacing_style(target_duration: str, content_type: str) -> str:
         """Derive pacing style from target_duration string and content_type.
@@ -2154,6 +2278,28 @@ class VideoGenerationPipeline:
             return "marketing"
         else:
             return "education"
+
+    def _resolve_speaking_pace(self, video_type: str, cadence_hint: str) -> Dict[str, Any]:
+        """Resolve the per-video speaking-pace profile (tonal register + target
+        felt WPM). Video type wins; cadence hint is the fallback; then default."""
+        vt = (video_type or "").strip().lower()
+        if vt in self._SPEAKING_PACE_BY_TYPE:
+            return dict(self._SPEAKING_PACE_BY_TYPE[vt])
+        ch = (cadence_hint or "").strip().lower()
+        if ch in self._SPEAKING_PACE_BY_CADENCE:
+            return dict(self._SPEAKING_PACE_BY_CADENCE[ch])
+        return dict(self._SPEAKING_PACE_DEFAULT)
+
+    def _voice_with_register(self, brand_voice: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Inject the per-video tonal register into the NarrationWriter brand_voice
+        so the voice matches the video type (ad = punchy, documentary = hushed).
+        Brand-provided register wins. Returns a new dict; never mutates the input."""
+        tr = getattr(self, "_tonal_register", None)
+        if not tr:
+            return brand_voice
+        bv = dict(brand_voice or {})
+        bv.setdefault("tonal_register", tr)
+        return bv
 
     # Music mood/genre buckets keyed by subject_domain. Used by tiers that don't
     # run the Director (standard) so the synthesized music_plan at least matches
@@ -3166,16 +3312,46 @@ class VideoGenerationPipeline:
                 f"(provider={_provider}, endpoint={_endpoint})"
             )
 
-        # ── Pacing profile ──
+        # ── Pacing profile (shot pace) ──
         # Cadence hint from the type classifier wins when present (it's already
         # an LLM-grounded read of the prompt). Otherwise fall back to the
-        # duration-only heuristic.
-        if _cadence_hint in self.PACING_PROFILES or _cadence_hint == "documentary":
+        # duration-only heuristic. Normalize singular "reel" → "reels" (the
+        # classifier emits "reel"; PACING_PROFILES keys it "reels" — the
+        # mismatch silently dropped every reel into the duration heuristic).
+        self._cadence_hint: str = _cadence_hint
+        _cadence_norm = "reels" if _cadence_hint == "reel" else _cadence_hint
+        if _cadence_norm in self.PACING_PROFILES or _cadence_norm == "documentary":
             # PACING_PROFILES has reels/marketing/education; map "documentary"
             # to education-paced (slowest profile we have today).
-            self._pacing_style = "education" if _cadence_hint == "documentary" else _cadence_hint
+            self._pacing_style = "education" if _cadence_norm == "documentary" else _cadence_norm
         else:
             self._pacing_style = self._derive_pacing_style(target_duration, content_type)
+
+        # ── Speaking pace (felt narration pace, by video type) ──
+        # Sets the NarrationWriter tonal register + a target felt WPM, then
+        # DERIVES the TTS speaking-rate from that target vs the chosen voice's
+        # natural pace — an ad talks fast and punchy, a documentary breathes,
+        # both still landing inside the planned shot durations. The writer
+        # targets the EFFECTIVE (post-clamp) WPM so script length still matches
+        # the render even when the voice can't hit the aspirational target.
+        _pace = self._resolve_speaking_pace(self._video_type, _cadence_hint)
+        self._tonal_register: str = _pace["register"]
+        _base_wps = _resolve_voice_wps(self._tts_provider_resolved, self._tts_voice_id_resolved)
+        _natural_wpm = max(60.0, _base_wps * 60.0)
+        _rate_raw = float(_pace.get("rate", 1.0))
+        self._tts_speaking_rate: float = max(self._TTS_RATE_MIN, min(self._TTS_RATE_MAX, _rate_raw))
+        # Only override the NarrationWriter word-budget when the pace meaningfully
+        # deviates from the voice's natural rate — explainer/default (rate 1.0)
+        # stays a true no-op (no word-count override, no TTS-rate field).
+        self._effective_wpm: Optional[int] = (
+            int(round(_natural_wpm * self._tts_speaking_rate))
+            if abs(self._tts_speaking_rate - 1.0) > 0.04 else None
+        )
+        print(
+            f"🏃 Speaking pace: type={self._video_type} register={self._tonal_register} "
+            f"rate_mult={_pace.get('rate', 1.0)} voice~{_natural_wpm:.0f}wpm "
+            f"→ tts_rate={self._tts_speaking_rate:.2f} effective_wpm={self._effective_wpm}"
+        )
 
         # Tier-aware shot cap for Director-based tiers (videos > 2 min only).
         # super_ultra: no cap — two-pass Director, motion_bias, and kinetic_text_shots all
@@ -3606,60 +3782,76 @@ class VideoGenerationPipeline:
                 # already incurred real LLM cost, the caller can still bill
                 # the institute by reading this dict — without it the
                 # ShotPlanner tokens would be silently dropped.
+                # Bounded self-heal: re-run ShotPlanner + NarrationWriter once on
+                # a transient failure (timeout / malformed JSON) before degrading.
+                # This is the v3-native resilience that replaces the v2 fallback.
+                _v3_max_attempts = 2
                 _v3_partial_usage: Dict[str, Any] = {}
-                try:
-                    print(f"🆕 Pipeline v3 — ShotPlanner-first ({run_dir.name}) [{_v3_target_s:.0f}s target]")
-                    _v3_script_plan, _v3_shot_plan_dict, _v3_usage = self._run_v3_shot_planning(
-                        base_prompt,
-                        run_dir,
-                        target_duration_s=_v3_target_s,
-                        target_audience=target_audience,
-                        language=language,
-                        content_type=content_type,
-                        partial_usage=_v3_partial_usage,
-                    )
-                    script_plan = _v3_script_plan
-                    accumulate_usage(_v3_usage)
-                    _v3_done = True
-                    print(
-                        f"✅ Pipeline v3 complete — {len(_v3_shot_plan_dict.get('shots') or [])} shots, "
-                        f"{_v3_usage.get('prompt_tokens', 0) + _v3_usage.get('completion_tokens', 0)} tokens"
-                    )
-                    self._emit_progress({
-                        "type": "sub_stage", "sub_stage": "script_done",
-                        "message": "Shot plan + narration ready (v3)",
-                        "token_delta": {
-                            "prompt_tokens": _v3_usage.get("prompt_tokens", 0),
-                            "completion_tokens": _v3_usage.get("completion_tokens", 0),
-                        },
-                        "cumulative_tokens": dict(total_usage),
-                    })
-                except Exception as _v3_err:
-                    print(
-                        f"⚠️ Pipeline v3 failed "
-                        f"({type(_v3_err).__name__}: {_v3_err}) — falling back to v2"
-                    )
-                    self._v3_shot_plan = None  # html stage must NOT think v3 succeeded
-                    # Mark runtime as v2-fallback so cost events + audit panel
-                    # accurately reflect what actually ran. Cleared back to
-                    # "v3" only by a successful re-run; a partial-failed run
-                    # stays flagged forever (correct attribution).
-                    self._v3_runtime_status = "v3_with_v2_fallback"
-                    # Bill whatever LLM work completed before the failure so
-                    # we don't silently eat ShotPlanner cost on NarrationWriter
-                    # parse failures.
-                    _partial_tokens = (
-                        int(_v3_partial_usage.get("prompt_tokens", 0) or 0)
-                        + int(_v3_partial_usage.get("completion_tokens", 0) or 0)
-                    )
-                    if _partial_tokens > 0:
-                        accumulate_usage(_v3_partial_usage)
+                for _v3_attempt in range(1, _v3_max_attempts + 1):
+                    _v3_partial_usage = {}
+                    try:
                         print(
-                            f"   📊 Charged partial v3 usage to institute: "
-                            f"{_partial_tokens} tokens "
-                            f"(prompt={_v3_partial_usage.get('prompt_tokens', 0)}, "
-                            f"completion={_v3_partial_usage.get('completion_tokens', 0)})"
+                            f"🆕 Pipeline v3 — ShotPlanner-first ({run_dir.name}) "
+                            f"[{_v3_target_s:.0f}s target] (attempt {_v3_attempt}/{_v3_max_attempts})"
                         )
+                        _v3_script_plan, _v3_shot_plan_dict, _v3_usage = self._run_v3_shot_planning(
+                            base_prompt,
+                            run_dir,
+                            target_duration_s=_v3_target_s,
+                            target_audience=target_audience,
+                            language=language,
+                            content_type=content_type,
+                            partial_usage=_v3_partial_usage,
+                        )
+                        script_plan = _v3_script_plan
+                        accumulate_usage(_v3_usage)
+                        _v3_done = True
+                        print(
+                            f"✅ Pipeline v3 complete — {len(_v3_shot_plan_dict.get('shots') or [])} shots, "
+                            f"{_v3_usage.get('prompt_tokens', 0) + _v3_usage.get('completion_tokens', 0)} tokens"
+                        )
+                        self._emit_progress({
+                            "type": "sub_stage", "sub_stage": "script_done",
+                            "message": "Shot plan + narration ready (v3)",
+                            "token_delta": {
+                                "prompt_tokens": _v3_usage.get("prompt_tokens", 0),
+                                "completion_tokens": _v3_usage.get("completion_tokens", 0),
+                            },
+                            "cumulative_tokens": dict(total_usage),
+                        })
+                        break
+                    except Exception as _v3_err:
+                        # Bill whatever LLM work completed before this attempt
+                        # failed so we don't silently eat ShotPlanner cost on a
+                        # NarrationWriter parse failure.
+                        _partial_tokens = (
+                            int(_v3_partial_usage.get("prompt_tokens", 0) or 0)
+                            + int(_v3_partial_usage.get("completion_tokens", 0) or 0)
+                        )
+                        if _partial_tokens > 0:
+                            accumulate_usage(_v3_partial_usage)
+                            print(
+                                f"   📊 Charged partial v3 usage to institute: "
+                                f"{_partial_tokens} tokens "
+                                f"(prompt={_v3_partial_usage.get('prompt_tokens', 0)}, "
+                                f"completion={_v3_partial_usage.get('completion_tokens', 0)})"
+                            )
+                        if _v3_attempt < _v3_max_attempts:
+                            print(
+                                f"⚠️ Pipeline v3 attempt {_v3_attempt} failed "
+                                f"({type(_v3_err).__name__}: {_v3_err}) — retrying once"
+                            )
+                            continue
+                        # Final failure → degrade to the v2 fallback chain.
+                        print(
+                            f"⚠️ Pipeline v3 failed after {_v3_max_attempts} attempts "
+                            f"({type(_v3_err).__name__}: {_v3_err}) — falling back to v2"
+                        )
+                        self._v3_shot_plan = None  # html stage must NOT think v3 succeeded
+                        # Mark runtime as v2-fallback so cost events + audit panel
+                        # accurately reflect what actually ran. Cleared back to
+                        # "v3" only by a successful re-run.
+                        self._v3_runtime_status = "v3_with_v2_fallback"
 
             # ── BeatPlanner (Phase 1, opt-in) ─────────────────────────
             # When `beat_planner_enabled` is set on the tier, run an explicit
@@ -6392,7 +6584,8 @@ class VideoGenerationPipeline:
                     output_path=audio_path,
                     raw_json_path=response_json,
                     voice_name=selected_voice,
-                    language_code=lang_code
+                    language_code=lang_code,
+                    speaking_rate=getattr(self, "_tts_speaking_rate", 1.0),
                 )
                 print(f"    ✅ Google TTS generation successful.")
                 return self._voice_result(
@@ -6407,7 +6600,9 @@ class VideoGenerationPipeline:
         # Default behavior: Use EdgeTTS with selected voice
 
         async def _run_tts():
-            communicate = edge_tts.Communicate(script_text, selected_voice)
+            _rate_mult = getattr(self, "_tts_speaking_rate", 1.0) or 1.0
+            _edge_rate = f"{round((_rate_mult - 1.0) * 100):+d}%"
+            communicate = edge_tts.Communicate(script_text, selected_voice, rate=_edge_rate)
             audio_data = bytearray()
             word_entries = []
             # Always initialise SubMaker and feed it on the FIRST (and only) pass.
@@ -6652,7 +6847,8 @@ class VideoGenerationPipeline:
                         output_path=audio_path,
                         raw_json_path=response_json,
                         voice_name=fallback_voice,
-                        language_code=lang_code
+                        language_code=lang_code,
+                        speaking_rate=getattr(self, "_tts_speaking_rate", 1.0),
                     )
                     resolved_provider = "google"
                     resolved_voice = fallback_voice
@@ -7626,6 +7822,8 @@ class VideoGenerationPipeline:
                         "speech_sample_rate": 24000,
                         "enable_preprocessing": True,
                         "output_audio_codec": "mp3",
+                        # Per-video speaking pace (ad = faster, documentary = slower).
+                        "pace": round(getattr(self, "_tts_speaking_rate", 1.0) or 1.0, 2),
                     }
                     resp = await client.post(
                         "https://api.sarvam.ai/text-to-speech",
@@ -9369,6 +9567,133 @@ class VideoGenerationPipeline:
         # captured fully tear-down rather than mid-flight.
         return [round(d * 0.30, 3), round(d * 0.60, 3), round(d * 0.95, 3)]
 
+    def _critique_shot_creativity(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        total_shots: int,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Director's-eye ELEVATION gate (the opposite of the defect gates): scores
+        the shot's creativity 0-5 on big-idea / motion-hook / beat-delivery /
+        compositional-tension and, for a competent-but-flat high-impact shot, fires
+        ONE latitude-EXPANDING regen. Ship-original-on-regression (keeps the regen
+        only if it actually raises the min score). Never raises; returns a record
+        with optional `regen_html`, or None when skipped. Reuses the screenshot the
+        vision reviewer already cached — no extra screenshot capture."""
+        if not self._tier_config.get("shot_creativity_critic"):
+            return None
+        if not (html or "").strip() or not system_prompt or not user_prompt:
+            return None
+        # Highest-impact shots only (hook / hero / moment / cta / opener / closer).
+        if not _shot_is_high_impact(shot, shot_idx, total_shots):
+            return None
+        cap = float(self._tier_config.get("creativity_critic_run_cost_cap_usd", 0.0) or 0.0)
+        if cap <= 0:
+            return None
+        _lock = getattr(self, "_creativity_critic_cost_lock", None)
+
+        def _cost_ok() -> bool:
+            if _lock is None:
+                return float(getattr(self, "_creativity_critic_run_cost_usd", 0.0)) < cap
+            with _lock:
+                return float(getattr(self, "_creativity_critic_run_cost_usd", 0.0)) < cap
+
+        def _add_cost(c: float) -> None:
+            if _lock is None:
+                self._creativity_critic_run_cost_usd = float(getattr(self, "_creativity_critic_run_cost_usd", 0.0)) + c
+            else:
+                with _lock:
+                    self._creativity_critic_run_cost_usd = float(getattr(self, "_creativity_critic_run_cost_usd", 0.0)) + c
+
+        if not _cost_ok():
+            return None
+        try:
+            from shot_creativity_critic import critique_shot, build_elevation_corrective
+        except Exception as _imp:
+            print(f"   🎬 creativity critic import failed ({_imp}) — skipping")
+            return None
+
+        _min_score = int(self._tier_config.get("creativity_critic_min_score", 3) or 3)
+        _cc = getattr(self, "_creative_concept", None) or {}
+        _emotion = shot.get("emotion") or ""
+        _canvas = "portrait" if getattr(self, "video_height", 1080) > getattr(self, "video_width", 1920) else "landscape"
+        _model = (self._resolve_stage_model("shot_creativity_critic")
+                  or self._resolve_stage_model("vision_review"))
+        try:
+            _shot = self._review_thumbnails.get(shot_idx) if isinstance(getattr(self, "_review_thumbnails", None), dict) else None
+        except Exception:
+            _shot = None
+
+        record = critique_shot(
+            html=html, shot=shot, creative_concept=_cc, emotional_beat=_emotion,
+            canvas=_canvas, llm_chat=self.html_client.chat, screenshot=_shot,
+            min_score=_min_score, model=_model,
+        )
+        _add_cost(float(record.get("cost_usd") or 0.0))
+        record["regen_html"] = None
+        record["shot_idx"] = shot_idx
+
+        if record.get("passes"):
+            print(f"   🎬 Shot {shot_idx + 1}: creativity OK (min {record.get('min_score')}/5)")
+            return record
+
+        print(f"   🎬 Shot {shot_idx + 1}: creativity LOW (min {record.get('min_score')}/5) — firing elevation regen")
+        try:
+            corrective = build_elevation_corrective(record)
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+                {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                {"role": "user", "content": corrective},
+            ]
+            _prev_phase, _prev_stage = _llm_phase.get(), _llm_stage.get()
+            _llm_phase.set("regen")
+            _llm_stage.set(f"creativity_critic_regen_shot_{shot_idx}")
+            try:
+                raw2, _usage2 = self.html_client.chat(
+                    messages=messages,
+                    temperature=self._tier_config.get("html_temperature", 0.7),
+                    max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                    model=self._resolve_stage_model("per_shot_html"),
+                )
+            finally:
+                _llm_phase.set(_prev_phase)
+                _llm_stage.set(_prev_stage)
+            _data2 = _extract_json_blob(raw2)
+            _html2 = _data2.get("html", "") if isinstance(_data2, dict) else ""
+            if not (_html2 or "").strip():
+                record["shipped"] = "original"
+                return record
+            # Re-critique the bolder version; ship it ONLY if it raises the min score.
+            if _cost_ok():
+                record2 = critique_shot(
+                    html=_html2, shot=shot, creative_concept=_cc, emotional_beat=_emotion,
+                    canvas=_canvas, llm_chat=self.html_client.chat, screenshot=_shot,
+                    min_score=_min_score, model=_model,
+                )
+                _add_cost(float(record2.get("cost_usd") or 0.0))
+                record["scores_post"] = record2.get("scores")
+                record["min_score_post"] = record2.get("min_score")
+                if int(record2.get("min_score", 0)) > int(record.get("min_score", 0)):
+                    record["regen_html"] = _html2
+                    record["shipped"] = "regen"
+                    print(f"   🎬 Shot {shot_idx + 1}: elevation improved "
+                          f"{record.get('min_score')}→{record2.get('min_score')} — shipping bolder version")
+                else:
+                    record["shipped"] = "original"
+                    print(f"   🎬 Shot {shot_idx + 1}: elevation didn't improve "
+                          f"({record.get('min_score')}→{record2.get('min_score')}) — shipping original")
+            else:
+                record["shipped"] = "original"
+        except Exception as _regen_err:
+            print(f"   🎬 Shot {shot_idx + 1}: elevation regen failed ({_regen_err}) — keeping original")
+        return record
+
     def _review_shot_visually(
         self,
         *,
@@ -10616,7 +10941,7 @@ class VideoGenerationPipeline:
                 target_duration_s=target_duration_s,
                 target_audience=target_audience,
                 language=language,
-                brand_voice=brand_voice,
+                brand_voice=self._voice_with_register(brand_voice),
                 wpm_override=target_wpm,
                 regen_note=regen_note,
             )
@@ -10778,7 +11103,8 @@ class VideoGenerationPipeline:
         # read-but-empty today). Falls back to tier_cfg → script_client default
         # when the stage map is empty (rollout flag off, DB miss).
         shot_planner_model = (
-            self._resolve_stage_model("shot_planner")
+            self._resolve_stage_model("shot_planner")       # explicit V200 per-stage routing wins
+            or tier_config.get("concept_model")             # else frontier concept model (Opus on premium+)
             or tier_config.get("shot_planner_model")
             or tier_config.get("director_model")
             or getattr(self.script_client, "model", None)
@@ -10880,9 +11206,20 @@ class VideoGenerationPipeline:
             valid_template_ids=_tmpl_valid_ids,
             include_music_plan=self._is_background_music_enabled(),
             music_plan_target_duration_s=target_duration_s,
+            temperature=tier_config.get("concept_temperature") or 0.6,
+            verbalized_sampling=bool(tier_config.get("shot_planner_verbalized_sampling")),
+            # Gate the concept-conformance re-plan to tiers with the concept feature
+            # (premium+ set concept_model); free/standard skip it to avoid the ~2x
+            # ShotPlanner cost of a corrective re-plan on the cheapest tiers.
+            enforce_concept=bool(tier_config.get("concept_model")),
         )
         shot_plan_dict = {
             "shots": sp_result["shots"],
+            # Vision (Phase A/B): the creative concept + color/energy script must
+            # survive onto the plan so NarrationWriter + the per-shot designer see
+            # them (plan_shots/normalize keep them; this dict is the last hop).
+            "creative_concept": sp_result.get("creative_concept") or {},
+            "beat_map": sp_result.get("beat_map") or [],
             "continuity_notes": sp_result.get("continuity_notes", ""),
             "recurring_motifs": sp_result.get("recurring_motifs") or [],
             # v3 parity with v2 Director — `music_plan` and `audio_mood`
@@ -10894,6 +11231,54 @@ class VideoGenerationPipeline:
             "audio_mood": sp_result.get("audio_mood", ""),
         }
         sp_usage = sp_result.get("usage") or {}
+
+        # ── Edit-Choreographer (LLM authors the cut) + picker (validates) ──
+        # The ShotPlanner already set transition_in per shot. A focused pass
+        # re-authors the whole timeline's transitions for MOTIVATED cuts (gated to
+        # concept tiers). Then a deterministic validator runs — RESPECTING the LLM's
+        # picks (enforce_transitions = normalize + the non-negotiable KINETIC_* rules
+        # only) when the choreographer authored, else the full family-heuristic
+        # picker (apply_to_plan). The picker runs on v3 HERE — previously it was
+        # v2-only (inside _run_director), so v3 transitions got no validation at all.
+        # Choreographer tokens fold into sp_usage (billed below).
+        _ec_applied = 0
+        if tier_config.get("edit_choreographer_enabled"):
+            try:
+                from edit_choreographer import choreograph_transitions
+                _ec_model = tier_config.get("concept_model") or shot_planner_model
+                _ec_map, _ec_usage = choreograph_transitions(
+                    shot_plan_dict["shots"],
+                    llm_chat=self.script_client.chat,
+                    model=_ec_model,
+                    beat_map=shot_plan_dict.get("beat_map"),
+                )
+                for _ec_s in shot_plan_dict["shots"]:
+                    _ec_si = _ec_s.get("shot_index")
+                    if isinstance(_ec_si, int) and _ec_map.get(_ec_si):
+                        _ec_s["transition_in"] = _ec_map[_ec_si]
+                        _ec_applied += 1
+                if _ec_usage:
+                    self._v3_accumulate_partial_usage(sp_usage, _ec_usage)
+                if _ec_applied:
+                    print(f"   🎬 Edit-Choreographer authored {_ec_applied} transition(s)")
+            except Exception as _ec_err:
+                print(f"   ⚠️ Edit-Choreographer failed ({_ec_err}) — keeping ShotPlanner transitions")
+        try:
+            if _ec_applied:
+                # LLM authored → validate, RESPECTING its picks (non-negotiables only)
+                from transition_picker import enforce_transitions as _validate_transitions
+                _tp_changes = _validate_transitions(shot_plan_dict)
+                if _tp_changes:
+                    print(f"   🎬 Transition validator corrected {len(_tp_changes)} non-negotiable(s)")
+            elif tier_config.get("transition_picker_enabled"):
+                # No LLM choreography → full deterministic picker (v3 fix; was v2-only)
+                from transition_picker import apply_to_plan as _apply_transitions
+                _tp_changes = _apply_transitions(shot_plan_dict)
+                if _tp_changes:
+                    print(f"   🎬 Transition picker refined {len(_tp_changes)} transition(s)")
+        except Exception as _tp_err:
+            print(f"   ⚠️ Transition validation failed ({_tp_err}) — keeping transitions")
+
         # Record ShotPlanner tokens NOW — if NarrationWriter raises below,
         # this is the only place the caller can recover the partial cost.
         if partial_usage is not None:
@@ -10948,7 +11333,11 @@ class VideoGenerationPipeline:
         narration_writer_model = (
             self._resolve_stage_model("narration_writer")
             or tier_config.get("narration_writer_model")
-            or shot_planner_model
+            # NOT shot_planner_model — that now carries the frontier concept_model
+            # (Opus); NarrationWriter is execution and must stay on the cheap model.
+            or tier_config.get("shot_planner_model")
+            or tier_config.get("director_model")
+            or getattr(self.script_client, "model", None)
         )
         self._emit_progress({
             "type": "sub_stage",
@@ -10962,7 +11351,10 @@ class VideoGenerationPipeline:
             target_duration_s=target_duration_s,
             target_audience=target_audience,
             language=language,
-            brand_voice=(brand_brief.get("voice") if isinstance(brand_brief, dict) else None),
+            brand_voice=self._voice_with_register(
+                brand_brief.get("voice") if isinstance(brand_brief, dict) else None
+            ),
+            wpm_override=getattr(self, "_effective_wpm", None),
         )
         nw_usage = nw_result.get("usage") or {}
         # Record NarrationWriter tokens. (ShotPlanner already recorded above
@@ -14787,6 +15179,56 @@ class VideoGenerationPipeline:
         total_shots = len(shots)
         continuity_notes = director_plan.get("continuity_notes", "")
 
+        # QW1 — backfill the already-computed creative direction (emotion / pacing
+        # / visual metaphor) onto each shot so the per-shot designer sees the
+        # shot's INTENT and the avatar-expression resolver (reads shot["emotion"])
+        # works. v2 beats carry these via beat_index (loop below). v3 ShotPlanner
+        # shots have no beat_index/emotion, so v3 backfills emotion from the
+        # beat_map section afterwards (the beat_map DOES flow on v3).
+        _cd_beats = director_plan.get("beat_outline")
+        if not _cd_beats:
+            try:
+                _cd_beats = ((getattr(self, "_current_script_plan", {}) or {})
+                             .get("plan", {}) or {}).get("beat_outline")
+            except Exception:
+                _cd_beats = None
+        if _cd_beats:
+            for _cd_shot in shots:
+                if not isinstance(_cd_shot, dict):
+                    continue
+                try:
+                    _cd_bi = int(_cd_shot.get("beat_index", -1))
+                except (TypeError, ValueError):
+                    _cd_bi = -1
+                if 0 <= _cd_bi < len(_cd_beats):
+                    _cd_beat = _cd_beats[_cd_bi]
+                    if isinstance(_cd_beat, dict):
+                        for _cd_k in ("emotion", "pacing", "visual_idea"):
+                            if not _cd_shot.get(_cd_k) and _cd_beat.get(_cd_k):
+                                _cd_shot[_cd_k] = _cd_beat[_cd_k]
+
+        # v3 path: ShotPlanner shots carry no beat_index, but the beat_map
+        # (color/energy script) has per-section emotion that flows on v3. Backfill
+        # emotion onto each shot from its section so creative_direction + the
+        # avatar-expression resolver work on v3 too.
+        _cd_bm = director_plan.get("beat_map") if isinstance(director_plan.get("beat_map"), list) else []
+        if _cd_bm:
+            for _bi_pos, _cd_shot in enumerate(shots):
+                if not isinstance(_cd_shot, dict) or _cd_shot.get("emotion"):
+                    continue
+                _sidx = _cd_shot.get("shot_index")
+                _sidx = _sidx if isinstance(_sidx, int) else _bi_pos
+                for _seg in _cd_bm:
+                    if not isinstance(_seg, dict):
+                        continue
+                    try:
+                        if int(_seg.get("from_shot", -1)) <= _sidx <= int(_seg.get("to_shot", -1)):
+                            if _seg.get("emotion"):
+                                _cd_shot["emotion"] = _seg["emotion"]
+                            break
+                    except (TypeError, ValueError):
+                        continue
+
         # Per-shot checkpoint cache: saves completed shot HTML to disk so a resume
         # can skip already-generated shots without re-paying their token cost.
         _shot_cache_dir = run_dir / "shot_cache"
@@ -14805,6 +15247,46 @@ class VideoGenerationPipeline:
             f"Accent: {palette.get('accent', '#38bdf8')}\n"
             f"Fonts: Montserrat (headings), Inter (body), Fira Code (code)\n"
         )
+
+        # Video-level CREATIVE CONCEPT (v3 ShotPlanner output) — the POV every shot
+        # must serve. Built once and prepended to each shot's creative direction so
+        # the per-shot designer renders toward the same controlling idea + metaphor.
+        _cc = director_plan.get("creative_concept") if isinstance(director_plan.get("creative_concept"), dict) else {}
+        _concept_lines = []
+        if _cc.get("controlling_idea"):
+            _concept_lines.append(f"- Controlling idea (every shot serves this): {_cc['controlling_idea']}")
+        if _cc.get("visual_metaphor"):
+            _concept_lines.append(f"- Recurring visual metaphor: {_cc['visual_metaphor']}")
+        if _cc.get("signature_device"):
+            _concept_lines.append(f"- Signature device (reuse it where it fits): {_cc['signature_device']}")
+        if _cc.get("emotional_arc"):
+            _concept_lines.append(f"- Emotional arc of the video: {_cc['emotional_arc']}")
+        if _cc.get("what_to_avoid"):
+            _concept_lines.append(f"- Avoid (generic treatment to reject): {_cc['what_to_avoid']}")
+        _concept_block = "\n".join(_concept_lines)
+
+        # Phase-B beat_map (color/energy script) — per-section energy + accent role
+        # the per-shot designer reads to set motion intensity (looked up by index).
+        _beat_map = director_plan.get("beat_map") if isinstance(director_plan.get("beat_map"), list) else []
+
+        # ── Best-of-N run state (cheap-model quality engine) ──
+        # Computed ONCE before the shot threads dispatch. `_creative_concept` feeds
+        # the judge; the cost counter is lock-guarded (8 workers read-modify-write).
+        self._creative_concept = director_plan.get("creative_concept") if isinstance(director_plan.get("creative_concept"), dict) else {}
+        self._best_of_n_run_cost_usd = 0.0
+        self._best_of_n_cost_lock = threading.Lock()
+        self._creativity_critic_run_cost_usd = 0.0
+        self._creativity_critic_cost_lock = threading.Lock()
+        self._best_of_n_indices = (
+            _select_best_of_n_shots(shots, int(self._tier_config.get("best_of_n_max_shots", 0) or 0), total_shots)
+            if self._tier_config.get("best_of_n_enabled") else set()
+        )
+        if self._best_of_n_indices:
+            print(
+                f"   🎲 Best-of-N enabled for shots {sorted(self._best_of_n_indices)} "
+                f"(N={self._tier_config.get('best_of_n_count', 1)}, "
+                f"cap ${float(self._tier_config.get('best_of_n_run_cost_cap_usd', 0.0) or 0.0):.2f})"
+            )
 
         # ── Shared Shot Pack (premium/ultra/super_ultra) ──
         # Computed once for the whole run and injected into every shot prompt so
@@ -15313,6 +15795,62 @@ class VideoGenerationPipeline:
 
             text_elements_str = ", ".join(shot.get("text_elements", [])) or "(Director will specify)"
 
+            # QW1 — surface the shot's creative INTENT (role + point + mood), not
+            # just its mechanics. The per-shot designer should render an "urgent
+            # hook" differently from a "calm explanation"; hand it the direction
+            # the pipeline already computed instead of discarding it.
+            _cd_parts = []
+            _cd_role = (shot.get("intent_role") or "").strip()
+            if _cd_role:
+                _cd_parts.append(f"- Role in the video: {_cd_role}")
+            _cd_brief = (shot.get("narration_brief") or "").strip()
+            if _cd_brief:
+                _cd_parts.append(f"- The point of this shot: {_cd_brief}")
+            _cd_emotion = (shot.get("emotion") or "").strip()
+            if _cd_emotion:
+                _cd_parts.append(f"- Emotional register: {_cd_emotion} — let it shape eases, pace, and contrast")
+            _cd_pacing = (shot.get("pacing") or "").strip()
+            if _cd_pacing:
+                _cd_parts.append(f"- Pacing: {_cd_pacing} (slow = longer holds / overlapping reveals; fast = snappier eases, harder cuts)")
+            _cd_idea = (shot.get("visual_idea") or "").strip()
+            if _cd_idea:
+                _cd_parts.append(f"- Visual metaphor to honor: {_cd_idea}")
+            _cd_prole = (shot.get("pacing_role") or "").strip()
+            if _cd_prole:
+                _cd_parts.append(
+                    f"- Rhythm role: {_cd_prole} (build = accelerate, tighten the cut; hit = one fast "
+                    f"punchy beat; hold = slow deliberate reveal/climax, let it breathe; breath = open/close/reset)"
+                )
+            # Phase-B: this shot's section energy + accent role from the beat_map
+            # (match on the shot's own shot_index, not the enumerate position).
+            _cd_section = None
+            _bm_sidx = shot.get("shot_index")
+            _bm_sidx = _bm_sidx if isinstance(_bm_sidx, int) else shot_idx
+            for _bm_e in _beat_map:
+                try:
+                    if int(_bm_e.get("from_shot", -1)) <= _bm_sidx <= int(_bm_e.get("to_shot", -1)):
+                        _cd_section = _bm_e
+                        break
+                except (TypeError, ValueError):
+                    continue
+            if _cd_section:
+                _bm_energy = _cd_section.get("energy")
+                if isinstance(_bm_energy, (int, float)):
+                    _bm_intensity = (
+                        "high — fast cuts, aggressive motion, bold scale" if _bm_energy >= 0.66
+                        else "low — calm, slow holds, restraint, negative space" if _bm_energy <= 0.33
+                        else "medium — steady momentum"
+                    )
+                    _cd_parts.append(f"- Section energy: {_bm_energy:.2f} ({_bm_intensity})")
+                _bm_role = (_cd_section.get("color_role") or "").strip()
+                if _bm_role and _bm_role != "base":
+                    _cd_parts.append(
+                        f"- Section accent role: {_bm_role} — lead emphasis with the matching brand/semantic "
+                        f"color (var(--brand-accent) / --warn / --good / --gold); never invent a hex"
+                    )
+            _cd_body = "\n".join(_cd_parts) if _cd_parts else "(none specified — infer the intent from the narration and shot type)"
+            creative_direction = f"VIDEO CONCEPT:\n{_concept_block}\n\nTHIS SHOT:\n{_cd_body}" if _concept_block else _cd_body
+
             transition_in = shot.get("transition_in") or "fade"
             transition_css_block = TRANSITION_CSS_BLOCKS.get(transition_in, "")
 
@@ -15336,6 +15874,7 @@ class VideoGenerationPipeline:
                 image_prompt_line=image_prompt_line,
                 video_query_line=video_query_line,
                 director_notes=director_notes,
+                creative_direction=creative_direction,
                 narration_excerpt=shot.get("narration_excerpt", ""),
                 word_timings=word_timings,
                 sync_points=sync_points_str,
@@ -15351,6 +15890,24 @@ class VideoGenerationPipeline:
                 width=_w,
                 height=_h,
             )
+
+            # Denial Prompting (cheap-model diversity): forbid reusing the previous
+            # shot's visual approach so consecutive shots don't mode-collapse.
+            if self._tier_config.get("shot_denial_prompting") and shot_idx > 0:
+                _prev_shot = shots[shot_idx - 1] if isinstance(shots[shot_idx - 1], dict) else {}
+                _prev_type = (_prev_shot.get("shot_type") or "").strip()
+                _prev_trans = (_prev_shot.get("transition_in") or "").strip()
+                _prev_desc = (_prev_shot.get("visual_description") or "")[:120]
+                if _prev_type:
+                    user_prompt = user_prompt + (
+                        "\n\n**DENIAL CONSTRAINT (anti-repetition)**: The previous shot was a "
+                        f"{_prev_type}"
+                        + (f" entering with '{_prev_trans}'" if _prev_trans else "")
+                        + (f" — \"{_prev_desc}\"" if _prev_desc else "")
+                        + ". Do NOT reuse that layout archetype, entrance animation, or compositional "
+                        "structure. Choose a deliberately DIFFERENT visual approach for this shot while "
+                        "still serving the creative concept and brand palette."
+                    )
 
             # Inject stock media preference instruction based on tier config.
             _stock_pref = self._tier_config.get("stock_preference", "mixed")
@@ -16443,6 +17000,53 @@ class VideoGenerationPipeline:
                     time.sleep(1.5 * (1.6 ** attempt))
 
             # Build the entry in the same format as _expand_shots
+            # ── Best-of-N (cheap-model quality engine) ──────────────────────
+            # For the highest-impact shots, generate N-1 extra candidates and let
+            # a cheap judge pick the strongest. The baseline `data` above already
+            # ran the full retry+fallback path; extras are lightweight best-effort
+            # and skipped on failure, so this never makes a working shot worse.
+            if (shot_idx in getattr(self, "_best_of_n_indices", set())
+                    and not shot.get("_is_sub_shot")
+                    and isinstance(data, dict) and (data.get("html") or "").strip()):
+                _bon_model = self._resolve_stage_model("per_shot_html")
+                _bon_candidates = [{"html": data.get("html", "")}]
+                _bon_n = int(self._tier_config.get("best_of_n_count", 1) or 1)
+                _bon_temp = (self._tier_config.get("best_of_n_temperature")
+                             or self._tier_config.get("html_temperature", 0.7))
+                for _bon_i in range(1, max(1, _bon_n)):
+                    if not self._best_of_n_cost_ok():
+                        break
+                    try:
+                        _bon_raw, _bon_usage = self.html_client.chat(
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": _base_user_prompt},
+                            ],
+                            temperature=_bon_temp,
+                            max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                            model=_bon_model,
+                        )
+                        self._best_of_n_add_cost(_bon_usage, _bon_model)
+                        for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                            usage[_k] = usage.get(_k, 0) + (_bon_usage or {}).get(_k, 0)
+                        _bon_data = _extract_json_blob(_bon_raw)
+                        if isinstance(_bon_data, dict) and (_bon_data.get("html") or "").strip():
+                            _bon_candidates.append({"html": _bon_data["html"]})
+                    except Exception as _bon_err:
+                        print(f"   ⚠️ Shot {shot_idx + 1} best-of-N candidate {_bon_i} failed: {_bon_err}")
+                if len(_bon_candidates) > 1:
+                    _winner, _judge_usage = self._select_best_shot_html_with_llm(
+                        _bon_candidates, shot_idx=shot_idx, shot=shot,
+                        narration_excerpt=shot.get("narration_excerpt", ""),
+                        visual_description=shot.get("visual_description", ""),
+                    )
+                    for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        usage[_k] = usage.get(_k, 0) + (_judge_usage or {}).get(_k, 0)
+                    if isinstance(_winner, dict) and (_winner.get("html") or "").strip():
+                        data = dict(data)
+                        data["html"] = _winner["html"]
+                        print(f"   🎲 Shot {shot_idx + 1}: best-of-{len(_bon_candidates)} → winner selected")
+
             html = data.get("html", "")
             if not html:
                 print(f"   ⚠️ Shot {shot_idx + 1} returned empty HTML")
@@ -16853,6 +17457,21 @@ class VideoGenerationPipeline:
             )
             if _vision_review_record and _vision_review_record.get("regen_html"):
                 html = _vision_review_record["regen_html"]
+
+            # Director's-eye creativity ELEVATION gate (highest-impact shots only,
+            # ultra+). Unlike the defect gates, it can push a competent-but-flat
+            # shot BOLDER; ship-original-on-regression. Runs last, on the final html.
+            _creativity_record = self._critique_shot_creativity(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                total_shots=total_shots,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+            )
+            if _creativity_record and _creativity_record.get("regen_html"):
+                html = _creativity_record["regen_html"]
 
             html = self._ensure_fonts(html)
 
@@ -20807,6 +21426,100 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         except Exception as e:
             print(f"    ⚠️ Image prompt enhancement failed: {e}")
         return raw_prompt, {}
+
+    def _estimate_llm_cost_usd(self, usage: Dict[str, Any], model: Optional[str]) -> float:
+        """Rough USD estimate for one LLM call from its usage dict + model id.
+        Mirrors the per-shot pricing path; returns 0.0 if pricing is unavailable."""
+        try:
+            from constants.models import get_model_pricing as _gmp  # type: ignore
+            pricing = _gmp(model) or {}
+            inp = pricing.get("input_token_price") or 0.0
+            outp = pricing.get("output_token_price") or 0.0
+            u = usage or {}
+            return float(u.get("prompt_tokens", 0) or 0) * inp + float(u.get("completion_tokens", 0) or 0) * outp
+        except Exception:
+            return 0.0
+
+    def _best_of_n_cost_ok(self) -> bool:
+        """True while the per-run best-of-N USD budget has headroom. Thread-safe.
+        Returns False when no cap is configured (best-of-N stays off without a cap)."""
+        cap = float(self._tier_config.get("best_of_n_run_cost_cap_usd", 0.0) or 0.0)
+        if cap <= 0:
+            return False
+        lock = getattr(self, "_best_of_n_cost_lock", None)
+        if lock is None:
+            return float(getattr(self, "_best_of_n_run_cost_usd", 0.0)) < cap
+        with lock:
+            return float(getattr(self, "_best_of_n_run_cost_usd", 0.0)) < cap
+
+    def _best_of_n_add_cost(self, usage: Dict[str, Any], model: Optional[str]) -> None:
+        """Accumulate a best-of-N candidate's USD under the run lock (8 workers)."""
+        cost = self._estimate_llm_cost_usd(usage, model)
+        lock = getattr(self, "_best_of_n_cost_lock", None)
+        if lock is None:
+            self._best_of_n_run_cost_usd = float(getattr(self, "_best_of_n_run_cost_usd", 0.0)) + cost
+            return
+        with lock:
+            self._best_of_n_run_cost_usd = float(getattr(self, "_best_of_n_run_cost_usd", 0.0)) + cost
+
+    def _select_best_shot_html_with_llm(
+        self,
+        candidates: List[Dict[str, Any]],
+        *,
+        shot_idx: int,
+        shot: Dict[str, Any],
+        narration_excerpt: str,
+        visual_description: str,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Pick the best of N candidate shot HTMLs via ONE cheap judge call over
+        compact structural digests (never full HTML — token blowup). Ships
+        candidates[0] on any failure. Mirrors _rank_pexels_candidates_with_llm."""
+        usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        if not candidates:
+            return {}, usage
+        if len(candidates) == 1:
+            return candidates[0], usage
+        try:
+            lines = [
+                f"CANDIDATE {i}:\n{_summarize_shot_html_for_judge(c.get('html', ''))}"
+                for i, c in enumerate(candidates)
+            ]
+            cc = getattr(self, "_creative_concept", None) or {}
+            ctx = (
+                f"Controlling idea: {cc.get('controlling_idea', '')}\n"
+                f"Visual metaphor: {cc.get('visual_metaphor', '')}\n"
+                f"Signature device: {cc.get('signature_device', '')}\n"
+                f"What to avoid: {cc.get('what_to_avoid', '')}\n"
+                f"Shot role: {shot.get('intent_role', '')}\n"
+                f"Narration: {(narration_excerpt or '')[:200]}\n"
+                f"Visual direction: {(visual_description or '')[:200]}\n\n"
+                + "\n\n".join(lines)
+                + "\n\nPick the candidate that best executes the creative concept for THIS shot — "
+                "most distinctive, on-brand, legible, and genuinely animated (not a static frame). "
+                'Return JSON only: {"best_index": <int>, "reason": "<short>"}.'
+            )
+            raw, _u = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": (
+                        "You judge candidate shot designs for an AI video pipeline. "
+                        "Respond with ONE JSON object and nothing else. First char `{`.")},
+                    {"role": "user", "content": ctx},
+                ],
+                temperature=0.2,
+                max_tokens=300,
+                response_format={"type": "json_object"},
+                model=self._resolve_stage_model("per_shot_html"),
+            )
+            for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                usage[k] += (_u or {}).get(k, 0)
+            parsed = _extract_json_blob(raw)
+            if isinstance(parsed, dict):
+                idx = parsed.get("best_index")
+                if isinstance(idx, int) and 0 <= idx < len(candidates):
+                    return candidates[idx], usage
+        except Exception as e:
+            print(f"   ⚠️ Shot {shot_idx + 1} best-of-N judge failed ({e}) — shipping candidate 0")
+        return candidates[0], usage
 
     def _rank_pexels_candidates_with_llm(
         self,

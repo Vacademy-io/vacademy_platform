@@ -1947,6 +1947,38 @@ function getHelperScripts(): string {
                 } catch (e) { console.warn('fadeIn error', e); }
             };
 
+            // ── Craft-contract helpers (focus-by-suppression + persist-and-morph) ──
+            window.dimOthers = function(dims, opts) {
+                opts = opts || {};
+                try { var d = (typeof dims === 'string' ? document.querySelectorAll(dims) : dims);
+                    if (d) gsap.to(d, {opacity:(opts.dimOpacity!=null?opts.dimOpacity:0.35), filter:'saturate(0.4)', scale:0.97, duration:opts.duration||0.4, delay:opts.delay||0, ease:'power2.out'});
+                } catch (e) { console.warn('dimOthers error', e); }
+            };
+            window.setFocus = function(focus, dims, opts) {
+                opts = opts || {};
+                try { var f = (typeof focus === 'string' ? document.querySelector(focus) : focus);
+                    if (dims) window.dimOthers(dims, opts);
+                    if (f) gsap.to(f, {opacity:1, filter:'saturate(1)', scale:opts.focusScale||1.04, duration:opts.duration||0.4, delay:opts.delay||0, ease:'expo.out'});
+                } catch (e) { console.warn('setFocus error', e); }
+            };
+            window.resetFocus = function(targets, opts) {
+                opts = opts || {};
+                try { var t = (typeof targets === 'string' ? document.querySelectorAll(targets) : targets);
+                    if (t) gsap.to(t, {opacity:1, filter:'saturate(1)', scale:1, duration:opts.duration||0.4, delay:opts.delay||0, ease:'power2.out'});
+                } catch (e) { console.warn('resetFocus error', e); }
+            };
+            window.morphElement = function(target, vars, opts) {
+                vars = vars || {}; opts = opts || {};
+                try { var el = (typeof target === 'string' ? document.querySelector(target) : target);
+                    if (!el) return;
+                    var r0 = el.getBoundingClientRect();
+                    if (vars.set) { for (var k in vars.set) { try { el.style[k] = vars.set[k]; } catch (_e) {} } }
+                    var r1 = el.getBoundingClientRect();
+                    var sx = (r0.width && r1.width) ? r0.width/r1.width : 1, sy = (r0.height && r1.height) ? r0.height/r1.height : 1;
+                    gsap.fromTo(el, {x:r0.left-r1.left, y:r0.top-r1.top, scaleX:sx, scaleY:sy, transformOrigin:'top left'}, Object.assign({x:0,y:0,scaleX:1,scaleY:1,duration:opts.duration||0.6,delay:opts.delay||0,ease:opts.ease||'power2.out'}, vars.to||{}));
+                } catch (e) { console.warn('morphElement error', e); }
+            };
+
             // Typewriter effect
             window.typewriter = function(selectorOrEl, duration, delay) {
                 const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;

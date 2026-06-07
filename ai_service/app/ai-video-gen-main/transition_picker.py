@@ -41,6 +41,8 @@ _KNOWN_TRANSITIONS = {
     "diagonal_wipe",     # diagonal stripe wipe in brand-accent direction
     "hexagon_iris",      # hexagonal iris (sharper than circle, distinctive)
     "blinds_horizontal", # horizontal blinds reveal — works well after KINETIC_TITLE
+    "smash_cut",         # instant cut + white impact flash — surprises / hard hits
+    "dip_to_black",      # fade through black — deliberate time / topic jump
 }
 
 # Map shot_type → visual family. When two adjacent shots are in different
@@ -98,6 +100,12 @@ def normalize(transition_id: str) -> str:
         "zoom": "zoom_through",
         "crossfade": "fade",
         "dissolve": "dissolve_up",
+        "glitch": "smash_cut",
+        "smash": "smash_cut",
+        "hard_cut": "cut",
+        "fade_to_black": "dip_to_black",
+        "dip": "dip_to_black",
+        "dip_to_color": "dip_to_black",
     }
     return aliases.get(t, "fade")
 
@@ -223,4 +231,41 @@ def apply_to_plan(
         if chosen != old:
             shot["transition_in"] = chosen
             changes.append((i, old or "(none)", chosen, reason))
+    return changes
+
+
+def enforce_transitions(director_plan: Dict[str, Any]) -> List[Tuple[int, str, str, str]]:
+    """Validate LLM-AUTHORED transitions (e.g. from the Edit-Choreographer):
+    normalize unknowns to a known id and enforce ONLY the non-negotiable rules,
+    RESPECTING the author's choice everywhere else. This is the "picker validates,
+    doesn't override" mode — use it after an LLM has authored transitions (the
+    full `apply_to_plan` would override valid picks with family heuristics).
+
+    Returns (shot_index, old, new, reason) tuples for diagnostics.
+    """
+    shots: List[Dict[str, Any]] = director_plan.get("shots") or []
+    changes: List[Tuple[int, str, str, str]] = []
+    for i, shot in enumerate(shots):
+        st = shot.get("shot_type") or ""
+        old = shot.get("transition_in") or ""
+        new = normalize(old)
+        reason = "normalized" if new != old else ""
+        # Non-negotiables (deterministic — never trust the LLM on these):
+        if st == "KINETIC_TEXT":
+            new, reason = "cut", "KINETIC_TEXT → cut"
+        elif st == "KINETIC_TITLE":
+            if new not in ("zoom_in", "wipe_right", "fade", "vignette_fade"):
+                new, reason = "zoom_in", "KINETIC_TITLE → zoom_in"
+        elif i == 0 and new == "whip_pan":
+            # a whip-pan as the very first frame has nothing to pan from
+            new, reason = "cut", "first shot → cut (no prior frame to whip from)"
+        # The shot immediately after a KINETIC_TITLE should reveal, not fade flat —
+        # but a KINETIC_TEXT/KINETIC_TITLE keeps its own non-negotiable (above).
+        if (st not in ("KINETIC_TEXT", "KINETIC_TITLE")
+                and i > 0 and shots[i - 1].get("shot_type") == "KINETIC_TITLE"
+                and new not in ("wipe_right", "blinds_horizontal")):
+            new, reason = "wipe_right", "after KINETIC_TITLE → wipe_right"
+        if new != old:
+            shot["transition_in"] = new
+            changes.append((i, old or "(none)", new, reason))
     return changes

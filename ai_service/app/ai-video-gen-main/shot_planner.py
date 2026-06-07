@@ -73,6 +73,8 @@ TRANSITIONS: Tuple[str, ...] = (
     "diagonal_wipe",
     "hexagon_iris",
     "blinds_horizontal",
+    "smash_cut",
+    "dip_to_black",
 )
 
 # Audio-policy enum — mirrors `audio_policy_planner.AUDIO_POLICIES`. The
@@ -135,8 +137,23 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "actual narration sentences; you write a brief telling the NarrationWriter "
     "what each shot's narration should convey.\n\n"
 
+    "**FIRST — form the CREATIVE CONCEPT, then plan every shot to serve it.** Before any shots, decide:\n"
+    "  • `controlling_idea` — the ONE surprising, true thing this video argues, in a single sentence "
+    "(NOT a topic summary). Bad: 'a video about compound interest.' Good: 'Doing nothing is the most "
+    "powerful financial move you'll ever make.'\n"
+    "  • `tonal_register` — ad | explainer | tutorial | documentary | news | hype (sets the whole voice).\n"
+    "  • `emotional_arc` — from → to (e.g. 'smug certainty → unease → humbled clarity').\n"
+    "  • `visual_metaphor` — ONE concrete, animatable image that embodies the idea (e.g. 'a single coin "
+    "that snowballs into an avalanche across the timeline'), or '' if none truly fits.\n"
+    "  • `signature_device` — ONE recurring visual/motion gesture that should reappear across shots, or ''.\n"
+    "  • `what_to_avoid` — the obvious/generic treatment to consciously reject (e.g. 'no generic "
+    "students-on-laptops stock footage').\n"
+    "Emit these as a top-level `creative_concept` object. Then EVERY shot must visibly execute it: the "
+    "controlling idea and visual metaphor drive the plan, the signature device recurs (hook + a mid beat + "
+    "close), and the emotional arc pays off. A plan whose shots don't serve the concept is failing.\n\n"
+
     "You decide:\n"
-    "1. How many shots total (use the PACING PROFILE below)\n"
+    "1. How many shots total (use the RHYTHM PROFILE below)\n"
     "2. Which SHOT TYPE each shot uses (from the catalog below)\n"
     "3. What each shot says — as a `narration_brief` (1-2 sentence intent)\n"
     "4. How long each shot is (`duration_estimate_s`) — NarrationWriter "
@@ -146,7 +163,9 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "7. Audio policy per shot (whether master narration plays or the shot "
     "carries its own audio)\n\n"
 
-    "**SHOT TYPE CATALOG** (choose from these):\n"
+    "**SHOT TYPE VOCABULARY** — these are building blocks to COMPOSE and SEQUENCE "
+    "into a distinctive piece, not slots to fill. Combine and vary them; pick the "
+    "type that best serves each beat's IDEA, not the nearest convenient label:\n"
     "- **IMAGE_HERO**: Full-screen image with Ken Burns zoom + text overlay. "
     "For hooks, real-world examples, dramatic moments. Needs `image_prompt`. "
     "**Do NOT pick IMAGE_HERO when narration depicts a digital interaction (phone, app, "
@@ -202,17 +221,32 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "1. First shot is the hook — pick whichever shot type sells the topic best "
     "(VIDEO_HERO / IMAGE_HERO for real-world openers, KINETIC_TITLE for bold-text hooks, "
     "INFOGRAPHIC_SVG for concept-first openers, PRODUCT_HERO for brand/subject reels).\n"
-    "2. Never use the same shot type 3 times in a row.\n"
+    "2. **Diversity floor.** Never use the same shot type 3 times in a row. A "
+    "video of 6+ shots MUST use at least 4 DISTINCT shot types, and — when the "
+    "topic permits — at least one high-craft type (INFOGRAPHIC_SVG, PRODUCT_HERO, "
+    "DEVICE_MOCKUP, DATA_STORY, PROCESS_STEPS, or EQUATION_BUILD) rather than "
+    "defaulting to TEXT_DIAGRAM + IMAGE_HERO for everything. Diversity is a FLOOR, "
+    "not a quota — each type change must serve its beat; do not churn shot types "
+    "just to vary.\n"
     "3. Follow the topic image_ratio guidance provided.\n"
-    "4. **PACING PROFILE** (compute shot durations against the target_duration_s):\n"
-    "   - **Hook (shot 0)**:         target × 0.15,  min 3.5s, max 5.0s.\n"
-    "   - **Body shots (middle)**:   average target × 0.10–0.13, min 2.5s, max 4.0s.\n"
-    "   - **Close (final shot)**:    target × 0.17,  min 3.5s, max 5.5s.\n"
-    "   Worked example — 30s target: hook ≈ 4.5s, body ≈ 7 shots × 2.9s, close ≈ 5.0s → 9 shots total.\n"
-    "   Worked example — 45s target: hook ≈ 5.0s, body ≈ 10 shots × 3.0s, close ≈ 5.0s → 12 shots total.\n"
-    "   Hook and close MUST breathe — they anchor the viewer; cramming them sub-3.5s kills the open/close beat.\n"
+    "4. **RHYTHM PROFILE** — pacing is NOT uniform; tempo CONTRAST is what makes editing feel directed "
+    "rather than templated.\n"
+    "   Baseline durations (a starting point, NOT a metronome):\n"
+    "   - **Hook (shot 0)**:        target × 0.15,  min 3.5s, max 5.0s.\n"
+    "   - **Body shots (middle)**:  average target × 0.10–0.13, min 2.5s, max 4.0s.\n"
+    "   - **Close (final shot)**:   target × 0.17,  min 3.5s, max 5.5s.\n"
+    "   Then SHAPE the rhythm: pick the video's climax/turn shot (usually a `moment`) and place it "
+    "deliberately. Build toward it — progressively SHORTER body shots accelerate energy — OR drop into a "
+    "sudden HOLD on the reveal. At least ONE body shot MUST deviate ≥40% from the average body duration "
+    "(a fast ~1.8s punch or a held ~5s beat); if every body shot sits within a few tenths of the average, "
+    "the video reads as a metronome — fix it.\n"
+    "   Emit a per-shot `pacing_role` ∈ {build, hold, hit, breath}: `build` = momentum/accelerating, "
+    "`hit` = the fast punchy beat, `hold` = the deliberate slow reveal/climax, `breath` = hook/close/reset.\n"
+    "   The two examples below are ILLUSTRATIVE ARITHMETIC ONLY — do NOT reproduce a uniform body: "
+    "30s ≈ hook 4.5s + ~7 VARIED body shots + close 5.0s; 45s ≈ hook 5.0s + ~10 VARIED body + close 5.0s.\n"
+    "   Hook and close MUST breathe — cramming them sub-3.5s kills the open/close beat.\n"
     "   Longer than 5s on a body shot only when it carries heavy in-shot motion (PROCESS_STEPS, "
-    "EQUATION_BUILD, DATA_STORY). Split any content that would otherwise need longer.\n"
+    "EQUATION_BUILD, DATA_STORY) or is a deliberate `hold` on the climax. Split content that needs longer.\n"
     "   NEVER pack more body shots than `(target - hook - close) / 2.5` allows — that's the floor.\n"
     "   For portrait/9:16, hook/close stays in the same range; body skews 0.5s faster (min 2.0s).\n"
     "   Cap shot count at 12 — anything beyond is over-packed.\n"
@@ -227,9 +261,13 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "(matching shot families within an act), but a long video CAN change worlds between acts "
     "(e.g. photo hero → illustrated infographic → product hero outro) as long as each transition "
     "feels intentional. Use KINETIC_TITLE or a hard cut between shots to mark act changes.\n"
-    "11. **INTENT ROLE** (`intent_role`, required per shot): one of `hook`, `setup`, `explanation`, "
-    "`example`, `moment`, `recap`, `cta`. Shot 0 is `hook`; final shot is typically `cta` or `recap`. "
-    "Middle shots are mostly `explanation` with `example` / `moment` sprinkled in.\n"
+    "11. **INTENT ROLE = the DRAMATIC ARC** (`intent_role`, required per shot): one of `hook`, `setup`, "
+    "`explanation`, `example`, `moment`, `recap`, `cta`. This is not just a label — the sequence MUST form "
+    "an arc: the `hook` poses a tension or open question; `setup`/`explanation`/`example` shots ESCALATE "
+    "toward it; at least one `moment` is the PAYOFF (the single shot a viewer would remember); the final "
+    "shot (`cta` or `recap`) RESOLVES the exact tension the hook opened and calls back to it. A plan whose "
+    "ending does not answer its opening is failing. Shot 0 is `hook`; the middle is mostly `explanation` "
+    "with `example` / `moment` placed for build; the final shot is `cta` or `recap`.\n"
     "12. **BRAND ASSET USAGE — non-negotiable when reference assets are present**. "
     "When the user has uploaded reference assets (logos, product photos, brand marks — surfaced "
     "below as 🏷️ BRAND ANCHOR), the FIRST and LAST shots MUST be designed to embed at least one "
@@ -294,9 +332,13 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
 
     "**OPTIONAL — `template_id` (deterministic shot composition)**:\n"
     "Some shots cleanly fit a pre-built composition layout. Setting `template_id` AND "
-    "`template_params` on a shot tells the pipeline to render that layout deterministically — "
-    "NO per-shot LLM call, perfect cross-shot consistency. Use templates when content is a clean "
-    "fit; leave `template_id` null for freeform shots. Templates compose with any `shot_type`.\n\n"
+    "`template_params` renders that layout deterministically — NO per-shot LLM call and perfect "
+    "cross-shot consistency, but ALSO zero bespoke direction for that shot. DEFAULT to directing "
+    "the shot yourself (leave `template_id` null); reach for a template ONLY when you genuinely "
+    "cannot improve on it, or when sibling-shot consistency demands the identical layout (e.g. a "
+    "repeating stat card). Keep templated shots to roughly a THIRD of the video at most, and never "
+    "use the same template twice unless it is an intentional recurring motif. Templates compose "
+    "with any `shot_type`.\n\n"
 
     "**TRANSITION_IN** (required for every shot — pick exactly one):\n"
     "- `\"cut\"` — instant. KINETIC_TEXT (always), fast reels back-to-back shots.\n"
@@ -311,6 +353,8 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "- `\"diagonal_wipe\"` — diagonal stripe wipe. Forward-momentum reel cuts.\n"
     "- `\"hexagon_iris\"` — hexagonal iris reveal. Distinctive moments; opens and closes only.\n"
     "- `\"blinds_horizontal\"` — horizontal blinds reveal. Pairs naturally after KINETIC_TITLE.\n"
+    "- `\"smash_cut\"` — instant cut + a brief white impact flash. Surprises, hard facts, high-energy hits.\n"
+    "- `\"dip_to_black\"` — fade through black. A deliberate time jump or topic reset.\n"
     "Non-negotiable: KINETIC_TEXT → `cut`. KINETIC_TITLE → `zoom_in`. After KINETIC_TITLE → next "
     "shot uses `wipe_right` or `blinds_horizontal`. Default: `fade`. "
     "Use the branded mask reveals (`circle_iris` / `hexagon_iris` / `blinds_horizontal` / "
@@ -330,19 +374,49 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "Each item: `description`, `screen_position`, `when_visible`. The per-shot LLM is handed "
     "this list verbatim — without it, every shot reinvents where the logo sits.\n\n"
 
+    "**TOP-LEVEL `beat_map` (the COLOR SCRIPT — RECOMMENDED, shapes rhythm + music)**:\n"
+    "Alongside `shots`, emit a top-level `beat_map`: an ordered list of SECTIONS (a section is a run of "
+    "consecutive shots that share a mood). Each entry: `from_shot` + `to_shot` (inclusive shot indices), "
+    "`emotion` (the section's feeling), `energy` (0.0–1.0 — how intense/fast the section feels), and "
+    "`color_role` (which palette role leads: `base` | `brand` | `accent` | `warn` | `good` | `gold` — "
+    "NEVER a raw hex; these map to the institute's brand tokens + semantic accents). The `energy` curve is "
+    "a RHYTHM commitment: it MUST rise toward your climax/`moment` and drop on holds and the close — a flat "
+    "curve (all sections within ~0.2 of each other) means you haven't shaped the video. This curve drives "
+    "per-shot motion intensity AND the music dynamics (the score builds and drops with it). Cover every "
+    "shot exactly once, in order.\n\n"
+
     "**OUTPUT ENVELOPE — NON-NEGOTIABLE**:\n"
     "Your response MUST be a JSON object. First character `{`. Last character `}`. No markdown "
     "fences, no preamble, no postamble. Top-level shape:\n"
     "  {\n"
+    "    \"creative_concept\": { \"controlling_idea\": \"...\", \"tonal_register\": \"...\", "
+    "\"emotional_arc\": \"...\", \"visual_metaphor\": \"...\", \"signature_device\": \"...\", "
+    "\"what_to_avoid\": \"...\" },\n"
     "    \"shots\": [ {<shot dict>}, ... ],\n"
     "    \"continuity_notes\": \"<≤200 chars: how shots flow together>\",\n"
-    "    \"recurring_motifs\": [ {<motif dict>}, ... ]   // see above\n"
+    "    \"recurring_motifs\": [ {<motif dict>}, ... ],   // see above\n"
+    "    \"beat_map\": [ {\"from_shot\": 0, \"to_shot\": 1, \"emotion\": \"...\", \"energy\": 0.4, \"color_role\": \"base\"}, ... ]\n"
     "  }\n"
     "Each shot dict MUST include: `shot_index` (int), `shot_type` (string), `intent_role` (string), "
     "`narration_brief` (string, may be empty), `audio_policy` (string), `duration_estimate_s` "
     "(float), `transition_in` (string), `background_treatment` (string). Plus shot-type-specific "
     "fields (image_prompt, video_query, ai_video_prompt, source_start/source_end, template_id/"
     "template_params, etc.) as the catalog requires.\n"
+)
+
+
+# Verbalized Sampling — appended to the system prompt when the tier enables it.
+# Breaks concept mode-collapse on cheap models by asking for an internal
+# distribution of candidates and returning only the strongest. Output contract
+# is unchanged (still ONE creative_concept), so the parser is untouched.
+_VERBALIZED_SAMPLING_BLOCK = (
+    "\n\n**CONCEPT DIVERGENCE (Verbalized Sampling)**:\n"
+    "Before committing to the creative_concept, INTERNALLY generate THREE genuinely different "
+    "controlling_idea candidates for THIS prompt + audience — spanning distinct angles (e.g. "
+    "contrarian, emotional, mechanism-first) — each with a rough probability of being the "
+    "strongest. Then pick the boldest viable one and output ONLY that single creative_concept "
+    "(do NOT emit the alternatives or the probabilities). Goal: a less generic, less "
+    "mode-collapsed concept — not extra text. Reject any candidate that merely restates the topic.\n"
 )
 
 
@@ -720,6 +794,7 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "source_start",
         "source_end",
         "role",
+        "pacing_role",
     ):
         if field in raw and raw[field] is not None:
             out[field] = raw[field]
@@ -817,6 +892,82 @@ def _normalize_music_plan(plan: Any) -> Optional[Dict[str, Any]]:
     }
 
 
+_BEAT_MAP_COLOR_ROLES = {"base", "brand", "accent", "warn", "good", "gold"}
+
+
+def _normalize_beat_map(bm: Any) -> List[Dict[str, Any]]:
+    """Preserve + sanitize the ShotPlanner's beat_map (the color/energy script).
+    Each entry: from_shot/to_shot (ints), emotion (str), energy (float 0-1),
+    color_role (brand-safe enum). Returns [] when absent."""
+    if not isinstance(bm, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for e in bm:
+        if not isinstance(e, dict):
+            continue
+        try:
+            fs = int(e.get("from_shot", e.get("shot_index", 0)))
+            ts = int(e.get("to_shot", fs))
+        except (TypeError, ValueError):
+            continue
+        energy = max(0.0, min(1.0, _coerce_float(e.get("energy"), 0.5)))
+        role = str(e.get("color_role") or "base").strip().lower()
+        if role not in _BEAT_MAP_COLOR_ROLES:
+            role = "base"
+        out.append({
+            "from_shot": fs,
+            "to_shot": max(fs, ts),
+            "emotion": str(e.get("emotion") or "").strip(),
+            "energy": round(energy, 2),
+            "color_role": role,
+        })
+    return out
+
+
+def _check_concept_conformance(plan: Dict[str, Any]) -> List[str]:
+    """Deterministic conformance checks for the Phase-B gate: is the
+    creative_concept complete and does the beat_map energy curve BUILD (not a
+    flat metronome)? Returns a list of issue strings ([] = conformant). Pure +
+    side-effect-free → unit-testable. Intentionally avoids fuzzy text-matching
+    of the visual_metaphor / signature_device — a motif is visual, not a
+    keyword, so that semantic check belongs to an LLM/vision judge, not regex."""
+    issues: List[str] = []
+    cc = plan.get("creative_concept") if isinstance(plan.get("creative_concept"), dict) else {}
+    shots = plan.get("shots") if isinstance(plan.get("shots"), list) else []
+    if not cc.get("controlling_idea"):
+        issues.append("missing creative_concept.controlling_idea (decide the ONE thing this video argues)")
+    if not cc.get("tonal_register"):
+        issues.append("missing creative_concept.tonal_register")
+    bm = plan.get("beat_map") if isinstance(plan.get("beat_map"), list) else []
+    energies = [
+        e.get("energy") for e in bm
+        if isinstance(e, dict) and isinstance(e.get("energy"), (int, float))
+    ]
+    if len(energies) >= 2:
+        if (max(energies) - min(energies)) < 0.2:
+            issues.append("beat_map energy curve is flat (no build) — vary energy toward a climax and drop on holds/close")
+    elif len(shots) >= 4 and not bm:
+        issues.append("missing beat_map (the energy/color script) for a multi-section video")
+    return issues
+
+
+def _normalize_creative_concept(cc: Any) -> Dict[str, str]:
+    """Preserve the ShotPlanner's top-level creative_concept (controlling idea,
+    tonal register, emotional arc, visual metaphor, signature device, what-to-avoid).
+    Returns {} when absent so every downstream consumer can treat it as optional."""
+    if not isinstance(cc, dict):
+        return {}
+    out: Dict[str, str] = {}
+    for k in (
+        "controlling_idea", "tonal_register", "emotional_arc",
+        "visual_metaphor", "signature_device", "what_to_avoid",
+    ):
+        v = cc.get(k)
+        if v:
+            out[k] = str(v).strip()
+    return out
+
+
 def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
     """Apply normalization + lazy defaults to a parsed shot plan. Idempotent.
 
@@ -837,6 +988,8 @@ def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
 
     return {
         "shots": normalized,
+        "creative_concept": _normalize_creative_concept(plan.get("creative_concept")),
+        "beat_map": _normalize_beat_map(plan.get("beat_map")),
         "continuity_notes": str(plan.get("continuity_notes") or "").strip(),
         "recurring_motifs": _normalize_recurring_motifs(plan.get("recurring_motifs")),
         "music_plan": _normalize_music_plan(plan.get("music_plan")),
@@ -904,6 +1057,8 @@ def plan_shots(
     valid_template_ids: Optional[List[str]] = None,
     include_music_plan: bool = False,
     music_plan_target_duration_s: Optional[float] = None,
+    enforce_concept: bool = True,
+    verbalized_sampling: bool = False,
     temperature: float = 0.6,
     max_tokens: int = 16000,
 ) -> Dict[str, Any]:
@@ -968,6 +1123,8 @@ def plan_shots(
     )
 
     system_content = SHOT_PLANNER_SYSTEM_PROMPT
+    if verbalized_sampling:
+        system_content = system_content + _VERBALIZED_SAMPLING_BLOCK
     if include_music_plan:
         # Append the Director's MUSIC_PLAN_EXTENSION verbatim so v2 Director
         # and v3 ShotPlanner produce music_plan payloads under the same
@@ -1015,8 +1172,52 @@ def plan_shots(
     if valid_template_ids is not None:
         _scrub_invalid_template_ids(parsed["shots"], set(valid_template_ids))
 
+    usage = usage or {}
+
+    # ── Conformance gate (Phase B) ──────────────────────────────────────────
+    # Verify the plan serves its own creative_concept and that the beat_map
+    # energy curve BUILDS (not a flat metronome). On a concrete structural miss,
+    # fire ONE corrective re-plan. Bounded, guarded, ship-original-on-regression.
+    if enforce_concept:
+        _issues = _check_concept_conformance(parsed)
+        if _issues:
+            try:
+                _corrective = (
+                    "Your plan does not yet serve its own creative_concept:\n- "
+                    + "\n- ".join(_issues)
+                    + "\n\nRevise the FULL plan JSON: keep the same shot count and durations unless a "
+                    "change is required, but make every shot serve the controlling_idea, ensure the "
+                    "beat_map covers every shot with an energy curve that RISES toward the climax and "
+                    "DROPS on holds/close, and fill any missing creative_concept fields. Return the "
+                    "same JSON shape — first char '{', last char '}'."
+                )
+                _messages2 = messages + [
+                    {"role": "assistant", "content": (text or "")[:6000]},
+                    {"role": "user", "content": _corrective},
+                ]
+                _text2, _usage2 = llm_chat(
+                    _messages2, model=model, temperature=temperature,
+                    max_tokens=max_tokens, response_format={"type": "json_object"},
+                )
+                _parsed2 = _parse_shot_plan(_text2 or "")
+                if valid_template_ids is not None:
+                    _scrub_invalid_template_ids(_parsed2["shots"], set(valid_template_ids))
+                # Accept the revision only if it kept the shots AND resolved ≥1 issue.
+                if (
+                    _parsed2.get("shots")
+                    and len(_parsed2["shots"]) >= max(1, len(parsed["shots"]) - 1)
+                    and len(_check_concept_conformance(_parsed2)) < len(_issues)
+                ):
+                    parsed = _parsed2
+                    for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        usage[_k] = int(usage.get(_k, 0) or 0) + int((_usage2 or {}).get(_k, 0) or 0)
+            except Exception:
+                pass  # non-fatal — keep the original plan
+
     return {
         "shots": parsed["shots"],
+        "creative_concept": parsed.get("creative_concept") or {},
+        "beat_map": parsed.get("beat_map") or [],
         "continuity_notes": parsed["continuity_notes"],
         "recurring_motifs": parsed["recurring_motifs"],
         "music_plan": parsed.get("music_plan"),

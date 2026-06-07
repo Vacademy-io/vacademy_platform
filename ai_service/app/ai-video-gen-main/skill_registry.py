@@ -158,8 +158,11 @@ def build_catalog_for_shot(
         "",
         "You have access to pre-built, tested motion primitives. Drop a `<skill>` tag "
         "anywhere in your HTML and the pipeline will replace it with validated, "
-        "production-quality HTML + CSS + GSAP code. Use skills when one fits; fall "
-        "back to custom HTML when none does. You can mix skills and custom code freely.",
+        "production-quality HTML + CSS + GSAP code. Treat these as a VOCABULARY to "
+        "compose around your own direction — not a substitute for it. Reach for a skill "
+        "when it genuinely serves the beat; otherwise author the motion yourself. Mix "
+        "multiple skills with custom HTML freely — but never let a drop-in skill flatten "
+        "a shot into a generic widget when the idea deserves a bespoke composition.",
         "",
         "**Syntax**: `<skill data-skill-id=\"<id>\" data-params='<json>'></skill>`",
         "",

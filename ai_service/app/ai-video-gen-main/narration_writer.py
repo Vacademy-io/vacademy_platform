@@ -78,12 +78,23 @@ NARRATION_WRITER_SYSTEM_PROMPT = (
     "viewer hears one narrator: same tone, same capitalization style, same "
     "rhythm across shots. If shot 0 sets up a question, shot 1 doesn't start "
     "from scratch — it continues.\n"
-    "5. **Honor brand_voice when provided.** Tone (`curious`, `confident`, "
-    "`warm`), caps_style (`TITLE_ACCENT_ONLY`, `sentence_case`), punctuation "
-    "conventions (`minimal`, `comma_friendly`).\n"
-    "6. **Hook (shot 0) leads, CTA (final shot) lands.** Open with a "
-    "compelling first beat — a question, a claim, a hook. Close with a clear "
-    "call-to-action or a confident wrap. The middle is teaching.\n"
+    "5. **Honor brand_voice when provided — especially `tonal_register`.** "
+    "`tonal_register` sets the whole emotional register; match it and do NOT "
+    "collapse every video into the same upbeat explainer voice:\n"
+    "   - `ad` / `hype`: confident, a little cocky; short declaratives; build to a payoff line.\n"
+    "   - `explainer`: curious, clear, genuinely excited; lead with the surprising part, never textbook.\n"
+    "   - `tutorial`: calm, direct, second-person ('you'); concrete verbs, no hype.\n"
+    "   - `documentary` / `story`: hushed, sensory, present-tense; let images breathe; no sales pitch.\n"
+    "   - `news`: measured, factual, present-tense urgency; let the facts carry the weight.\n"
+    "   Also honor caps_style (`TITLE_ACCENT_ONLY`, `sentence_case`) and punctuation "
+    "(`minimal`, `comma_friendly`). If brand_voice is absent, infer the register "
+    "from the shots' intent_role and visual context — still don't default to generic upbeat.\n"
+    "6. **Hook (shot 0) leads; the close depends on register/intent.** Open with a "
+    "compelling first beat — a question, a claim, a cold concrete image. For "
+    "teaching/sales registers (`explainer` / `tutorial` / `ad`) close the final shot "
+    "with an EARNED call-to-action or confident wrap. For narrative registers "
+    "(`documentary` / `story` / `trailer`, or a final shot whose intent_role is not "
+    "`cta`) do NOT tack on a CTA — close on a line that lingers. The middle teaches or builds.\n"
     "7. **No filler.** Don't write words just to fill duration. Cut hard. The "
     "ShotPlanner can shrink durations if you write less than expected — that's "
     "fine. Don't pad.\n"
@@ -99,6 +110,22 @@ NARRATION_WRITER_SYSTEM_PROMPT = (
     "11. **For shots with the same intent_role back-to-back** (e.g. two "
     "explanation shots), DO NOT repeat the same opener (`Now,`, `So,`, "
     "`Next,`). Vary connectives or drop them.\n"
+    "12. **BANNED OPENERS — never start the video (or a shot) with these generic "
+    "AI tells:** 'Have you ever wondered', 'Imagine a world where', 'In today's "
+    "video', 'Did you know', 'Let's dive in', 'Picture this', 'Today we'll learn'. "
+    "Open instead with a cold concrete scene, a contradiction/reversal ('They told "
+    "you X. They were wrong.'), a single arresting number, an in-medias-res moment, "
+    "or a sharp non-rhetorical question.\n"
+    "13. **BANNED FILLER & CLICHÉ anywhere in the script:** 'fascinating', "
+    "'important to note', 'as we can see', 'it turns out', 'at the end of the day', "
+    "'delve', 'unlock', 'journey' (as a metaphor), 'game-changer', 'basically', "
+    "'actually', 'in conclusion'. Cut them — say the concrete thing instead. Showing "
+    "beats asserting: never tell the viewer something is interesting, make it interesting.\n"
+    "14. **Serve the CREATIVE CONCEPT when the plan includes one.** The shot plan may carry a "
+    "`creative_concept` (controlling_idea, tonal_register, emotional_arc, visual_metaphor, "
+    "signature_device). The whole narration must advance the controlling idea and LAND the emotional "
+    "arc; match the tonal_register (it wins over a generic brand tone if they conflict); name or evoke "
+    "the visual metaphor in words where natural. Don't restate the concept verbatim — embody it.\n"
 )
 
 
@@ -159,6 +186,9 @@ def build_narration_writer_user_prompt(
         payload["brand_voice"] = brand_voice
     if continuity_notes:
         payload["continuity_notes"] = str(continuity_notes)[:400]
+    _cc = shot_plan.get("creative_concept")
+    if isinstance(_cc, dict) and _cc:
+        payload["creative_concept"] = _cc
 
     effective_wpm = float(wpm_override) if (wpm_override and wpm_override > 0) else DEFAULT_WPM
     expected_words = sum(
@@ -178,11 +208,19 @@ def build_narration_writer_user_prompt(
         f"({effective_wpm:.0f} wpm × {target_duration_s:.1f}s minus intrinsic shots).",
     ]
     if wpm_override and wpm_override > 0 and abs(effective_wpm - DEFAULT_WPM) > 1.0:
-        lines.append(
-            f"OVERRIDE: target pacing is {effective_wpm:.0f} wpm (not the default "
-            f"{DEFAULT_WPM:.0f}) — the TTS voice for this run is slower than typical. "
-            f"Cut every shot's word count proportionally; keep the meaning, lose the filler."
-        )
+        if effective_wpm > DEFAULT_WPM:
+            lines.append(
+                f"OVERRIDE: target pacing is {effective_wpm:.0f} wpm (FASTER than the default "
+                f"{DEFAULT_WPM:.0f}) — this is a punchy, energetic register. You MAY write "
+                f"proportionally MORE words per shot (denser, snappier delivery); keep it tight "
+                f"and concrete, no filler."
+            )
+        else:
+            lines.append(
+                f"OVERRIDE: target pacing is {effective_wpm:.0f} wpm (SLOWER than the default "
+                f"{DEFAULT_WPM:.0f}) — the TTS voice for this run is slower than typical. "
+                f"Cut every shot's word count proportionally; keep the meaning, lose the filler."
+            )
     lines += [
         "",
         "Author the narration now. Output the JSON object only.",

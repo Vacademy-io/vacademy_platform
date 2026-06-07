@@ -54,7 +54,10 @@ CORE_PREAMBLE = (
     "  Without `&nbsp;`, two words get jammed together as a single token — a recurring shipping bug.\n"
     "- **SECOND-BEAT MOTION** — shots ≥3s should have at least one GSAP tween with "
     "`delay >= 0.55 × shot_duration` (something happens in the back half, not just an entry "
-    "animation). Otherwise the shot fades in then sits — reads as a still frame.\n\n"
+    "animation). Otherwise the shot fades in then sits — reads as a still frame.\n"
+    "- **NARRATION LOCK** — the element you animate on each beat must be the SUBJECT of the phrase "
+    "spoken at that moment (use the Rel(s) word-timing as the delay). Don't animate ideas the script "
+    "isn't saying; don't say an idea without moving the thing it names.\n\n"
 
     "**PROFESSIONAL CSS UTILITIES (pre-built, use freely)**:\n"
     "- `.halftone` — CSS dot texture overlay (dark dots on current bg)\n"
@@ -478,6 +481,38 @@ CORE_PREAMBLE_ASPIRATIONAL = (
     "A 20s shot covering 4 sentences should typically be 3 acts; pace the cuts to land on sentence "
     "boundaries from the WORD TIMINGS table, not on round-number delays.\n\n"
 
+    "**PERSIST-AND-MORPH (continuity across beats)**:\n"
+    "When a later beat is a variation of an earlier one — a diagram gaining a label, a shape becoming "
+    "the next shape, a number rolling, a chart growing a bar — TRANSFORM the existing element instead "
+    "of clearing it and redrawing. Matching parts stay put; only the differences move. This is what "
+    "makes an explainer feel like one continuous thought instead of a slideshow.\n"
+    "- **Stable semantic ids**: give persistent elements meaningful ids (`#orbit`, `#cell`, "
+    "`#equation-lhs`) and REUSE the same id across beats/acts. Animate the SAME node forward; do not "
+    "create `#cell-2` to replace `#cell`.\n"
+    "- **How to morph** (true GSAP MorphSVG is NOT available — use these): position/scale/rotation → "
+    "`gsap.to('#id', {x,y,scale,rotation,duration,ease})` on the persistent node; SVG outline change → "
+    "Anime.js `d`-attribute morph (Pattern B) on the SAME `<path>`; layout reflow → FLIP by hand (read "
+    "old box, set new layout, `gsap.from('#id', {x:dx,y:dy})`) or call `morphElement('#id', {...})` if "
+    "that helper is available; genuine swap → CROSS-FADE on a shared anchor (new enters opacity 0 over "
+    "the old, old fades as new rises). Never a hard clear-then-draw on a continuity element.\n"
+    "Reserve hard cuts (the flash/glitch act-cuts above) for genuinely NEW compositions; use "
+    "persist-and-morph when the next beat continues the current one.\n\n"
+
+    "**FOCUS-BY-SUPPRESSION (one subject per beat)**:\n"
+    "Each beat has ONE focal element — the thing the narration is about right now. On that beat, PUSH "
+    "BACK everything else so the eye goes straight to the focus, using the stable ids above. If the "
+    "`setFocus(focusSel, dimSel)` / `dimOthers(...)` helpers are available use them; otherwise plain GSAP:\n"
+    "```js\n"
+    "// at the beat's Rel(s) delay T, focusing #cell:\n"
+    "gsap.to(['#label','#legend','#bg-diagram'], {opacity:0.35, filter:'saturate(0.4)', scale:0.97, duration:0.4, ease:'power2.out', delay:T});\n"
+    "gsap.to('#cell', {opacity:1, filter:'saturate(1)', scale:1.04, duration:0.4, ease:'expo.out', delay:T});\n"
+    "```\n"
+    "When focus moves to the next subject on a later beat, RESTORE the previous one (opacity:1, "
+    "filter:'saturate(1)', scale:1) as you suppress the new non-focal set — focus shifts, it doesn't "
+    "accumulate dimming. Group non-focal selectors in one array (one tween). Keep suppressed opacity "
+    "≥0.3 so context stays legible — de-emphasis, not removal. A suppression/lift on an emphasis word "
+    "also counts as your back-half second-beat motion.\n\n"
+
     "**PLAN BEFORE YOU CODE — TIMELINE MAP**:\n"
     "Begin your `<script>` block with a TIMELINE MAP comment that lists every narration phrase with its "
     "absolute timestamp and the animation it triggers. Then implement against the map. Every emphasis "
@@ -510,6 +545,19 @@ CORE_PREAMBLE_ASPIRATIONAL = (
     "```\n"
     "This is not optional polish — the planning step is what produces choreographed shots instead of "
     "decorated ones.\n\n"
+
+    "**VISUAL-NARRATION LOCK (extends the TIMELINE MAP)**:\n"
+    "The element that MOVES on a given beat must BE the grammatical subject of the phrase spoken at "
+    "that timestamp. When the narration says 'the cell divides', the cell animates — not a label, not "
+    "the background. Two hard rules:\n"
+    "  1. NEVER animate a concept that isn't being narrated right now — no decorative reveals on words "
+    "the script never says. Every TIMELINE MAP entry already cites the narrated phrase that triggers "
+    "it; make the moving element match the noun in that phrase.\n"
+    "  2. NEVER narrate a concept with no corresponding visual change — if the phrase introduces a new "
+    "idea, SOMETHING must move, reveal, transform, or get signaled on that beat. A spoken idea over a "
+    "static frame is a missed beat.\n"
+    "Ambient loops (drift, breathing, glow) are exempt — they're texture, not beats; the lock governs "
+    "the narration-triggered reveals in your map.\n\n"
 
     "**SEMANTIC ACCENT COLOR**:\n"
     "When the Director detects a narration contrast (warning vs success, real vs fake, before vs after, "
@@ -682,8 +730,8 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
         ),
         "script_block": (
             "animateSVG('api-diagram', 120);\n"
-            "setTimeout(() => annotate('#api-term', {type:'underline', color:'#dc2626', duration:600}), 1500);\n"
-            "setTimeout(() => annotate('#talk-term', {type:'highlight', color:'#fef08a', duration:600}), 2000);\n"
+            "gsap.delayedCall(1.5, () => annotate('#api-term', {type:'underline', color:'#dc2626', duration:600}));\n"
+            "gsap.delayedCall(2.0, () => annotate('#talk-term', {type:'highlight', color:'#fef08a', duration:600}));\n"
         ),
         "guidelines": [
             "WRAP content in `<div class='full-screen-center'>...</div>`",
@@ -864,7 +912,7 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
         ),
         "script_block": (
             "animateSVG('anno-svg', 80);\n"
-            "setTimeout(() => fadeIn('#l1', 0.4, 0), 900);\n"
+            "gsap.delayedCall(0.9, () => fadeIn('#l1', 0.4, 0));\n"
         ),
         "guidelines": [
             "Image prompt MUST include 'unlabeled, no text overlay' so SVG labels are readable",
@@ -971,8 +1019,8 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
         ),
         "script_block": (
             "fadeIn('#ps-1', 0.5, 0);\n"
-            "setTimeout(() => animateSVG('pc-1', 35), 1800);\n"
-            "setTimeout(() => fadeIn('#ps-2', 0.5, 0), 2600);\n"
+            "gsap.delayedCall(1.8, () => animateSVG('pc-1', 35));\n"
+            "gsap.delayedCall(2.6, () => fadeIn('#ps-2', 0.5, 0));\n"
         ),
         "guidelines": [
             "Use 3-5 steps per shot. For more steps, split into two shots.",
@@ -1010,12 +1058,12 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
         ),
         "script_block": (
             "fadeIn('#eq-ctx', 0.5, 0);\n"
-            "setTimeout(() => fadeIn('#eq-0', 0.4, 0), 1200);\n"
-            "setTimeout(() => fadeIn('#eq-1', 0.3, 0), 2000);\n"
-            "setTimeout(() => fadeIn('#eq-2', 0.4, 0), 2800);\n"
-            "setTimeout(() => fadeIn('#eq-3', 0.4, 0), 3600);\n"
-            "setTimeout(() => fadeIn('#eq-note', 0.5, 0), 4800);\n"
-            "setTimeout(() => annotate('#eq-0', {type:'circle', color:'#dc2626', strokeWidth:3, duration:700}), 5200);\n"
+            "gsap.delayedCall(1.2, () => fadeIn('#eq-0', 0.4, 0));\n"
+            "gsap.delayedCall(2.0, () => fadeIn('#eq-1', 0.3, 0));\n"
+            "gsap.delayedCall(2.8, () => fadeIn('#eq-2', 0.4, 0));\n"
+            "gsap.delayedCall(3.6, () => fadeIn('#eq-3', 0.4, 0));\n"
+            "gsap.delayedCall(4.8, () => fadeIn('#eq-note', 0.5, 0));\n"
+            "gsap.delayedCall(5.2, () => annotate('#eq-0', {type:'circle', color:'#dc2626', strokeWidth:3, duration:700}));\n"
         ),
         "guidelines": [
             "KaTeX auto-renders on page load even if elements are opacity:0. Revealing with fadeIn shows pre-rendered math.",

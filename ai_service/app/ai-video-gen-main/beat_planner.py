@@ -36,9 +36,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 # Enumerations
 # ---------------------------------------------------------------------------
 
-# Allowed `visual_type_hint` values. The Director (Phase 2) maps these to
-# shot_types; DefaultShotMapper does the same for non-premium tiers without
-# an LLM call. Keep this list in sync with `default_shot_mapper._VISUAL_TYPE_TO_SHOT_TYPE`.
+# Allowed `visual_type_hint` values. The planner maps these to shot_types.
 BEAT_VISUAL_TYPES: Tuple[str, ...] = (
     "motion_graphic",   # text + animation, no media (default)
     "image_hero",       # AI-generated still or stock photo, full canvas

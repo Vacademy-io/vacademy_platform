@@ -154,11 +154,14 @@ def build_catalog_for_director(tier: str, canvas: str = "any") -> str:
         "the shot deterministically — no per-shot LLM call. This kills "
         "composition drift and keeps the video visually coherent.",
         "",
-        "**When to use a template**: the content is a clean fit for the "
-        "template's structure (e.g. comparing two things → `split_comparison`; "
-        "three reasons → `three_up_grid`; a pull quote → `quote_callout`). "
-        "When content is too freeform, leave `template_id` null and let the "
-        "shot LLM design it.",
+        "**When to use a template — sparingly.** DEFAULT to directing the shot "
+        "yourself (leave `template_id` null); a template trades all bespoke "
+        "direction for consistency. Reach for one ONLY when the content is a clean "
+        "fit AND you cannot improve on it, or when sibling-shot consistency demands "
+        "the identical layout (e.g. comparing two things → `split_comparison`; three "
+        "reasons → `three_up_grid`; a repeating pull quote → `quote_callout`). Keep "
+        "templated shots to roughly a third of the video at most, and avoid using the "
+        "same template twice unless it is an intentional recurring motif.",
         "",
         "### Available templates:",
         "",

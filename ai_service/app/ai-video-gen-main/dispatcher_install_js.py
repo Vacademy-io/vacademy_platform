@@ -456,7 +456,18 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 // that don't exist yet or are in a different shadow root
                                 return el;
                             };
-                            const resolveAll = (s) => (typeof s === 'string' ? scope.querySelectorAll(s) : s);
+                            const resolveAll = (s) => {
+                                if (typeof s === 'string') return scope.querySelectorAll(s);
+                                if (Array.isArray(s)) {
+                                    const out = [];
+                                    for (const t of s) {
+                                        if (typeof t === 'string') { for (const el of scope.querySelectorAll(t)) out.push(el); }
+                                        else if (t) out.push(t);
+                                    }
+                                    return out;
+                                }
+                                return s;
+                            };
 
                             // Shadow-DOM-aware document.* replacements (used after rewriting LLM source)
                             const __sd_getElementById = (id) => scope.querySelector('#' + CSS.escape(id));
@@ -512,6 +523,11 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 };
                                 tryResolve(15);
                             };
+                            // Craft-contract helpers — scoped to this shadow root
+                            const dimOthers = (dims, opts) => window.dimOthers(resolveAll(dims), opts);
+                            const setFocus = (focus, dims, opts) => window.setFocus(resolve(focus), resolveAll(dims), opts);
+                            const resetFocus = (targets, opts) => window.resetFocus(resolveAll(targets), opts);
+                            const morphElement = (target, vars, opts) => window.morphElement(resolve(target), vars, opts);
 
                             // Creator of scoped GSAP instance.
                             //

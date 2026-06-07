@@ -67,6 +67,13 @@ _DEFAULT_GUARDS: Tuple[Tuple[str, str], ...] = (
     ("slideUp",      "slideUp"),
     ("typewriter",   "typewriter"),
     ("showThenAnnotate", "showThenAnnotate"),
+    # Craft-contract helpers (focus-by-suppression + persist-and-morph). Guarded
+    # by their own name so a context missing the helper degrades to a no-op
+    # instead of a ReferenceError (the prompt's plain-GSAP path still carries it).
+    ("setFocus",     "setFocus"),
+    ("dimOthers",    "dimOthers"),
+    ("resetFocus",   "resetFocus"),
+    ("morphElement", "morphElement"),
     # Vivus / SVG draw-in
     ("animateSVG",   "Vivus"),
     ("Vivus",        "Vivus"),

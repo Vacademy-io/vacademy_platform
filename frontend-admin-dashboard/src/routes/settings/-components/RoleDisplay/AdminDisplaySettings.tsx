@@ -2101,10 +2101,48 @@ export default function AdminDisplaySettings() {
                 onChange={(next) =>
                     updateSettings((prev) => ({
                         ...prev,
-                        teamManagement: { visibleRoles: next },
+                        teamManagement: {
+                            ...(prev.teamManagement ?? { visibleRoles: {} }),
+                            visibleRoles: next,
+                        },
                     }))
                 }
             />
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Org Chart tab</CardTitle>
+                    <CardDescription>
+                        Show the hierarchical Org Chart tab inside Manage Institute → Teams.
+                        Off by default while this feature is being rolled out.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
+                        <div>
+                            <div className="text-body font-medium text-neutral-900">
+                                Enable Org Chart tab
+                            </div>
+                            <div className="text-caption text-neutral-500">
+                                Lets admins build a hierarchical team structure with team heads,
+                                sub-teams, and per-member role labels.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={settings.teamManagement?.orgChartTabVisible === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    teamManagement: {
+                                        ...(prev.teamManagement ?? { visibleRoles: {} }),
+                                        orgChartTabVisible: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
 
             <Card>
                 <CardHeader>

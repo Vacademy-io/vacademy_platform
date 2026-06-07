@@ -159,6 +159,45 @@ export default function TimelineReports() {
         }
     }, [data]);
 
+    // ── Prefill from URL search param (?studentReport=…) ─────────────────────
+    // When the user lands here from the learner profile's "Learning Timeline"
+    // button, the URL carries the courseId / sessionId / levelId / userId so
+    // they don't have to re-pick. We prefill each field as soon as its
+    // dependent dropdown list resolves (course is available immediately;
+    // session list loads after course is set; level list after session;
+    // student list after level). Without this, the user lands on a blank
+    // form even though the URL has all the data.
+    const prefill = search.studentReport;
+    useEffect(() => {
+        if (prefill?.courseId) {
+            setValue('course', prefill.courseId);
+        }
+        // Run once on mount; subsequent navigations within this page set the
+        // fields directly through user interaction.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    useEffect(() => {
+        if (
+            prefill?.sessionId &&
+            sessionList.some((s) => s.id === prefill.sessionId)
+        ) {
+            setValue('session', prefill.sessionId);
+        }
+    }, [sessionList, prefill?.sessionId, setValue]);
+    useEffect(() => {
+        if (prefill?.levelId && levelList.some((l) => l.id === prefill.levelId)) {
+            setValue('level', prefill.levelId);
+        }
+    }, [levelList, prefill?.levelId, setValue]);
+    useEffect(() => {
+        if (
+            prefill?.userId &&
+            studentList.some((s) => s.user_id === prefill.userId)
+        ) {
+            setValue('student', prefill.userId);
+        }
+    }, [studentList, prefill?.userId, setValue]);
+
     const onSubmit = (data: FormValues) => {
         setAppliedDateRange({ start: data.startDate, end: data.endDate });
         generateReportMutation.mutate(
@@ -623,7 +662,13 @@ export default function TimelineReports() {
                             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                                 {/* Chart Section - Takes 2/3 on large screens */}
                                 <div className="lg:col-span-2">
-                                    <div className="min-h-[500px] h-auto w-full overflow-visible rounded-lg border border-neutral-200 bg-white">
+                                    <div
+                                        className="h-auto w-full overflow-visible rounded-lg border border-neutral-200 bg-white"
+                                        // Fixed chart minimum height keeps the
+                                        // axis labels readable on narrow viewports.
+                                        // design-lint-ignore: chart container min-height
+                                        style={{ minHeight: 500 }}
+                                    >
                                         <div className="w-full p-6">
                                             <LineChartComponent
                                                 chartData={transformToChartData(reportData)}
@@ -631,12 +676,22 @@ export default function TimelineReports() {
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 {/* Table Section - Takes 1/3 on large screens, full width on mobile */}
                                 <div className="lg:col-span-1">
                                     <div className="bg-neutral-50 rounded-lg p-4 h-full">
                                         <h4 className="text-sm font-medium text-neutral-700 mb-4">Activity Summary</h4>
-                                        <div className="h-[350px] md:h-[450px] lg:h-[400px] overflow-auto">
+                                        <div
+                                            className="overflow-auto"
+                                            // Activity-summary scroll height —
+                                            // no standard Tailwind token at 400px.
+                                            // The grid above collapses to 1-col on
+                                            // narrow viewports so the original
+                                            // 350/450/400 stagger is unnecessary;
+                                            // a single fixed height reads cleanly.
+                                            // design-lint-ignore: activity table scroll height
+                                            style={{ height: 400 }}
+                                        >
                                             <div className="!min-w-full [&_table]:!w-full [&_table]:!min-w-full [&_td]:!whitespace-nowrap [&_th]:!whitespace-nowrap">
                                                 <MyTable
                                                     data={tableData}

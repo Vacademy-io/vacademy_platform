@@ -57,7 +57,15 @@ import {
     GitMerge,
     ListBullets,
     CalendarDot,
+    CaretDown,
 } from '@phosphor-icons/react';
+import {
+    DropdownMenu,
+    DropdownMenuTrigger,
+    DropdownMenuContent,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+} from '@/components/ui/dropdown-menu';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1263,36 +1271,63 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
 
             {/* ── Status control ── */}
             <div className="rounded-xl border border-neutral-100 bg-neutral-50 p-3">
-                <p className="mb-1.5 text-xs text-muted-foreground">Lead Status</p>
-                <div className="flex flex-wrap gap-1.5">
-                    {leadStatuses.map((s) => {
-                        const active = profile.conversion_status === s.status_key;
-                        return (
-                            <button
-                                key={s.id}
-                                onClick={() => changeStatus(s.status_key)}
-                                disabled={changingStatus}
-                                className={`rounded-lg px-3 py-1 text-xs font-medium transition-all ${
-                                    active
-                                        ? ''
-                                        : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'
-                                }`}
-                                // Inline style: status colour is arbitrary user-picked hex (active state).
-                                style={
-                                    active
-                                        ? {
-                                              backgroundColor: `${s.color}1A`,
-                                              color: s.color,
-                                              boxShadow: `inset 0 0 0 1px ${s.color}55`,
-                                          }
-                                        : undefined
-                                }
+                <p className="mb-2 text-xs text-muted-foreground">Lead Status</p>
+                {(() => {
+                    // Dropdown instead of a wall of chips — there can be dozens of
+                    // statuses. Selecting one updates the lead status immediately.
+                    const current = leadStatuses.find(
+                        (s) => s.status_key === profile.conversion_status
+                    );
+                    return (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    disabled={changingStatus}
+                                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:border-neutral-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        {current && (
+                                            <span
+                                                className="size-2 shrink-0 rounded-full"
+                                                // Status colour is arbitrary user-picked hex.
+                                                style={{ backgroundColor: current.color }}
+                                            />
+                                        )}
+                                        <span className="truncate">
+                                            {current?.label ?? 'Select status'}
+                                        </span>
+                                    </span>
+                                    <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="start"
+                                className="max-h-72 w-64 overflow-y-auto"
                             >
-                                {s.label}
-                            </button>
-                        );
-                    })}
-                </div>
+                                <DropdownMenuRadioGroup
+                                    value={profile.conversion_status ?? ''}
+                                    onValueChange={(v) => changeStatus(v)}
+                                >
+                                    {leadStatuses.map((s) => (
+                                        <DropdownMenuRadioItem
+                                            key={s.id}
+                                            value={s.status_key}
+                                            className="gap-2"
+                                        >
+                                            <span
+                                                className="size-2 shrink-0 rounded-full"
+                                                // Status colour is arbitrary user-picked hex.
+                                                style={{ backgroundColor: s.color }}
+                                            />
+                                            {s.label}
+                                        </DropdownMenuRadioItem>
+                                    ))}
+                                </DropdownMenuRadioGroup>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    );
+                })()}
                 {isConverted && (
                     <p className="mt-2 text-caption text-green-600">
                         Score updates are frozen while converted.

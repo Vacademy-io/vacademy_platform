@@ -1,29 +1,30 @@
 import { useState, useEffect } from 'react';
 import {
-    Plus,
-    Upload,
-    Link2,
-    FileText,
-    Video,
-    Music,
-    Image as ImageIcon,
+    UploadSimple,
+    Link,
+    Note,
+    FilePdf,
+    FileDoc,
+    FileVideo,
+    FileAudio,
+    FileImage,
     File,
-    Download,
-    Trash2,
-    ExternalLink,
-    Calendar,
+    DownloadSimple,
+    Trash,
+    ArrowSquareOut,
+    CalendarBlank,
     User,
     X,
-    Loader2,
-    StickyNote,
-    Folder,
+    Spinner,
+    FolderOpen,
     Eye,
-    RefreshCw,
-    Settings,
+    Gear,
+    ArrowClockwise,
+    Plus,
     UserCheck,
-    UserX,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
+    UserMinus,
+    type Icon as PhosphorIcon,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import {
     Dialog,
@@ -42,7 +43,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -65,29 +65,236 @@ import {
 } from '@/services/system-files';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { cn } from '@/lib/utils';
+import {
+    ProfileSectionCard,
+    ProfileSkeleton,
+    ProfileEmpty,
+    ProfileError,
+    ProfileHeroStat,
+    ProfileActionBar,
+} from '../profile-ui';
 
-// Media type options for manual selection
-const MEDIA_TYPES: {
+// ── Media type config ─────────────────────────────────────────────────────────
+
+type MediaTypeConfig = {
     value: MediaType;
     label: string;
-    icon: React.ComponentType<{ className?: string }>;
-}[] = [
-    { value: 'video', label: 'Video', icon: Video },
-    { value: 'audio', label: 'Audio', icon: Music },
-    { value: 'pdf', label: 'PDF Document', icon: FileText },
-    { value: 'doc', label: 'Word Document', icon: FileText },
-    { value: 'image', label: 'Image', icon: ImageIcon },
-    { value: 'note', label: 'Note', icon: StickyNote },
-    { value: 'unknown', label: 'Other', icon: File },
+    icon: PhosphorIcon;
+    /** Token classes for the icon chip */
+    chipClass: string;
+};
+
+const MEDIA_TYPES: MediaTypeConfig[] = [
+    {
+        value: 'video',
+        label: 'Video',
+        icon: FileVideo,
+        chipClass: 'bg-primary-50 border-primary-200 text-primary-700',
+    },
+    {
+        value: 'audio',
+        label: 'Audio',
+        icon: FileAudio,
+        chipClass: 'bg-info-50 border-info-200 text-info-700',
+    },
+    {
+        value: 'pdf',
+        label: 'PDF Document',
+        icon: FilePdf,
+        chipClass: 'bg-danger-50 border-danger-200 text-danger-700',
+    },
+    {
+        value: 'doc',
+        label: 'Word Document',
+        icon: FileDoc,
+        chipClass: 'bg-primary-50 border-primary-200 text-primary-700',
+    },
+    {
+        value: 'image',
+        label: 'Image',
+        icon: FileImage,
+        chipClass: 'bg-warning-50 border-warning-200 text-warning-700',
+    },
+    {
+        value: 'note',
+        label: 'Note',
+        icon: Note,
+        chipClass: 'bg-warning-50 border-warning-100 text-warning-700',
+    },
+    {
+        value: 'unknown',
+        label: 'Other',
+        icon: File,
+        chipClass: 'bg-neutral-100 border-neutral-200 text-neutral-600',
+    },
 ];
 
-// File type tabs
+const mediaTypeMap = Object.fromEntries(
+    MEDIA_TYPES.map((m) => [m.value, m])
+) as Record<MediaType, MediaTypeConfig>;
+
+// ── File type tabs ─────────────────────────────────────────────────────────────
+
 type FileTypeTab = 'File' | 'Url' | 'Note';
 
-// Grouped files by folder
+// ── Grouped files by folder ────────────────────────────────────────────────────
+
 type GroupedFiles = {
     [folderName: string]: SystemFile[];
 };
+
+// ── Helper: icon for media type ────────────────────────────────────────────────
+
+const MediaIcon = ({
+    mediaType,
+    className,
+}: {
+    mediaType: MediaType;
+    className?: string;
+}) => {
+    const cfg = mediaTypeMap[mediaType] ?? mediaTypeMap.unknown;
+    const Icon = cfg.icon;
+    return <Icon className={className ?? 'size-5'} />;
+};
+
+// ── Helper: format date ────────────────────────────────────────────────────────
+
+const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+};
+
+// ── Helper: group files by folder (case-insensitive) ──────────────────────────
+
+const groupFilesByFolder = (files: SystemFile[]): GroupedFiles => {
+    const grouped: GroupedFiles = {};
+    files.forEach((file) => {
+        const folder = file.folder_name || 'Uncategorized';
+        const folderKey = folder.toLowerCase();
+        if (!grouped[folderKey]) {
+            grouped[folderKey] = [];
+        }
+        grouped[folderKey]?.push(file);
+    });
+    return grouped;
+};
+
+// ── File row ───────────────────────────────────────────────────────────────────
+
+const FileRow = ({
+    file,
+    onView,
+    onDownload,
+    onManageAccess,
+    onDelete,
+}: {
+    file: SystemFile;
+    onView: (f: SystemFile) => void;
+    onDownload: (f: SystemFile) => void;
+    onManageAccess: (f: SystemFile) => void;
+    onDelete: (id: string) => void;
+}) => {
+    const cfg = mediaTypeMap[file.media_type] ?? mediaTypeMap.unknown;
+
+    return (
+        <div className="group flex items-center gap-3 rounded-lg border border-neutral-200 bg-white p-3 transition-shadow hover:shadow-sm">
+            {/* Type chip */}
+            <span
+                className={cn(
+                    'flex size-9 shrink-0 items-center justify-center rounded-md border',
+                    cfg.chipClass
+                )}
+            >
+                <MediaIcon mediaType={file.media_type} className="size-4" />
+            </span>
+
+            {/* Name + meta */}
+            <div className="min-w-0 flex-1">
+                <p
+                    className="truncate text-sm font-medium text-neutral-800"
+                    title={file.name}
+                >
+                    {file.name}
+                </p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-neutral-500">
+                    <span className="capitalize">{file.media_type}</span>
+                    <span aria-hidden>·</span>
+                    <span className="flex items-center gap-1">
+                        <User className="size-3" />
+                        {file.created_by}
+                    </span>
+                    <span aria-hidden>·</span>
+                    <span className="flex items-center gap-1">
+                        <CalendarBlank className="size-3" />
+                        {formatDate(file.created_at_iso)}
+                    </span>
+                </div>
+            </div>
+
+            {/* Row actions — visible on hover, always accessible via keyboard */}
+            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                {file.file_type === 'Html' ? (
+                    <MyButton
+                        buttonType="text"
+                        scale="small"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onView(file);
+                        }}
+                        title="View Note"
+                    >
+                        <Eye className="size-3.5" />
+                    </MyButton>
+                ) : (
+                    <MyButton
+                        buttonType="text"
+                        scale="small"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDownload(file);
+                        }}
+                        title={file.file_type === 'File' ? 'Download' : 'Open Link'}
+                    >
+                        {file.file_type === 'File' ? (
+                            <DownloadSimple className="size-3.5" />
+                        ) : (
+                            <ArrowSquareOut className="size-3.5" />
+                        )}
+                    </MyButton>
+                )}
+                <MyButton
+                    buttonType="text"
+                    scale="small"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onManageAccess(file);
+                    }}
+                    title="Manage Access"
+                >
+                    <Gear className="size-3.5" />
+                </MyButton>
+                <MyButton
+                    buttonType="text"
+                    scale="small"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(file.id);
+                    }}
+                    title="Delete"
+                >
+                    <Trash className="size-3.5 text-danger-500" />
+                </MyButton>
+            </div>
+        </div>
+    );
+};
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export const StudentFiles = () => {
     const { selectedStudent } = useStudentSidebar();
@@ -106,10 +313,11 @@ export const StudentFiles = () => {
     const [htmlContent, setHtmlContent] = useState('');
     const [grantEditAccess, setGrantEditAccess] = useState(false);
 
-    // Loading states
+    // Loading / error states
     const [isUploading, setIsUploading] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState(false);
 
     // Files data
     const [files, setFiles] = useState<SystemFile[]>([]);
@@ -129,62 +337,6 @@ export const StudentFiles = () => {
     const [hasEditAccess, setHasEditAccess] = useState(false);
     const [isLoadingAccess, setIsLoadingAccess] = useState(false);
 
-    // Helper function to get media icon
-    const getMediaIcon = (mediaType: MediaType) => {
-        const iconMap: Record<MediaType, React.ComponentType<{ className?: string }>> = {
-            video: Video,
-            audio: Music,
-            pdf: FileText,
-            doc: FileText,
-            image: ImageIcon,
-            note: StickyNote,
-            unknown: File,
-        };
-        const Icon = iconMap[mediaType] || File;
-        return <Icon className="size-5" />;
-    };
-
-    // Helper function to get media type color
-    const getMediaTypeColor = (mediaType: MediaType) => {
-        const colorMap: Record<MediaType, string> = {
-            video: 'bg-purple-50 border-purple-200 text-purple-700',
-            audio: 'bg-green-50 border-green-200 text-green-700',
-            pdf: 'bg-red-50 border-red-200 text-red-700',
-            doc: 'bg-blue-50 border-blue-200 text-blue-700',
-            image: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-            note: 'bg-orange-50 border-orange-200 text-orange-700',
-            unknown: 'bg-gray-50 border-gray-200 text-gray-700',
-        };
-        return colorMap[mediaType] || colorMap.unknown;
-    };
-
-    // Format date helper
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-        });
-    };
-
-    // Group files by folder (case-insensitive)
-    const groupFilesByFolder = (files: SystemFile[]): GroupedFiles => {
-        const grouped: GroupedFiles = {};
-
-        files.forEach((file) => {
-            const folder = file.folder_name || 'Uncategorized';
-            const folderKey = folder.toLowerCase();
-
-            if (!grouped[folderKey]) {
-                grouped[folderKey] = [];
-            }
-            grouped[folderKey]?.push(file);
-        });
-
-        return grouped;
-    };
-
     // Load student files
     const loadStudentFiles = async () => {
         if (!selectedStudent?.user_id || !selectedStudent?.institute_id) {
@@ -193,6 +345,7 @@ export const StudentFiles = () => {
 
         try {
             setIsLoading(true);
+            setLoadError(false);
             console.log('selectedStudent:', selectedStudent);
             const response = await getStudentFiles(
                 selectedStudent.user_id,
@@ -201,6 +354,7 @@ export const StudentFiles = () => {
             setFiles(response);
         } catch (error) {
             console.error('Error loading student files:', error);
+            setLoadError(true);
             toast.error('Failed to load student files');
         } finally {
             setIsLoading(false);
@@ -218,11 +372,8 @@ export const StudentFiles = () => {
         const file = e.target.files?.[0];
         if (file) {
             setSelectedFile(file);
-            // Auto-detect media type from file
             const detectedType = detectMediaTypeFromFile(file);
             setMediaType(detectedType);
-
-            // Auto-fill filename if empty
             if (!fileName) {
                 const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
                 setFileName(nameWithoutExt);
@@ -245,7 +396,6 @@ export const StudentFiles = () => {
         try {
             setIsUploading(true);
 
-            // Prepare file data based on tab type
             const fileData: {
                 name: string;
                 folder_name?: string;
@@ -259,14 +409,11 @@ export const StudentFiles = () => {
             };
 
             if (fileTypeTab === 'File') {
-                // File upload
                 if (!selectedFile) {
                     toast.error('Please select a file');
                     return;
                 }
-
                 fileData.file_type = 'File';
-
                 await addFileForStudent(
                     selectedFile,
                     selectedStudent.user_id,
@@ -274,18 +421,14 @@ export const StudentFiles = () => {
                     fileData,
                     setIsUploading
                 );
-
                 toast.success('File uploaded successfully');
             } else if (fileTypeTab === 'Url') {
-                // URL upload
                 if (!fileUrl.trim()) {
                     toast.error('Please enter a URL');
                     return;
                 }
-
                 fileData.file_type = 'Url';
                 fileData.url = fileUrl;
-
                 await addFileForStudent(
                     null,
                     selectedStudent.user_id,
@@ -293,15 +436,12 @@ export const StudentFiles = () => {
                     fileData,
                     setIsUploading
                 );
-
                 toast.success('URL added successfully');
             } else if (fileTypeTab === 'Note') {
-                // HTML note creation - use direct API call instead of addFileForStudent
                 if (!htmlContent.trim()) {
                     toast.error('Please enter note content');
                     return;
                 }
-
                 await createHtmlSystemFile(
                     selectedStudent.institute_id,
                     {
@@ -332,13 +472,11 @@ export const StudentFiles = () => {
                                   },
                               ],
                     },
-                    selectedStudent.user_id // Pass studentId for notification
+                    selectedStudent.user_id
                 );
-
                 toast.success('Note created successfully');
             }
 
-            // Reload files and close dialog
             await loadStudentFiles();
             setShowAddDialog(false);
             resetForm();
@@ -353,7 +491,6 @@ export const StudentFiles = () => {
     // Handle delete file
     const handleDeleteFile = async (fileId: string) => {
         if (!selectedStudent?.institute_id) return;
-
         try {
             await deleteSystemFile(fileId, selectedStudent.institute_id);
             toast.success('File deleted successfully');
@@ -367,7 +504,7 @@ export const StudentFiles = () => {
         }
     };
 
-    // Handle delete click (show confirmation)
+    // Handle delete click
     const handleDeleteClick = (fileId: string) => {
         setFileToDelete(fileId);
         setShowDeleteDialog(true);
@@ -390,30 +527,23 @@ export const StudentFiles = () => {
     // Handle manage access
     const handleManageAccess = async (file: SystemFile) => {
         if (!selectedStudent?.user_id || !selectedStudent?.institute_id) return;
-
         try {
             setIsLoadingAccess(true);
             setEditingFile(file);
             setShowAccessDialog(true);
-
-            // Get file access details
             const fileDetails = await getFileAccessDetails(file.id, selectedStudent.institute_id);
-
-            // Check if student has view or edit access
             const studentViewAccess = fileDetails.access_list.some(
                 (access) =>
                     access.level === 'user' &&
                     access.level_id === selectedStudent.user_id &&
                     access.access_type === 'view'
             );
-
             const studentEditAccess = fileDetails.access_list.some(
                 (access) =>
                     access.level === 'user' &&
                     access.level_id === selectedStudent.user_id &&
                     access.access_type === 'edit'
             );
-
             setHasViewAccess(studentViewAccess);
             setHasEditAccess(studentEditAccess);
         } catch (error) {
@@ -428,7 +558,6 @@ export const StudentFiles = () => {
     // Handle toggle view access
     const handleToggleViewAccess = async () => {
         if (!editingFile || !selectedStudent?.user_id || !selectedStudent?.institute_id) return;
-
         try {
             setIsLoadingAccess(true);
             if (hasViewAccess) {
@@ -462,7 +591,6 @@ export const StudentFiles = () => {
     // Handle toggle edit access
     const handleToggleEditAccess = async () => {
         if (!editingFile || !selectedStudent?.user_id || !selectedStudent?.institute_id) return;
-
         try {
             setIsLoadingAccess(true);
             if (hasEditAccess) {
@@ -497,7 +625,6 @@ export const StudentFiles = () => {
     const handleFileDownload = async (file: SystemFile) => {
         try {
             if (file.file_type === 'File') {
-                // For uploaded files, get public URL from S3 using file ID
                 const publicUrl = await getPublicUrl(file.data);
                 if (publicUrl) {
                     window.open(publicUrl, '_blank');
@@ -505,7 +632,6 @@ export const StudentFiles = () => {
                     toast.error('Failed to get file URL');
                 }
             } else if (file.file_type === 'Url') {
-                // For URL type, directly open the URL stored in data field
                 window.open(file.data, '_blank');
             }
         } catch (error) {
@@ -527,278 +653,198 @@ export const StudentFiles = () => {
         setGrantEditAccess(false);
     };
 
-    // Group files by folder
+    // Open add dialog (used by empty-state CTA and header buttons)
+    const openAddDialog = (tab: FileTypeTab, preset?: { folderName: string }) => {
+        setFileTypeTab(tab);
+        if (preset?.folderName) {
+            setFolderName(preset.folderName);
+            setIsFolderNameReadonly(true);
+        }
+        setShowAddDialog(true);
+    };
+
     const groupedFiles = groupFilesByFolder(files);
     const folderNames = Object.keys(groupedFiles).sort();
 
-    return (
-        <div className="space-y-4 p-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <MyButton
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setFileTypeTab('File');
-                            setShowAddDialog(true);
-                        }}
-                        buttonType="primary"
-                    >
-                        <Upload className="mr-2 size-4" />
-                        File
-                    </MyButton>
-                    <MyButton
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setFileTypeTab('Url');
-                            setShowAddDialog(true);
-                        }}
-                        buttonType="secondary"
-                    >
-                        <Link2 className="mr-2 size-4" />
-                        URL
-                    </MyButton>
-                    <MyButton
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setFileTypeTab('Note');
-                            setShowAddDialog(true);
-                        }}
-                        buttonType="secondary"
-                    >
-                        <StickyNote className="mr-2 size-4" />
-                        Note
-                    </MyButton>
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handleRefresh}
-                        disabled={isRefreshing || isLoading}
-                        className="gap-2"
-                    >
-                        <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    </Button>
-                </div>
-            </div>
+    // ── Derived stats ──────────────────────────────────────────────────────────
 
-            {/* Loading State */}
-            {isLoading ? (
-                <Card className="p-12">
-                    <div className="flex flex-col items-center justify-center text-center">
-                        <Loader2 className="mb-4 size-8 animate-spin text-gray-400" />
-                        <p className="text-sm text-gray-600">Loading files...</p>
-                    </div>
-                </Card>
-            ) : files.length === 0 ? (
-                /* Empty State */
-                <Card className="border-2 border-dashed border-gray-300 bg-gray-50 p-12">
-                    <div className="flex flex-col items-center justify-center text-center">
-                        <div className="mb-4 rounded-full bg-gray-200 p-4">
-                            <FileText className="size-8 text-gray-400" />
-                        </div>
-                        <h4 className="mb-2 text-lg font-medium text-gray-900">No files yet</h4>
-                        <p className="mb-4 text-sm text-gray-600">
-                            Start by adding files, documents, or links for this student
-                        </p>
-                        <MyButton
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setFileTypeTab('File');
-                                setShowAddDialog(true);
-                            }}
-                            buttonType="secondary"
+    const totalFiles = files.length;
+    const totalFolders = folderNames.length;
+    // "Recent uploads" = files created in the last 7 days
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentCount = files.filter(
+        (f) => new Date(f.created_at_iso).getTime() >= sevenDaysAgo
+    ).length;
+
+    // ── Body content ───────────────────────────────────────────────────────────
+
+    let body: React.ReactNode;
+
+    if (isLoading) {
+        body = <ProfileSkeleton blocks={3} />;
+    } else if (loadError) {
+        body = (
+            <ProfileError
+                title="Couldn't load files"
+                hint="Something went wrong while fetching the student's files."
+                onRetry={loadStudentFiles}
+            />
+        );
+    } else if (files.length === 0) {
+        body = (
+            <ProfileEmpty
+                icon={File}
+                title="No files yet"
+                hint="Upload a file, add a URL, or create a note for this student."
+                action={
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            openAddDialog('File');
+                        }}
+                    >
+                        <Plus className="size-3.5" />
+                        Add First File
+                    </MyButton>
+                }
+            />
+        );
+    } else {
+        body = (
+            <div className="flex flex-col gap-4">
+                {folderNames.map((folderKey) => {
+                    const folderFiles = groupedFiles[folderKey];
+                    // @ts-expect-error : Ignore TS error for folder_name
+                    const displayFolderName = folderFiles[0]?.folder_name || 'Uncategorized';
+
+                    return (
+                        <ProfileSectionCard
+                            key={folderKey}
+                            icon={FolderOpen}
+                            heading={displayFolderName}
+                            action={
+                                <MyButton
+                                    buttonType="text"
+                                    scale="small"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        openAddDialog('File', {
+                                            folderName: displayFolderName,
+                                        });
+                                    }}
+                                >
+                                    <Plus className="size-3.5" />
+                                    <span className="text-xs">Add to folder</span>
+                                </MyButton>
+                            }
+                            bodyClassName="flex flex-col gap-2"
                         >
-                            <Plus className="mr-2 size-4" />
-                            Add First File
-                        </MyButton>
-                    </div>
-                </Card>
-            ) : (
-                /* Files List Grouped by Folder */
-                <div className="space-y-6">
-                    {folderNames.map((folderKey) => {
-                        const folderFiles = groupedFiles[folderKey];
-                        // @ts-expect-error : Ignore TS error for folder_name
-                        const displayFolderName = folderFiles[0]?.folder_name || 'Uncategorized';
+                            {/* File count badge */}
+                            <p className="mb-1 text-xs text-neutral-500">
+                                {folderFiles?.length}{' '}
+                                {folderFiles?.length === 1 ? 'file' : 'files'}
+                            </p>
 
-                        return (
-                            <div key={folderKey} className="space-y-3">
-                                {/* Folder Header */}
-                                <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Folder className="size-5 text-gray-600" />
-                                        <h4 className="font-semibold text-gray-900">
-                                            {displayFolderName}
-                                        </h4>
-                                        <Badge variant="secondary" className="ml-2">
-                                            {folderFiles?.length}{' '}
-                                            {folderFiles?.length === 1 ? 'file' : 'files'}
-                                        </Badge>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setFolderName(displayFolderName);
-                                            setIsFolderNameReadonly(true);
-                                            setFileTypeTab('File');
-                                            setShowAddDialog(true);
-                                        }}
-                                        className="gap-1 text-gray-600 hover:text-blue-600"
-                                    >
-                                        <Plus className="size-4" />
-                                        <span className="text-xs">Add to folder</span>
-                                    </Button>
-                                </div>
+                            {folderFiles?.map((file) => (
+                                <FileRow
+                                    key={file.id}
+                                    file={file}
+                                    onView={handleViewNote}
+                                    onDownload={handleFileDownload}
+                                    onManageAccess={handleManageAccess}
+                                    onDelete={handleDeleteClick}
+                                />
+                            ))}
+                        </ProfileSectionCard>
+                    );
+                })}
+            </div>
+        );
+    }
 
-                                {/* Files in Folder */}
-                                <div className="space-y-3">
-                                    {folderFiles?.map((file) => (
-                                        <Card
-                                            key={file.id}
-                                            className="p-4 transition-shadow hover:shadow-md"
-                                        >
-                                            <div className="flex items-start gap-4">
-                                                {/* File Icon */}
-                                                <div
-                                                    className={`flex size-12 items-center justify-center rounded-lg border ${getMediaTypeColor(file.media_type)}`}
-                                                >
-                                                    {getMediaIcon(file.media_type)}
-                                                </div>
-
-                                                {/* File Info */}
-                                                <div className="flex-1 space-y-2">
-                                                    <div className="flex items-start justify-between">
-                                                        <div className="space-y-1">
-                                                            <h4 className="font-semibold text-gray-900">
-                                                                {file.name}
-                                                            </h4>
-                                                            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                                                                <Badge
-                                                                    variant="outline"
-                                                                    className={getMediaTypeColor(
-                                                                        file.media_type
-                                                                    )}
-                                                                >
-                                                                    {file.media_type.toUpperCase()}
-                                                                </Badge>
-
-                                                                <span>•</span>
-                                                                <span className="flex items-center gap-1">
-                                                                    {file.file_type === 'File' ? (
-                                                                        <>
-                                                                            <Upload className="size-3" />
-                                                                            File
-                                                                        </>
-                                                                    ) : file.file_type === 'Url' ? (
-                                                                        <>
-                                                                            <Link2 className="size-3" />
-                                                                            URL
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            <StickyNote className="size-3" />
-                                                                            Note
-                                                                        </>
-                                                                    )}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Actions */}
-                                                        <div className="flex items-center gap-2">
-                                                            {file.file_type === 'Html' ? (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleViewNote(file);
-                                                                    }}
-                                                                    className="text-gray-600 hover:text-blue-600"
-                                                                    title="View Note"
-                                                                >
-                                                                    <Eye className="size-4" />
-                                                                </Button>
-                                                            ) : (
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleFileDownload(file);
-                                                                    }}
-                                                                    className="text-gray-600 hover:text-blue-600"
-                                                                    title={
-                                                                        file.file_type === 'File'
-                                                                            ? 'Download'
-                                                                            : 'Open Link'
-                                                                    }
-                                                                >
-                                                                    {file.file_type === 'File' ? (
-                                                                        <Download className="size-4" />
-                                                                    ) : (
-                                                                        <ExternalLink className="size-4" />
-                                                                    )}
-                                                                </Button>
-                                                            )}
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleManageAccess(file);
-                                                                }}
-                                                                className="text-gray-600 hover:text-blue-600"
-                                                                title="Manage Access"
-                                                            >
-                                                                <Settings className="size-4" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDeleteClick(file.id);
-                                                                }}
-                                                                className="text-gray-600 hover:text-red-600"
-                                                                title="Delete"
-                                                            >
-                                                                <Trash2 className="size-4" />
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Metadata */}
-                                                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                                                        <span className="flex items-center gap-1">
-                                                            <User className="size-3" />
-                                                            Added By - {file.created_by}
-                                                        </span>
-                                                        <span>•</span>
-                                                        <span className="flex items-center gap-1">
-                                                            <Calendar className="size-3" />
-                                                            {formatDate(file.created_at_iso)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Card>
-                                    ))}
-                                </div>
-                            </div>
-                        );
-                    })}
+    return (
+        <div className="flex flex-col gap-4 p-4">
+            {/* ── Hero stats row (hidden when all-zero per Phase 0.5b) ───────── */}
+            {(totalFiles > 0 || totalFolders > 0 || recentCount > 0) && (
+                <div className="flex gap-3">
+                    <ProfileHeroStat
+                        label="Total Files"
+                        value={totalFiles}
+                        tone="primary"
+                        icon={File}
+                    />
+                    <ProfileHeroStat
+                        label="Folders"
+                        value={totalFolders}
+                        tone="neutral"
+                        icon={FolderOpen}
+                    />
+                    <ProfileHeroStat
+                        label="Recent (7d)"
+                        value={recentCount}
+                        tone={recentCount > 0 ? 'success' : 'neutral'}
+                        icon={CalendarBlank}
+                    />
                 </div>
             )}
 
-            {/* Add File Dialog */}
+            {/* ── Primary action bar ─────────────────────────────────────────── */}
+            <ProfileActionBar>
+                <MyButton
+                    buttonType="primary"
+                    scale="small"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        openAddDialog('File');
+                    }}
+                >
+                    <UploadSimple className="size-3.5" />
+                    Upload File
+                </MyButton>
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        openAddDialog('Url');
+                    }}
+                >
+                    <Link className="size-3.5" />
+                    Add Link
+                </MyButton>
+                <MyButton
+                    buttonType="secondary"
+                    scale="small"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        openAddDialog('Note');
+                    }}
+                >
+                    <Note className="size-3.5" />
+                    Add Note
+                </MyButton>
+                <MyButton
+                    buttonType="text"
+                    scale="small"
+                    onClick={handleRefresh}
+                    disable={isRefreshing || isLoading}
+                    title="Refresh files"
+                >
+                    <ArrowClockwise className={cn('size-3.5', isRefreshing && 'animate-spin')} />
+                </MyButton>
+            </ProfileActionBar>
+
+            {body}
+
+            {/* ── Add File Dialog ──────────────────────────────────────────── */}
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                <DialogContent className="max-h-[90vh] w-full max-w-2xl overflow-y-auto">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
+                <DialogContent className="overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle className="text-xl font-semibold">
-                            Add File for {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
+                        <DialogTitle className="text-sm font-semibold">
+                            Add File for{' '}
+                            {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
                         </DialogTitle>
                         <DialogDescription>
                             Upload a file, add a URL, or create a note for this{' '}
@@ -809,7 +855,7 @@ export const StudentFiles = () => {
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-6 py-4">
+                    <div className="flex flex-col gap-4 py-2">
                         {/* File Type Tabs */}
                         <Tabs
                             value={fileTypeTab}
@@ -817,26 +863,26 @@ export const StudentFiles = () => {
                         >
                             <TabsList className="grid w-full grid-cols-3">
                                 <TabsTrigger value="File">
-                                    <Upload className="mr-2 size-4" />
+                                    <UploadSimple className="mr-2 size-4" />
                                     File
                                 </TabsTrigger>
                                 <TabsTrigger value="Url">
-                                    <Link2 className="mr-2 size-4" />
+                                    <Link className="mr-2 size-4" />
                                     URL
                                 </TabsTrigger>
                                 <TabsTrigger value="Note">
-                                    <StickyNote className="mr-2 size-4" />
+                                    <Note className="mr-2 size-4" />
                                     Note
                                 </TabsTrigger>
                             </TabsList>
 
                             {/* File Upload Tab */}
-                            <TabsContent value="File" className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="file-upload" className="text-sm font-medium">
+                            <TabsContent value="File" className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="file-upload" className="text-xs font-medium text-neutral-700">
                                         Select File *
                                     </Label>
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
                                         <Input
                                             id="file-upload"
                                             type="file"
@@ -844,28 +890,28 @@ export const StudentFiles = () => {
                                             className="flex-1"
                                         />
                                         {selectedFile && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
+                                            <MyButton
+                                                buttonType="text"
+                                                scale="small"
                                                 onClick={() => {
                                                     setSelectedFile(null);
                                                     setMediaType('unknown');
                                                 }}
                                             >
                                                 <X className="size-4" />
-                                            </Button>
+                                            </MyButton>
                                         )}
                                     </div>
                                     {selectedFile && (
-                                        <p className="text-xs text-gray-600">
+                                        <p className="text-xs text-neutral-500">
                                             Selected: {selectedFile.name} (
                                             {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
                                         </p>
                                     )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="media-type" className="text-sm font-medium">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="media-type" className="text-xs font-medium text-neutral-700">
                                         Media Type *
                                     </Label>
                                     <Select
@@ -893,9 +939,9 @@ export const StudentFiles = () => {
                             </TabsContent>
 
                             {/* URL Tab */}
-                            <TabsContent value="Url" className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="file-url" className="text-sm font-medium">
+                            <TabsContent value="Url" className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="file-url" className="text-xs font-medium text-neutral-700">
                                         URL *
                                     </Label>
                                     <Input
@@ -905,13 +951,13 @@ export const StudentFiles = () => {
                                         value={fileUrl}
                                         onChange={(e) => setFileUrl(e.target.value)}
                                     />
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-neutral-500">
                                         Enter a valid URL to an external resource
                                     </p>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="url-media-type" className="text-sm font-medium">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="url-media-type" className="text-xs font-medium text-neutral-700">
                                         Media Type *
                                     </Label>
                                     <Select
@@ -939,19 +985,19 @@ export const StudentFiles = () => {
                             </TabsContent>
 
                             {/* Note Tab */}
-                            <TabsContent value="Note" className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="note-content" className="text-sm font-medium">
+                            <TabsContent value="Note" className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="note-content" className="text-xs font-medium text-neutral-700">
                                         Note Content *
                                     </Label>
-                                    <div className="rounded-lg border border-gray-200">
+                                    <div className="rounded-lg border border-neutral-200">
                                         <RichTextEditor
                                             value={htmlContent}
                                             onChange={setHtmlContent}
                                             placeholder="Write your note here..."
                                         />
                                     </div>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="text-xs text-neutral-500">
                                         Create a rich text note for this student
                                     </p>
                                 </div>
@@ -959,9 +1005,9 @@ export const StudentFiles = () => {
                         </Tabs>
 
                         {/* Common Fields */}
-                        <div className="space-y-4 border-t pt-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="file-name" className="text-sm font-medium">
+                        <div className="flex flex-col gap-3 border-t border-neutral-200 pt-4">
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="file-name" className="text-xs font-medium text-neutral-700">
                                     File Name *
                                 </Label>
                                 <Input
@@ -973,8 +1019,8 @@ export const StudentFiles = () => {
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="folder-name" className="text-sm font-medium">
+                            <div className="flex flex-col gap-1.5">
+                                <Label htmlFor="folder-name" className="text-xs font-medium text-neutral-700">
                                     Folder Name
                                     {isFolderNameReadonly && (
                                         <Badge variant="secondary" className="ml-2 text-xs">
@@ -989,11 +1035,12 @@ export const StudentFiles = () => {
                                     value={folderName}
                                     onChange={(e) => setFolderName(e.target.value)}
                                     readOnly={isFolderNameReadonly}
-                                    className={
-                                        isFolderNameReadonly ? 'cursor-not-allowed bg-gray-100' : ''
-                                    }
+                                    className={cn(
+                                        isFolderNameReadonly &&
+                                            'cursor-not-allowed bg-neutral-100'
+                                    )}
                                 />
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-neutral-500">
                                     {isFolderNameReadonly
                                         ? 'Adding file to selected folder'
                                         : 'Optional: Organize files into folders (case-insensitive)'}
@@ -1001,8 +1048,7 @@ export const StudentFiles = () => {
                             </div>
 
                             {/* Access Permissions */}
-
-                            <div className="flex items-center space-x-2">
+                            <div className="flex items-center gap-2">
                                 <Checkbox
                                     id="edit-access"
                                     checked={grantEditAccess}
@@ -1012,7 +1058,7 @@ export const StudentFiles = () => {
                                 />
                                 <label
                                     htmlFor="edit-access"
-                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                 >
                                     Also grant edit access to the student
                                 </label>
@@ -1021,17 +1067,17 @@ export const StudentFiles = () => {
                     </div>
 
                     <DialogFooter className="gap-2">
-                        <Button
-                            variant="outline"
+                        <MyButton
+                            buttonType="secondary"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setShowAddDialog(false);
                                 resetForm();
                             }}
-                            disabled={isUploading}
+                            disable={isUploading}
                         >
                             Cancel
-                        </Button>
+                        </MyButton>
                         <MyButton
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -1047,7 +1093,7 @@ export const StudentFiles = () => {
                         >
                             {isUploading ? (
                                 <>
-                                    <Loader2 className="mr-2 size-4 animate-spin" />
+                                    <Spinner className="mr-2 size-4 animate-spin" />
                                     {fileTypeTab === 'File' ? 'Uploading...' : 'Adding...'}
                                 </>
                             ) : (
@@ -1061,12 +1107,12 @@ export const StudentFiles = () => {
                 </DialogContent>
             </Dialog>
 
-            {/* View Note Dialog */}
+            {/* ── View Note Dialog ─────────────────────────────────────────── */}
             <Dialog open={showViewNoteDialog} onOpenChange={setShowViewNoteDialog}>
-                <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+                <DialogContent className="overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                            <StickyNote className="size-5" />
+                        <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+                            <Note className="size-4" />
                             {viewingNote?.name || 'View Note'}
                         </DialogTitle>
                         <DialogDescription>
@@ -1074,24 +1120,22 @@ export const StudentFiles = () => {
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4 py-4">
-                        <div className="rounded-lg border border-gray-200 bg-white">
-                            <div className="p-4">
-                                {viewingNote ? (
-                                    <div
-                                        className="prose prose-sm max-w-none"
-                                        dangerouslySetInnerHTML={{ __html: viewingNote.data }}
-                                    />
-                                ) : (
-                                    <p className="text-sm text-gray-500">No content available</p>
-                                )}
-                            </div>
+                    <div className="flex flex-col gap-3 py-2">
+                        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+                            {viewingNote ? (
+                                <div
+                                    className="prose prose-sm max-w-none"
+                                    dangerouslySetInnerHTML={{ __html: viewingNote.data }}
+                                />
+                            ) : (
+                                <p className="text-sm text-neutral-500">No content available</p>
+                            )}
                         </div>
                     </div>
 
                     <DialogFooter>
-                        <Button
-                            variant="outline"
+                        <MyButton
+                            buttonType="secondary"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setShowViewNoteDialog(false);
@@ -1099,17 +1143,17 @@ export const StudentFiles = () => {
                             }}
                         >
                             Close
-                        </Button>
+                        </MyButton>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Delete Confirmation Dialog */}
+            {/* ── Delete Confirmation Dialog ───────────────────────────────── */}
             <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                <DialogContent className="max-w-md">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                            <Trash2 className="size-5 text-red-600" />
+                        <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+                            <Trash className="size-4 text-danger-600" />
                             Delete File
                         </DialogTitle>
                         <DialogDescription>
@@ -1118,8 +1162,8 @@ export const StudentFiles = () => {
                     </DialogHeader>
 
                     <DialogFooter className="gap-2">
-                        <Button
-                            variant="outline"
+                        <MyButton
+                            buttonType="secondary"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setShowDeleteDialog(false);
@@ -1127,55 +1171,70 @@ export const StudentFiles = () => {
                             }}
                         >
                             Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
+                        </MyButton>
+                        <MyButton
+                            buttonType="primary"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 fileToDelete && handleDeleteFile(fileToDelete);
                             }}
                         >
-                            <Trash2 className="mr-2 size-4" />
+                            <Trash className="mr-2 size-4" />
                             Delete
-                        </Button>
+                        </MyButton>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Manage Access Dialog */}
+            {/* ── Manage Access Dialog ─────────────────────────────────────── */}
             <Dialog open={showAccessDialog} onOpenChange={setShowAccessDialog}>
-                <DialogContent className="max-w-md">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                            <Settings className="size-5 text-blue-600" />
-                            Manage {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Access
+                        <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
+                            <Gear className="size-4 text-primary-600" />
+                            Manage{' '}
+                            {getTerminology(RoleTerms.Learner, SystemTerms.Learner)} Access
                         </DialogTitle>
                         <DialogDescription>
                             Control what access the student has to this file
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-6 py-4">
+                    <div className="flex flex-col gap-4 py-2">
                         {isLoadingAccess ? (
                             <div className="flex items-center justify-center py-8">
-                                <Loader2 className="size-8 animate-spin text-gray-400" />
+                                <Spinner className="size-6 animate-spin text-neutral-400" />
                             </div>
                         ) : (
                             <>
                                 {/* File Info */}
-                                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
                                     <div className="flex items-center gap-3">
-                                        <div
-                                            className={`flex size-10 items-center justify-center rounded-lg border ${editingFile ? getMediaTypeColor(editingFile.media_type) : ''}`}
+                                        <span
+                                            className={cn(
+                                                'flex size-9 items-center justify-center rounded-md border',
+                                                editingFile
+                                                    ? (mediaTypeMap[editingFile.media_type] ??
+                                                          mediaTypeMap.unknown).chipClass
+                                                    : 'bg-neutral-100 border-neutral-200'
+                                            )}
                                         >
-                                            {editingFile && getMediaIcon(editingFile.media_type)}
-                                        </div>
-                                        <div className="flex-1">
-                                            <h4 className="font-medium text-gray-900">
+                                            {editingFile && (
+                                                <MediaIcon
+                                                    mediaType={editingFile.media_type}
+                                                    className="size-4"
+                                                />
+                                            )}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <p
+                                                className="truncate text-sm font-medium text-neutral-800"
+                                                title={editingFile?.name}
+                                            >
                                                 {editingFile?.name}
-                                            </h4>
-                                            <p className="text-xs text-gray-600">
-                                                {editingFile?.file_type} •{' '}
+                                            </p>
+                                            <p className="text-xs text-neutral-500">
+                                                {editingFile?.file_type} ·{' '}
                                                 {editingFile?.media_type.toUpperCase()}
                                             </p>
                                         </div>
@@ -1183,25 +1242,26 @@ export const StudentFiles = () => {
                                 </div>
 
                                 {/* Student Info */}
-                                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                                <div className="rounded-lg border border-primary-100 bg-primary-50 p-3">
                                     <div className="flex items-center gap-2">
-                                        <User className="size-4 text-blue-600" />
-                                        <span className="font-medium text-blue-900">
+                                        <User className="size-4 text-primary-600" />
+                                        <span className="text-sm font-medium text-primary-900">
                                             {selectedStudent?.full_name}
                                         </span>
                                     </div>
                                 </div>
 
                                 {/* Access Controls */}
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
+                                <div className="flex flex-col gap-2">
+                                    {/* View access row */}
+                                    <div className="flex items-center justify-between rounded-lg border border-neutral-200 p-3 hover:bg-neutral-50">
                                         <div className="flex items-center gap-3">
-                                            <UserCheck className="size-5 text-green-600" />
+                                            <UserCheck className="size-5 text-success-600" />
                                             <div>
-                                                <h5 className="font-medium text-gray-900">
+                                                <p className="text-sm font-medium text-neutral-800">
                                                     View Access
-                                                </h5>
-                                                <p className="text-xs text-gray-600">
+                                                </p>
+                                                <p className="text-xs text-neutral-500">
                                                     {getTerminology(
                                                         RoleTerms.Learner,
                                                         SystemTerms.Learner
@@ -1210,32 +1270,28 @@ export const StudentFiles = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Button
-                                            variant={hasViewAccess ? 'default' : 'outline'}
-                                            size="sm"
+                                        <MyButton
+                                            buttonType={hasViewAccess ? 'primary' : 'secondary'}
+                                            scale="small"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleToggleViewAccess();
                                             }}
-                                            disabled={isLoadingAccess}
-                                            className={
-                                                hasViewAccess
-                                                    ? 'bg-green-600 hover:bg-green-700'
-                                                    : ''
-                                            }
+                                            disable={isLoadingAccess}
                                         >
-                                            {hasViewAccess ? 'Granted' : 'Grant'}
-                                        </Button>
+                                            {hasViewAccess ? 'Revoke' : 'Grant'}
+                                        </MyButton>
                                     </div>
 
-                                    <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
+                                    {/* Edit access row */}
+                                    <div className="flex items-center justify-between rounded-lg border border-neutral-200 p-3 hover:bg-neutral-50">
                                         <div className="flex items-center gap-3">
-                                            <UserX className="size-5 text-orange-600" />
+                                            <UserMinus className="size-5 text-warning-600" />
                                             <div>
-                                                <h5 className="font-medium text-gray-900">
+                                                <p className="text-sm font-medium text-neutral-800">
                                                     Edit Access
-                                                </h5>
-                                                <p className="text-xs text-gray-600">
+                                                </p>
+                                                <p className="text-xs text-neutral-500">
                                                     {getTerminology(
                                                         RoleTerms.Learner,
                                                         SystemTerms.Learner
@@ -1244,38 +1300,31 @@ export const StudentFiles = () => {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Button
-                                            variant={hasEditAccess ? 'default' : 'outline'}
-                                            size="sm"
+                                        <MyButton
+                                            buttonType={hasEditAccess ? 'primary' : 'secondary'}
+                                            scale="small"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleToggleEditAccess();
                                             }}
-                                            disabled={isLoadingAccess}
-                                            className={
-                                                hasEditAccess
-                                                    ? 'bg-orange-600 hover:bg-orange-700'
-                                                    : ''
-                                            }
+                                            disable={isLoadingAccess}
                                         >
-                                            {hasEditAccess ? 'Granted' : 'Grant'}
-                                        </Button>
+                                            {hasEditAccess ? 'Revoke' : 'Grant'}
+                                        </MyButton>
                                     </div>
                                 </div>
 
                                 {/* Help Text */}
-                                <div className="rounded-lg bg-gray-50 p-3 text-xs">
-                                    <p className="mt-1">
-                                        Edit access will allow student to modify the file.
-                                    </p>
+                                <div className="rounded-lg bg-neutral-50 p-3 text-xs text-neutral-500">
+                                    <p>Edit access will allow the student to modify the file.</p>
                                 </div>
                             </>
                         )}
                     </div>
 
                     <DialogFooter>
-                        <Button
-                            variant="outline"
+                        <MyButton
+                            buttonType="secondary"
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setShowAccessDialog(false);
@@ -1283,7 +1332,7 @@ export const StudentFiles = () => {
                             }}
                         >
                             Close
-                        </Button>
+                        </MyButton>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

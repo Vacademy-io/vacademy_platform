@@ -183,7 +183,8 @@ const FollowUpsContent = () => {
     const actions: LeadActionHandlers = useMemo(
         () => ({
             onOpenDetails: (vm) => {
-                setSelectedStudent(vm.toStudent());
+                // Open the compact side-view sheet, NOT the fullscreen overlay.
+                setSelectedStudent(vm.toStudent(), { openOverlay: false });
                 setIsSidebarOpen(true);
             },
             onAddNote: (userId, userName, responseId) =>

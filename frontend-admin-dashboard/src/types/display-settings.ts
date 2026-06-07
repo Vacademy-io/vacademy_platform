@@ -161,6 +161,44 @@ export interface StudentSideViewSettings {
     // Tab to open by default when the side view first renders. Falls back to
     // the first visible tab if unset or if the chosen tab is hidden.
     defaultTab?: StudentSideViewTabId;
+
+    // ─── Vacademy design-handoff tenant settings ────────────────────────
+    // Phase C of the Learner Profile redesign. All optional + back-compat:
+    // missing values fall through to sensible defaults so today's clients
+    // see no change.
+
+    /**
+     * Navigation style inside the learner profile drawer.
+     * 'tabs' (default) — horizontal scrolling tab bar (existing UX).
+     * 'grouped'        — vertical 208px left-rail with sections grouped
+     *                    under uppercase labels (Snapshot · Learning ·
+     *                    Finance · CRM · Account · Records).
+     */
+    profileNavStyle?: 'tabs' | 'grouped';
+
+    /**
+     * Feature modules per the handoff's GROUP_TO_MODULE mapping. Disabling
+     * a module removes its entire section group from the rail / tab bar.
+     * Snapshot is always on (it has the Overview entry surface).
+     */
+    profileModules?: {
+        learning?: boolean;
+        finance?: boolean;
+        crm?: boolean;
+        account?: boolean;
+        records?: boolean;
+    };
+
+    /**
+     * Quick-action toggles for the Overview tab. Hides individual buttons
+     * (Email / Call / WhatsApp) when off. Other actions (Edit Details,
+     * Report, Copy credentials) are always shown.
+     */
+    profileQuickActions?: {
+        email?: boolean;
+        call?: boolean;
+        whatsapp?: boolean;
+    };
 }
 
 // Keys of StudentSideViewSettings that toggle a tab's visibility. Used by
@@ -238,6 +276,11 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
 // Missing keys default to true so existing institutes are unaffected.
 export interface TeamManagementSettings {
     visibleRoles: Record<string, boolean>;
+    // Whether the Org Chart tab shows up on /manage-institute/teams. Defaults
+    // to FALSE (hidden) so the feature is opt-in per institute until we are
+    // confident it works for that institute's users. Admins flip this on
+    // from Settings → Admin Display Settings when they're ready to roll it out.
+    orgChartTabVisible?: boolean;
 }
 
 export interface DisplaySettingsData {

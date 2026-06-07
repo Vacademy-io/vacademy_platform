@@ -2,7 +2,6 @@ import { StudentReportData } from '@/types/student-analysis';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -17,25 +16,25 @@ interface StudentReportDetailsDialogProps {
 
 const markdownComponents = {
     h3: ({ ...props }) => (
-        <h3 className="mb-5 mt-0 text-[1rem] font-bold text-slate-900" {...props} />
+        <h3 className="mb-5 mt-0 text-base font-bold text-neutral-800" {...props} />
     ),
     table: ({ ...props }) => (
         <div className="my-6 overflow-x-auto">
             <table
-                className="w-full border-collapse border border-slate-200 text-[0.95rem]"
+                className="w-full border-collapse border border-neutral-200 text-sm"
                 {...props}
             />
         </div>
     ),
-    thead: ({ ...props }) => <thead className="bg-slate-50" {...props} />,
+    thead: ({ ...props }) => <thead className="bg-neutral-50" {...props} />,
     th: ({ ...props }) => (
         <th
-            className="border border-slate-200 px-4 py-2.5 text-left font-bold text-slate-900"
+            className="border border-neutral-200 px-4 py-2.5 text-left font-bold text-neutral-800"
             {...props}
         />
     ),
     td: ({ ...props }) => (
-        <td className="border border-slate-200 px-4 py-2.5 text-slate-800" {...props} />
+        <td className="border border-neutral-200 px-4 py-2.5 text-neutral-700" {...props} />
     ),
 };
 
@@ -73,11 +72,9 @@ export const StudentReportDetailsDialog = ({
             dialogWidth="max-w-4xl"
             content={
                 <div className="flex flex-col gap-4">
-                    <ScrollArea className="h-[calc(90vh-160px)]">
-                        {/* Adjusted height to account for new description and gap */}
-                        <div className="p-0">
-                            {/* Removed p-6 as MyDialog content already has padding */}
-                            <Tabs defaultValue="efforts" className="w-full">
+                    {/* MyDialog's content wrapper is already flex-1 overflow-y-auto — no height constraint needed here */}
+                    <div>
+                        <Tabs defaultValue="efforts" className="w-full">
                                 <TabsList className="mb-4 grid w-full grid-cols-4">
                                     <TabsTrigger value="efforts">Efforts</TabsTrigger>
                                     <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -143,13 +140,13 @@ export const StudentReportDetailsDialog = ({
                                                             <span className="font-medium">
                                                                 {topic}
                                                             </span>
-                                                            <span className="text-green-600">
+                                                            <span className="text-success-600">
                                                                 {score}%
                                                             </span>
                                                         </div>
                                                         <Progress
                                                             value={score}
-                                                            className="h-2 !bg-gray-200 [&>div]:bg-green-500"
+                                                            className="h-2 !bg-neutral-200 [&>div]:bg-success-500"
                                                         />
                                                     </div>
                                                 ))}
@@ -173,13 +170,13 @@ export const StudentReportDetailsDialog = ({
                                                             <span className="font-medium">
                                                                 {topic}
                                                             </span>
-                                                            <span className="text-red-600">
+                                                            <span className="text-danger-600">
                                                                 {score}%
                                                             </span>
                                                         </div>
                                                         <Progress
                                                             value={score}
-                                                            className="h-2 !bg-gray-200 [&>div]:bg-red-500"
+                                                            className="h-2 !bg-neutral-200 [&>div]:bg-danger-500"
                                                         />
                                                     </div>
                                                 ))}
@@ -221,8 +218,7 @@ export const StudentReportDetailsDialog = ({
                                     </Card>
                                 </TabsContent>
                             </Tabs>
-                        </div>
-                    </ScrollArea>
+                    </div>
                 </div>
             }
         />

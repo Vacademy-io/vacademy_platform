@@ -25,6 +25,12 @@ export const OverViewData = ({
     // Honor the system-field toggle (Settings → Custom Fields): a field turned off
     // is omitted here. Derived rows (Course/Level/Session), Address, Pincode and
     // Password have no toggle and always show. Sections with no visible rows drop.
+    //
+    // NOTE: student-overview.tsx skips the General Details + Contact Information
+    // sections at render-time because the rich OverviewHeader / OverviewEnrolment
+    // / OverviewContact cards already surface that data. The data shape produced
+    // here is still used by other surfaces (legacy drawer, exports) so we keep
+    // the full set per main's toggle-aware shape.
     const visibility = getSystemFieldColumnVisibility();
     const show = (accessor: string) => visibility[accessor] !== false;
 
@@ -97,6 +103,10 @@ export const OverViewData = ({
             heading: `General Details`,
             content: generalDetailsContent,
         },
+        // Live Session attendance is also surfaced as the Attendance stat
+        // tile in OverviewHeader; the section here adds a row-style view for
+        // surfaces that don't render the rich header (drawer, exports).
+        // Both are gated by the system-field toggle per main's pattern.
         ...(show('attendance_percent')
             ? [
                   {

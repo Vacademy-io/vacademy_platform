@@ -11,7 +11,7 @@ export const useStudentTable = (
     const [page, setPage] = useState(0);
     const pageSize = 10;
     const [sortColumns, setSortColumns] = useState<Record<string, string>>({});
-    const { selectedStudent, setSelectedStudent } = useStudentSidebar();
+    const { selectedStudent, setSelectedStudent, setLearnerList } = useStudentSidebar();
 
     let localAppliedFilters = appliedFilters;
 
@@ -48,6 +48,13 @@ export const useStudentTable = (
             }
         }
     }, [studentTableData?.content]);
+
+    // Publish the current page's learners to the sidebar context so the
+    // fullscreen overlay's Prev/Next chevron group can walk across them
+    // without closing.
+    useEffect(() => {
+        setLearnerList(studentTableData?.content ?? []);
+    }, [studentTableData?.content, setLearnerList]);
 
     // NOTE: We removed the useEffect that called refetch() on filter changes
     // React Query's queryKey already handles this - when the key changes, 

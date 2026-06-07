@@ -50,4 +50,19 @@ public class AuthServiceRoutes {
     public static final String ADD_USER_ROLES_INTERNAL = "/auth-service/internal/v1/user-roles/add-user-roles";
 
     public static final String GET_USER_BY_EMAIL = "/auth-service/internal/user/by-email";
+
+    // ── Organization teams (V12 in auth_service) ────────────────────────────
+    // admin_core_service forwards user-facing /admin-core-service/v1/organization-team
+    // requests to these HMAC-internal endpoints. Team data lives in auth_service
+    // because membership is a property of the user.
+    public static final String ORG_TEAM_BASE = "/auth-service/internal/organization-team";
+    public static final String ORG_TEAM_BY_ID = "/auth-service/internal/organization-team/{teamId}";
+    public static final String ORG_TEAM_CHART = "/auth-service/internal/organization-team/chart";
+    public static final String ORG_TEAM_ANCESTORS = "/auth-service/internal/organization-team/{teamId}/ancestors";
+    public static final String ORG_TEAM_DESCENDANTS = "/auth-service/internal/organization-team/{teamId}/descendants";
+    public static final String ORG_TEAM_SUBTREE = "/auth-service/internal/organization-team/{teamId}/subtree";
+    public static final String ORG_TEAM_MEMBERS = "/auth-service/internal/organization-team/{teamId}/members";
+    public static final String ORG_TEAM_MEMBER_BY_ID = "/auth-service/internal/organization-team/{teamId}/members/{mappingId}";
+    public static final String ORG_TEAM_USERS_IN_TEAMS = "/auth-service/internal/organization-team/members/users-in-teams";
+    public static final String ORG_TEAM_MAPPINGS_FOR_USER = "/auth-service/internal/organization-team/members/by-user/{userId}";
 }

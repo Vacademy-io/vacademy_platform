@@ -63,7 +63,15 @@ export const StudentsListSection = () => {
             // The student sidebar renders into a Radix portal at <body>, outside
             // tableRef. Treat any click inside the portal as "inside" so internal
             // taps (tabs, scroll, etc.) don't close the sheet — especially on touch.
-            if (target?.closest('[data-sidebar="sidebar"]')) return;
+            // Also ignore clicks inside any portaled overlay (dialog, menu,
+            // popover/select, toast) — they render at <body>, outside tableRef,
+            // so closing e.g. the Assign-Course dialog must not close the panel.
+            if (
+                target?.closest(
+                    '[data-sidebar="sidebar"],[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper],[data-sonner-toaster]'
+                )
+            )
+                return;
             if (
                 tableRef.current &&
                 !tableRef.current.contains(event.target as Node) &&

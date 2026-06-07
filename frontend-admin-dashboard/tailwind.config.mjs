@@ -26,6 +26,12 @@ module.exports = {
             },
             fontFamily: {
                 sans: ['Open Sans', 'sans-serif'],
+                // Institute-configured font: index.tsx sets `--app-font-family` on
+                // :root from the institute's fontFamily, falling back to the system
+                // default. Use `font-app` on portaled surfaces (profile overlay,
+                // side view) so they follow the institute font even though they
+                // render outside the main app tree.
+                app: ['var(--app-font-family, "Open Sans", sans-serif)'],
             },
             fontSize: {
                 h1: [

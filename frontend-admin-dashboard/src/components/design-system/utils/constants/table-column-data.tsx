@@ -73,7 +73,9 @@ const DetailsCell = ({ row }: { row: Row<StudentTable> }) => {
     const { setSelectedStudent } = useStudentSidebar();
 
     const handleClick = async () => {
-        setSelectedStudent(row.original);
+        // Open the compact side-view sheet (via SidebarTrigger), NOT the
+        // fullscreen Student Profile Overlay — hence openOverlay: false.
+        setSelectedStudent(row.original, { openOverlay: false });
     };
 
     return (

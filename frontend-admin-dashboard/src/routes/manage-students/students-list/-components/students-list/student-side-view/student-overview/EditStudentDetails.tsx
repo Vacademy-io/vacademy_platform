@@ -39,7 +39,7 @@ import {
     type CustomField,
     type FieldGroup,
 } from '@/services/custom-field-settings';
-import { getFieldsForLocation } from '@/lib/custom-fields/utils';
+import { getFieldsForLocation, type FieldForLocation } from '@/lib/custom-fields/utils';
 import { getSystemFieldColumnVisibility } from '@/components/design-system/utils/constants/system-field-columns';
 import { cn } from '@/lib/utils';
 
@@ -747,7 +747,10 @@ export const EditStudentDetails = () => {
         />
     );
 
-    const renderCustomField = (customField: CustomField) => {
+    // Accepts FieldForLocation (the shape getFieldsForLocation returns) — it only
+    // reads id/name/type/options/required, all of which CustomField also has, so
+    // grouped CustomField[] fields pass through fine too.
+    const renderCustomField = (customField: FieldForLocation) => {
         if (customField.type === 'dropdown') {
             const dropdownOptions =
                 customField.options?.map((option) => ({ id: option, name: option })) || [];
@@ -1023,7 +1026,7 @@ export const EditStudentDetails = () => {
                             ))}
                             {customFieldsData.individualFields.length > 0 && (
                                 <div className="flex flex-col gap-4">
-                                    {customFieldsData.individualFields.map((cf: CustomField) =>
+                                    {customFieldsData.individualFields.map((cf) =>
                                         renderCustomField(cf)
                                     )}
                                 </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+    NotePencil,
     Phone,
     PhoneIncoming,
     PhoneOutgoing,
@@ -14,6 +15,8 @@ import {
     fetchCallRecordingUrl,
     type CallLogItem,
 } from './services/call-history';
+import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
+import type { CallActivity } from '@/components/shared/lead-calls/call-activity';
 
 /**
  * Lead Call History — drop-in panel for the StudentSidebar timeline tab.
@@ -105,8 +108,22 @@ function CallHistoryRow({
 }) {
     const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
     const [loadingUrl, setLoadingUrl] = useState(false);
+    const [noteDialogOpen, setNoteDialogOpen] = useState(false);
     const label = STATUS_LABEL[item.status] ?? item.status;
     const tone = STATUS_TONE[item.status] ?? 'bg-neutral-100 text-neutral-600';
+
+    const isInbound = item.direction === 'INBOUND';
+    // The lead's phone is the From on inbound, the To on outbound. Masked
+    // versions are what the backend exposes — fine for display + audit.
+    const leadPhone = isInbound ? item.fromNumberMasked : item.toNumberMasked;
+    // Pre-fill the Add-note dialog so the counsellor only has to pick an outcome
+    // and (optionally) write a note — everything else is derived from this row.
+    const initialCallActivity: CallActivity = {
+        direction: item.direction,
+        phoneNumber: leadPhone ?? undefined,
+        provider: item.providerType,
+        telephonyCallLogId: item.id,
+    };
 
     const resolveUrl = async (): Promise<string | null> => {
         if (recordingUrl) return recordingUrl;
@@ -120,7 +137,6 @@ function CallHistoryRow({
         }
     };
 
-    const isInbound = item.direction === 'INBOUND';
     return (
         <div
             className={cn(
@@ -198,6 +214,29 @@ function CallHistoryRow({
                     )}
                 </div>
             )}
+            {/* Add-note affordance — opens AddLeadNoteDialog pre-filled with
+                action_type=CALL_LOG and a link to this call row, so the
+                counsellor can pick an outcome + write a note in one shot.
+                Saved note shows up in the lead's notes/timeline section via
+                the dialog's existing invalidations. */}
+            <div className="mt-2 flex justify-end">
+                <button
+                    type="button"
+                    onClick={() => setNoteDialogOpen(true)}
+                    className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+                >
+                    <NotePencil className="size-4" />
+                    Add note
+                </button>
+            </div>
+            <AddLeadNoteDialog
+                open={noteDialogOpen}
+                onOpenChange={setNoteDialogOpen}
+                userId={item.userId}
+                initialActionType="CALL_LOG"
+                initialCallActivity={initialCallActivity}
+                hideCallRecordingControls
+            />
         </div>
     );
 }

@@ -26,6 +26,11 @@ export function invalidateLeadCaches(queryClient: QueryClient, userId: string) {
     queryClient.invalidateQueries({ queryKey: ['user-lead-profile', userId] });
     queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
     queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
+    // Lead Journey timeline (lead-side-view → student-lead-profile) reads via
+    // this key and shows journey + activity events together. Missing here
+    // meant notes added from the Call History row didn't appear in Lead
+    // Journey until manual refresh.
+    queryClient.invalidateQueries({ queryKey: ['lead-all-events', userId] });
     queryClient.invalidateQueries({ queryKey: ['campaignUsers'] });
     queryClient.invalidateQueries({ queryKey: ['contacts'] });
     queryClient.invalidateQueries({ queryKey: ['recent-leads'] });

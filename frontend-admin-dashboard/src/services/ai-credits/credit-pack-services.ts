@@ -26,7 +26,9 @@ export interface CreditPack {
 
 export interface CreditPackPurchaseResponse {
     platform_payment_id: string;
-    razorpay_order_id: string;
+    /** Razorpay hosted page (rzp.io/i/…) — the FE redirects here to pay. */
+    payment_link_url: string;
+    razorpay_order_id: string | null;
     razorpay_key_id: string;
     amount_minor: number;
     currency: 'INR' | 'USD';
@@ -37,12 +39,7 @@ export interface CreditPackPurchaseResponse {
 export interface CreditPackOrderStatus {
     platform_payment_id: string;
     status: 'INITIATED' | 'SUCCESS' | 'FAILED';
-    payment_status:
-        | 'PAYMENT_PENDING'
-        | 'PAID'
-        | 'FAILED'
-        | 'REFUNDED'
-        | 'PARTIALLY_REFUNDED';
+    payment_status: 'PAYMENT_PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
     credits_granted: number | null;
     invoice_url: string | null;
 }
@@ -51,7 +48,7 @@ export interface CreditPackOrderStatus {
 
 export async function fetchCreditPacks(instituteId: string): Promise<CreditPack[]> {
     const response = await authenticatedAxiosInstance.get<CreditPack[]>(
-        `${API_BASE}?instituteId=${encodeURIComponent(instituteId)}`,
+        `${API_BASE}?instituteId=${encodeURIComponent(instituteId)}`
     );
     return response.data;
 }
@@ -59,19 +56,22 @@ export async function fetchCreditPacks(instituteId: string): Promise<CreditPack[
 export async function purchaseCreditPack(
     instituteId: string,
     packId: string,
+    returnUrl: string
 ): Promise<CreditPackPurchaseResponse> {
     // Snake_case body — matches the BE DTO's @JsonNaming(SnakeCaseStrategy)
     // and the codebase-wide convention used by PaymentInitiationRequestDTO etc.
+    // return_url is where Razorpay sends the browser back after the hosted
+    // payment (the backend appends ?topup_pp=<id> so we can resume polling).
     const response = await authenticatedAxiosInstance.post<CreditPackPurchaseResponse>(
         `${API_BASE}/purchase`,
-        { institute_id: instituteId, pack_id: packId },
+        { institute_id: instituteId, pack_id: packId, return_url: returnUrl }
     );
     return response.data;
 }
 
 export async function fetchOrderStatus(platformPaymentId: string): Promise<CreditPackOrderStatus> {
     const response = await authenticatedAxiosInstance.get<CreditPackOrderStatus>(
-        `${API_BASE}/orders/${encodeURIComponent(platformPaymentId)}/status`,
+        `${API_BASE}/orders/${encodeURIComponent(platformPaymentId)}/status`
     );
     return response.data;
 }
@@ -90,15 +90,22 @@ export const useCreditPacksQuery = (instituteId: string | null | undefined, enab
 
 export const usePurchaseCreditPackMutation = () => {
     return useMutation({
-        mutationFn: ({ instituteId, packId }: { instituteId: string; packId: string }) =>
-            purchaseCreditPack(instituteId, packId),
+        mutationFn: ({
+            instituteId,
+            packId,
+            returnUrl,
+        }: {
+            instituteId: string;
+            packId: string;
+            returnUrl: string;
+        }) => purchaseCreditPack(instituteId, packId, returnUrl),
     });
 };
 
 export const useOrderStatusQuery = (
     platformPaymentId: string | null,
     pollMs: number | false,
-    enabled = true,
+    enabled = true
 ) => {
     return useQuery({
         queryKey: ['GET_CREDIT_PACK_ORDER_STATUS', platformPaymentId],

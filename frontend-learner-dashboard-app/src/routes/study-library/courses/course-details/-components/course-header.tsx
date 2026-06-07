@@ -23,12 +23,13 @@ export const CourseHeader = ({
     /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?.*)?$/i.test(url);
   const hasVideo =
     !!courseData.courseMediaId && !isImageUrl(courseData.courseMediaId);
-  // When the media itself is an image, it renders on the right like a video —
-  // the banner is reserved for the background behind the title/tags.
   const hasMediaImage =
     !!courseData.courseMediaId && isImageUrl(courseData.courseMediaId);
-  const hasRightMedia = hasVideo || hasMediaImage;
-  const hasBannerBackdrop = !!courseData.courseBannerMediaId;
+  // Banner image renders in the right column when no separate course media exists.
+  // Mirrors the admin's clean 2-col layout (text-left, image-right) — no backdrop blur.
+  const hasBannerImage =
+    !!courseData.courseBannerMediaId && !hasVideo && !hasMediaImage;
+  const hasRightMedia = hasVideo || hasMediaImage || hasBannerImage;
   const [isDescExpanded, setIsDescExpanded] = useState(false);
   const [isDescClamped, setIsDescClamped] = useState(false);
   const descRef = useRef<HTMLDivElement>(null);
@@ -64,132 +65,112 @@ export const CourseHeader = ({
         ) : (
           <div
             className={cn(
-              "relative",
-              hasBannerBackdrop &&
-                "overflow-hidden rounded-2xl border border-border/50 shadow-sm min-h-56 sm:min-h-72 lg:min-h-80",
+              "grid grid-cols-1 items-center gap-6",
+              hasRightMedia && "lg:grid-cols-2 lg:gap-10",
             )}
           >
-            {hasBannerBackdrop && (
-              <>
-                {/* Blurred fill so the contained banner has no empty bars around it */}
-                <img
-                  src={courseData.courseBannerMediaId}
-                  alt=""
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 h-full w-full scale-100 object-cover object-center blur-2xl"
-                />
-                {/* Full banner, uncropped */}
-                <img
-                  src={courseData.courseBannerMediaId}
-                  alt=""
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 h-full w-full object-contain object-center"
-                />
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 bg-black/25"
-                />
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-background/80 via-background/50 to-background/10"
-                />
-              </>
-            )}
-            <div
-              className={cn(
-                "relative grid grid-cols-1 gap-6 items-center p-4 sm:p-6",
-                hasRightMedia && "lg:grid-cols-2 lg:gap-10",
-              )}
-            >
-              {/* Text Content */}
-              <div className="animate-fade-in-up space-y-3 sm:space-y-4">
-                {/* Tags */}
-                {courseData.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {courseData.tags.map((tag, index) => (
-                      <Badge
-                        key={index}
-                        variant="secondary"
-                        className={cn(
-                          "uppercase tracking-wide text-caption sm:text-xs font-semibold px-2.5 py-1",
-                          // Vibrant Styles - Flat Pastel
-                          "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
-                          "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",
-                          // Play Styles
-                          "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:border-2",
-                        )}
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                {/* Title */}
-                <h1
-                  className={cn(
-                    "text-xl sm:text-2xl lg:text-3xl font-bold leading-tight tracking-tight text-foreground",
-                    "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50",
-                  )}
-                >
-                  {courseData.title}
-                </h1>
-
-                {/* Description */}
-                {courseData.description && (
-                  <div>
-                    <div
-                      ref={descRef}
+            {/* Text Content */}
+            <div className="animate-fade-in-up space-y-3 sm:space-y-4">
+              {/* Tags */}
+              {courseData.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {courseData.tags.map((tag, index) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
                       className={cn(
-                        "text-sm sm:text-base text-muted-foreground leading-relaxed",
-                        !isDescExpanded && "line-clamp-4",
+                        "uppercase tracking-wide text-caption font-semibold px-2.5 py-1",
+                        // Vibrant Styles - Flat Pastel
+                        "[.ui-vibrant_&]:bg-sky-100/50 [.ui-vibrant_&]:text-sky-700 dark:[.ui-vibrant_&]:bg-sky-900/30 dark:[.ui-vibrant_&]:text-sky-300",
+                        "[.ui-vibrant_&]:border-sky-200/50 dark:[.ui-vibrant_&]:border-sky-800/30 [.ui-vibrant_&]:border",
+                        // Play Styles
+                        "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:border-2",
                       )}
-                      dangerouslySetInnerHTML={{
-                        __html: courseData.description,
-                      }}
-                    />
-                    {(isDescClamped || isDescExpanded) && (
-                      <button
-                        onClick={() => setIsDescExpanded((prev) => !prev)}
-                        className="mt-1 text-sm font-medium text-primary hover:underline focus:outline-none"
-                      >
-                        {isDescExpanded ? "View less" : "View more"}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
 
-              {/* Media on the right — video/image preview only. The banner
-                lives behind the text column. */}
-              {hasVideo ? (
-                <div
-                  className="w-full animate-fade-in-up"
-                  style={{ animationDelay: "0.15s" }}
-                >
-                  <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
-                    <VideoPlayer src={courseData.courseMediaId} />
-                  </div>
+              {/* Title */}
+              <h1
+                className={cn(
+                  "text-h3 sm:text-h2 lg:text-h1 font-bold leading-tight tracking-tight text-foreground",
+                  "[.ui-vibrant_&]:text-slate-900 dark:[.ui-vibrant_&]:text-slate-50",
+                )}
+              >
+                {courseData.title}
+              </h1>
+
+              {/* Description */}
+              {courseData.description && (
+                <div>
+                  <div
+                    ref={descRef}
+                    className={cn(
+                      "text-body sm:text-subtitle text-muted-foreground leading-relaxed",
+                      !isDescExpanded && "line-clamp-4",
+                    )}
+                    dangerouslySetInnerHTML={{
+                      __html: courseData.description,
+                    }}
+                  />
+                  {(isDescClamped || isDescExpanded) && (
+                    <button
+                      onClick={() => setIsDescExpanded((prev) => !prev)}
+                      className="mt-1 text-body font-medium text-primary hover:underline focus:outline-none"
+                    >
+                      {isDescExpanded ? "View less" : "View more"}
+                    </button>
+                  )}
                 </div>
-              ) : hasMediaImage ? (
-                <div
-                  className="w-full animate-fade-in-up"
-                  style={{ animationDelay: "0.15s" }}
-                >
-                  <div className="relative w-full mx-auto overflow-hidden rounded-2xl border border-border/50 bg-muted shadow-sm ring-1 ring-black/5">
-                    <img
-                      src={courseData.courseMediaId}
-                      alt={toTitleCase(courseData.title || "Course Media")}
-                      className="w-full object-contain"
-                      style={{ maxHeight: "60vh" }}
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  </div>
-                </div>
-              ) : null}
+              )}
             </div>
+
+            {/* Right column — video > image-media > banner (priority order).
+                Mirrors the admin's clean 2-col layout: media sits beside the
+                text instead of behind it. */}
+            {hasVideo ? (
+              <div
+                className="w-full animate-fade-in-up"
+                style={{ animationDelay: "0.15s" }}
+              >
+                <div className="w-full overflow-hidden rounded-2xl bg-black shadow-sm ring-1 ring-black/10">
+                  <VideoPlayer src={courseData.courseMediaId} />
+                </div>
+              </div>
+            ) : hasMediaImage ? (
+              <div
+                className="w-full animate-fade-in-up"
+                style={{ animationDelay: "0.15s" }}
+              >
+                <div className="relative w-full mx-auto overflow-hidden rounded-2xl border border-border/50 bg-muted shadow-sm ring-1 ring-black/5">
+                  <img
+                    src={courseData.courseMediaId}
+                    alt={toTitleCase(courseData.title || "Course Media")}
+                    className="w-full max-h-screen-60 object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                </div>
+              </div>
+            ) : hasBannerImage ? (
+              <div
+                className="w-full animate-fade-in-up"
+                style={{ animationDelay: "0.15s" }}
+              >
+                <img
+                  src={courseData.courseBannerMediaId}
+                  alt={toTitleCase(courseData.title || "Course Banner")}
+                  className="w-full max-h-reg-300 rounded-xl object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         )}
       </div>

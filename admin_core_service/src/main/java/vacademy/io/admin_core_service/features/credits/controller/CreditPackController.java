@@ -61,7 +61,7 @@ public class CreditPackController {
         instituteAccessValidator.validateUserAccess(user, request.getInstituteId());
         UserDTO buyer = toUserDTO(user);
         CreditPackPurchaseResponseDTO response = creditPackService.createOrder(
-                request.getInstituteId(), request.getPackId(), buyer);
+                request.getInstituteId(), request.getPackId(), buyer, request.getReturnUrl());
         return ResponseEntity.ok(response);
     }
 

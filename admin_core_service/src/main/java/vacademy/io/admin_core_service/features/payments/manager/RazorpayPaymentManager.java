@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.payments.manager;
 
 import com.razorpay.Customer;
 import com.razorpay.Order;
+import com.razorpay.PaymentLink;
 import com.razorpay.RazorpayClient;
 import com.razorpay.RazorpayException;
 import org.json.JSONObject;
@@ -203,6 +204,90 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             errorDto.setResponseData(minimalData);
 
             return errorDto;
+        }
+    }
+
+    /**
+     * Create a Razorpay-hosted Payment Link (rzp.io/i/…) for this request.
+     *
+     * Used by the AI-credit top-up: the platform serves the admin app on many
+     * white-labelled custom domains, which Razorpay won't let checkout.js run on.
+     * Payment instead happens on Razorpay's own (always-allowed) hosted page, and
+     * on success the browser is redirected to {@code callbackUrl} — back on the
+     * originating admin domain.
+     *
+     * The link carries the SAME notes (orderId / instituteId / payment_type) as
+     * {@link #createRazorpayOrder}, so the existing {@code payment.captured}
+     * webhook grants credits with zero changes — fulfillment never moves.
+     *
+     * @return map with {@code paymentLinkId}, {@code paymentLinkUrl} (short_url),
+     *         {@code razorpayKeyId}
+     */
+    public Map<String, Object> createPaymentLink(UserDTO user, PaymentInitiationRequestDTO request,
+            Map<String, Object> paymentGatewaySpecificData, String callbackUrl) {
+        try {
+            validateRequest(request);
+            RazorpayClient razorpayClient = createRazorpayClient(paymentGatewaySpecificData);
+            long amountInPaise = convertAmountToPaise(request.getAmount());
+
+            JSONObject plReq = new JSONObject();
+            plReq.put("amount", amountInPaise);
+            plReq.put("currency", request.getCurrency().toUpperCase());
+            plReq.put("accept_partial", false);
+            // reference_id must be unique per link — our platform_payment_id is.
+            plReq.put("reference_id", request.getOrderId());
+            if (StringUtils.hasText(request.getDescription())) {
+                plReq.put("description", request.getDescription());
+            }
+
+            // Prefill the payer (best-effort — Razorpay still collects on its page).
+            JSONObject customer = new JSONObject();
+            if (user != null) {
+                if (StringUtils.hasText(user.getFullName())) customer.put("name", user.getFullName());
+                if (StringUtils.hasText(user.getEmail())) customer.put("email", user.getEmail());
+                if (StringUtils.hasText(user.getMobileNumber())) customer.put("contact", user.getMobileNumber());
+            } else if (StringUtils.hasText(request.getEmail())) {
+                customer.put("email", request.getEmail());
+            }
+            if (customer.length() > 0) {
+                plReq.put("customer", customer);
+            }
+
+            // We drive the return + balance refresh ourselves; suppress Razorpay's
+            // own SMS/email so the user isn't double-notified.
+            JSONObject notify = new JSONObject();
+            notify.put("sms", false);
+            notify.put("email", false);
+            plReq.put("notify", notify);
+            plReq.put("reminder_enable", false);
+
+            // notes MUST mirror createRazorpayOrder so PlatformRazorpayWebHookService
+            // (keyed on notes.orderId + notes.payment_type) grants exactly as today.
+            JSONObject notes = new JSONObject();
+            notes.put("orderId", request.getOrderId());
+            notes.put("instituteId", request.getInstituteId());
+            notes.put("payment_type", request.getPaymentType() != null
+                    ? request.getPaymentType().name() : PaymentType.INITIAL.name());
+            if (StringUtils.hasText(request.getDescription())) {
+                notes.put("description", request.getDescription());
+            }
+            plReq.put("notes", notes);
+
+            if (StringUtils.hasText(callbackUrl)) {
+                plReq.put("callback_url", callbackUrl);
+                plReq.put("callback_method", "get");
+            }
+
+            PaymentLink paymentLink = razorpayClient.paymentLink.create(plReq);
+
+            Map<String, Object> out = new HashMap<>();
+            out.put("paymentLinkId", paymentLink.has("id") ? paymentLink.get("id") : null);
+            out.put("paymentLinkUrl", paymentLink.has("short_url") ? paymentLink.get("short_url") : null);
+            out.put("razorpayKeyId", extractApiKey(paymentGatewaySpecificData));
+            return out;
+
+        } catch (RazorpayException e) {
+            throw new VacademyException("Error creating Razorpay payment link: " + e.getMessage());
         }
     }
 

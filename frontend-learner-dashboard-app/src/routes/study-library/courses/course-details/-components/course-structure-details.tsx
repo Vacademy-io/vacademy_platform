@@ -1023,7 +1023,7 @@ export const CourseStructureDetails = ({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search slides…"
+                placeholder={`Search ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}…`}
                 className="h-8 w-48"
               />
               <div className="flex items-center gap-2 text-xs text-neutral-600">
@@ -1060,7 +1060,7 @@ export const CourseStructureDetails = ({
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search slides…"
+              placeholder={`Search ${getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}…`}
               className="h-9 flex-1 min-w-0"
             />
             <div className="flex items-center gap-2 text-xs text-neutral-600 shrink-0">
@@ -2235,7 +2235,7 @@ export const CourseStructureDetails = ({
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                              No slides in this chapter.
+                                              No {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)} in this {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}.
                                             </div>
                                           ) : (
                                             (slidesMap[ch.id] ?? []).map(
@@ -2376,7 +2376,7 @@ export const CourseStructureDetails = ({
               setSelectedChapterId(null);
             }}
           >
-            Subjects
+            {getTerminologyPlural(ContentTerms.Subjects, SystemTerms.Subjects)}
           </button>
 
           {selectedSubjectId && (
@@ -2396,7 +2396,7 @@ export const CourseStructureDetails = ({
                 setSelectedChapterId(null);
               }}
             >
-              Modules
+              {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)}
             </button>
           )}
 
@@ -2416,7 +2416,7 @@ export const CourseStructureDetails = ({
                 setSelectedChapterId(null);
               }}
             >
-              Chapters
+              {getTerminologyPlural(ContentTerms.Chapters, SystemTerms.Chapters)}
             </button>
           )}
 
@@ -2426,7 +2426,7 @@ export const CourseStructureDetails = ({
 
           {selectedChapterId && (
             <span className="px-3 py-1.5 rounded-md bg-white shadow-sm font-semibold text-primary-700 ring-1 ring-black/5 text-sm">
-              Slides
+              {getTerminologyPlural(ContentTerms.Slides, SystemTerms.Slides)}
             </span>
           )}
         </div>
@@ -2434,7 +2434,7 @@ export const CourseStructureDetails = ({
         {/* Starting depth adapts to courseStructure; if preselected IDs exist, skips to that depth */}
         {!isModulesLoading && !selectedSubjectId && (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {studyLibraryData?.map((subject) => (
+            {studyLibraryData?.map((subject, idx) => (
               <Card
                 key={subject.id}
                 role="button"
@@ -2452,7 +2452,7 @@ export const CourseStructureDetails = ({
                 }}
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <div className="relative aspect-square w-full bg-neutral-50 overflow-hidden">
+                  <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
                     {thumbUrlById[`subject:${subject.id}`] ? (
                       <img
                         src={thumbUrlById[`subject:${subject.id}`]}
@@ -2475,13 +2475,16 @@ export const CourseStructureDetails = ({
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 p-3 flex-1">
+                  <div className="flex flex-col gap-1 p-3 flex-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
                       title={toTitleCase(subject.subject_name)}
                     >
                       {toTitleCase(subject.subject_name)}
                     </h3>
+                    <p className="text-caption text-muted-foreground">
+                      {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)} {idx + 1}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -2492,7 +2495,7 @@ export const CourseStructureDetails = ({
         {/* Modules */}
         {!isModulesLoading && selectedSubjectId && !selectedModuleId && (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-            {(subjectModulesMap[selectedSubjectId] || []).map((m) => (
+            {(subjectModulesMap[selectedSubjectId] || []).map((m, idx) => (
               <Card
                 key={m.module.id}
                 role="button"
@@ -2510,7 +2513,7 @@ export const CourseStructureDetails = ({
                 }}
               >
                 <CardContent className="p-0 flex flex-col h-full">
-                  <div className="relative aspect-square w-full bg-neutral-50 overflow-hidden">
+                  <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
                     {thumbUrlById[`module:${m.module.id}`] ? (
                       <img
                         src={thumbUrlById[`module:${m.module.id}`]}
@@ -2533,13 +2536,16 @@ export const CourseStructureDetails = ({
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 p-3 flex-1">
+                  <div className="flex flex-col gap-1 p-3 flex-1">
                     <h3
-                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                      className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
                       title={toTitleCase(m.module.module_name)}
                     >
                       {toTitleCase(m.module.module_name)}
                     </h3>
+                    <p className="text-caption text-muted-foreground">
+                      {getTerminology(ContentTerms.Modules, SystemTerms.Modules)} {idx + 1}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -2560,7 +2566,7 @@ export const CourseStructureDetails = ({
                   const evaluation = chapterEvaluations[ch.id];
                   return !evaluation?.isHidden;
                 })
-                .map((ch) => {
+                .map((ch, idx) => {
                   const evaluation = chapterEvaluations[ch.id];
                   const isChapterLocked = evaluation?.isLocked ?? false;
                   return (
@@ -2590,7 +2596,7 @@ export const CourseStructureDetails = ({
                       }}
                     >
                       <CardContent className="p-0 flex flex-col h-full">
-                        <div className="relative aspect-square w-full bg-neutral-50 overflow-hidden">
+                        <div className="relative aspect-video w-full bg-neutral-50 overflow-hidden">
                           {thumbUrlById[`chapter:${ch.id}`] ? (
                             <img
                               src={thumbUrlById[`chapter:${ch.id}`]}
@@ -2613,13 +2619,16 @@ export const CourseStructureDetails = ({
                             </div>
                           )}
                         </div>
-                        <div className="flex flex-col gap-2 p-3 flex-1">
+                        <div className="flex flex-col gap-1 p-3 flex-1">
                           <h3
-                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-2"
+                            className="text-subtitle font-semibold text-neutral-800 group-hover:text-primary-600 transition-colors leading-snug line-clamp-3"
                             title={toTitleCase(ch.chapter_name)}
                           >
                             {toTitleCase(ch.chapter_name)}
                           </h3>
+                          <p className="text-caption text-muted-foreground">
+                            {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {idx + 1}
+                          </p>
                           {isChapterLocked && (
                             <LockedBadge size="sm" unlockMessage="" />
                           )}

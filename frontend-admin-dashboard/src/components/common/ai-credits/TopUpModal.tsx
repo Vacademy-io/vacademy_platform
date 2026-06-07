@@ -18,14 +18,18 @@ import {
     usePurchaseCreditPackMutation,
     useOrderStatusQuery,
     useInvalidateCreditQueriesOnPaid,
-    loadRazorpayScript,
-    openRazorpayCheckout,
     type CreditPack,
 } from '@/services/ai-credits/credit-pack-services';
 
 interface TopUpModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /**
+     * Set when the modal is reopened after returning from Razorpay's hosted
+     * page (the platform_payment_id from the ?topup_pp query param). The modal
+     * then skips the picker and resumes polling for webhook fulfillment.
+     */
+    resumePaymentId?: string | null;
 }
 
 type Phase = 'pick' | 'launching' | 'awaiting' | 'success' | 'error';
@@ -35,7 +39,7 @@ type Phase = 'pick' | 'launching' | 'awaiting' | 'success' | 'error';
  * poll our /orders/{id}/status until PAID. Webhook is the source of truth;
  * this UI just reflects what the webhook has fulfilled.
  */
-export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
+export function TopUpModal({ open, onOpenChange, resumePaymentId }: TopUpModalProps) {
     const instituteId = getCurrentInstituteId();
     const packsQuery = useCreditPacksQuery(instituteId, open);
     const purchaseMutation = usePurchaseCreditPackMutation();
@@ -50,7 +54,7 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
     const statusQuery = useOrderStatusQuery(
         pollingFor,
         phase === 'awaiting' ? 2000 : false,
-        phase === 'awaiting',
+        phase === 'awaiting'
     );
 
     // Reset state on close so re-open starts fresh.
@@ -63,12 +67,21 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
         }
     }, [open]);
 
+    // Resume flow: reopened after the Razorpay redirect (parent passes the
+    // platform_payment_id from ?topup_pp). Skip the picker and poll our backend
+    // until the webhook grants — reusing the same awaiting → success UI.
+    useEffect(() => {
+        if (open && resumePaymentId) {
+            setPollingFor(resumePaymentId);
+            setPhase('awaiting');
+        }
+    }, [open, resumePaymentId]);
+
     // Auto-pick the badged pack on first load (Most Popular).
     useEffect(() => {
         if (open && packsQuery.data && !selectedPackId) {
             const popular =
-                packsQuery.data.find((p) => p.badge === 'Most Popular') ??
-                packsQuery.data[0];
+                packsQuery.data.find((p) => p.badge === 'Most Popular') ?? packsQuery.data[0];
             if (popular) setSelectedPackId(popular.pack_id);
         }
     }, [open, packsQuery.data, selectedPackId]);
@@ -106,7 +119,7 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
 
     const selectedPack = useMemo(
         () => packsQuery.data?.find((p) => p.pack_id === selectedPackId) ?? null,
-        [packsQuery.data, selectedPackId],
+        [packsQuery.data, selectedPackId]
     );
 
     const handleBuy = async () => {
@@ -115,36 +128,32 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
         setErrorMessage(null);
 
         try {
-            await loadRazorpayScript();
+            // Come back to THIS page after Razorpay's hosted payment. Strip any
+            // stale return params so a retry doesn't stack them.
+            const url = new URL(window.location.href);
+            [
+                'topup_pp',
+                'razorpay_payment_id',
+                'razorpay_payment_link_id',
+                'razorpay_payment_link_reference_id',
+                'razorpay_payment_link_status',
+                'razorpay_signature',
+            ].forEach((k) => url.searchParams.delete(k));
+
             const order = await purchaseMutation.mutateAsync({
                 instituteId,
                 packId: selectedPack.pack_id,
+                returnUrl: url.toString(),
             });
 
-            // Open Razorpay Checkout. The handler fires on FE-success — but we
-            // do NOT trust it for fulfillment; we poll our backend instead.
-            openRazorpayCheckout({
-                key: order.razorpay_key_id,
-                order_id: order.razorpay_order_id,
-                amount: order.amount_minor,
-                currency: order.currency,
-                name: 'Vacademy AI Credits',
-                description: `${order.pack_code} pack`,
-                theme: { color: '#7c3aed' },
-                handler: () => {
-                    // Razorpay confirmed payment client-side. Switch to polling
-                    // so we wait for the webhook to actually grant credits.
-                    setPhase('awaiting');
-                    setPollingFor(order.platform_payment_id);
-                },
-                modal: {
-                    ondismiss: () => {
-                        // User closed Razorpay without paying. Keep the modal
-                        // open at pick phase so they can try again.
-                        if (phase === 'launching') setPhase('pick');
-                    },
-                },
-            });
+            if (!order.payment_link_url) {
+                throw new Error('Payment link unavailable — please try again');
+            }
+
+            // Redirect to Razorpay's hosted page. Unlike checkout.js it works on
+            // the platform's custom admin domains; credits are granted by the
+            // webhook, and on return we resume polling via the ?topup_pp param.
+            window.location.href = order.payment_link_url;
         } catch (e) {
             const message = e instanceof Error ? e.message : 'Failed to start payment';
             setPhase('error');
@@ -165,8 +174,8 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
                         Top up AI credits
                     </DialogTitle>
                     <DialogDescription className="text-xs text-neutral-500 sm:text-sm">
-                        Credits land in your balance the moment payment clears.
-                        Indian institutes see GST inclusive in the total below.
+                        Credits land in your balance the moment payment clears. Indian institutes
+                        see GST inclusive in the total below.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -190,8 +199,8 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
 
                             {packsQuery.data && packsQuery.data.length === 0 && (
                                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                                    No credit packs are available for your region yet.
-                                    Contact support.
+                                    No credit packs are available for your region yet. Contact
+                                    support.
                                 </div>
                             )}
 
@@ -248,7 +257,8 @@ export function TopUpModal({ open, onOpenChange }: TopUpModalProps) {
                             </p>
                             {statusQuery.data?.credits_granted != null && (
                                 <p className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
-                                    +{statusQuery.data.credits_granted.toLocaleString()} credits added
+                                    +{statusQuery.data.credits_granted.toLocaleString()} credits
+                                    added
                                 </p>
                             )}
                         </div>
@@ -330,7 +340,7 @@ function PackCard({ pack, selected, onSelect }: PackCardProps) {
                 'focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2',
                 selected
                     ? 'border-purple-500 bg-gradient-to-br from-purple-50 via-white to-indigo-50/40 shadow-sm ring-2 ring-purple-200'
-                    : 'border-neutral-200 bg-white hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-sm',
+                    : 'border-neutral-200 bg-white hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-sm'
             )}
         >
             {/* Badge — sits at top-right, inside the card so it never collides with the title */}
@@ -377,9 +387,7 @@ function PackCard({ pack, selected, onSelect }: PackCardProps) {
                         <span className="tabular-nums">{pack.display_tax_major}</span>
                     </div>
                 )}
-                {pack.is_export && (
-                    <div className="mt-1 text-neutral-400">No GST · export</div>
-                )}
+                {pack.is_export && <div className="mt-1 text-neutral-400">No GST · export</div>}
             </div>
         </button>
     );

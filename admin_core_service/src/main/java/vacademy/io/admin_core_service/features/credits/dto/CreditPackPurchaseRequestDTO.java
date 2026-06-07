@@ -9,4 +9,12 @@ import lombok.Data;
 public class CreditPackPurchaseRequestDTO {
     private String instituteId;
     private String packId;
+    /**
+     * Where Razorpay should send the browser back after the hosted payment
+     * completes — the originating admin domain (e.g.
+     * {@code https://admin.shikshanation.com/settings?selectedTab=aiSettings}).
+     * The service appends {@code topup_pp=<platformPaymentId>} so the page can
+     * resume polling. Optional; falls back to a configured default.
+     */
+    private String returnUrl;
 }

@@ -15,6 +15,10 @@ import { CallOutcomeSelect } from './CallOutcomeSelect';
 interface CallRecordingInputProps {
     value: CallActivity | null;
     onChange: (next: CallActivity | null) => void;
+    /** Hide the upload / record affordances. Used when the note is being added
+     *  to an existing telephony call that already has a recording attached —
+     *  the counsellor only needs to pick an outcome, not attach audio. */
+    hideRecordingControls?: boolean;
 }
 
 /** Read an audio file's duration (seconds) via a throwaway <audio> element. */
@@ -39,7 +43,11 @@ function getAudioDuration(file: File): Promise<number | undefined> {
     });
 }
 
-export const CallRecordingInput = ({ value, onChange }: CallRecordingInputProps) => {
+export const CallRecordingInput = ({
+    value,
+    onChange,
+    hideRecordingControls = false,
+}: CallRecordingInputProps) => {
     const recorder = useCallRecorder();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -113,9 +121,11 @@ export const CallRecordingInput = ({ value, onChange }: CallRecordingInputProps)
 
     return (
         <div className="mt-2 flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-2.5">
-            <span className="text-xs font-medium text-neutral-600">Call recording</span>
+            {!hideRecordingControls && (
+                <span className="text-xs font-medium text-neutral-600">Call recording</span>
+            )}
 
-            {recorder.isRecording ? (
+            {hideRecordingControls ? null : recorder.isRecording ? (
                 <div className="flex items-center gap-2">
                     <span className="flex items-center gap-1.5 text-xs font-medium text-danger-600">
                         <span className="size-2 animate-pulse rounded-full bg-danger-500" />
@@ -189,7 +199,7 @@ export const CallRecordingInput = ({ value, onChange }: CallRecordingInputProps)
                 </div>
             )}
 
-            {(uploadError || recorder.error) && (
+            {!hideRecordingControls && (uploadError || recorder.error) && (
                 <span className="flex items-center gap-1 text-xs text-danger-600">
                     <Warning className="size-3.5" /> {uploadError || recorder.error}
                 </span>

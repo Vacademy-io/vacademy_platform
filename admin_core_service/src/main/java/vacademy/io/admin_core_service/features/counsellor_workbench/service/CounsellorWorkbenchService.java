@@ -62,6 +62,18 @@ public class CounsellorWorkbenchService {
         return leadRepo.findLeadsForCounsellors(instituteId, users, conversionStatus, page * size, size);
     }
 
+    /**
+     * Per-counsellor leads list (admin / manager path). The /me/leads
+     * variant is auth-scoped to the caller; this one accepts an explicit
+     * user_id so a CSO can drill into anyone in the team subtree.
+     */
+    public List<WorkbenchLeadDTO> leadsForCounsellor(String instituteId, String counsellorUserId,
+                                                     String conversionStatus, int page, int size) {
+        return leadRepo.findLeadsForCounsellors(
+                instituteId, Collections.singletonList(counsellorUserId),
+                conversionStatus, page * size, size);
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Counsellor list
     // ────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import {
     COUNSELLOR_WORKBENCH_ACTIVITY,
     COUNSELLOR_WORKBENCH_CONFIG,
     COUNSELLOR_WORKBENCH_CONFIG_UPDATE,
+    COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS,
     COUNSELLOR_WORKBENCH_MY_LEADS,
     COUNSELLOR_WORKBENCH_MY_TEAM,
     COUNSELLOR_WORKBENCH_REASSIGN,
@@ -142,6 +143,24 @@ export async function fetchMyLeads(
 ) {
     const res = await authenticatedAxiosInstance.get<WorkbenchLead[]>(
         COUNSELLOR_WORKBENCH_MY_LEADS(instituteId, status, page, size)
+    );
+    return res.data;
+}
+
+/**
+ * Per-counsellor leads. Used by the CSO / manager detail drawer — the
+ * /me/leads endpoint can't return someone else's leads since it's
+ * auth-scoped to the caller.
+ */
+export async function fetchCounsellorLeads(
+    instituteId: string,
+    counsellorUserId: string,
+    status?: string,
+    page: number = 0,
+    size: number = 50
+) {
+    const res = await authenticatedAxiosInstance.get<WorkbenchLead[]>(
+        COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS(instituteId, counsellorUserId, status, page, size)
     );
     return res.data;
 }

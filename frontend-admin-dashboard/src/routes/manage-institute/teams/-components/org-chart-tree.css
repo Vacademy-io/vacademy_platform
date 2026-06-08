@@ -1,0 +1,101 @@
+/*
+ * Top-down org chart connectors. Pure CSS — no library.
+ *
+ * Layout: each <ul> is a row of sibling teams under their parent. We use
+ * ::before / ::after on the <ul> and <li> to draw three line segments per
+ * level — one vertical from parent down to the horizontal bar, the
+ * horizontal bar itself across the siblings, and one vertical from the bar
+ * down to each child box. Only-child rows get a simpler single vertical
+ * line. Lines use the design-system neutral-300 token.
+ *
+ * Scoped under .org-tree so nothing else on the page is affected.
+ */
+
+.org-tree {
+    /* Wide orgs scroll horizontally. */
+    min-width: max-content;
+}
+
+.org-tree ul {
+    display: flex;
+    justify-content: center;
+    padding-top: 28px;
+    position: relative;
+    list-style: none;
+    margin: 0;
+}
+
+/* Vertical line from the parent box down to the horizontal connector. */
+.org-tree ul::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    height: 28px;
+    border-left: 1px solid hsl(var(--neutral-300));
+}
+
+/* Suppress the parent-down line for the root <ul> — there's nothing above. */
+.org-tree > ul::before {
+    display: none;
+}
+
+.org-tree li {
+    list-style: none;
+    flex: 1 0 auto;
+    padding: 28px 12px 0 12px;
+    position: relative;
+    text-align: center;
+}
+
+/* Two halves of the horizontal connector above each child. */
+.org-tree li::before,
+.org-tree li::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 28px;
+    border-top: 1px solid hsl(var(--neutral-300));
+}
+
+.org-tree li::before {
+    left: 0;
+}
+
+.org-tree li::after {
+    right: 0;
+}
+
+/* For only-children: the horizontal bar isn't needed — just the single
+ * vertical line straight down. So we hide the half-bars and let the parent
+ * <ul>::before do the work. */
+.org-tree li:only-child {
+    padding-top: 28px;
+}
+
+.org-tree li:only-child::before,
+.org-tree li:only-child::after {
+    display: none;
+}
+
+/* For the first / last children, only the inner half of the horizontal bar
+ * should show — the outer half (toward the edge) would dangle. */
+.org-tree li:first-child::before,
+.org-tree li:last-child::after {
+    border-top: none;
+}
+
+/* Round the corners where the horizontal bar meets the vertical drop, so
+ * the connector looks like a unified line, not three intersecting strokes. */
+.org-tree li:first-child::after {
+    border-top-left-radius: 6px;
+    border-left: 1px solid hsl(var(--neutral-300));
+}
+
+.org-tree li:last-child::before {
+    border-top-right-radius: 6px;
+    border-right: 1px solid hsl(var(--neutral-300));
+}
+
+/* Single child case already covered above (no horizontal bar drawn). */

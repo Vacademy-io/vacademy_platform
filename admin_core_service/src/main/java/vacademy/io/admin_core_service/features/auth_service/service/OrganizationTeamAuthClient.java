@@ -17,13 +17,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Thin HMAC-internal client for the organization-team endpoints in auth_service.
- *
- * Each method maps one-to-one to an endpoint on
- * {@code OrganizationTeamInternalController}. Path templates from
- * {@link AuthServiceRoutes} get filled in with the path-variables here; the
- * actual signing + request execution lives in {@link InternalClientUtils}
- * (same machinery the rest of {@link AuthService} already uses).
+ * HMAC-internal client for the hybrid org-team / user-to-user endpoints in
+ * auth_service. Each method maps one-to-one to an endpoint on
+ * {@code OrganizationTeamInternalController}.
  */
 @Slf4j
 @Service
@@ -40,9 +36,17 @@ public class OrganizationTeamAuthClient {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // ────────────────────────────────────────────────────────────────
-    // Team CRUD
-    // ────────────────────────────────────────────────────────────────
+    // ── Teams ──────────────────────────────────────────────────────
+
+    public List<OrgTeamDTO> listTeams(String instituteId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_LIST + "?instituteId=" + instituteId;
+        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
+    }
+
+    public OrgTeamDTO getTeam(String teamId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_BY_ID.replace("{teamId}", teamId);
+        return call(HttpMethod.GET, endpoint, null, OrgTeamDTO.class);
+    }
 
     public OrgTeamDTO createTeam(CreateTeamRequest req, String createdBy) {
         String endpoint = AuthServiceRoutes.ORG_TEAM_BASE
@@ -55,44 +59,12 @@ public class OrganizationTeamAuthClient {
         return call(HttpMethod.PUT, endpoint, req, OrgTeamDTO.class);
     }
 
-    public void deleteTeam(String teamId, boolean cascade) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_BY_ID.replace("{teamId}", teamId)
-                + "?cascade=" + cascade;
+    public void deleteTeam(String teamId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_BY_ID.replace("{teamId}", teamId);
         call(HttpMethod.DELETE, endpoint, null, String.class);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Reads
-    // ────────────────────────────────────────────────────────────────
-
-    public List<OrgTeamNodeDTO> getChart(String instituteId) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_CHART + "?instituteId=" + instituteId;
-        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
-    }
-
-    public List<OrgTeamNodeDTO> getChartWithMembers(String instituteId) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_CHART_WITH_MEMBERS + "?instituteId=" + instituteId;
-        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
-    }
-
-    public List<OrgTeamDTO> getAncestors(String teamId) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_ANCESTORS.replace("{teamId}", teamId);
-        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
-    }
-
-    public List<OrgTeamDTO> getDescendants(String teamId) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_DESCENDANTS.replace("{teamId}", teamId);
-        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
-    }
-
-    public List<OrgTeamDTO> getSubtreeIncludingSelf(String teamId) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_SUBTREE.replace("{teamId}", teamId);
-        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
-    }
-
-    // ────────────────────────────────────────────────────────────────
-    // Membership
-    // ────────────────────────────────────────────────────────────────
+    // ── Members ───────────────────────────────────────────────────
 
     public List<TeamMemberDTO> listMembers(String teamId) {
         String endpoint = AuthServiceRoutes.ORG_TEAM_MEMBERS.replace("{teamId}", teamId);
@@ -119,23 +91,30 @@ public class OrganizationTeamAuthClient {
         call(HttpMethod.DELETE, endpoint, null, String.class);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Cross-service helpers used by the workbench scope resolver
-    // ────────────────────────────────────────────────────────────────
+    // ── Chart + traversal ─────────────────────────────────────────
 
-    public List<String> usersInTeams(List<String> teamIds) {
-        if (teamIds == null || teamIds.isEmpty()) return Collections.emptyList();
-        return callList(HttpMethod.POST, AuthServiceRoutes.ORG_TEAM_USERS_IN_TEAMS, teamIds,
-                new TypeReference<>() {});
-    }
-
-    public List<TeamMemberDTO> mappingsForUser(String userId) {
-        String endpoint = AuthServiceRoutes.ORG_TEAM_MAPPINGS_FOR_USER.replace("{userId}", userId);
+    public List<OrgChartNodeDTO> getTeamChart(String teamId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_CHART.replace("{teamId}", teamId);
         return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Plumbing
+    public List<TeamMemberDTO> getAncestors(String teamId, String mappingId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_ANCESTORS
+                .replace("{teamId}", teamId).replace("{mappingId}", mappingId);
+        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
+    }
+
+    public List<TeamMemberDTO> getDescendants(String teamId, String mappingId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_DESCENDANTS
+                .replace("{teamId}", teamId).replace("{mappingId}", mappingId);
+        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
+    }
+
+    public List<TeamMemberDTO> getUserMemberships(String userId) {
+        String endpoint = AuthServiceRoutes.ORG_TEAM_USER_MEMBERSHIPS.replace("{userId}", userId);
+        return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
+    }
+
     // ────────────────────────────────────────────────────────────────
 
     private <T> T call(HttpMethod method, String endpoint, Object body, Class<T> responseType) {
@@ -146,7 +125,7 @@ public class OrganizationTeamAuthClient {
             return objectMapper.readValue(response.getBody(), responseType);
         } catch (Exception e) {
             log.warn("auth-service call failed: {} {} → {}", method, endpoint, e.getMessage());
-            throw new VacademyException(unwrap(e));
+            throw new VacademyException(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
     }
 
@@ -158,11 +137,7 @@ public class OrganizationTeamAuthClient {
             return objectMapper.readValue(response.getBody(), ref);
         } catch (Exception e) {
             log.warn("auth-service call failed: {} {} → {}", method, endpoint, e.getMessage());
-            throw new VacademyException(unwrap(e));
+            throw new VacademyException(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
-    }
-
-    private static String unwrap(Throwable e) {
-        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 }

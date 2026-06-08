@@ -977,14 +977,12 @@ export const ORG_TEAM_USER_MEMBERSHIPS = (userId: string) =>
     `${ORG_TEAM_BASE}/members/by-user/${userId}`;
 
 // =============================================================================
-// Counsellor workbench (LOCAL ONLY — do not push to organization-teams branch).
-// These power the /counsellors route and its config in Settings → Leads →
-// Workbench. Backed by lead_workbench_config stored inside LEAD_SETTING JSON.
-//
-// Uses LOCAL_ADMIN_CORE_BASE (localhost:8072) — these endpoints don't exist
-// on stage yet, so production BASE_URL would 404.
+// Counsellor workbench. Powers the /counsellors route and its config in
+// Settings → Leads → Workbench. Backed by the workbench section of
+// LEAD_SETTING JSON (leads_team_id + rating strategy + per-counsellor
+// cached scores). No dedicated tables — works against stage/prod.
 // =============================================================================
-export const COUNSELLOR_WORKBENCH_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/counsellor-workbench`;
+export const COUNSELLOR_WORKBENCH_BASE = `${BASE_URL}/admin-core-service/v1/counsellor-workbench`;
 export const COUNSELLOR_WORKBENCH_CONFIG = (instituteId: string) =>
     `${COUNSELLOR_WORKBENCH_BASE}/config?instituteId=${instituteId}`;
 export const COUNSELLOR_WORKBENCH_CONFIG_UPDATE = `${COUNSELLOR_WORKBENCH_BASE}/config`;
@@ -1019,12 +1017,12 @@ export const COUNSELLOR_WORKBENCH_ACTIVITY = (
 };
 
 // =============================================================================
-// Counsellor rating (LOCAL ONLY). Strategy config lives at
-// /counsellor-workbench/config; this block is for the per-counsellor score
-// reads + the manual-override write.
+// Counsellor rating. Strategy config lives at /counsellor-workbench/config;
+// this block is for the per-counsellor score reads + the manual-override
+// write. Per-counsellor scores are cached inside the same LEAD_SETTING
+// JSON, so no extra tables are involved.
 // =============================================================================
-// LOCAL_ADMIN_CORE_BASE — see note on COUNSELLOR_WORKBENCH_BASE above.
-export const COUNSELLOR_RATING_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/counsellor-rating`;
+export const COUNSELLOR_RATING_BASE = `${BASE_URL}/admin-core-service/v1/counsellor-rating`;
 export const COUNSELLOR_RATING_ONE = (instituteId: string, counsellorUserId: string) =>
     `${COUNSELLOR_RATING_BASE}?instituteId=${instituteId}&counsellor_user_id=${counsellorUserId}`;
 export const COUNSELLOR_RATING_BATCH = `${COUNSELLOR_RATING_BASE}/batch`;
@@ -1044,10 +1042,9 @@ export const COUNSELLOR_RATING_RECOMPUTE = (instituteId: string, counsellorUserI
 };
 
 // =============================================================================
-// Sales dashboard widgets (LOCAL ONLY).
+// Sales dashboard widgets.
 // =============================================================================
-// LOCAL_ADMIN_CORE_BASE — see note on COUNSELLOR_WORKBENCH_BASE above.
-export const SALES_DASHBOARD_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/sales-dashboard`;
+export const SALES_DASHBOARD_BASE = `${BASE_URL}/admin-core-service/v1/sales-dashboard`;
 const buildSdQS = (instituteId: string, params: Record<string, string | number | undefined> = {}) => {
     const qs = new URLSearchParams({ instituteId });
     Object.entries(params).forEach(([k, v]) => {

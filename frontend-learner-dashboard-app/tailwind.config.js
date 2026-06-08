@@ -341,6 +341,7 @@ module.exports = {
       zIndex: {
         "1": "1",
         "60": "60",
+        "70": "70",
         "catalogue-dropdown": "var(--catalogue-z-dropdown)",
         "catalogue-fixed": "var(--catalogue-z-fixed)",
       },

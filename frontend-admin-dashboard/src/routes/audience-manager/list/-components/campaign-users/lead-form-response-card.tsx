@@ -187,13 +187,19 @@ export const LeadFormResponseCard = () => {
     // `_response_id` are attached by audience-list flows only and aren't part
     // of the canonical StudentTable shape. `user_id` IS canonical, so we
     // read it off the typed object directly.
+    //
+    // `selectedStudent` is nullable: this card renders whenever the side view's
+    // active tab is `lead`, which a tenant can configure as the *default* tab —
+    // so it mounts before any lead is selected (selectedStudent === null).
+    // Optional-chain every read so that case renders nothing instead of
+    // throwing "Cannot read properties of null (reading '_response_fields')".
     const ext = selectedStudent as unknown as {
         _response_fields?: LeadResponseField[];
         _audience_campaign_name?: string;
         _response_id?: string | null;
-    };
-    const fields = ext._response_fields;
-    const responseId = ext._response_id ?? null;
+    } | null;
+    const fields = ext?._response_fields;
+    const responseId = ext?._response_id ?? null;
     const leadUserId = selectedStudent?.user_id ?? null;
 
     // Hooks must run unconditionally — set up the mutation before the
@@ -202,7 +208,7 @@ export const LeadFormResponseCard = () => {
 
     if (!fields || fields.length === 0) return null;
 
-    const campaignName = ext._audience_campaign_name;
+    const campaignName = ext?._audience_campaign_name;
 
     // The Call button shows on the phone-number row only (see {@link isPhoneField}).
     // We disable it pre-emptively when we don't have a response id (the backend

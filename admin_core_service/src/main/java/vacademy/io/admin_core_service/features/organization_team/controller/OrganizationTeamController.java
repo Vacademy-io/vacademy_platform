@@ -10,14 +10,12 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import java.util.List;
 
 /**
- * Public admin-facing endpoints for the org chart. Each method is a thin
- * proxy that delegates to auth_service via {@link OrganizationTeamAuthClient}.
+ * Frontend-facing org-team endpoints. Each method is a thin proxy onto
+ * auth_service. URL surface is identical to what the frontend already
+ * binds to, so no client changes are needed when the backend shape evolves.
  *
- * Team data is owned by auth_service (team membership is a property of the
- * user), so admin_core_service does not keep its own tables; this controller
- * exists only to provide a single base URL ({@code /admin-core-service/v1/...})
- * that the frontend already calls, with the JWT-based auth filter applied
- * uniformly with the rest of admin_core_service.
+ * Model: flat teams + user-to-user reporting inside each team. The same
+ * person can be in multiple teams with different managers.
  */
 @RestController
 @RequestMapping("/admin-core-service/v1/organization-team")
@@ -26,7 +24,18 @@ public class OrganizationTeamController {
 
     private final OrganizationTeamAuthClient client;
 
-    // ── Team CRUD ──────────────────────────────────────────────────
+    // ── Teams ──────────────────────────────────────────────────────
+
+    @GetMapping
+    public ResponseEntity<List<OrgTeamDTO>> listTeams(
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(client.listTeams(instituteId));
+    }
+
+    @GetMapping("/{teamId}")
+    public ResponseEntity<OrgTeamDTO> getTeam(@PathVariable String teamId) {
+        return ResponseEntity.ok(client.getTeam(teamId));
+    }
 
     @PostMapping
     public ResponseEntity<OrgTeamDTO> createTeam(
@@ -43,46 +52,12 @@ public class OrganizationTeamController {
     }
 
     @DeleteMapping("/{teamId}")
-    public ResponseEntity<String> deleteTeam(
-            @PathVariable String teamId,
-            @RequestParam(value = "cascade", defaultValue = "false") boolean cascade) {
-        client.deleteTeam(teamId, cascade);
+    public ResponseEntity<String> deleteTeam(@PathVariable String teamId) {
+        client.deleteTeam(teamId);
         return ResponseEntity.ok("Team deleted");
     }
 
-    // ── Hierarchy reads ────────────────────────────────────────────
-
-    @GetMapping("/chart")
-    public ResponseEntity<List<OrgTeamNodeDTO>> getChart(@RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(client.getChart(instituteId));
-    }
-
-    /**
-     * Nested tree with each node's ACTIVE members embedded. Single round-trip
-     * to auth_service; the "Tree view" mode in the org-chart UI uses this so
-     * the whole org renders without N+1 member fetches.
-     */
-    @GetMapping("/chart-with-members")
-    public ResponseEntity<List<OrgTeamNodeDTO>> getChartWithMembers(
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(client.getChartWithMembers(instituteId));
-    }
-
-    @GetMapping("/{teamId}/ancestors")
-    public ResponseEntity<List<OrgTeamDTO>> getAncestors(@PathVariable String teamId) {
-        return ResponseEntity.ok(client.getAncestors(teamId));
-    }
-
-    @GetMapping("/{teamId}/descendants")
-    public ResponseEntity<List<OrgTeamDTO>> getDescendants(
-            @PathVariable String teamId,
-            @RequestParam(value = "flat", defaultValue = "true") boolean flat) {
-        // Kept as a query param for forward compatibility — auth_service only
-        // returns flat today; nested callers slice from /chart.
-        return ResponseEntity.ok(client.getDescendants(teamId));
-    }
-
-    // ── Membership ─────────────────────────────────────────────────
+    // ── Members ───────────────────────────────────────────────────
 
     @GetMapping("/{teamId}/members")
     public ResponseEntity<List<TeamMemberDTO>> listMembers(@PathVariable String teamId) {
@@ -97,7 +72,9 @@ public class OrganizationTeamController {
         return ResponseEntity.ok(client.addMember(teamId, request, user.getUserId()));
     }
 
-    @PatchMapping("/{teamId}/members/{mappingId}")
+    // PUT (not PATCH) — see note on the internal endpoint: the inter-service
+    // forwarder cannot send PATCH over HttpURLConnection.
+    @PutMapping("/{teamId}/members/{mappingId}")
     public ResponseEntity<TeamMemberDTO> updateMember(
             @PathVariable String teamId,
             @PathVariable String mappingId,
@@ -111,5 +88,31 @@ public class OrganizationTeamController {
             @PathVariable String mappingId) {
         client.removeMember(teamId, mappingId);
         return ResponseEntity.ok("Member removed");
+    }
+
+    // ── Chart + traversal ─────────────────────────────────────────
+
+    @GetMapping("/{teamId}/chart")
+    public ResponseEntity<List<OrgChartNodeDTO>> getTeamChart(@PathVariable String teamId) {
+        return ResponseEntity.ok(client.getTeamChart(teamId));
+    }
+
+    @GetMapping("/{teamId}/members/{mappingId}/ancestors")
+    public ResponseEntity<List<TeamMemberDTO>> getAncestors(
+            @PathVariable String teamId,
+            @PathVariable String mappingId) {
+        return ResponseEntity.ok(client.getAncestors(teamId, mappingId));
+    }
+
+    @GetMapping("/{teamId}/members/{mappingId}/descendants")
+    public ResponseEntity<List<TeamMemberDTO>> getDescendants(
+            @PathVariable String teamId,
+            @PathVariable String mappingId) {
+        return ResponseEntity.ok(client.getDescendants(teamId, mappingId));
+    }
+
+    @GetMapping("/members/by-user/{userId}")
+    public ResponseEntity<List<TeamMemberDTO>> getUserMemberships(@PathVariable String userId) {
+        return ResponseEntity.ok(client.getUserMemberships(userId));
     }
 }

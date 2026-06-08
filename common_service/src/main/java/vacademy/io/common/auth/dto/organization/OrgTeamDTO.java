@@ -10,9 +10,9 @@ import lombok.NoArgsConstructor;
 import java.sql.Timestamp;
 
 /**
- * Wire shape of an organization_team row. Lives in common_service so both
- * auth_service (owner) and admin_core_service (consumer via HMAC) can use
- * the same type.
+ * One team in an institute. Teams are flat — there is no sub-team hierarchy
+ * in this design. The reporting structure lives INSIDE a team and is
+ * captured per-membership via {@link TeamMemberDTO#getParentUserId()}.
  */
 @Data
 @NoArgsConstructor
@@ -22,12 +22,10 @@ import java.sql.Timestamp;
 public class OrgTeamDTO {
     private String id;
     private String instituteId;
-    private String parentId;
     private String name;
     private String description;
-    private String headUserId;
     private String status;
-    private Integer sortOrder;
+    /** Convenience: how many ACTIVE memberships this team has. */
     private Long memberCount;
     private Timestamp createdAt;
     private Timestamp updatedAt;

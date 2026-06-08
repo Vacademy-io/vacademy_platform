@@ -3,95 +3,104 @@ import {
     ORG_TEAM_BASE,
     ORG_TEAM_BY_ID,
     ORG_TEAM_CHART,
-    ORG_TEAM_CHART_WITH_MEMBERS,
+    ORG_TEAM_LIST,
     ORG_TEAM_MEMBERS,
     ORG_TEAM_MEMBER_BY_ID,
+    ORG_TEAM_USER_MEMBERSHIPS,
 } from '@/constants/urls';
 
-export interface OrgTeamNode {
+// ── Wire types ────────────────────────────────────────────────────
+
+export interface OrgTeam {
     id: string;
-    parent_id: string | null;
+    institute_id: string;
     name: string;
-    code: string | null;
-    team_type: string | null;
     description: string | null;
-    head_user_id: string | null;
-    sort_order: number;
+    status: string;
     member_count: number;
-    children: OrgTeamNode[];
-    /** Populated only by fetchOrgChartWithMembers; null on the plain chart endpoint. */
-    members?: TeamMember[] | null;
+    created_at: string | null;
+    updated_at: string | null;
 }
 
 export interface TeamMember {
     mapping_id: string;
     team_id: string;
     user_id: string;
-    role_name: string;
+    parent_user_id: string | null;
     role_label: string | null;
-    is_team_head: boolean;
     status: string;
-    added_at: string;
+    added_at: string | null;
+}
+
+/**
+ * One node in a team's reporting tree. Children are nested. UI resolves
+ * the display name, email and system role fresh from auth-service so role
+ * changes propagate automatically — never stored on the chart.
+ */
+export interface OrgChartNode {
+    mapping_id: string;
+    team_id: string;
+    user_id: string;
+    parent_user_id: string | null;
+    role_label: string | null;
+    children: OrgChartNode[];
 }
 
 export interface CreateTeamPayload {
     institute_id: string;
-    parent_id?: string | null;
     name: string;
     description?: string;
-    sort_order?: number;
 }
 
 export interface UpdateTeamPayload {
     name?: string;
     description?: string;
-    sort_order?: number;
-    move_parent?: boolean;
-    parent_id?: string | null;
 }
 
 export interface AddMemberPayload {
     user_id: string;
-    role_name: string;
+    /** Null = top of team. */
+    parent_user_id?: string | null;
     role_label?: string;
-    is_team_head?: boolean;
-}
-
-export interface UpdateMemberPayload {
-    role_label?: string;
-    is_team_head?: boolean;
-}
-
-export async function fetchOrgChart(instituteId: string): Promise<OrgTeamNode[]> {
-    const res = await authenticatedAxiosInstance.get<OrgTeamNode[]>(ORG_TEAM_CHART(instituteId));
-    return res.data;
 }
 
 /**
- * Same nested tree as fetchOrgChart, but each node also carries its
- * ACTIVE members. Single round-trip — backend joins teams + mappings.
+ * Drag-drop sends change_parent=true with the new parent_user_id (null =
+ * top of team). Inline label edit sends change_role_label=true with the
+ * new value (empty string = clear).
  */
-export async function fetchOrgChartWithMembers(instituteId: string): Promise<OrgTeamNode[]> {
-    const res = await authenticatedAxiosInstance.get<OrgTeamNode[]>(
-        ORG_TEAM_CHART_WITH_MEMBERS(instituteId)
-    );
+export interface UpdateMemberPayload {
+    change_parent?: boolean;
+    parent_user_id?: string | null;
+    change_role_label?: boolean;
+    role_label?: string;
+}
+
+// ── Teams ─────────────────────────────────────────────────────────
+
+export async function listTeams(instituteId: string): Promise<OrgTeam[]> {
+    const res = await authenticatedAxiosInstance.get<OrgTeam[]>(ORG_TEAM_LIST(instituteId));
     return res.data;
 }
 
-export async function createTeam(payload: CreateTeamPayload) {
-    const res = await authenticatedAxiosInstance.post(ORG_TEAM_BASE, payload);
+export async function createTeam(payload: CreateTeamPayload): Promise<OrgTeam> {
+    const res = await authenticatedAxiosInstance.post<OrgTeam>(ORG_TEAM_BASE, payload);
     return res.data;
 }
 
-export async function updateTeam(teamId: string, payload: UpdateTeamPayload) {
-    const res = await authenticatedAxiosInstance.put(ORG_TEAM_BY_ID(teamId), payload);
+export async function updateTeam(teamId: string, payload: UpdateTeamPayload): Promise<OrgTeam> {
+    const res = await authenticatedAxiosInstance.put<OrgTeam>(ORG_TEAM_BY_ID(teamId), payload);
     return res.data;
 }
 
-export async function deleteTeam(teamId: string, cascade: boolean = false) {
-    const res = await authenticatedAxiosInstance.delete(
-        `${ORG_TEAM_BY_ID(teamId)}?cascade=${cascade}`
-    );
+export async function deleteTeam(teamId: string): Promise<void> {
+    await authenticatedAxiosInstance.delete(ORG_TEAM_BY_ID(teamId));
+}
+
+// ── Members + chart ──────────────────────────────────────────────
+
+export async function fetchTeamChart(teamId: string): Promise<OrgChartNode[]> {
+    const res = await authenticatedAxiosInstance.get<OrgChartNode[]>(ORG_TEAM_CHART(teamId));
     return res.data;
 }
 
@@ -100,20 +109,40 @@ export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
     return res.data;
 }
 
-export async function addTeamMember(teamId: string, payload: AddMemberPayload) {
-    const res = await authenticatedAxiosInstance.post(ORG_TEAM_MEMBERS(teamId), payload);
+export async function addTeamMember(
+    teamId: string,
+    payload: AddMemberPayload
+): Promise<TeamMember> {
+    const res = await authenticatedAxiosInstance.post<TeamMember>(
+        ORG_TEAM_MEMBERS(teamId),
+        payload
+    );
     return res.data;
 }
 
-export async function updateTeamMember(teamId: string, mappingId: string, payload: UpdateMemberPayload) {
-    const res = await authenticatedAxiosInstance.patch(
+export async function updateTeamMember(
+    teamId: string,
+    mappingId: string,
+    payload: UpdateMemberPayload
+): Promise<TeamMember> {
+    // PUT (not PATCH) — admin_core_service forwards over HttpURLConnection
+    // which doesn't support PATCH. The body's change_X flags still make
+    // this a partial update on the server side.
+    const res = await authenticatedAxiosInstance.put<TeamMember>(
         ORG_TEAM_MEMBER_BY_ID(teamId, mappingId),
         payload
     );
     return res.data;
 }
 
-export async function removeTeamMember(teamId: string, mappingId: string) {
-    const res = await authenticatedAxiosInstance.delete(ORG_TEAM_MEMBER_BY_ID(teamId, mappingId));
+export async function removeTeamMember(teamId: string, mappingId: string): Promise<void> {
+    await authenticatedAxiosInstance.delete(ORG_TEAM_MEMBER_BY_ID(teamId, mappingId));
+}
+
+/** All teams a user is in — used by the multi-team badge on cards. */
+export async function fetchUserMemberships(userId: string): Promise<TeamMember[]> {
+    const res = await authenticatedAxiosInstance.get<TeamMember[]>(
+        ORG_TEAM_USER_MEMBERSHIPS(userId)
+    );
     return res.data;
 }

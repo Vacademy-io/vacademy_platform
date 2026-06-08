@@ -115,7 +115,10 @@ function Canvas({ instituteId }: Props) {
             return;
         }
         if (!selectedTeamId || !teams.some((t) => t.id === selectedTeamId)) {
-            setSelectedTeamId(teams[0].id);
+            const first = teams[0];
+            // `teams.length > 0` is guarded above, so this is defined; the
+            // optional read keeps strict null checks happy.
+            if (first) setSelectedTeamId(first.id);
         }
     }, [teamsQuery.data, selectedTeamId]);
 

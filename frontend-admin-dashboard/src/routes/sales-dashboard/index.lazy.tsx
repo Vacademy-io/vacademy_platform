@@ -28,7 +28,11 @@ export const Route = createLazyFileRoute('/sales-dashboard/')({
     component: RouteComponent,
 });
 
-const PRESETS: Record<string, () => { from: number; to: number }> = {
+type PresetKey = '7d' | '30d' | '90d';
+
+// Typed by the exact literal union so `noUncheckedIndexedAccess` doesn't
+// treat the lookup as possibly undefined.
+const PRESETS: Record<PresetKey, () => { from: number; to: number }> = {
     '7d': () => ({ from: Date.now() - 7 * 86_400_000, to: Date.now() }),
     '30d': () => ({ from: Date.now() - 30 * 86_400_000, to: Date.now() }),
     '90d': () => ({ from: Date.now() - 90 * 86_400_000, to: Date.now() }),
@@ -67,7 +71,7 @@ function RouteComponent() {
 function SalesDashboardPage() {
     const { setNavHeading } = useNavHeadingStore();
     const instituteId = getInstituteId();
-    const [preset, setPreset] = useState<'7d' | '30d' | '90d'>('30d');
+    const [preset, setPreset] = useState<PresetKey>('30d');
     const range = PRESETS[preset]();
     const teamId: string | undefined = undefined; // RBAC adds a team picker in a follow-up
 

@@ -125,7 +125,7 @@ function WorkbenchPage() {
     // Toggle status with a confirm + open-leads handoff for INACTIVE.
     const statusMutation = useMutation({
         mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
-            setCounsellorStatus(userId, isActive ? 'ACTIVE' : 'INACTIVE'),
+            setCounsellorStatus(userId, instituteId!, isActive ? 'ACTIVE' : 'INACTIVE'),
         onSuccess: (resp: StatusChangeResponse, vars) => {
             queryClient.invalidateQueries({ queryKey: ['workbench-counsellors', instituteId] });
             if (!vars.isActive && resp.open_leads?.length) {

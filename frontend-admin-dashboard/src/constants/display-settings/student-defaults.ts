@@ -13,14 +13,15 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
             visible: true,
             subTabs: [
                 { id: 'study-library', route: '/study-library', order: 1, visible: true },
-                { id: 'attendance', route: '/attendance', order: 2, visible: true },
-                { id: 'live-classes', route: '/live-classes', order: 3, visible: true },
+                { id: 'attendance', route: '/learning-centre/attendance', order: 2, visible: true },
+                { id: 'live-classes', route: '/study-library/live-class', order: 3, visible: true },
             ],
         },
         {
             id: 'homework',
             order: 3,
-            visible: true,
+            // Hidden from learners by default; admins can enable it in Student Display settings.
+            visible: false,
             subTabs: [
                 { id: 'homework-list', route: '/homework/list', order: 1, visible: true },
                 { id: 'homework-reports', route: '/homework/reports', order: 2, visible: true },
@@ -38,13 +39,15 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
         {
             id: 'planning',
             order: 5,
-            visible: true,
+            // Hidden from learners by default; admins can enable it in Student Display settings.
+            visible: false,
             subTabs: [
                 { id: 'planning-logs', route: '/planning/planning-logs', order: 1, visible: true },
                 { id: 'activity-logs', route: '/planning/activity-logs', order: 2, visible: true },
             ],
         },
-        { id: 'referral', order: 6, visible: true },
+        // Hidden from learners by default; admins can enable it in Student Display settings.
+        { id: 'referral', order: 6, visible: false },
         { id: 'attendance', order: 7, visible: true },
     ];
 }

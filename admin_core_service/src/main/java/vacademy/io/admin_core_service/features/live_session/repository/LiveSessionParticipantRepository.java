@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.AttendanceReportProjection;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveClassFeedbackProjection;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleAttendanceProjection;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionParticipants;
 
@@ -408,6 +409,135 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("batchId") String batchId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
+    );
+
+    /**
+     * Cross-session learner feedback search for the admin "Live Class Feedback"
+     * page. Driving table is the FEEDBACK_SUBMITTED log itself, so there is no row
+     * multiplication; batch is matched via an EXISTS subquery and the session's
+     * batch ids are returned comma-joined in {@code packageSessionIds} (names
+     * resolved on the frontend). Empty batch/subject lists mean "all".
+     */
+    @Query(value = """
+        SELECT
+            fbl.id AS feedbackId,
+            fbl.user_source_id AS userId,
+            s.full_name AS learnerName,
+            s.email AS learnerEmail,
+            s.mobile_number AS learnerMobile,
+            ls.id AS sessionId,
+            ss.id AS scheduleId,
+            ls.title AS sessionTitle,
+            ls.subject AS subject,
+            ss.meeting_date AS meetingDate,
+            ss.start_time AS startTime,
+            ls.feedback_config_json AS feedbackConfigJson,
+            (SELECT string_agg(DISTINCT p.source_id, ',')
+               FROM live_session_participants p
+              WHERE p.session_id = fbl.session_id
+                AND p.source_type = 'BATCH') AS packageSessionIds,
+            fbl.details AS feedbackDetails,
+            fbl.created_at AS submittedAt
+        FROM (
+            SELECT DISTINCT ON (l.user_source_id, l.session_id, l.schedule_id)
+                   l.id, l.user_source_id, l.session_id, l.schedule_id, l.details, l.created_at
+            FROM live_session_logs l
+            WHERE l.log_type = 'FEEDBACK_SUBMITTED'
+              AND l.user_source_type = 'USER'
+            ORDER BY l.user_source_id, l.session_id, l.schedule_id, l.created_at DESC
+        ) fbl
+        JOIN live_session ls ON ls.id = fbl.session_id
+        JOIN session_schedules ss ON ss.id = fbl.schedule_id
+        LEFT JOIN LATERAL (
+            SELECT st.full_name, st.email, st.mobile_number
+            FROM student st
+            WHERE st.user_id = fbl.user_source_id
+            ORDER BY st.created_at DESC NULLS LAST
+            LIMIT 1
+        ) s ON TRUE
+        WHERE ls.institute_id = :instituteId
+          AND ls.status <> 'DELETED'
+          AND ss.status <> 'DELETED'
+          AND ss.meeting_date BETWEEN :startDate AND :endDate
+          AND (:batchIdsSize = 0 OR EXISTS (
+                SELECT 1 FROM live_session_participants p
+                WHERE p.session_id = fbl.session_id
+                  AND p.source_type = 'BATCH'
+                  AND p.source_id IN (:batchIds)))
+          AND (:subjectsSize = 0 OR ls.subject IN (:subjects))
+          AND (:search IS NULL
+                OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
+                OR LOWER(ls.title) LIKE LOWER(CONCAT('%', :search, '%')))
+        ORDER BY ss.meeting_date DESC, fbl.created_at DESC
+        """,
+            countQuery = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT DISTINCT ON (l.user_source_id, l.session_id, l.schedule_id)
+                   l.id, l.user_source_id, l.session_id, l.schedule_id
+            FROM live_session_logs l
+            WHERE l.log_type = 'FEEDBACK_SUBMITTED'
+              AND l.user_source_type = 'USER'
+            ORDER BY l.user_source_id, l.session_id, l.schedule_id, l.created_at DESC
+        ) fbl
+        JOIN live_session ls ON ls.id = fbl.session_id
+        JOIN session_schedules ss ON ss.id = fbl.schedule_id
+        LEFT JOIN LATERAL (
+            SELECT st.full_name
+            FROM student st
+            WHERE st.user_id = fbl.user_source_id
+            ORDER BY st.created_at DESC NULLS LAST
+            LIMIT 1
+        ) s ON TRUE
+        WHERE ls.institute_id = :instituteId
+          AND ls.status <> 'DELETED'
+          AND ss.status <> 'DELETED'
+          AND ss.meeting_date BETWEEN :startDate AND :endDate
+          AND (:batchIdsSize = 0 OR EXISTS (
+                SELECT 1 FROM live_session_participants p
+                WHERE p.session_id = fbl.session_id
+                  AND p.source_type = 'BATCH'
+                  AND p.source_id IN (:batchIds)))
+          AND (:subjectsSize = 0 OR ls.subject IN (:subjects))
+          AND (:search IS NULL
+                OR LOWER(s.full_name) LIKE LOWER(CONCAT('%', :search, '%'))
+                OR LOWER(ls.title) LIKE LOWER(CONCAT('%', :search, '%')))
+        """,
+            nativeQuery = true)
+    Page<LiveClassFeedbackProjection> searchFeedback(
+            @Param("instituteId") String instituteId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("batchIds") List<String> batchIds,
+            @Param("batchIdsSize") int batchIdsSize,
+            @Param("subjects") List<String> subjects,
+            @Param("subjectsSize") int subjectsSize,
+            @Param("search") String search,
+            Pageable pageable
+    );
+
+    /**
+     * Distinct live-class subjects for an institute, optionally narrowed to the
+     * given batches — populates the subject filter on the feedback page.
+     */
+    @Query(value = """
+        SELECT DISTINCT ls.subject
+        FROM live_session ls
+        WHERE ls.institute_id = :instituteId
+          AND ls.subject IS NOT NULL
+          AND ls.subject <> ''
+          AND ls.status <> 'DELETED'
+          AND (:batchIdsSize = 0 OR EXISTS (
+                SELECT 1 FROM live_session_participants p
+                WHERE p.session_id = ls.id
+                  AND p.source_type = 'BATCH'
+                  AND p.source_id IN (:batchIds)))
+        ORDER BY ls.subject
+        """, nativeQuery = true)
+    List<String> findDistinctSubjects(
+            @Param("instituteId") String instituteId,
+            @Param("batchIds") List<String> batchIds,
+            @Param("batchIdsSize") int batchIdsSize
     );
 
     interface SessionBatchProjection {

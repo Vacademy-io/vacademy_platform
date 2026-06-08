@@ -139,6 +139,7 @@ import { Route as VimEditVideoIdIndexRouteImport } from "./routes/vim/edit/$vide
 import { Route as VideoApiStudioEditVideoIdIndexRouteImport } from "./routes/video-api-studio/edit/$videoId/index"
 import { Route as StudyLibraryVoltAddIndexRouteImport } from "./routes/study-library/volt/add/index"
 import { Route as StudyLibraryLiveSessionScheduleIndexRouteImport } from "./routes/study-library/live-session/schedule/index"
+import { Route as StudyLibraryLiveSessionFeedbackIndexRouteImport } from "./routes/study-library/live-session/feedback/index"
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from "./routes/study-library/courses/course-details/index"
 import { Route as StudyLibraryAiCopilotCourseOutlineIndexRouteImport } from "./routes/study-library/ai-copilot/course-outline/index"
 import { Route as PlanningPlanningCreateIndexRouteImport } from "./routes/planning/planning/create/index"
@@ -1175,6 +1176,12 @@ const StudyLibraryLiveSessionScheduleIndexRoute =
     path: "/study-library/live-session/schedule/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const StudyLibraryLiveSessionFeedbackIndexRoute =
+  StudyLibraryLiveSessionFeedbackIndexRouteImport.update({
+    id: "/study-library/live-session/feedback/",
+    path: "/study-library/live-session/feedback/",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StudyLibraryCoursesCourseDetailsIndexRoute =
   StudyLibraryCoursesCourseDetailsIndexRouteImport.update({
     id: "/study-library/courses/course-details/",
@@ -1706,6 +1713,7 @@ export interface FileRoutesByFullPath {
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline/": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  "/study-library/live-session/feedback/": typeof StudyLibraryLiveSessionFeedbackIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
@@ -1883,6 +1891,7 @@ export interface FileRoutesByTo {
   "/planning/planning/create": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   "/study-library/courses/course-details": typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  "/study-library/live-session/feedback": typeof StudyLibraryLiveSessionFeedbackIndexRoute
   "/study-library/live-session/schedule": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId": typeof VideoApiStudioEditVideoIdIndexRoute
@@ -2062,6 +2071,7 @@ export interface FileRoutesById {
   "/planning/planning/create/": typeof PlanningPlanningCreateIndexRoute
   "/study-library/ai-copilot/course-outline/": typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   "/study-library/courses/course-details/": typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  "/study-library/live-session/feedback/": typeof StudyLibraryLiveSessionFeedbackIndexRoute
   "/study-library/live-session/schedule/": typeof StudyLibraryLiveSessionScheduleIndexRoute
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
@@ -2242,6 +2252,7 @@ export interface FileRouteTypes {
     | "/planning/planning/create/"
     | "/study-library/ai-copilot/course-outline/"
     | "/study-library/courses/course-details/"
+    | "/study-library/live-session/feedback/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
     | "/video-api-studio/edit/$videoId/"
@@ -2419,6 +2430,7 @@ export interface FileRouteTypes {
     | "/planning/planning/create"
     | "/study-library/ai-copilot/course-outline"
     | "/study-library/courses/course-details"
+    | "/study-library/live-session/feedback"
     | "/study-library/live-session/schedule"
     | "/study-library/volt/add"
     | "/video-api-studio/edit/$videoId"
@@ -2597,6 +2609,7 @@ export interface FileRouteTypes {
     | "/planning/planning/create/"
     | "/study-library/ai-copilot/course-outline/"
     | "/study-library/courses/course-details/"
+    | "/study-library/live-session/feedback/"
     | "/study-library/live-session/schedule/"
     | "/study-library/volt/add/"
     | "/video-api-studio/edit/$videoId/"
@@ -2775,6 +2788,7 @@ export interface RootRouteChildren {
   PlanningPlanningCreateIndexRoute: typeof PlanningPlanningCreateIndexRoute
   StudyLibraryAiCopilotCourseOutlineIndexRoute: typeof StudyLibraryAiCopilotCourseOutlineIndexRoute
   StudyLibraryCoursesCourseDetailsIndexRoute: typeof StudyLibraryCoursesCourseDetailsIndexRoute
+  StudyLibraryLiveSessionFeedbackIndexRoute: typeof StudyLibraryLiveSessionFeedbackIndexRoute
   StudyLibraryLiveSessionScheduleIndexRoute: typeof StudyLibraryLiveSessionScheduleIndexRoute
   StudyLibraryVoltAddIndexRoute: typeof StudyLibraryVoltAddIndexRoute
   VideoApiStudioEditVideoIdIndexRoute: typeof VideoApiStudioEditVideoIdIndexRoute
@@ -3730,6 +3744,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryLiveSessionScheduleIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/study-library/live-session/feedback/": {
+      id: "/study-library/live-session/feedback/"
+      path: "/study-library/live-session/feedback"
+      fullPath: "/study-library/live-session/feedback/"
+      preLoaderRoute: typeof StudyLibraryLiveSessionFeedbackIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/courses/course-details/": {
       id: "/study-library/courses/course-details/"
       path: "/study-library/courses/course-details"
@@ -4229,6 +4250,8 @@ const rootRouteChildren: RootRouteChildren = {
     StudyLibraryAiCopilotCourseOutlineIndexRoute,
   StudyLibraryCoursesCourseDetailsIndexRoute:
     StudyLibraryCoursesCourseDetailsIndexRoute,
+  StudyLibraryLiveSessionFeedbackIndexRoute:
+    StudyLibraryLiveSessionFeedbackIndexRoute,
   StudyLibraryLiveSessionScheduleIndexRoute:
     StudyLibraryLiveSessionScheduleIndexRoute,
   StudyLibraryVoltAddIndexRoute: StudyLibraryVoltAddIndexRoute,

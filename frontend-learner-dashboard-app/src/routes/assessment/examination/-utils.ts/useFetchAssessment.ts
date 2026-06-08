@@ -17,6 +17,7 @@ import {
 import { Storage } from "@capacitor/storage";
 import { safeJsonParse } from "@/utils/safe-json-parse";
 import { getAllSessionListFromStorage } from "@/services/studentDetails";
+import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 
 export const getStoredDetails = async () => {
   const studentData = await Preferences.get({ key: "StudentDetails" });
@@ -209,13 +210,26 @@ export const fetchPreviewData = async (
     // already-registered participant by (assessment_id + user_id). Registration
     // is still mandatory — if the user has not registered, the backend rejects
     // the start, and we surface that precise reason in the catch block below.
-    const resolvedBatchIds: string[] = (
+    let resolvedBatchIds: string[] = (
       batch_id
         ? [batch_id]
         : batchIds.length > 0
           ? batchIds
           : [student_details.package_session_id]
     ).filter((id): id is string => Boolean(id));
+
+    // Last-resort fallback for slide-linked assessments: when the caller passed
+    // no batch_id, the learner has no enrolled batch in storage, and there's no
+    // default package_session_id (common for open/public or root-user
+    // contexts), fall back to the package_session_id of the course currently
+    // being viewed in the study library. Without this the start-preview call
+    // sends an empty batch_ids and the backend rejects it with
+    // "batch id not found". Only runs when the list is otherwise empty, so it
+    // never changes behaviour for flows that already resolve a batch.
+    if (resolvedBatchIds.length === 0) {
+      const slideBatchId = useContentStore.getState().currentPackageSessionId;
+      if (slideBatchId) resolvedBatchIds = [slideBatchId];
+    }
 
     const requestBody = {
       username: student_details.username,

@@ -150,6 +150,7 @@ function estimatePageCount(htmlString: string): number {
     }
 }
 import ScormSlidePreview from './scorm-slide-preview';
+import AssessmentSlidePreview from './assessment-slide-preview';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -298,8 +299,13 @@ export const SlideMaterial = ({
             setSidebarOpen(true);
         }
     }, [openDoubt, setSidebarOpen]);
-    const { addUpdateDocumentSlide, addUpdateQuizSlide, addUpdateAudioSlide, addUpdateScormSlide } =
-        useSlidesMutations(
+    const {
+        addUpdateDocumentSlide,
+        addUpdateQuizSlide,
+        addUpdateAudioSlide,
+        addUpdateScormSlide,
+        addUpdateAssessmentSlide,
+    } = useSlidesMutations(
             chapterId || '',
             moduleId || '',
             subjectId || '',
@@ -1918,6 +1924,18 @@ export const SlideMaterial = ({
             return;
         }
 
+        // Handle ASSESSMENT slides (assessment linked to a slide)
+        if (activeItem.source_type?.toUpperCase() === 'ASSESSMENT') {
+            setContent(
+                <AssessmentSlidePreview
+                    key={activeItem.id}
+                    activeItem={activeItem}
+                    isLearnerView={isLearnerView}
+                />
+            );
+            return;
+        }
+
         // Fallback
         setContent(
             <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
@@ -2132,6 +2150,39 @@ export const SlideMaterial = ({
                 } catch (error) {
                     console.error('Error saving SCORM slide:', error);
                     toast.error('Error saving SCORM slide');
+                }
+                return;
+            }
+
+            // Handle ASSESSMENT slides (assessment linked to a slide)
+            if (activeItem?.source_type === 'ASSESSMENT') {
+                if (!activeItem.assessment_slide) {
+                    toast.error('Assessment slide data is missing');
+                    return;
+                }
+                try {
+                    await addUpdateAssessmentSlide({
+                        id: activeItem.id,
+                        source_id: activeItem.assessment_slide.id,
+                        source_type: 'ASSESSMENT',
+                        title: activeItem.title,
+                        description: activeItem.description || '',
+                        image_file_id: activeItem.image_file_id || '',
+                        status: status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT',
+                        slide_order: activeItem.slide_order,
+                        notify: false,
+                        new_slide: false,
+                        assessment_slide: {
+                            id: activeItem.assessment_slide.id,
+                            assessment_id: activeItem.assessment_slide.assessment_id,
+                            allow_reattempt: activeItem.assessment_slide.allow_reattempt ?? true,
+                            show_result: activeItem.assessment_slide.show_result ?? true,
+                        },
+                    });
+                    toast.success('Assessment slide saved successfully!');
+                } catch (error) {
+                    console.error('Error saving assessment slide:', error);
+                    toast.error('Error saving assessment slide');
                 }
                 return;
             }
@@ -2749,7 +2800,8 @@ export const SlideMaterial = ({
                                                 addUpdateAudioSlide,
                                                 addUpdateScormSlide,
                                                 SaveDraft,
-                                                playerRef
+                                                playerRef,
+                                                addUpdateAssessmentSlide
                                             )
                                         }
                                     />
@@ -2801,7 +2853,8 @@ export const SlideMaterial = ({
                                                     addUpdateAudioSlide,
                                                     addUpdateScormSlide,
                                                     SaveDraft,
-                                                    playerRef
+                                                    playerRef,
+                                                    addUpdateAssessmentSlide
                                                 );
                                             }
                                         }}

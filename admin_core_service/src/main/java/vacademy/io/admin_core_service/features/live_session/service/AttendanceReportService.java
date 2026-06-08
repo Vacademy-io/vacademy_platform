@@ -192,6 +192,40 @@ public class AttendanceReportService {
                 studentIdsPage.getTotalElements()
         );
     }
+    /**
+     * Cross-session learner feedback search for the admin "Live Class Feedback"
+     * page. Returns the raw projection page (feedbackDetails/feedbackConfigJson are
+     * parsed on the frontend); empty batch/subject lists mean "all".
+     */
+    public Page<LiveClassFeedbackProjection> searchFeedback(LiveClassFeedbackSearchRequest request, Pageable pageable) {
+        List<String> batchIds = request.getBatchIds() != null ? request.getBatchIds() : Collections.emptyList();
+        List<String> subjects = request.getSubjects() != null ? request.getSubjects() : Collections.emptyList();
+        String search = (request.getSearchQuery() != null && !request.getSearchQuery().trim().isEmpty())
+                ? request.getSearchQuery().trim()
+                : null;
+
+        return liveSessionParticipantRepository.searchFeedback(
+                request.getInstituteId(),
+                request.getStartDate(),
+                request.getEndDate(),
+                batchIds,
+                batchIds.size(),
+                subjects,
+                subjects.size(),
+                search,
+                pageable
+        );
+    }
+
+    /**
+     * Distinct live-class subjects for the feedback page's subject filter,
+     * optionally narrowed to the given batches.
+     */
+    public List<String> getDistinctSubjects(String instituteId, List<String> batchIds) {
+        List<String> safeBatchIds = batchIds != null ? batchIds : Collections.emptyList();
+        return liveSessionParticipantRepository.findDistinctSubjects(instituteId, safeBatchIds, safeBatchIds.size());
+    }
+
     public List<StudentAttendanceDTO> getGroupedAttendanceReport(String batchSessionId , LocalDate startDate , LocalDate endDate) {
         List<AttendanceReportProjection> flatData =
                 liveSessionParticipantRepository.getAttendanceReportWithinDateRange(batchSessionId , startDate , endDate);

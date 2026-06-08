@@ -114,11 +114,11 @@ function Canvas({ instituteId }: Props) {
             if (selectedTeamId !== null) setSelectedTeamId(null);
             return;
         }
-        if (!selectedTeamId || !teams.some((t) => t.id === selectedTeamId)) {
-            const first = teams[0];
-            // `teams.length > 0` is guarded above, so this is defined; the
-            // optional read keeps strict null checks happy.
-            if (first) setSelectedTeamId(first.id);
+        const firstTeam = teams[0];
+        // `teams.length > 0` is guarded above so firstTeam IS defined; the
+        // explicit truthy check keeps `noUncheckedIndexedAccess` happy.
+        if (firstTeam && (!selectedTeamId || !teams.some((t) => t.id === selectedTeamId))) {
+            setSelectedTeamId(firstTeam.id);
         }
     }, [teamsQuery.data, selectedTeamId]);
 

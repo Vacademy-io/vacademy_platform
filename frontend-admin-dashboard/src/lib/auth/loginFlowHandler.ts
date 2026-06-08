@@ -36,6 +36,44 @@ import {
 } from '@/lib/auth/facultyAccessUtils';
 import type { SubOrgAccess } from '@/types/faculty-access';
 
+// Learner role names that must NOT drive the admin-portal display settings. A
+// user who is both a learner and a staff member (e.g. STUDENT + COUNSELLOR) must
+// resolve to the staff role's settings in the admin portal — never the learner's.
+// The backend may list STUDENT before COUNSELLOR, so a plain first-match across
+// all roles wrongly loaded the learner role's settings (all categories visible).
+const LEARNER_ROLE_NAMES = ['STUDENT', 'LEARNER'];
+
+/**
+ * Resolve which custom-role id should drive the admin-portal display settings
+ * for a user holding `userRoles`. Prefers a non-learner (staff) role over a
+ * learner role; within each group it keeps the original backend-list match order
+ * (so multi-staff users resolve exactly as before) and matches names
+ * case-insensitively. Returns null when nothing matches (caller then falls back
+ * to the base CUSTOM_ROLE_DISPLAY_SETTINGS_KEY).
+ */
+const pickDisplaySettingsRoleId = (
+    userRoles: string[] | undefined,
+    customRoles: Array<{ id: string | number; name: string }> | undefined
+): string | null => {
+    if (!userRoles?.length || !customRoles?.length) return null;
+
+    const isLearner = (r: string) => LEARNER_ROLE_NAMES.includes(r.toUpperCase());
+    const staffRoles = userRoles.filter((r) => !isLearner(r));
+    const learnerRoles = userRoles.filter(isLearner);
+
+    // Find the first custom role in the backend's own list order (exactly as the
+    // previous `customRoles.find(...)` did) whose name matches one of `roles`.
+    const matchIn = (roles: string[]) => {
+        const wanted = new Set(roles.map((r) => r.toUpperCase()));
+        return customRoles.find((cr) => cr?.name && wanted.has(cr.name.toUpperCase()));
+    };
+
+    // Staff roles win over learner roles; only the learner-vs-staff precedence
+    // changes vs. the old behavior — every other case resolves identically.
+    const matched = matchIn(staffRoles) || matchIn(learnerRoles);
+    return matched ? String(matched.id) : null;
+};
+
 export interface LoginFlowResult {
     success: boolean;
     shouldShowInstituteSelection?: boolean;
@@ -260,11 +298,12 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
                 try {
                     const { getAllRoles } = await import('@/routes/manage-custom-teams/-services/custom-team-services');
                     const customRoles = await getAllRoles();
-                    const matchedRole = customRoles?.find((cr: any) =>
-                        instituteResult.selectedInstitute?.roles.some(role => role.toUpperCase() === cr.name.toUpperCase())
+                    const matchedRoleId = pickDisplaySettingsRoleId(
+                        instituteResult.selectedInstitute?.roles,
+                        customRoles
                     );
-                    if (matchedRole) {
-                        roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRole.id}`;
+                    if (matchedRoleId) {
+                        roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRoleId}`;
                     }
                 } catch (err) {
                     console.error('Failed to map custom role for display settings', err);
@@ -495,9 +534,12 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
             try {
                 const { getAllRoles } = await import('@/routes/manage-custom-teams/-services/custom-team-services');
                 const customRoles = await getAllRoles();
-                const matchedRole = customRoles?.find((cr: any) => selectedInstitute?.roles.includes(cr.name));
-                if (matchedRole) {
-                    roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRole.id}`;
+                const matchedRoleId = pickDisplaySettingsRoleId(
+                    selectedInstitute?.roles,
+                    customRoles
+                );
+                if (matchedRoleId) {
+                    roleKey = `${CUSTOM_ROLE_DISPLAY_SETTINGS_KEY}_${matchedRoleId}`;
                 }
             } catch (err) {
                 console.error('Failed to map custom role for display settings', err);

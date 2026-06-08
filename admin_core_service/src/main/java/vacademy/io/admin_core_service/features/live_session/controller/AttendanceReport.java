@@ -54,4 +54,22 @@ public class AttendanceReport {
         return ResponseEntity.ok(attendanceReportService.getStudentReport(userId , batchId , start ,end));
     }
 
+    @PostMapping("/feedback/search")
+    public ResponseEntity<Page<LiveClassFeedbackProjection>> searchFeedback(
+            @RequestBody LiveClassFeedbackSearchRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int page = request.getPage() != null ? request.getPage() : 0;
+        int size = request.getSize() != null ? request.getSize() : 20;
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(attendanceReportService.searchFeedback(request, pageable));
+    }
+
+    @GetMapping("/feedback/subjects")
+    public ResponseEntity<List<String>> feedbackSubjects(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "batchIds", required = false) List<String> batchIds,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(attendanceReportService.getDistinctSubjects(instituteId, batchIds));
+    }
+
 }

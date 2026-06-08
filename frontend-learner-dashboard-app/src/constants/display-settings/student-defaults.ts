@@ -35,7 +35,8 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
     {
       id: "homework",
       order: 3,
-      visible: true,
+      // Hidden from learners by default; admins can enable it in Student Display settings.
+      visible: false,
       subTabs: [
         {
           id: "homework-list",
@@ -70,7 +71,8 @@ function defaultSidebarTabs(): StudentSidebarTabConfig[] {
         },
       ],
     },
-    { id: "referral", order: 5, visible: true },
+    // Hidden from learners by default; admins can enable it in Student Display settings.
+    { id: "referral", order: 5, visible: false },
     { id: "attendance", order: 6, visible: true },
   ];
 }

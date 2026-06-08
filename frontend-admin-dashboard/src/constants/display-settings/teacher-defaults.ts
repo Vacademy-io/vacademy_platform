@@ -29,7 +29,9 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                 item.id !== 'membership-management' &&
                 item.id !== 'automations' &&
                 item.id !== 'manage-contacts' &&
-                item.id !== 'admin-activity-logs'
+                item.id !== 'admin-activity-logs' &&
+                // AI Course/Program Creator ships hidden; admins opt in via Display Settings.
+                item.id !== 'ai-copilot-tab'
                     ? true
                     : false,
             subTabs:

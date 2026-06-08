@@ -123,6 +123,15 @@ public class OrganizationTeamAuthClient {
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                     clientName, method.name(), authServerBaseUrl, endpoint, body);
             if (response.getBody() == null || response.getBody().isBlank()) return null;
+            // Void operations on auth_service (delete team, remove member, etc.)
+            // return plain-text bodies like "Team deleted" — not JSON. Trying
+            // to JSON-parse those throws, which the catch wraps as a 510 and
+            // the frontend interprets as failure even though the action
+            // succeeded. When the caller asks for a String, hand back the
+            // raw body and skip Jackson entirely.
+            if (responseType == String.class) {
+                return responseType.cast(response.getBody());
+            }
             return objectMapper.readValue(response.getBody(), responseType);
         } catch (Exception e) {
             log.warn("auth-service call failed: {} {} → {}", method, endpoint, e.getMessage());

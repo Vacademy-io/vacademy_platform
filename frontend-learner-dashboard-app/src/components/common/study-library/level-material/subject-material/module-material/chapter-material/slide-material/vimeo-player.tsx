@@ -26,6 +26,7 @@ import {
   Play,
   Rewind,
   Gauge,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -106,6 +107,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   const [isPlayed, setIsPlayed] = useState(false);
   const [player, setPlayer] = useState<Player | null>(null);
   const [playerReady, setPlayerReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [duration, setDuration] = useState(0);
 
   const [currentTime, setCurrentTime] = useState(0);
@@ -156,8 +158,8 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   const settings = {
     enabled:
       concentrationSettings?.enabled ??
-      (enableConcentrationScore ??
-        DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration.enabled),
+      enableConcentrationScore ??
+      DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration.enabled,
     min_minutes:
       concentrationSettings?.frequency.min_minutes ??
       DEFAULT_STUDENT_DISPLAY_SETTINGS.concentration.frequency.min_minutes,
@@ -178,7 +180,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
   const [missedAnswerCount, setMissedAnswerCount] = useState(0);
   const [answerTimesInSeconds, setAnswerTimesInSeconds] = useState<number[]>(
-    []
+    [],
   );
   const [concentrationScore, setConcentrationScore] = useState(100);
 
@@ -187,7 +189,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   // Memoize questions
   const memoizedQuestions = useMemo(
     () => questions,
-    [JSON.stringify(questions)]
+    [JSON.stringify(questions)],
   );
 
   const timeToQuestionMap = useMemo(() => {
@@ -201,10 +203,10 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   }, [memoizedQuestions]);
 
   const setCurrentYoutubeTime = useMediaRefsStore(
-    (state) => state.setCurrentYoutubeTime
+    (state) => state.setCurrentYoutubeTime,
   );
   const setCurrentYoutubeVideoLength = useMediaRefsStore(
-    (state) => state.setCurrentYoutubeVideoLength
+    (state) => state.setCurrentYoutubeVideoLength,
   );
 
   useEffect(() => {
@@ -219,35 +221,55 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   useEffect(() => {
     if (!vimeoContainerRef.current || !videoId) return;
 
+    // Reset any prior error so re-mounting on a new/valid video starts clean
+    setLoadError(false);
+
     // Clear existing content
     vimeoContainerRef.current.innerHTML = "";
     const div = document.createElement("div");
+    // Fill the container so the embed uses the full black area — both for a
+    // playing video and for Vimeo's own "video unavailable" page.
+    div.style.width = "100%";
+    div.style.height = "100%";
     vimeoContainerRef.current.appendChild(div);
 
     const vimeoPlayer = new Player(div, {
       id: parseInt(videoId, 10),
-      width: 0, // will be managed by CSS
       autopause: false,
-      responsive: true,
+      // responsive:false on purpose — responsive mode wraps the iframe in an
+      // aspect-ratio padding box that collapses to a thin strip when oembed
+      // dimensions are unavailable (e.g. a deleted/private video). The
+      // iframe is sized to fill via the `.vimeo-fill` CSS rule instead.
+      responsive: false,
     });
 
-    vimeoPlayer.ready().then(() => {
-      setPlayer(vimeoPlayer);
-      setPlayerReady(true);
+    vimeoPlayer
+      .ready()
+      .then(() => {
+        setPlayer(vimeoPlayer);
+        setPlayerReady(true);
 
-      vimeoPlayer.getDuration().then((dur: number) => {
-        setDuration(dur);
-        setCurrentYoutubeVideoLength(dur);
+        vimeoPlayer.getDuration().then((dur: number) => {
+          setDuration(dur);
+          setCurrentYoutubeVideoLength(dur);
+        });
+
+        // Seek to saved progress
+        if (ms && ms > 0) {
+          const seekTimeSeconds = ms / 1000;
+          vimeoPlayer.setCurrentTime(seekTimeSeconds).catch(() => {});
+        }
+
+        vimeoPlayer.setVolume(volume / 100);
+      })
+      .catch((err: unknown) => {
+        // Video could not be loaded (deleted/private/restricted on Vimeo, or a
+        // network failure). Surface an inline message instead of letting the
+        // rejection escape as an unhandled error.
+        console.warn("[VimeoPlayer] Failed to load video", videoId, err);
+        setPlayerReady(false);
+        setLoadError(true);
       });
-
-      // Seek to saved progress
-      if (ms && ms > 0) {
-        const seekTimeSeconds = ms / 1000;
-        vimeoPlayer.setCurrentTime(seekTimeSeconds).catch(() => {});
-      }
-
-      vimeoPlayer.setVolume(volume / 100);
-    });
 
     vimeoPlayer.on("play", () => {
       setIsPlayed(true);
@@ -665,7 +687,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
         .reduce(
           (acc: number, val: string, i: number) =>
             acc + parseInt(val) * Math.pow(60, 1 - i),
-          0
+          0,
         );
 
       // Drop zero-duration (or negative) timestamps — can happen when play() is
@@ -720,8 +742,8 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
         Number.isFinite(duration) && duration > 0
           ? Math.round(duration * 1000)
           : 60000,
-        60000
-      )
+        60000,
+      ),
     );
     const interval = setInterval(() => {
       syncTrackingData();
@@ -803,8 +825,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
         clearInterval(verificationTimerRef.current);
       if (fullscreenControlsTimeoutRef.current)
         clearTimeout(fullscreenControlsTimeoutRef.current);
-      if (controlsTimeoutRef.current)
-        clearTimeout(controlsTimeoutRef.current);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, []);
 
@@ -829,7 +850,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   };
 
   const handleProgressClick = async (
-    e: React.MouseEvent<HTMLDivElement, MouseEvent>
+    e: React.MouseEvent<HTMLDivElement, MouseEvent>,
   ) => {
     if (!player || !duration) return;
 
@@ -840,7 +861,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
     // Check if user can navigate to this time (unanswered questions check)
     const targetTimeMs = newTime * 1000;
     const previousQuestions = timeToQuestionMap.filter(
-      ({ time }) => time <= targetTimeMs
+      ({ time }) => time <= targetTimeMs,
     );
     for (const { question } of previousQuestions) {
       if (!question.can_skip && !answeredQuestions[question.id]?.answered) {
@@ -907,8 +928,14 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   return (
     <div
       ref={playerContainerRef}
-      className={`relative flex h-full w-full flex-col ${
-        isPseudoFullscreen ? "fixed inset-0 z-50 bg-black" : ""
+      // Match the YouTube/Custom players' sizing so the box always has a real
+      // height (aspect-ratio + responsive min-heights, filling on large
+      // screens). Without an intrinsic height the player collapses when the
+      // video is unavailable, since there's no video to drive the height.
+      className={`relative flex flex-col ${
+        isPseudoFullscreen
+          ? "fixed inset-0 z-50 bg-black"
+          : "aspect-video w-full min-h-reg-200 sm:min-h-reg-250 md:min-h-reg-300 lg:h-full"
       }`}
       onMouseMove={() => {
         setShowControls(true);
@@ -916,16 +943,31 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
           clearTimeout(controlsTimeoutRef.current);
         controlsTimeoutRef.current = setTimeout(
           () => setShowControls(false),
-          3000
+          3000,
         );
       }}
     >
       {/* Vimeo Player Container */}
       <div
         ref={vimeoContainerRef}
-        className="relative flex-1 bg-black"
+        className="vimeo-fill relative flex-1 bg-black"
         style={{ minHeight: 0 }}
       />
+
+      {/* Video Unavailable Overlay */}
+      {loadError && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black px-4">
+          <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl bg-white p-6 text-center shadow-2xl">
+            <WarningCircle weight="fill" className="size-10 text-danger-500" />
+            <p className="text-base font-semibold text-neutral-700">
+              This video is unavailable
+            </p>
+            <p className="text-sm text-neutral-500">
+              It could not be loaded. Please contact your admin.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Question Overlay */}
       {showQuestion && currentQuestion && (
@@ -1110,7 +1152,7 @@ const VimeoPlayerWrapper = forwardRef<any, VimeoPlayerWrapperProps>(
       enableConcentrationScore,
       concentrationSettings,
     },
-    ref
+    ref,
   ) => {
     const playerRef = useRef<any>(null);
 
@@ -1162,7 +1204,7 @@ const VimeoPlayerWrapper = forwardRef<any, VimeoPlayerWrapperProps>(
         concentrationSettings={concentrationSettings}
       />
     );
-  }
+  },
 );
 
 VimeoPlayerWrapper.displayName = "VimeoPlayerWrapper";

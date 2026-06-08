@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slide } from "@/hooks/study-library/use-slides";
 import { fetchAssessmentData, storeAssessmentInfo } from "@/routes/assessment/examination/-utils.ts/useFetchAssessment";
+import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { Assessment, assessmentTypes } from "@/types/assessment";
 import { formatDuration } from "@/constants/helper";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -108,6 +109,11 @@ const fetchAcrossBuckets = async (assessmentId: string): Promise<Assessment | nu
 
 const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
   const navigate = useNavigate();
+  // package_session_id of the course this slide is being viewed in — the batch
+  // the learner is enrolled in for this assessment.
+  const currentPackageSessionId = useContentStore(
+    (state) => state.currentPackageSessionId
+  );
   const assessmentSlide = activeItem.assessment_slide;
   const assessmentId = assessmentSlide?.assessment_id;
 
@@ -170,7 +176,22 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
     if (!assessment || buttonState.disabled) return;
     try {
       await stashReturnContext(activeItem.id);
-      await storeAssessmentInfo(assessment);
+      // The assessment object pulled from the learner's lists may not carry a
+      // batch_id/package_session_id (e.g. open/public or root-user contexts).
+      // Without one, the downstream assessment-start-preview call sends an empty
+      // batch_ids and the backend rejects it with "batch id not found". The
+      // slide is always viewed inside a specific course/batch, so stamp that
+      // batch (currentPackageSessionId) onto the stored assessment so
+      // StartAssessment -> fetchPreviewData resolves the correct batch.
+      const slideBatchId =
+        currentPackageSessionId ||
+        assessment.batch_id ||
+        assessment.package_session_id;
+      await storeAssessmentInfo({
+        ...assessment,
+        batch_id: slideBatchId,
+        package_session_id: slideBatchId,
+      });
       navigate({
         to: `/assessment/examination/${assessment.assessment_id}`,
       });

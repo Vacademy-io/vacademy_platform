@@ -19,6 +19,7 @@ import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-stud
 import { Route as StudyLibraryIndexRouteImport } from "./routes/study-library/index"
 import { Route as SignupIndexRouteImport } from "./routes/signup/index"
 import { Route as SettingsIndexRouteImport } from "./routes/settings/index"
+import { Route as SalesDashboardIndexRouteImport } from "./routes/sales-dashboard/index"
 import { Route as PlanningIndexRouteImport } from "./routes/planning/index"
 import { Route as MembershipStatsIndexRouteImport } from "./routes/membership-stats/index"
 import { Route as MembershipExpiryIndexRouteImport } from "./routes/membership-expiry/index"
@@ -37,6 +38,7 @@ import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
 import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
+import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index"
 import { Route as ConnectorCenterDetailsIndexRouteImport } from "./routes/connector-center-details/index"
 import { Route as CommunityIndexRouteImport } from "./routes/community/index"
 import { Route as ChallengeAnalyticsIndexRouteImport } from "./routes/challenge-analytics/index"
@@ -253,6 +255,13 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/settings/index.lazy").then((d) => d.Route),
 )
+const SalesDashboardIndexRoute = SalesDashboardIndexRouteImport.update({
+  id: "/sales-dashboard/",
+  path: "/sales-dashboard/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/sales-dashboard/index.lazy").then((d) => d.Route),
+)
 const PlanningIndexRoute = PlanningIndexRouteImport.update({
   id: "/planning/",
   path: "/planning/",
@@ -374,6 +383,13 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/dashboard/index.lazy").then((d) => d.Route),
+)
+const CounsellorsIndexRoute = CounsellorsIndexRouteImport.update({
+  id: "/counsellors/",
+  path: "/counsellors/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/counsellors/index.lazy").then((d) => d.Route),
 )
 const ConnectorCenterDetailsIndexRoute =
   ConnectorCenterDetailsIndexRouteImport.update({
@@ -1560,6 +1576,7 @@ export interface FileRoutesByFullPath {
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
+  "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
@@ -1578,6 +1595,7 @@ export interface FileRoutesByFullPath {
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/planning/": typeof PlanningIndexRoute
+  "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
@@ -1735,6 +1753,7 @@ export interface FileRoutesByTo {
   "/challenge-analytics": typeof ChallengeAnalyticsIndexRoute
   "/community": typeof CommunityIndexRoute
   "/connector-center-details": typeof ConnectorCenterDetailsIndexRoute
+  "/counsellors": typeof CounsellorsIndexRoute
   "/dashboard": typeof DashboardIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
@@ -1753,6 +1772,7 @@ export interface FileRoutesByTo {
   "/membership-expiry": typeof MembershipExpiryIndexRoute
   "/membership-stats": typeof MembershipStatsIndexRoute
   "/planning": typeof PlanningIndexRoute
+  "/sales-dashboard": typeof SalesDashboardIndexRoute
   "/settings": typeof SettingsIndexRoute
   "/signup": typeof SignupIndexRoute
   "/study-library": typeof StudyLibraryIndexRoute
@@ -1912,6 +1932,7 @@ export interface FileRoutesById {
   "/challenge-analytics/": typeof ChallengeAnalyticsIndexRoute
   "/community/": typeof CommunityIndexRoute
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
+  "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
@@ -1930,6 +1951,7 @@ export interface FileRoutesById {
   "/membership-expiry/": typeof MembershipExpiryIndexRoute
   "/membership-stats/": typeof MembershipStatsIndexRoute
   "/planning/": typeof PlanningIndexRoute
+  "/sales-dashboard/": typeof SalesDashboardIndexRoute
   "/settings/": typeof SettingsIndexRoute
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
@@ -2090,6 +2112,7 @@ export interface FileRouteTypes {
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
+    | "/counsellors/"
     | "/dashboard/"
     | "/evaluation/"
     | "/evaluator-ai/"
@@ -2108,6 +2131,7 @@ export interface FileRouteTypes {
     | "/membership-expiry/"
     | "/membership-stats/"
     | "/planning/"
+    | "/sales-dashboard/"
     | "/settings/"
     | "/signup/"
     | "/study-library/"
@@ -2265,6 +2289,7 @@ export interface FileRouteTypes {
     | "/challenge-analytics"
     | "/community"
     | "/connector-center-details"
+    | "/counsellors"
     | "/dashboard"
     | "/evaluation"
     | "/evaluator-ai"
@@ -2283,6 +2308,7 @@ export interface FileRouteTypes {
     | "/membership-expiry"
     | "/membership-stats"
     | "/planning"
+    | "/sales-dashboard"
     | "/settings"
     | "/signup"
     | "/study-library"
@@ -2441,6 +2467,7 @@ export interface FileRouteTypes {
     | "/challenge-analytics/"
     | "/community/"
     | "/connector-center-details/"
+    | "/counsellors/"
     | "/dashboard/"
     | "/evaluation/"
     | "/evaluator-ai/"
@@ -2459,6 +2486,7 @@ export interface FileRouteTypes {
     | "/membership-expiry/"
     | "/membership-stats/"
     | "/planning/"
+    | "/sales-dashboard/"
     | "/settings/"
     | "/signup/"
     | "/study-library/"
@@ -2618,6 +2646,7 @@ export interface RootRouteChildren {
   ChallengeAnalyticsIndexRoute: typeof ChallengeAnalyticsIndexRoute
   CommunityIndexRoute: typeof CommunityIndexRoute
   ConnectorCenterDetailsIndexRoute: typeof ConnectorCenterDetailsIndexRoute
+  CounsellorsIndexRoute: typeof CounsellorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
@@ -2635,6 +2664,7 @@ export interface RootRouteChildren {
   MembershipExpiryIndexRoute: typeof MembershipExpiryIndexRoute
   MembershipStatsIndexRoute: typeof MembershipStatsIndexRoute
   PlanningIndexRoute: typeof PlanningIndexRoute
+  SalesDashboardIndexRoute: typeof SalesDashboardIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
@@ -2860,6 +2890,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/sales-dashboard/": {
+      id: "/sales-dashboard/"
+      path: "/sales-dashboard"
+      fullPath: "/sales-dashboard/"
+      preLoaderRoute: typeof SalesDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/planning/": {
       id: "/planning/"
       path: "/planning"
@@ -2984,6 +3021,13 @@ declare module "@tanstack/react-router" {
       path: "/dashboard"
       fullPath: "/dashboard/"
       preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/counsellors/": {
+      id: "/counsellors/"
+      path: "/counsellors"
+      fullPath: "/counsellors/"
+      preLoaderRoute: typeof CounsellorsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/connector-center-details/": {
@@ -4028,6 +4072,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChallengeAnalyticsIndexRoute: ChallengeAnalyticsIndexRoute,
   CommunityIndexRoute: CommunityIndexRoute,
   ConnectorCenterDetailsIndexRoute: ConnectorCenterDetailsIndexRoute,
+  CounsellorsIndexRoute: CounsellorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
@@ -4045,6 +4090,7 @@ const rootRouteChildren: RootRouteChildren = {
   MembershipExpiryIndexRoute: MembershipExpiryIndexRoute,
   MembershipStatsIndexRoute: MembershipStatsIndexRoute,
   PlanningIndexRoute: PlanningIndexRoute,
+  SalesDashboardIndexRoute: SalesDashboardIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,

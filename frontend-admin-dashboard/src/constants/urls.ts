@@ -976,3 +976,134 @@ export const ORG_TEAM_MEMBER_BY_ID = (teamId: string, mappingId: string) =>
 export const ORG_TEAM_USER_MEMBERSHIPS = (userId: string) =>
     `${ORG_TEAM_BASE}/members/by-user/${userId}`;
 
+// =============================================================================
+// Counsellor workbench (LOCAL ONLY — do not push to organization-teams branch).
+// These power the /counsellors route and its config in Settings → Leads →
+// Workbench. Backed by lead_workbench_config stored inside LEAD_SETTING JSON.
+//
+// Uses LOCAL_ADMIN_CORE_BASE (localhost:8072) — these endpoints don't exist
+// on stage yet, so production BASE_URL would 404.
+// =============================================================================
+export const COUNSELLOR_WORKBENCH_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/counsellor-workbench`;
+export const COUNSELLOR_WORKBENCH_CONFIG = (instituteId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/config?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_CONFIG_UPDATE = `${COUNSELLOR_WORKBENCH_BASE}/config`;
+export const COUNSELLOR_WORKBENCH_MY_TEAM = (instituteId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/me/team?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_MY_LEADS = (
+    instituteId: string,
+    status?: string,
+    page: number = 0,
+    size: number = 20
+) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/me/leads?instituteId=${instituteId}` +
+    (status ? `&status=${status}` : '') +
+    `&page=${page}&size=${size}`;
+export const COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS = (instituteId: string, teamId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/team/${teamId}/counsellors?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_SET_STATUS = (userId: string) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/status`;
+export const COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/reassign/preview`;
+export const COUNSELLOR_WORKBENCH_REASSIGN = `${COUNSELLOR_WORKBENCH_BASE}/reassign`;
+export const COUNSELLOR_WORKBENCH_ACTIVITY = (
+    userId: string,
+    instituteId: string,
+    fromMillis?: number,
+    toMillis?: number,
+    limit: number = 50
+) => {
+    const params = new URLSearchParams({ instituteId, limit: String(limit) });
+    if (fromMillis != null) params.set('from', String(fromMillis));
+    if (toMillis != null) params.set('to', String(toMillis));
+    return `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/activity?${params.toString()}`;
+};
+
+// =============================================================================
+// Counsellor rating (LOCAL ONLY). Strategy config lives at
+// /counsellor-workbench/config; this block is for the per-counsellor score
+// reads + the manual-override write.
+// =============================================================================
+// LOCAL_ADMIN_CORE_BASE — see note on COUNSELLOR_WORKBENCH_BASE above.
+export const COUNSELLOR_RATING_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/counsellor-rating`;
+export const COUNSELLOR_RATING_ONE = (instituteId: string, counsellorUserId: string) =>
+    `${COUNSELLOR_RATING_BASE}?instituteId=${instituteId}&counsellor_user_id=${counsellorUserId}`;
+export const COUNSELLOR_RATING_BATCH = `${COUNSELLOR_RATING_BASE}/batch`;
+export const COUNSELLOR_RATING_LEADERBOARD = (
+    instituteId: string,
+    teamId?: string,
+    limit: number = 10
+) =>
+    `${COUNSELLOR_RATING_BASE}/leaderboard?instituteId=${instituteId}&limit=${limit}` +
+    (teamId ? `&team_id=${teamId}` : '');
+export const COUNSELLOR_RATING_MANUAL = (counsellorUserId: string) =>
+    `${COUNSELLOR_RATING_BASE}/${counsellorUserId}/manual`;
+export const COUNSELLOR_RATING_RECOMPUTE = (instituteId: string, counsellorUserId?: string) => {
+    const params = new URLSearchParams({ instituteId });
+    if (counsellorUserId) params.set('counsellor_user_id', counsellorUserId);
+    return `${COUNSELLOR_RATING_BASE}/recompute?${params.toString()}`;
+};
+
+// =============================================================================
+// Sales dashboard widgets (LOCAL ONLY).
+// =============================================================================
+// LOCAL_ADMIN_CORE_BASE — see note on COUNSELLOR_WORKBENCH_BASE above.
+export const SALES_DASHBOARD_BASE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/sales-dashboard`;
+const buildSdQS = (instituteId: string, params: Record<string, string | number | undefined> = {}) => {
+    const qs = new URLSearchParams({ instituteId });
+    Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+    });
+    return qs.toString();
+};
+export const SALES_DASHBOARD_KPI = (
+    instituteId: string,
+    teamId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/kpi?${buildSdQS(instituteId, { team_id: teamId, from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_FUNNEL = (
+    instituteId: string,
+    teamId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/conversion-funnel?${buildSdQS(instituteId, { team_id: teamId, from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_REASSIGNMENTS = (
+    instituteId: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/reassignments?${buildSdQS(instituteId, { from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_UPCOMING_FOLLOWUPS = (
+    instituteId: string,
+    teamId?: string,
+    hoursAhead: number = 48,
+    limit: number = 20
+) =>
+    `${SALES_DASHBOARD_BASE}/upcoming-followups?${buildSdQS(instituteId, { team_id: teamId, hours_ahead: hoursAhead, limit })}`;
+export const SALES_DASHBOARD_MISSED_FOLLOWUPS = (
+    instituteId: string,
+    teamId?: string,
+    limit: number = 20
+) =>
+    `${SALES_DASHBOARD_BASE}/missed-followups?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
+export const SALES_DASHBOARD_NEW_VS_EXISTING = (
+    instituteId: string,
+    teamId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/new-vs-existing?${buildSdQS(instituteId, { team_id: teamId, from: fromMillis, to: toMillis })}`;
+export const SALES_DASHBOARD_CAMPAIGN_CARDS = (
+    instituteId: string,
+    period: 'DAY' | 'WEEK' | 'MONTH' = 'WEEK'
+) => `${SALES_DASHBOARD_BASE}/campaign-cards?${buildSdQS(instituteId, { period })}`;
+export const SALES_DASHBOARD_LEADERBOARD = (
+    instituteId: string,
+    teamId?: string,
+    limit: number = 10
+) =>
+    `${SALES_DASHBOARD_BASE}/counsellor-leaderboard?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
+export const SALES_DASHBOARD_INSIGHTS = (instituteId: string, teamId?: string) =>
+    `${SALES_DASHBOARD_BASE}/insights?${buildSdQS(instituteId, { team_id: teamId })}`;

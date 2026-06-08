@@ -13,7 +13,10 @@ import vacademy.io.common.auth.dto.organization.*;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -114,6 +117,64 @@ public class OrganizationTeamAuthClient {
     public List<TeamMemberDTO> getUserMemberships(String userId) {
         String endpoint = AuthServiceRoutes.ORG_TEAM_USER_MEMBERSHIPS.replace("{userId}", userId);
         return callList(HttpMethod.GET, endpoint, null, new TypeReference<>() {});
+    }
+
+    // ── Flat-model shims for workbench callers ─────────────────────
+    // The workbench was originally written against a sub-team hierarchy.
+    // Under the hybrid model teams are flat (no sub-teams) and reporting
+    // happens user-to-user inside a team via parent_user_id. These shims
+    // give callers the shapes they expect — semantically correct for the
+    // new model rather than throwing or pretending sub-teams exist.
+
+    /** Alias kept for workbench callers. Identical to {@link #getUserMemberships}. */
+    public List<TeamMemberDTO> mappingsForUser(String userId) {
+        return getUserMemberships(userId);
+    }
+
+    /**
+     * In the flat-team model a team has no sub-teams, so "subtree including
+     * self" is just the team itself. Returns a singleton list, or empty when
+     * the team has been soft-deleted / does not exist.
+     */
+    public List<OrgTeamDTO> getSubtreeIncludingSelf(String teamId) {
+        try {
+            OrgTeamDTO self = getTeam(teamId);
+            return self != null ? List.of(self) : Collections.emptyList();
+        } catch (Exception e) {
+            log.warn("getSubtreeIncludingSelf: team {} not found ({})", teamId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * In the flat-team model a team has no parent team, so the team-level
+     * ancestor chain is always empty. Kept as an overload so workbench
+     * code that asks for "this team's ancestors" compiles and runs
+     * harmlessly. Per-user ancestor traversal still uses the
+     * {@link #getAncestors(String, String)} variant.
+     */
+    public List<OrgTeamDTO> getAncestors(String teamId) {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Distinct user ids across the given teams. Walks {@link #listMembers}
+     * per team. Cheap enough for workbench scope queries since team counts
+     * per institute are small (single digits in practice).
+     */
+    public List<String> usersInTeams(Collection<String> teamIds) {
+        if (teamIds == null || teamIds.isEmpty()) return Collections.emptyList();
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (String teamId : teamIds) {
+            try {
+                for (TeamMemberDTO m : listMembers(teamId)) {
+                    if (m.getUserId() != null) out.add(m.getUserId());
+                }
+            } catch (Exception e) {
+                log.warn("usersInTeams: skipping team {} ({})", teamId, e.getMessage());
+            }
+        }
+        return new ArrayList<>(out);
     }
 
     // ────────────────────────────────────────────────────────────────

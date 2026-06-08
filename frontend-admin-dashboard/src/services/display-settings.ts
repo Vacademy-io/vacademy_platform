@@ -581,6 +581,20 @@ function mergeDisplayWithDefaults(
             ?? defaults.teamManagement?.orgChartTabVisible,
     };
 
+    // Workbench gates (counsellors page, sales dashboard). Same pattern as
+    // orgChartTabVisible — both default to undefined (read as false) so the
+    // features stay hidden until an admin opts in. We materialize the
+    // object even when both flags are absent so consumers can safely chain
+    // settings.workbench?.counsellorsPageVisible without an extra guard.
+    merged.workbench = {
+        counsellorsPageVisible:
+            incoming?.workbench?.counsellorsPageVisible
+            ?? defaults.workbench?.counsellorsPageVisible,
+        salesDashboardVisible:
+            incoming?.workbench?.salesDashboardVisible
+            ?? defaults.workbench?.salesDashboardVisible,
+    };
+
     // Sidebar Categories
     const defSidebarCategories: NonNullable<DisplaySettingsData['sidebarCategories']> = [
         { id: 'CRM', visible: true, default: true, order: 0 },

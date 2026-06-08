@@ -2146,6 +2146,66 @@ export default function AdminDisplaySettings() {
 
             <Card>
                 <CardHeader>
+                    <CardTitle>Counsellor workbench</CardTitle>
+                    <CardDescription>
+                        Routes for the lead-counsellor flows. Off by default while these
+                        features are being rolled out per institute.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
+                        <div>
+                            <div className="text-body font-medium text-neutral-900">
+                                Enable Counsellors page (/counsellors)
+                            </div>
+                            <div className="text-caption text-neutral-500">
+                                Counsellor-facing workbench: own + team leads, mark active /
+                                inactive, reassign (single / round-robin / manual preview),
+                                activity feed.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={settings.workbench?.counsellorsPageVisible === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    workbench: {
+                                        ...(prev.workbench ?? {}),
+                                        counsellorsPageVisible: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
+                        <div>
+                            <div className="text-body font-medium text-neutral-900">
+                                Enable Sales Dashboard (/sales-dashboard)
+                            </div>
+                            <div className="text-caption text-neutral-500">
+                                KPI band, conversion funnel, counsellor leaderboard,
+                                upcoming/missed followups, new-vs-existing leads, campaign
+                                cards, insights.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={settings.workbench?.salesDashboardVisible === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    workbench: {
+                                        ...(prev.workbench ?? {}),
+                                        salesDashboardVisible: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
                     <CardTitle>Post-login Redirect</CardTitle>
                     <CardDescription>Choose where to redirect admins after login.</CardDescription>
                 </CardHeader>

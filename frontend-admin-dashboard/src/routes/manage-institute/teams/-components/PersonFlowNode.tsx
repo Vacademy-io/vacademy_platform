@@ -24,7 +24,6 @@ export interface PersonNodeData {
 function PersonFlowNode({ data, selected }: NodeProps<PersonNodeData>) {
     const { node, user, onEdit, onRemove } = data;
     const name = user?.full_name || `User ${node.user_id.slice(0, 6)}`;
-    const systemRole = (user?.roles ?? []).find((r) => r) ?? null;
 
     return (
         <div
@@ -53,9 +52,9 @@ function PersonFlowNode({ data, selected }: NodeProps<PersonNodeData>) {
                             {node.role_label}
                         </div>
                     )}
-                    {(systemRole || user?.email) && (
+                    {user?.email && (
                         <div className="mt-0.5 truncate text-caption text-neutral-500">
-                            {systemRole ?? user?.email}
+                            {user.email}
                         </div>
                     )}
                 </div>

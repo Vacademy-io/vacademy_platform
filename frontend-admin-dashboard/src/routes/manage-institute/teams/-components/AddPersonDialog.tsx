@@ -109,7 +109,7 @@ export function AddPersonDialog({
                     </DialogTitle>
                     <p className="text-subtitle text-neutral-500">
                         {picked
-                            ? 'Optionally pick a manager and a label for this position.'
+                            ? 'Give this position a label like "Sales Head" and pick who they report to. You can change both later by clicking the pencil on the card.'
                             : 'Pick someone from your institute.'}
                     </p>
                 </DialogHeader>
@@ -188,6 +188,24 @@ export function AddPersonDialog({
 
                         <div>
                             <label className="mb-1 block text-caption font-medium text-neutral-700">
+                                Position label{' '}
+                                <span className="text-neutral-400">(optional)</span>
+                            </label>
+                            <input
+                                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-body"
+                                placeholder="e.g. Sales Head, Counsellor Lead"
+                                value={roleLabel}
+                                onChange={(e) => setRoleLabel(e.target.value)}
+                                maxLength={100}
+                            />
+                            <p className="mt-1 text-caption text-neutral-500">
+                                Shown under their name in the chart. You can edit it
+                                anytime by clicking the pencil icon on the card.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="mb-1 block text-caption font-medium text-neutral-700">
                                 Reports to <span className="text-neutral-400">(optional)</span>
                             </label>
                             <select
@@ -205,25 +223,8 @@ export function AddPersonDialog({
                                 ))}
                             </select>
                             <p className="mt-1 text-caption text-neutral-500">
-                                You can drag-and-drop in the chart to change this later.
-                            </p>
-                        </div>
-
-                        <div>
-                            <label className="mb-1 block text-caption font-medium text-neutral-700">
-                                Position label{' '}
-                                <span className="text-neutral-400">(optional)</span>
-                            </label>
-                            <input
-                                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-body"
-                                placeholder="e.g. Sales Head, Counsellor Lead"
-                                value={roleLabel}
-                                onChange={(e) => setRoleLabel(e.target.value)}
-                                maxLength={100}
-                            />
-                            <p className="mt-1 text-caption text-neutral-500">
-                                Shown under their name in the chart. Their system role
-                                stays unchanged.
+                                You can also draw an arrow between cards on the chart to
+                                set this later.
                             </p>
                         </div>
                     </div>

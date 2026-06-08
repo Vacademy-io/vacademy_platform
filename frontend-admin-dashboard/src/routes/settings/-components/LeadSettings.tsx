@@ -14,6 +14,10 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import LeadStatusesManager from './LeadStatusesManager';
 import LeadSlaSettings from './LeadSlaSettings';
 import PoolsList from './pools/PoolsList';
+// LOCAL ONLY — these power the Workbench tab where admins pick the leads team
+// and configure the counsellor rating strategy.
+import { LeadsTeamPicker } from './LeadsTeamPicker';
+import { CounsellorRatingSettings } from './CounsellorRatingSettings';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // NOTE: Lead statuses and TAT/Follow-up SLA config now live in dedicated DB tables
@@ -152,6 +156,7 @@ export default function LeadSettings() {
                 <TabsList className="mb-4">
                     <TabsTrigger value="config">Configuration</TabsTrigger>
                     <TabsTrigger value="pools">Pools</TabsTrigger>
+                    <TabsTrigger value="workbench">Workbench</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="config" className="space-y-6">
@@ -173,6 +178,11 @@ export default function LeadSettings() {
 
                 <TabsContent value="pools">
                     <PoolsList />
+                </TabsContent>
+
+                <TabsContent value="workbench" className="space-y-6">
+                    <LeadsTeamPicker />
+                    <CounsellorRatingSettings />
                 </TabsContent>
             </Tabs>
         </div>

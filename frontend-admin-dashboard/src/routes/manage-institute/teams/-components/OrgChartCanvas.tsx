@@ -13,6 +13,7 @@ import ReactFlow, {
     type Edge,
     type EdgeChange,
     type Node,
+    type NodeChange,
     type NodeTypes,
     type OnConnectStartParams,
     type ReactFlowInstance,
@@ -114,6 +115,8 @@ function Canvas({ instituteId }: Props) {
             return;
         }
         const firstTeam = teams[0];
+        // `teams.length > 0` is guarded above so firstTeam IS defined; the
+        // explicit truthy check keeps `noUncheckedIndexedAccess` happy.
         if (firstTeam && (!selectedTeamId || !teams.some((t) => t.id === selectedTeamId))) {
             setSelectedTeamId(firstTeam.id);
         }
@@ -237,7 +240,10 @@ function Canvas({ instituteId }: Props) {
             queryClient.invalidateQueries({ queryKey: ['org-teams', instituteId] });
             toast.success('Team deleted');
         },
-        onError: () => toast.error('Could not delete this team'),
+        onError: (e) => {
+            const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
+            toast.error(msg ?? 'Could not delete this team');
+        },
     });
 
     // ── Callbacks closing over latest mutation handles ───────────
@@ -371,6 +377,40 @@ function Canvas({ instituteId }: Props) {
         connectStartRef.current = null;
     }, []);
 
+    // Node removed via keyboard (Delete / Backspace on a selected card) =
+    // "remove from team". Confirm once, then run the same mutation the
+    // trash icon does. We don't propagate the visual remove to react-flow;
+    // the chart refetch on success rebuilds nodes from data.
+    const onNodesChangeIntercept = useCallback(
+        (changes: NodeChange[]) => {
+            const removals = changes.filter((c) => c.type === 'remove') as Array<{
+                type: 'remove';
+                id: string;
+            }>;
+            if (removals.length > 0) {
+                const ctx = ctxRef.current;
+                for (const r of removals) {
+                    const n = rfInstance?.getNode(r.id);
+                    const userId = (n?.data as PersonNodeData | undefined)?.node.user_id;
+                    const personName =
+                        (userId && ctx.userById.get(userId)?.full_name) || 'this person';
+                    if (
+                        window.confirm(
+                            `Remove ${personName} from ${ctx.selectedTeamName}? Their memberships in other teams are not affected.`
+                        )
+                    ) {
+                        ctx.removeMutate(r.id);
+                    }
+                }
+                const nonRemovals = changes.filter((c) => c.type !== 'remove');
+                if (nonRemovals.length > 0) onNodesChange(nonRemovals);
+                return;
+            }
+            onNodesChange(changes);
+        },
+        [onNodesChange, rfInstance]
+    );
+
     // Edges removed = "person no longer reports to X". Set parent to null.
     const onEdgesChangeIntercept = useCallback(
         (changes: EdgeChange[]) => {
@@ -399,7 +439,7 @@ function Canvas({ instituteId }: Props) {
         (event: React.DragEvent<HTMLDivElement>) => {
             event.preventDefault();
             const userId = event.dataTransfer.getData(SIDEBAR_DRAG_MIME);
-            if (!userId || !rfInstance) return;
+            if (!userId) return;
             if (placedUserIdsInTeam.has(userId)) {
                 toast.error('This person is already in this team');
                 return;
@@ -413,7 +453,7 @@ function Canvas({ instituteId }: Props) {
                 : null;
             addMutation.mutate({ userId, parentUserId });
         },
-        [rfInstance, placedUserIdsInTeam, nodes, addMutation]
+        [placedUserIdsInTeam, nodes, addMutation]
     );
 
     const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -435,8 +475,19 @@ function Canvas({ instituteId }: Props) {
                     onOpenChange={setNewTeamOpen}
                     instituteId={instituteId}
                     onCreated={(team) => {
-                        queryClient.invalidateQueries({ queryKey: ['org-teams', instituteId] });
+                        // Optimistically write the new team into the cache
+                        // BEFORE setSelectedTeamId, otherwise the auto-select
+                        // useEffect sees the stale list, fails the
+                        // teams.some(...) check, and snaps the selection
+                        // back to teams[0] — the "have to create twice"
+                        // bug. Background invalidate then refreshes
+                        // member_count etc. from the server.
+                        queryClient.setQueryData<OrgTeam[]>(
+                            ['org-teams', instituteId],
+                            (old) => (old ? [...old, team] : [team])
+                        );
                         setSelectedTeamId(team.id);
+                        queryClient.invalidateQueries({ queryKey: ['org-teams', instituteId] });
                     }}
                 />
             </>
@@ -509,10 +560,11 @@ function Canvas({ instituteId }: Props) {
                 <div className="flex items-start gap-2 border-b border-info-100 bg-primary-50 px-3 py-2 text-subtitle text-primary-800">
                     <Info size={16} className="mt-0.5 shrink-0 text-primary-600" />
                     <div className="flex-1">
-                        Drag a user from the left list onto an empty area to add them to the team, or
-                        drop them on a card to add them as that person’s report. Drag from the bottom
-                        dot of a card to the top dot of another to set reports-to. Click an arrow and
-                        press Backspace to remove the link (they become a root).
+                        Drag a user from the left list onto an empty area to add them to the team,
+                        or drop them on a card to add them as that person’s report. Draw an arrow
+                        from the bottom dot of a card to the top dot of another to set reports-to.
+                        Click a card or arrow then press Delete to remove it. Click the pencil on a
+                        card to give them a position label (e.g. “Sales Head”).
                     </div>
                     <button
                         type="button"
@@ -553,7 +605,7 @@ function Canvas({ instituteId }: Props) {
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
-                        onNodesChange={onNodesChange}
+                        onNodesChange={onNodesChangeIntercept}
                         onEdgesChange={onEdgesChangeIntercept}
                         onConnect={onConnect}
                         onConnectStart={onConnectStart}
@@ -593,11 +645,21 @@ function Canvas({ instituteId }: Props) {
                     {!chartQuery.isLoading &&
                         !chartQuery.isError &&
                         (chartQuery.data ?? []).length === 0 && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-neutral-50/80">
-                                <EmptyTeam
-                                    teamName={selectedTeam?.name ?? 'this team'}
-                                    onAdd={() => setAddOpen(true)}
-                                />
+                            // pointer-events-none on the outer so that drag
+                            // events pass through to the wrapper's onDrop /
+                            // onDragOver below. Without this the overlay
+                            // silently swallows the first drop on an empty
+                            // team — the "have to drag twice" bug.
+                            // The inner block re-enables pointer events so
+                            // the "+ Add the first person" button still
+                            // works.
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-neutral-50/80">
+                                <div className="pointer-events-auto">
+                                    <EmptyTeam
+                                        teamName={selectedTeam?.name ?? 'this team'}
+                                        onAdd={() => setAddOpen(true)}
+                                    />
+                                </div>
                             </div>
                         )}
                 </div>
@@ -609,8 +671,12 @@ function Canvas({ instituteId }: Props) {
                 onOpenChange={setNewTeamOpen}
                 instituteId={instituteId}
                 onCreated={(team) => {
-                    queryClient.invalidateQueries({ queryKey: ['org-teams', instituteId] });
+                    queryClient.setQueryData<OrgTeam[]>(
+                        ['org-teams', instituteId],
+                        (old) => (old ? [...old, team] : [team])
+                    );
                     setSelectedTeamId(team.id);
+                    queryClient.invalidateQueries({ queryKey: ['org-teams', instituteId] });
                 }}
             />
             {selectedTeam && (

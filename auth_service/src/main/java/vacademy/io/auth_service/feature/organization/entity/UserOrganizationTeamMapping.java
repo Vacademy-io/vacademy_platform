@@ -34,8 +34,24 @@ public class UserOrganizationTeamMapping {
     @Column(name = "user_id", nullable = false)
     private String userId;
 
+    /**
+     * The user this person reports to INSIDE this team. NULL means top of
+     * the team (no manager). Added in V13. The same user can have different
+     * parent_user_ids in different teams.
+     */
+    @Column(name = "parent_user_id")
+    private String parentUserId;
+
+    /**
+     * Legacy column. We no longer read or write it — system role is pulled
+     * fresh from the user record on each render so role changes propagate
+     * automatically. But the column is NOT NULL so we default to "MEMBER"
+     * on every INSERT to satisfy the constraint without bothering the
+     * service layer.
+     */
     @Column(name = "role_name", nullable = false, length = 100)
-    private String roleName;
+    @Builder.Default
+    private String roleName = "MEMBER";
 
     /** Per-mapping UI label. NULL means the UI falls back to role_name. */
     @Column(name = "role_label", length = 100)

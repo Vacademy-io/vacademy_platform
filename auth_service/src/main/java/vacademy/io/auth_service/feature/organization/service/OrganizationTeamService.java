@@ -14,51 +14,41 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Source-of-truth service for organization teams + memberships. Lives in
- * auth_service because team membership is a property of the user.
+ * Hybrid org-chart service:
+ *   - {@code organization_team} stores flat teams (no sub-teams).
+ *   - {@code user_organization_team_mapping} stores one row per (team, user)
+ *     PLUS a {@code parent_user_id} captured per row. parent_user_id forms
+ *     a user-to-user reporting tree inside each team.
  *
- * admin_core_service consumes these operations via HMAC-internal HTTP
- * endpoints (see OrganizationTeamInternalController).
+ * A single user can have many mapping rows (multi-team membership) and
+ * potentially a different parent_user_id in each team. Removing a user
+ * from a team promotes their direct reports in that team to roots (null
+ * parent), so nobody disappears from the chart.
  */
 @Service
 @RequiredArgsConstructor
 public class OrganizationTeamService {
 
-    private static final String STUDENT_ROLE = "STUDENT";
-
     private final OrganizationTeamRepository teamRepo;
     private final UserOrganizationTeamMappingRepository mappingRepo;
-    private final OrganizationTeamHierarchyService hierarchyService;
 
     // ────────────────────────────────────────────────────────────────
-    // Team CRUD
+    // Teams
     // ────────────────────────────────────────────────────────────────
 
     @Transactional
     public OrgTeamDTO createTeam(CreateTeamRequest req, String createdBy) {
-        if (req.getInstituteId() == null || req.getInstituteId().isBlank()) {
-            throw new VacademyException("institute_id is required");
-        }
-        if (req.getName() == null || req.getName().isBlank()) {
-            throw new VacademyException("name is required");
-        }
-        if (req.getParentId() != null) {
-            OrganizationTeam parent = teamRepo.findById(req.getParentId())
-                    .orElseThrow(() -> new VacademyException("Parent team not found: " + req.getParentId()));
-            if (!parent.getInstituteId().equals(req.getInstituteId())) {
-                throw new VacademyException("Parent team belongs to a different institute");
-            }
-        }
+        require(req.getInstituteId(), "institute_id is required");
+        require(req.getName(), "name is required");
         OrganizationTeam t = OrganizationTeam.builder()
                 .instituteId(req.getInstituteId())
-                .parentId(req.getParentId())
                 .name(req.getName().trim())
                 .description(req.getDescription())
-                .sortOrder(req.getSortOrder() != null ? req.getSortOrder() : 0)
                 .status("ACTIVE")
+                .sortOrder(0)
                 .createdBy(createdBy)
                 .build();
-        return toDTO(teamRepo.save(t), 0L);
+        return toTeamDTO(teamRepo.save(t), 0L);
     }
 
     @Transactional
@@ -67,196 +57,92 @@ public class OrganizationTeamService {
                 .orElseThrow(() -> new VacademyException("Team not found: " + teamId));
         if (req.getName() != null && !req.getName().isBlank()) t.setName(req.getName().trim());
         if (req.getDescription() != null) t.setDescription(req.getDescription());
-        if (req.getSortOrder() != null) t.setSortOrder(req.getSortOrder());
-
-        if (Boolean.TRUE.equals(req.getMoveParent())) {
-            String newParentId = req.getParentId();
-            if (newParentId != null) {
-                if (newParentId.equals(teamId)) {
-                    throw new VacademyException("A team cannot be its own parent");
-                }
-                OrganizationTeam newParent = teamRepo.findById(newParentId)
-                        .orElseThrow(() -> new VacademyException("Parent team not found: " + newParentId));
-                if (!newParent.getInstituteId().equals(t.getInstituteId())) {
-                    throw new VacademyException("Cannot move team across institutes");
-                }
-                if (hierarchyService.wouldCreateCycle(teamId, newParentId)) {
-                    throw new VacademyException("Move would create a cycle in the org chart");
-                }
-            }
-            t.setParentId(newParentId);
-        }
-        return toDTO(teamRepo.save(t), mappingRepo.countActiveByTeam(t.getId()));
+        return toTeamDTO(teamRepo.save(t), mappingRepo.countActiveByTeam(t.getId()));
     }
 
     @Transactional
-    public void deleteTeam(String teamId, boolean cascade) {
+    public void deleteTeam(String teamId) {
         OrganizationTeam t = teamRepo.findById(teamId)
                 .orElseThrow(() -> new VacademyException("Team not found: " + teamId));
-        long childCount = teamRepo.countActiveChildren(teamId);
-        if (childCount > 0 && !cascade) {
-            throw new VacademyException("Team has " + childCount + " active sub-teams. " +
-                    "Pass cascade=true to delete the entire subtree.");
+        // Soft-delete the team and all its memberships. People's memberships
+        // in OTHER teams are unaffected.
+        List<UserOrganizationTeamMapping> memberships = mappingRepo.findActiveByTeam(teamId);
+        for (UserOrganizationTeamMapping m : memberships) {
+            m.setStatus("INACTIVE");
+            mappingRepo.save(m);
         }
-        if (cascade) {
-            List<OrganizationTeam> subtree = teamRepo.findSubtreeIncludingSelf(teamId);
-            for (int i = subtree.size() - 1; i >= 0; i--) {
-                OrganizationTeam node = subtree.get(i);
-                node.setStatus("INACTIVE");
-                teamRepo.save(node);
-            }
-        } else {
-            t.setStatus("INACTIVE");
-            teamRepo.save(t);
-        }
+        t.setStatus("INACTIVE");
+        teamRepo.save(t);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Reads
-    // ────────────────────────────────────────────────────────────────
-
-    public List<OrgTeamDTO> getAncestors(String teamId) {
-        return hierarchyService.getAllAncestors(teamId).stream()
-                .map(t -> toDTO(t, mappingRepo.countActiveByTeam(t.getId())))
+    public List<OrgTeamDTO> listTeams(String instituteId) {
+        return teamRepo.findAllActive(instituteId).stream()
+                .map(t -> toTeamDTO(t, mappingRepo.countActiveByTeam(t.getId())))
                 .collect(Collectors.toList());
     }
 
-    public List<OrgTeamDTO> getDescendantsFlat(String teamId) {
-        return hierarchyService.getAllDescendants(teamId).stream()
-                .map(t -> toDTO(t, mappingRepo.countActiveByTeam(t.getId())))
-                .collect(Collectors.toList());
-    }
-
-    /** Subtree including the team itself — admin_core_service needs this for scoping. */
-    public List<OrgTeamDTO> getSubtreeIncludingSelf(String teamId) {
-        return hierarchyService.getSubtreeIncludingSelf(teamId).stream()
-                .map(t -> toDTO(t, mappingRepo.countActiveByTeam(t.getId())))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Same as {@link #getChart(String)} but each node also carries its
-     * ACTIVE members. Total cost: 2 DB reads (all teams + all mappings
-     * across the institute), regardless of tree depth — no N+1.
-     */
-    public List<OrgTeamNodeDTO> getChartWithMembers(String instituteId) {
-        List<OrgTeamNodeDTO> tree = getChart(instituteId);
-        if (tree.isEmpty()) return tree;
-        Map<String, OrgTeamNodeDTO> byId = new HashMap<>();
-        collectNodes(tree, byId);
-        if (byId.isEmpty()) return tree;
-        // Seed empty lists so the UI can tell "no members" from "not loaded".
-        byId.values().forEach(n -> n.setMembers(new ArrayList<>()));
-        var mappings = mappingRepo.findActiveByTeamIds(byId.keySet());
-        for (var m : mappings) {
-            OrgTeamNodeDTO node = byId.get(m.getTeamId());
-            if (node != null) node.getMembers().add(toMemberDTO(m));
-        }
-        return tree;
-    }
-
-    private void collectNodes(List<OrgTeamNodeDTO> nodes, Map<String, OrgTeamNodeDTO> out) {
-        for (OrgTeamNodeDTO n : nodes) {
-            out.put(n.getId(), n);
-            if (n.getChildren() != null && !n.getChildren().isEmpty()) {
-                collectNodes(n.getChildren(), out);
-            }
-        }
-    }
-
-    public List<OrgTeamNodeDTO> getChart(String instituteId) {
-        List<OrganizationTeam> all = teamRepo.findAllActive(instituteId);
-        if (all.isEmpty()) return Collections.emptyList();
-
-        Map<String, Long> memberCounts = new HashMap<>();
-        for (OrganizationTeam t : all) {
-            memberCounts.put(t.getId(), mappingRepo.countActiveByTeam(t.getId()));
-        }
-
-        Map<String, OrgTeamNodeDTO> nodeById = new HashMap<>();
-        for (OrganizationTeam t : all) {
-            nodeById.put(t.getId(), OrgTeamNodeDTO.builder()
-                    .id(t.getId())
-                    .parentId(t.getParentId())
-                    .name(t.getName())
-                    .description(t.getDescription())
-                    .headUserId(t.getHeadUserId())
-                    .sortOrder(t.getSortOrder())
-                    .memberCount(memberCounts.getOrDefault(t.getId(), 0L))
-                    .children(new ArrayList<>())
-                    .build());
-        }
-
-        List<OrgTeamNodeDTO> roots = new ArrayList<>();
-        for (OrgTeamNodeDTO node : nodeById.values()) {
-            if (node.getParentId() == null) {
-                roots.add(node);
-            } else {
-                OrgTeamNodeDTO parent = nodeById.get(node.getParentId());
-                if (parent != null) parent.getChildren().add(node);
-                else roots.add(node);
-            }
-        }
-        return roots;
+    public OrgTeamDTO getTeam(String teamId) {
+        OrganizationTeam t = teamRepo.findById(teamId)
+                .orElseThrow(() -> new VacademyException("Team not found: " + teamId));
+        return toTeamDTO(t, mappingRepo.countActiveByTeam(t.getId()));
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Membership
+    // Members (per-team reporting tree)
     // ────────────────────────────────────────────────────────────────
 
     @Transactional
     public TeamMemberDTO addMember(String teamId, AddMemberRequest req, String addedBy) {
         OrganizationTeam team = teamRepo.findById(teamId)
                 .orElseThrow(() -> new VacademyException("Team not found: " + teamId));
-        if (req.getUserId() == null || req.getUserId().isBlank()) {
-            throw new VacademyException("user_id is required");
+        require(req.getUserId(), "user_id is required");
+        if (mappingRepo.findActiveByTeamAndUser(teamId, req.getUserId()).isPresent()) {
+            throw new VacademyException("This person is already in this team");
         }
-        if (req.getRoleName() == null || req.getRoleName().isBlank()) {
-            throw new VacademyException("role_name is required");
+        // Validate parent_user_id is in the same team (when given).
+        if (req.getParentUserId() != null) {
+            if (req.getParentUserId().equals(req.getUserId())) {
+                throw new VacademyException("A person cannot report to themselves");
+            }
+            if (mappingRepo.findActiveByTeamAndUser(teamId, req.getParentUserId()).isEmpty()) {
+                throw new VacademyException("The chosen manager is not in this team");
+            }
         }
-        if (STUDENT_ROLE.equalsIgnoreCase(req.getRoleName())) {
-            throw new VacademyException("STUDENT role is not permitted in organization teams");
-        }
-
         UserOrganizationTeamMapping m = UserOrganizationTeamMapping.builder()
                 .teamId(teamId)
                 .userId(req.getUserId())
-                .roleName(req.getRoleName())
+                .parentUserId(req.getParentUserId())
                 .roleLabel(req.getRoleLabel())
-                .isTeamHead(Boolean.TRUE.equals(req.getIsTeamHead()))
                 .status("ACTIVE")
                 .addedBy(addedBy)
                 .build();
-
-        if (m.getIsTeamHead()) {
-            mappingRepo.clearTeamHeadFlag(teamId);
-            team.setHeadUserId(req.getUserId());
-            teamRepo.save(team);
-        }
         return toMemberDTO(mappingRepo.save(m));
     }
 
     @Transactional
     public TeamMemberDTO updateMember(String teamId, String mappingId, UpdateMemberRequest req) {
         UserOrganizationTeamMapping m = mappingRepo.findById(mappingId)
-                .orElseThrow(() -> new VacademyException("Mapping not found: " + mappingId));
-        if (!m.getTeamId().equals(teamId)) {
-            throw new VacademyException("Mapping does not belong to team " + teamId);
+                .orElseThrow(() -> new VacademyException("Membership not found: " + mappingId));
+        if (!teamId.equals(m.getTeamId())) {
+            throw new VacademyException("Membership does not belong to this team");
         }
-        if (req.getRoleLabel() != null) m.setRoleLabel(req.getRoleLabel());
-        if (Boolean.TRUE.equals(req.getIsTeamHead()) && !Boolean.TRUE.equals(m.getIsTeamHead())) {
-            mappingRepo.clearTeamHeadFlag(teamId);
-            m.setIsTeamHead(true);
-            teamRepo.findById(teamId).ifPresent(t -> {
-                t.setHeadUserId(m.getUserId());
-                teamRepo.save(t);
-            });
-        } else if (Boolean.FALSE.equals(req.getIsTeamHead()) && Boolean.TRUE.equals(m.getIsTeamHead())) {
-            m.setIsTeamHead(false);
-            teamRepo.findById(teamId).ifPresent(t -> {
-                t.setHeadUserId(null);
-                teamRepo.save(t);
-            });
+        if (Boolean.TRUE.equals(req.getChangeParent())) {
+            String newParent = req.getParentUserId();
+            if (newParent != null) {
+                if (newParent.equals(m.getUserId())) {
+                    throw new VacademyException("A person cannot report to themselves");
+                }
+                if (mappingRepo.findActiveByTeamAndUser(teamId, newParent).isEmpty()) {
+                    throw new VacademyException("The chosen manager is not in this team");
+                }
+                if (wouldCreateCycle(teamId, m.getUserId(), newParent)) {
+                    throw new VacademyException("Move would create a reporting loop");
+                }
+            }
+            m.setParentUserId(newParent);
+        }
+        if (Boolean.TRUE.equals(req.getChangeRoleLabel())) {
+            m.setRoleLabel(req.getRoleLabel());
         }
         return toMemberDTO(mappingRepo.save(m));
     }
@@ -264,18 +150,14 @@ public class OrganizationTeamService {
     @Transactional
     public void removeMember(String teamId, String mappingId) {
         UserOrganizationTeamMapping m = mappingRepo.findById(mappingId)
-                .orElseThrow(() -> new VacademyException("Mapping not found: " + mappingId));
-        if (!m.getTeamId().equals(teamId)) {
-            throw new VacademyException("Mapping does not belong to team " + teamId);
+                .orElseThrow(() -> new VacademyException("Membership not found: " + mappingId));
+        if (!teamId.equals(m.getTeamId())) {
+            throw new VacademyException("Membership does not belong to this team");
         }
+        // Promote direct reports inside this team to roots so the tree
+        // stays whole. Their memberships in OTHER teams are untouched.
+        mappingRepo.promoteChildrenToRoot(teamId, m.getUserId());
         m.setStatus("INACTIVE");
-        if (Boolean.TRUE.equals(m.getIsTeamHead())) {
-            m.setIsTeamHead(false);
-            teamRepo.findById(teamId).ifPresent(t -> {
-                t.setHeadUserId(null);
-                teamRepo.save(t);
-            });
-        }
         mappingRepo.save(m);
     }
 
@@ -284,32 +166,111 @@ public class OrganizationTeamService {
                 .map(this::toMemberDTO).collect(Collectors.toList());
     }
 
-    /** Distinct user ids across the given teams (used by the workbench team scope). */
-    public List<String> usersInTeams(Collection<String> teamIds) {
-        if (teamIds == null || teamIds.isEmpty()) return Collections.emptyList();
-        return mappingRepo.findDistinctUserIdsByTeamIds(teamIds);
-    }
-
-    /** All active team-mappings for a single user (used by the workbench home-scope resolver). */
-    public List<TeamMemberDTO> mappingsForUser(String userId) {
+    public List<TeamMemberDTO> listMembershipsForUser(String userId) {
         return mappingRepo.findActiveByUser(userId).stream()
                 .map(this::toMemberDTO).collect(Collectors.toList());
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Mapping helpers
+    // Chart + ancestors/descendants (per-team, user-to-user)
     // ────────────────────────────────────────────────────────────────
 
-    private OrgTeamDTO toDTO(OrganizationTeam t, long memberCount) {
+    /** Roots of the team's reporting tree (people with no manager in this team). */
+    public List<OrgChartNodeDTO> getTeamChart(String teamId) {
+        List<UserOrganizationTeamMapping> all = mappingRepo.findActiveByTeam(teamId);
+        if (all.isEmpty()) return Collections.emptyList();
+        Map<String, OrgChartNodeDTO> byUserId = new HashMap<>();
+        for (UserOrganizationTeamMapping m : all) byUserId.put(m.getUserId(), toChartNode(m));
+        List<OrgChartNodeDTO> roots = new ArrayList<>();
+        for (OrgChartNodeDTO n : byUserId.values()) {
+            if (n.getParentUserId() == null) {
+                roots.add(n);
+            } else {
+                OrgChartNodeDTO parent = byUserId.get(n.getParentUserId());
+                if (parent != null) parent.getChildren().add(n);
+                else roots.add(n); // orphan: surface at root, don't drop
+            }
+        }
+        return roots;
+    }
+
+    /**
+     * Walk up the parent chain inside a team. Returns ancestors root → …
+     * → immediate manager. Self is excluded.
+     */
+    public List<TeamMemberDTO> getAncestors(String teamId, String mappingId) {
+        UserOrganizationTeamMapping start = mappingRepo.findById(mappingId)
+                .orElseThrow(() -> new VacademyException("Membership not found: " + mappingId));
+        if (!teamId.equals(start.getTeamId())) return Collections.emptyList();
+        Map<String, UserOrganizationTeamMapping> byUser = mappingRepo.findActiveByTeam(teamId).stream()
+                .collect(Collectors.toMap(UserOrganizationTeamMapping::getUserId, m -> m));
+        List<TeamMemberDTO> chain = new ArrayList<>();
+        String cursor = start.getParentUserId();
+        Set<String> seen = new HashSet<>();
+        while (cursor != null && !seen.contains(cursor)) {
+            seen.add(cursor);
+            UserOrganizationTeamMapping p = byUser.get(cursor);
+            if (p == null) break;
+            chain.add(0, toMemberDTO(p));
+            cursor = p.getParentUserId();
+        }
+        return chain;
+    }
+
+    /** Walk down — everyone reporting under this person inside the team. Self excluded. */
+    public List<TeamMemberDTO> getDescendants(String teamId, String mappingId) {
+        UserOrganizationTeamMapping start = mappingRepo.findById(mappingId)
+                .orElseThrow(() -> new VacademyException("Membership not found: " + mappingId));
+        if (!teamId.equals(start.getTeamId())) return Collections.emptyList();
+        List<UserOrganizationTeamMapping> all = mappingRepo.findActiveByTeam(teamId);
+        Map<String, List<UserOrganizationTeamMapping>> byParent = new HashMap<>();
+        for (UserOrganizationTeamMapping m : all) {
+            byParent.computeIfAbsent(m.getParentUserId(), k -> new ArrayList<>()).add(m);
+        }
+        List<TeamMemberDTO> out = new ArrayList<>();
+        Deque<String> stack = new ArrayDeque<>();
+        stack.push(start.getUserId());
+        Set<String> seen = new HashSet<>();
+        while (!stack.isEmpty()) {
+            String cursor = stack.pop();
+            if (!seen.add(cursor)) continue;
+            for (UserOrganizationTeamMapping c : byParent.getOrDefault(cursor, Collections.emptyList())) {
+                out.add(toMemberDTO(c));
+                stack.push(c.getUserId());
+            }
+        }
+        return out;
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Internals
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Cycle guard: would making {@code newParentUserId} the manager of
+     * {@code userId} in {@code teamId} create a loop?
+     */
+    private boolean wouldCreateCycle(String teamId, String userId, String newParentUserId) {
+        Map<String, UserOrganizationTeamMapping> byUser = mappingRepo.findActiveByTeam(teamId).stream()
+                .collect(Collectors.toMap(UserOrganizationTeamMapping::getUserId, m -> m));
+        String cursor = newParentUserId;
+        Set<String> seen = new HashSet<>();
+        while (cursor != null && !seen.contains(cursor)) {
+            if (cursor.equals(userId)) return true;
+            seen.add(cursor);
+            UserOrganizationTeamMapping p = byUser.get(cursor);
+            cursor = p == null ? null : p.getParentUserId();
+        }
+        return false;
+    }
+
+    private OrgTeamDTO toTeamDTO(OrganizationTeam t, long memberCount) {
         return OrgTeamDTO.builder()
                 .id(t.getId())
                 .instituteId(t.getInstituteId())
-                .parentId(t.getParentId())
                 .name(t.getName())
                 .description(t.getDescription())
-                .headUserId(t.getHeadUserId())
                 .status(t.getStatus())
-                .sortOrder(t.getSortOrder())
                 .memberCount(memberCount)
                 .createdAt(t.getCreatedAt())
                 .updatedAt(t.getUpdatedAt())
@@ -321,11 +282,25 @@ public class OrganizationTeamService {
                 .mappingId(m.getId())
                 .teamId(m.getTeamId())
                 .userId(m.getUserId())
-                .roleName(m.getRoleName())
+                .parentUserId(m.getParentUserId())
                 .roleLabel(m.getRoleLabel())
-                .isTeamHead(m.getIsTeamHead())
                 .status(m.getStatus())
                 .addedAt(m.getAddedAt())
                 .build();
+    }
+
+    private OrgChartNodeDTO toChartNode(UserOrganizationTeamMapping m) {
+        return OrgChartNodeDTO.builder()
+                .mappingId(m.getId())
+                .teamId(m.getTeamId())
+                .userId(m.getUserId())
+                .parentUserId(m.getParentUserId())
+                .roleLabel(m.getRoleLabel())
+                .children(new ArrayList<>())
+                .build();
+    }
+
+    private static void require(String s, String msg) {
+        if (s == null || s.isBlank()) throw new VacademyException(msg);
     }
 }

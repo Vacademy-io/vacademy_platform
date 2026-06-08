@@ -51,19 +51,18 @@ public class AuthServiceRoutes {
 
     public static final String GET_USER_BY_EMAIL = "/auth-service/internal/user/by-email";
 
-    // ── Organization teams (V12 in auth_service) ────────────────────────────
-    // admin_core_service forwards user-facing /admin-core-service/v1/organization-team
-    // requests to these HMAC-internal endpoints. Team data lives in auth_service
-    // because membership is a property of the user.
+    // ── Organization teams (hybrid: flat teams + user-to-user inside) ──────
+    // organization_team is the team list. user_organization_team_mapping has
+    // one row per (team, user) PLUS parent_user_id which captures who that
+    // person reports to inside that team. Same person can be in multiple
+    // teams with different managers in each.
     public static final String ORG_TEAM_BASE = "/auth-service/internal/organization-team";
     public static final String ORG_TEAM_BY_ID = "/auth-service/internal/organization-team/{teamId}";
-    public static final String ORG_TEAM_CHART = "/auth-service/internal/organization-team/chart";
-    public static final String ORG_TEAM_CHART_WITH_MEMBERS = "/auth-service/internal/organization-team/chart-with-members";
-    public static final String ORG_TEAM_ANCESTORS = "/auth-service/internal/organization-team/{teamId}/ancestors";
-    public static final String ORG_TEAM_DESCENDANTS = "/auth-service/internal/organization-team/{teamId}/descendants";
-    public static final String ORG_TEAM_SUBTREE = "/auth-service/internal/organization-team/{teamId}/subtree";
+    public static final String ORG_TEAM_LIST = "/auth-service/internal/organization-team";
+    public static final String ORG_TEAM_CHART = "/auth-service/internal/organization-team/{teamId}/chart";
     public static final String ORG_TEAM_MEMBERS = "/auth-service/internal/organization-team/{teamId}/members";
     public static final String ORG_TEAM_MEMBER_BY_ID = "/auth-service/internal/organization-team/{teamId}/members/{mappingId}";
-    public static final String ORG_TEAM_USERS_IN_TEAMS = "/auth-service/internal/organization-team/members/users-in-teams";
-    public static final String ORG_TEAM_MAPPINGS_FOR_USER = "/auth-service/internal/organization-team/members/by-user/{userId}";
+    public static final String ORG_TEAM_ANCESTORS = "/auth-service/internal/organization-team/{teamId}/members/{mappingId}/ancestors";
+    public static final String ORG_TEAM_DESCENDANTS = "/auth-service/internal/organization-team/{teamId}/members/{mappingId}/descendants";
+    public static final String ORG_TEAM_USER_MEMBERSHIPS = "/auth-service/internal/organization-team/members/by-user/{userId}";
 }

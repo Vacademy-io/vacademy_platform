@@ -75,6 +75,22 @@ public class CounsellorWorkbenchController {
         return ResponseEntity.ok(workbenchService.listCounsellorsForTeam(instituteId, teamId));
     }
 
+    /**
+     * Leads currently assigned to a specific counsellor. The CSO / manager
+     * detail drawer hits this when opening someone else's profile — the
+     * /me/leads endpoint is auth-scoped to the caller so it can't surface
+     * another counsellor's leads.
+     */
+    @GetMapping("/counsellors/{userId}/leads")
+    public ResponseEntity<List<WorkbenchLeadDTO>> counsellorLeads(
+            @PathVariable String userId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        return ResponseEntity.ok(workbenchService.leadsForCounsellor(instituteId, userId, status, page, size));
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Counsellor status flip
     // ────────────────────────────────────────────────────────────────

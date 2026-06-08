@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Phone, ArrowsClockwise, ArrowSquareOut } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
-import { fetchMyLeads, type WorkbenchLead } from '../-services/counsellor-workbench-services';
+import { fetchCounsellorLeads, type WorkbenchLead } from '../-services/counsellor-workbench-services';
 
 interface Props {
     instituteId: string;
@@ -16,12 +16,12 @@ interface Props {
  * /me/leads return the same data.
  */
 export function CounsellorLeadsTab({ instituteId, counsellorUserId, onReassign }: Props) {
-    // For now we use the existing /me/leads as a proxy; a per-counsellor endpoint can be added later
-    // when admin viewing of subordinate leads needs distinct scoping.
+    // Per-counsellor endpoint — /me/leads only returns the caller's leads,
+    // which makes the CSO / manager drawer look empty for everyone else.
     const { data: leads, isLoading } = useQuery({
         queryKey: ['workbench-leads', instituteId, counsellorUserId],
         enabled: !!instituteId && !!counsellorUserId,
-        queryFn: () => fetchMyLeads(instituteId, 'LEAD', 0, 50),
+        queryFn: () => fetchCounsellorLeads(instituteId, counsellorUserId, 'LEAD', 0, 50),
     });
 
     if (isLoading) {

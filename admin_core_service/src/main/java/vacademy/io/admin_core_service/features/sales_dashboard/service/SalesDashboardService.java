@@ -92,21 +92,34 @@ public class SalesDashboardService {
     public List<FunnelStageDTO> conversionFunnel(String instituteId, String teamId,
                                                  Timestamp from, Timestamp to) {
         List<String> users = scopedUsers(instituteId, teamId);
-        String userClause = userScopeClause(users, "ulp");
+        String userClause = userScopeClause(users, "ulp.assigned_counselor_id");
         // Pipeline stages from lead_status; counts come from the latest status
         // each lead is currently in (via user_lead_profile.conversion_status
         // when no custom status, otherwise via the latest audience_response).
-        return jdbc.query(
-                "SELECT ls.status_key, ls.label, ls.color, ls.sort_order, " +
+        // The date-range and user-scope predicates are inside the WHERE so the
+        // parameter order matches the args list: [instituteId, from?, to?,
+        // users…, instituteId-for-lead_status].
+        String dateClause = andDateRange("ulp.created_at", from, to);
+        String sql = "SELECT ls.status_key, ls.label, ls.color, ls.sort_order, " +
                 "       COUNT(DISTINCT ulp.id) AS lead_count " +
                 "FROM lead_status ls " +
                 "LEFT JOIN audience_response ar ON ar.lead_status_id = ls.id " +
-                "LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = ls.institute_id " +
-                andDateRange("ulp.created_at", from, to) + " " +
+                "LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id " +
+                "    AND ulp.institute_id = ?" +
+                dateClause +
                 userClause +
                 "WHERE ls.institute_id = ? AND ls.status = 'ACTIVE' " +
                 "GROUP BY ls.status_key, ls.label, ls.color, ls.sort_order " +
-                "ORDER BY ls.sort_order",
+                "ORDER BY ls.sort_order";
+
+        List<Object> args = new ArrayList<>();
+        args.add(instituteId);                                 // ulp.institute_id in JOIN
+        if (from != null) args.add(from);
+        if (to != null) args.add(to);
+        args.addAll(users);
+        args.add(instituteId);                                 // ls.institute_id in WHERE
+
+        return jdbc.query(sql,
                 (rs, rowNum) -> FunnelStageDTO.builder()
                         .statusKey(rs.getString("status_key"))
                         .label(rs.getString("label"))
@@ -114,7 +127,7 @@ public class SalesDashboardService {
                         .count(rs.getLong("lead_count"))
                         .order(rs.getInt("sort_order"))
                         .build(),
-                argsConcatTail(argsConcat(new Object[0], users), from, to, instituteId));
+                args.toArray());
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -360,12 +373,26 @@ public class SalesDashboardService {
     // Helpers
     // ────────────────────────────────────────────────────────────────
 
+    /**
+     * Resolve the user-id whitelist the dashboard should count against.
+     *
+     * Priority:
+     *   1. Explicit {@code teamId} → that team's members only (caller-driven
+     *      narrowing for managers who pick a specific team).
+     *   2. Default → users in every team under the institute's configured
+     *      leads_team_id. This is the "sales dashboard only shows sales
+     *      counsellors" guarantee — without it the funnel/KPIs would silently
+     *      count every active user in the institute.
+     *   3. Leads team not configured → empty list, which {@link #userScopeClause}
+     *      translates to "no scope filter" (institute-wide fallback so the
+     *      page still renders something while the admin is mid-setup).
+     */
     private List<String> scopedUsers(String instituteId, String teamId) {
-        if (teamId == null || teamId.isBlank()) return Collections.emptyList();
-        // teamId narrows to its subtree's members.
+        if (teamId != null && !teamId.isBlank()) {
+            return scopeService.usersInTeams(java.util.List.of(teamId));
+        }
         List<String> teamIds = scopeService.allTeamIdsUnderLeadsRoot(instituteId);
-        // For now we use the leads-root subtree; finer-grained team narrowing
-        // is the next iteration. Frontend still passes teamId for forward compat.
+        if (teamIds.isEmpty()) return Collections.emptyList();
         return scopeService.usersInTeams(teamIds);
     }
 

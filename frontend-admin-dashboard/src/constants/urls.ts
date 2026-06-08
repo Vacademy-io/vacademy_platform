@@ -1015,6 +1015,16 @@ export const COUNSELLOR_WORKBENCH_MY_LEADS = (
     `&page=${page}&size=${size}`;
 export const COUNSELLOR_WORKBENCH_TEAM_COUNSELLORS = (instituteId: string, teamId: string) =>
     `${COUNSELLOR_WORKBENCH_BASE}/team/${teamId}/counsellors?instituteId=${instituteId}`;
+export const COUNSELLOR_WORKBENCH_COUNSELLOR_LEADS = (
+    instituteId: string,
+    userId: string,
+    status?: string,
+    page: number = 0,
+    size: number = 50
+) =>
+    `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/leads?instituteId=${instituteId}` +
+    (status ? `&status=${status}` : '') +
+    `&page=${page}&size=${size}`;
 export const COUNSELLOR_WORKBENCH_SET_STATUS = (userId: string) =>
     `${COUNSELLOR_WORKBENCH_BASE}/counsellors/${userId}/status`;
 export const COUNSELLOR_WORKBENCH_REASSIGN_PREVIEW = `${COUNSELLOR_WORKBENCH_BASE}/reassign/preview`;

@@ -16,7 +16,7 @@ import java.sql.Timestamp;
  * index in V12).
  */
 @Entity
-@Table(name = "user_organization_team_mapping")
+@Table(name = "organization_team_member")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

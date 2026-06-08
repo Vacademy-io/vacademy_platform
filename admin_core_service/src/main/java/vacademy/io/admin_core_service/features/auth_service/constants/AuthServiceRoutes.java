@@ -52,7 +52,7 @@ public class AuthServiceRoutes {
     public static final String GET_USER_BY_EMAIL = "/auth-service/internal/user/by-email";
 
     // ── Organization teams (hybrid: flat teams + user-to-user inside) ──────
-    // organization_team is the team list. user_organization_team_mapping has
+    // organization_team is the team list. organization_team_member has
     // one row per (team, user) PLUS parent_user_id which captures who that
     // person reports to inside that team. Same person can be in multiple
     // teams with different managers in each.

@@ -16,11 +16,11 @@ import java.util.stream.Collectors;
 /**
  * Hybrid org-chart service:
  *   - {@code organization_team} stores flat teams (no sub-teams).
- *   - {@code user_organization_team_mapping} stores one row per (team, user)
+ *   - {@code organization_team_member} stores one row per (team, user)
  *     PLUS a {@code parent_user_id} captured per row. parent_user_id forms
  *     a user-to-user reporting tree inside each team.
  *
- * A single user can have many mapping rows (multi-team membership) and
+ * A single user can have many member rows (multi-team membership) and
  * potentially a different parent_user_id in each team. Removing a user
  * from a team promotes their direct reports in that team to roots (null
  * parent), so nobody disappears from the chart.

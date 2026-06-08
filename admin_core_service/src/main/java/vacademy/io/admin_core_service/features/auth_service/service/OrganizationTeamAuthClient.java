@@ -81,7 +81,8 @@ public class OrganizationTeamAuthClient {
         String endpoint = AuthServiceRoutes.ORG_TEAM_MEMBER_BY_ID
                 .replace("{teamId}", teamId)
                 .replace("{mappingId}", mappingId);
-        return call(HttpMethod.PATCH, endpoint, req, TeamMemberDTO.class);
+        // PUT — InternalClientUtils uses HttpURLConnection which can't send PATCH.
+        return call(HttpMethod.PUT, endpoint, req, TeamMemberDTO.class);
     }
 
     public void removeMember(String teamId, String mappingId) {

@@ -73,7 +73,10 @@ public class OrganizationTeamInternalController {
         return ResponseEntity.ok(service.addMember(teamId, request, addedBy));
     }
 
-    @PatchMapping("/{teamId}/members/{mappingId}")
+    // PUT (not PATCH) — admin_core_service forwards over JDK HttpURLConnection
+    // which does not support PATCH. The body's change_X flags already make
+    // this a partial update; PUT here means "apply the parts you flagged."
+    @PutMapping("/{teamId}/members/{mappingId}")
     public ResponseEntity<TeamMemberDTO> updateMember(
             @PathVariable String teamId,
             @PathVariable String mappingId,

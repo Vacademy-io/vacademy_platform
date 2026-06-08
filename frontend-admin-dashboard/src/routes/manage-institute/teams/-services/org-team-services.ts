@@ -125,7 +125,10 @@ export async function updateTeamMember(
     mappingId: string,
     payload: UpdateMemberPayload
 ): Promise<TeamMember> {
-    const res = await authenticatedAxiosInstance.patch<TeamMember>(
+    // PUT (not PATCH) — admin_core_service forwards over HttpURLConnection
+    // which doesn't support PATCH. The body's change_X flags still make
+    // this a partial update on the server side.
+    const res = await authenticatedAxiosInstance.put<TeamMember>(
         ORG_TEAM_MEMBER_BY_ID(teamId, mappingId),
         payload
     );

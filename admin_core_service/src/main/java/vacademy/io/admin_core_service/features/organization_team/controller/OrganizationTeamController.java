@@ -72,7 +72,9 @@ public class OrganizationTeamController {
         return ResponseEntity.ok(client.addMember(teamId, request, user.getUserId()));
     }
 
-    @PatchMapping("/{teamId}/members/{mappingId}")
+    // PUT (not PATCH) — see note on the internal endpoint: the inter-service
+    // forwarder cannot send PATCH over HttpURLConnection.
+    @PutMapping("/{teamId}/members/{mappingId}")
     public ResponseEntity<TeamMemberDTO> updateMember(
             @PathVariable String teamId,
             @PathVariable String mappingId,

@@ -191,6 +191,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Question state
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showQuestion, setShowQuestion] = useState(false);
+  // High-water mark (ms) of the furthest video position already scanned for
+  // questions. Detection fires for any question crossed since this mark, so a
+  // higher playback speed or a forward jump (e.g. +10s) can never skip over one.
+  const lastQuestionCheckTimeRef = useRef(0);
   const [answeredQuestions, setAnsweredQuestions] = useState<
     Record<
       string,
@@ -272,6 +276,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Reset answered questions when questions or videoId changes
   useEffect(() => {
     setAnsweredQuestions({});
+    lastQuestionCheckTimeRef.current = 0;
   }, [memoizedQuestions, videoId]);
 
   // Helper function to safely get a number from potentially a Promise<number>
@@ -338,19 +343,36 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
   const checkForQuestions = useCallback(async () => {
     if (!timeToQuestionMap || timeToQuestionMap.length === 0 || !player) return;
+    if (showQuestion) return;
 
     try {
       const currentTime = await player.getCurrentTime();
       if (typeof currentTime !== "number" || isNaN(currentTime)) return;
       const currentTimeMs = currentTime * 1000;
+      const prevTimeMs = lastQuestionCheckTimeRef.current;
 
-      const questionToShow = timeToQuestionMap.find(({ time, question }) => {
-        if (answeredQuestions && answeredQuestions[question.id]?.answered)
-          return false;
-        return Math.abs(currentTimeMs - time) < 500;
-      });
+      // Advance the high-water mark. On a backward seek currentTime drops below
+      // the mark, so the crossing window below is empty and nothing fires —
+      // re-watching naturally re-arms questions as playback moves forward again.
+      lastQuestionCheckTimeRef.current = currentTimeMs;
+      if (currentTimeMs <= prevTimeMs) return;
 
-      if (questionToShow && !showQuestion) {
+      // Fire for any unanswered question whose timestamp we crossed since the
+      // last check (prevTimeMs, currentTimeMs]. Range-based detection (instead
+      // of a narrow ±500ms window) means fast playback or a forward jump that
+      // leaps over a question still triggers it. Earliest crossed question first.
+      const questionToShow = timeToQuestionMap
+        .filter(({ time, question }) => {
+          if (answeredQuestions && answeredQuestions[question.id]?.answered)
+            return false;
+          return time > prevTimeMs && time <= currentTimeMs;
+        })
+        .sort((a, b) => a.time - b.time)[0];
+
+      if (questionToShow) {
+        // Re-arm from this question's time so that if a single jump skipped over
+        // several questions, the remaining ones surface one-by-one on resume.
+        lastQuestionCheckTimeRef.current = questionToShow.time;
         // Use the force pause function for immediate pause
         try {
           await player.pauseVideo();
@@ -1482,6 +1504,13 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       if (success) {
         // Update currentTime state to reflect new position
         setCurrentTime(finalSeekTime);
+        // Programmatic jumps (initial resume seek, live-class sync) should not
+        // replay questions that sit before the landing point, so move the
+        // high-water mark with them. User-initiated forward seeks deliberately
+        // leave the mark behind so crossed questions still fire.
+        if (forceSeek) {
+          lastQuestionCheckTimeRef.current = finalSeekTime * 1000;
+        }
       }
 
       return success;

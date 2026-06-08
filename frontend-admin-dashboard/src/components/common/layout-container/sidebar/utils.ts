@@ -463,6 +463,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/study-library/attendance-tracker',
                 subItemId: 'session-attendance',
             },
+            {
+                subItem: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Feedback`,
+                subItemLink: '/study-library/live-session/feedback',
+                subItemId: 'live-session-feedback',
+            },
         ],
     },
     {

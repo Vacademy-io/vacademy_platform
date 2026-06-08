@@ -553,6 +553,8 @@ export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-s
 // export const GET_SESSION_BY_SESSION_ID = `http://localhost:8072/admin-core-service/get-sessions/by-session-id`;
 export const GET_SESSION_BY_SESSION_ID = `${BASE_URL}/admin-core-service/get-sessions/by-session-id`;
 export const LIVE_SESSION_REPORT_BY_SESSION_ID = `${BASE_URL}/admin-core-service/live-session-report/by-session-id`;
+export const LIVE_SESSION_FEEDBACK_SEARCH = `${BASE_URL}/admin-core-service/live-session-report/feedback/search`;
+export const LIVE_SESSION_FEEDBACK_SUBJECTS = `${BASE_URL}/admin-core-service/live-session-report/feedback/subjects`;
 export const ADMIN_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/admin-mark-attendance`;
 export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create`;
 export const CREATE_PROVIDER_MEETINGS_FOR_SESSION = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/create-for-session`;
@@ -872,6 +874,20 @@ export const INSTITUTE_PAYMENT_GATEWAYS = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/institute/payment-gateways?instituteId=${instituteId}`;
 export const INSTITUTE_PAYMENT_GATEWAY_BY_ID = (instituteId: string, mappingId: string) =>
     `${BASE_URL}/admin-core-service/v1/institute/payment-gateways/${mappingId}?instituteId=${instituteId}`;
+
+// Institute Mobile App (Android + iOS) self-service registration
+// The config resource — GET to read it (fill the form), PUT to save it (no build).
+export const INSTITUTE_MOBILE_APP = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app?instituteId=${instituteId}`;
+// POST only — starts ONE build run ("Register app" / "Build update").
+export const INSTITUTE_MOBILE_APP_BUILD = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app/build?instituteId=${instituteId}`;
+// GET only — list of past build runs (status card + polling). Note: plural "builds".
+export const INSTITUTE_MOBILE_APP_BUILDS = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app/builds?instituteId=${instituteId}`;
+// POST only — on-demand "Refresh status": pulls current state from the app stores.
+export const INSTITUTE_MOBILE_APP_REFRESH = (instituteId: string) =>
+    `${BASE_URL}/admin-core-service/v1/institute/mobile-app/refresh-status?instituteId=${instituteId}`;
 
 // Application Stage
 export const ADD_APPLICATION_STAGE = `${BASE_URL}/admin-core-service/v1/application/stage`;

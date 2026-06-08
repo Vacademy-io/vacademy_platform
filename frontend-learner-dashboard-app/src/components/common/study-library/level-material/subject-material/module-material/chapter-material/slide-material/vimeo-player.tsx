@@ -132,6 +132,9 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   // Question state
   const [currentQuestion, setCurrentQuestion] = useState<any>(null);
   const [showQuestion, setShowQuestion] = useState(false);
+  // High-water mark (ms) of the furthest position already scanned for questions,
+  // so faster playback or a forward jump can't leap over a question.
+  const lastQuestionCheckTimeRef = useRef(0);
   const [answeredQuestions, setAnsweredQuestions] = useState<
     Record<
       string,
@@ -213,6 +216,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
 
   useEffect(() => {
     setAnsweredQuestions({});
+    lastQuestionCheckTimeRef.current = 0;
   }, [memoizedQuestions, videoId]);
 
   // Initialize Vimeo Player
@@ -243,6 +247,8 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
       // Seek to saved progress
       if (ms && ms > 0) {
         const seekTimeSeconds = ms / 1000;
+        // Don't replay questions sitting before the resume point.
+        lastQuestionCheckTimeRef.current = ms;
         vimeoPlayer.setCurrentTime(seekTimeSeconds).catch(() => {});
       }
 
@@ -282,17 +288,32 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
   // Question checking
   const checkForQuestions = useCallback(() => {
     if (!timeToQuestionMap || timeToQuestionMap.length === 0 || !player) return;
+    if (showQuestion) return;
 
     player.getCurrentTime().then((time: number) => {
       const currentTimeMs = time * 1000;
+      const prevTimeMs = lastQuestionCheckTimeRef.current;
 
-      const questionToShow = timeToQuestionMap.find(({ time, question }) => {
-        if (answeredQuestions && answeredQuestions[question.id]?.answered)
-          return false;
-        return Math.abs(currentTimeMs - time) < 500;
-      });
+      // Advance the high-water mark; on a backward seek the crossing window is
+      // empty so nothing fires until playback moves forward past it again.
+      lastQuestionCheckTimeRef.current = currentTimeMs;
+      if (currentTimeMs <= prevTimeMs) return;
 
-      if (questionToShow && !showQuestion) {
+      // Fire for any unanswered question crossed since the last check
+      // (prevTimeMs, currentTimeMs], earliest first. Range-based detection means
+      // fast playback or a forward jump can't skip over a question.
+      const questionToShow = timeToQuestionMap
+        .filter(({ time, question }) => {
+          if (answeredQuestions && answeredQuestions[question.id]?.answered)
+            return false;
+          return time > prevTimeMs && time <= currentTimeMs;
+        })
+        .sort((a, b) => a.time - b.time)[0];
+
+      if (questionToShow) {
+        // Re-arm from this question's time so further questions skipped by the
+        // same jump surface one-by-one on resume.
+        lastQuestionCheckTimeRef.current = questionToShow.time;
         player.pause();
         setIsPlayed(false);
         stopProgressTracking();

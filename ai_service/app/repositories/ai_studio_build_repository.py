@@ -255,7 +255,13 @@ class AiStudioBuildRepository:
                 "s3_urls": urls,
             }
             if extra_metadata is not None:
-                values["extra_metadata"] = extra_metadata
+                # MERGE, don't replace: render passes only {render_job_id}, and a
+                # full replace would wipe build-time metadata (entry_count,
+                # total_duration, build name/notes, overlay_count). s3_urls above
+                # is already merged — keep extra_metadata symmetric.
+                meta = dict(existing.extra_metadata or {})
+                meta.update(extra_metadata)
+                values["extra_metadata"] = meta
             stmt = update(AiStudioBuild).where(AiStudioBuild.id == build_id).values(**values)
             session.execute(stmt)
             session.commit()

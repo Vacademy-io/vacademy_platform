@@ -123,10 +123,15 @@ def _prepare_and_submit(build: AiStudioBuild, body: StudioRenderRequest) -> str:
 
     rs = RenderService(settings.render_server_url, settings.render_server_key)
     caption_font_size = _CAPTION_SIZE_PX.get(body.caption_size) if body.caption_size else None
+    # P6b: captions words track (built by ASSEMBLE_WORDS when captions are
+    # enabled). The worker renders captions only when both words_url is present
+    # AND show_captions is true.
+    words_url = (build.s3_urls or {}).get("words")
     job_id = rs.submit(
         video_id=str(build.id),
         timeline_url=timeline_url,
         audio_url=audio_url,
+        words_url=words_url,
         source_video_urls=source_video_urls or None,
         callback_url=None,  # we poll, like reels
         show_captions=bool(body.show_captions),
@@ -180,11 +185,39 @@ async def _poll_until_done(build_id: str, job_id: str) -> None:
 
 _PENDING_RENDER_POLLS: set = set()
 
+# Builds with a render in flight (submit + poll lifetime). Guards against a
+# double-click spawning two worker jobs + two racing polls whose second
+# update_on_render would clobber the first MP4 url. Process-local — ai_service
+# is single-pod today (same assumption as RunStateAggregator); a multi-pod
+# move would need a DB/Redis lock instead.
+_ACTIVE_RENDER_BUILDS: set = set()
+
+
+class RenderAlreadyInProgress(RuntimeError):
+    """Raised when a render is already in flight for this build."""
+
 
 async def submit_studio_render(build: AiStudioBuild, body: StudioRenderRequest) -> str:
-    """Submit the render (off-loop) + kick off the background poll. Returns job_id."""
-    job_id = await asyncio.to_thread(_prepare_and_submit, build, body)
-    task = asyncio.create_task(_poll_until_done(str(build.id), job_id))
+    """Submit the render (off-loop) + kick off the background poll. Returns
+    job_id. Idempotent per build: a second concurrent submit raises
+    RenderAlreadyInProgress (mapped to 409 by the router) instead of starting a
+    duplicate worker job."""
+    bid = str(build.id)
+    if bid in _ACTIVE_RENDER_BUILDS:
+        raise RenderAlreadyInProgress(f"A render is already in progress for build {bid}.")
+    _ACTIVE_RENDER_BUILDS.add(bid)
+    try:
+        job_id = await asyncio.to_thread(_prepare_and_submit, build, body)
+    except Exception:
+        _ACTIVE_RENDER_BUILDS.discard(bid)  # submit failed — release the slot
+        raise
+
+    task = asyncio.create_task(_poll_until_done(bid, job_id))
     _PENDING_RENDER_POLLS.add(task)
-    task.add_done_callback(_PENDING_RENDER_POLLS.discard)
+
+    def _done(t: "asyncio.Task") -> None:
+        _PENDING_RENDER_POLLS.discard(t)
+        _ACTIVE_RENDER_BUILDS.discard(bid)  # poll finished (done/failed/timeout)
+
+    task.add_done_callback(_done)
     return job_id

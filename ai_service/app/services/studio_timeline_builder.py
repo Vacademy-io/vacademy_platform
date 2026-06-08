@@ -208,9 +208,15 @@ def build_timeline(
         return source_index[handle]
 
     entries: List[Dict[str, Any]] = []
+    # segment_windows: per arrangement order-item that produced ≥1 entry, the
+    # composed [inTime, exitTime) window it occupies. The COMPOSE_HTML executor
+    # (P6) resolves an overlay's `segment_idx` (an index into THIS `order`, the
+    # same list build_timeline iterates) to its window. Items that produce no
+    # entries (unresolved URL / bad range) are simply absent from the map.
+    segment_windows: List[Dict[str, Any]] = []
     cursor = 0.0
 
-    for item in order:
+    for order_index, item in enumerate(order):
         handle = item.get("handle")
         if not handle:
             continue
@@ -218,6 +224,7 @@ def build_timeline(
         if not url:
             continue  # unresolved asset — skip (caller logs)
         kind = asset_kinds.get(handle, "video")
+        win_start = cursor
 
         if kind == "image":
             dur = _DEFAULT_STILL_S
@@ -235,9 +242,13 @@ def build_timeline(
                 "html": _image_still_html(url),
                 "htmlStartX": 0, "htmlStartY": 0,
                 "htmlEndX": width, "htmlEndY": height,
-                "entry_meta": {"handle": handle, "kind": "image"},
+                "entry_meta": {"handle": handle, "kind": "image", "order_index": order_index},
             })
             cursor += dur
+            segment_windows.append({
+                "order_index": order_index, "handle": handle, "kind": "image",
+                "inTime": round(win_start, 3), "exitTime": round(cursor, 3),
+            })
             continue
 
         # Video — need a range.
@@ -267,9 +278,14 @@ def build_timeline(
                 "html": _source_clip_html(url, ss, se),
                 "htmlStartX": 0, "htmlStartY": 0,
                 "htmlEndX": width, "htmlEndY": height,
-                "entry_meta": {"handle": handle, "kind": "source_clip"},
+                "entry_meta": {"handle": handle, "kind": "source_clip", "order_index": order_index},
             })
             cursor += out_dur
+        if cursor > win_start:  # produced ≥1 surviving sub-segment
+            segment_windows.append({
+                "order_index": order_index, "handle": handle, "kind": "source_clip",
+                "inTime": round(win_start, 3), "exitTime": round(cursor, 3),
+            })
 
     meta: Dict[str, Any] = {
         "kind": "studio",
@@ -279,5 +295,6 @@ def build_timeline(
         "fps": fps,
         "total_duration": round(cursor, 3),
         "source_video_urls": source_video_urls,
+        "segment_windows": segment_windows,
     }
     return {"meta": meta, "entries": entries}

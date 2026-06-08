@@ -1,6 +1,9 @@
 # Vimotion Studio — Multi-Asset Video Editing Pipeline
 
-**Status**: P5 shipped 2026-05-29 — the round-trip is closed: a built timeline opens in the existing editor (`kind=studio`), `/frame/{add,update,delete,reorder}` persist edits to the build's S3 timeline, and `POST /builds/{id}/render` renders to MP4 via the worker. ProjectDetailPage has a per-build switcher (Edit / Render / Publish / MP4). Build → edit → render now works end-to-end. P4 (build pipeline), P3 (Cuts), P2 (Arrangement), P1.5 (advanced UI), P1 (CRUD), P0 (schema) all prior. Overlays/Audio wizard steps pending (P6/P7).
+**Status**: P6b shipped 2026-06-08 — **captions** complete the Overlays step. `propose_captions` (deterministic, free+) proposes a caption config ({enabled, preset}) from the project preference; the user toggles it in OverlaysStep. A new `ASSEMBLE_WORDS` build stage (gated on captions enabled) remaps each kept clip's indexed word-transcript onto the composed timeline (`studio_words_track`, driven off the SOURCE_CLIP entries so it can't drift) → uploads `words.json` → `s3_urls.words`; the editor deep-link passes `wordsUrl` (caption preview) and the render passes `--captions-words`. The full Overlays step (titles + text + captions) is now done across free→premium tiers. Next: P7 (Audio).
+
+**Status (P6a)**: 2026-06-08 — the **Overlays** wizard step went live (titles + text overlays). `propose_titles` + `propose_text_overlays` (LLM, premium+) propose segment-anchored overlays; the user accepts/edits/refines/adds-manual; a new `COMPOSE_HTML` build stage appends them as z-layered overlay entries (bright-on-transparent, studio-native renderers in `app/services/edit_overlays/`) over the SOURCE_CLIPs. Wizard now runs ingest → arrangement → cuts → **overlays** → build. Captions (a words-track + render wiring) are deferred to **P6b**. This slice also fixed pre-P6 bugs: confirm now persists losslessly (was `exclude_none=True`, would corrupt overlay params), render is idempotent (in-flight guard), `update_on_render` merges metadata, image still-duration no longer derives from a bare `t_end`, and BuildStep shows all stages.
+P5 (2026-05-29) closed the round-trip: a built timeline opens in the existing editor (`kind=studio`), `/frame/{add,update,delete,reorder}` persist edits, `POST /builds/{id}/render` renders to MP4. P4 (build pipeline), P3 (Cuts), P2 (Arrangement), P1.5 (advanced UI), P1 (CRUD), P0 (schema) all prior. Audio wizard step pending (P7).
 **Audience**: engineers operating or modifying the Studio pipeline, the wizard, the build executor, or anything that consumes the per-build `time_based_frame.json`.
 **Companion docs**: [VIMOTION_FEATURE.md](./VIMOTION_FEATURE.md), [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md), [REELS_FROM_VIDEO.md](./REELS_FROM_VIDEO.md), [VIDEO_EDITOR_REVIEW.md](./VIDEO_EDITOR_REVIEW.md), [RENDER_PIPELINE.md](./RENDER_PIPELINE.md), [INPUT_VIDEO_INDEXING.md](./INPUT_VIDEO_INDEXING.md).
 **Design plan**: `/Users/shreyashjain/.claude/plans/vacademy-platform-docs-ai-content-vimot-generic-meerkat.md` (single source of truth for design decisions; this doc tracks the implementation).
@@ -104,9 +107,9 @@ Two registers: **PLAN-TIME** (LLM emits structured specs; user confirms in wizar
 | `detect_silences` | Cuts | all | `prosody.pauses` — **P3 (deterministic)** |
 | `detect_fillers` | Cuts | all | word-level transcript — **P3 (deterministic)** |
 | `detect_off_topic` | Cuts | ultra+ | new LLM call (gated) — P8 |
-| `propose_captions` | Overlays | all | reels `_build_caption_blocks_from_reel_time` |
-| `propose_titles` | Overlays | premium+ | KINETIC_TITLE shot template |
-| `propose_text_overlays` | Overlays | premium+ | reels caption builder |
+| `propose_captions` | Overlays | all | deterministic config + `studio_words_track` remap — **P6b (wired)** |
+| `propose_titles` | Overlays | premium+ | studio-native `edit_overlays/titles.py` — **P6a (LLM)** |
+| `propose_text_overlays` | Overlays | premium+ | studio-native `edit_overlays/text_overlays.py` — **P6a (LLM)** |
 | `propose_image_overlays` | Overlays | premium+ | image foreground assets |
 | `face_track_reframe` | Overlays | premium+ | reels `_source_to_crop_time` + `face_segments` |
 | `propose_motion_graphics` | Overlays | ultra+ | reels `_build_motion_graphic_html` |
@@ -115,7 +118,7 @@ Two registers: **PLAN-TIME** (LLM emits structured specs; user confirms in wizar
 | `propose_sfx` | Audio | ultra+ | reels `_compute_cut_points` + anoisesrc pink-noise |
 | `change_aspect` | Ingest | all | reels source-clip face-aware crop |
 
-Tier filter is server-side in `studio_plan_service._filter_tools_for_tier(tools, tier)` — LLM never sees tools the user can't access.
+Tier filter is server-side in `studio_tools.tools_for_step(step, tier, …)` — LLM never sees tools the user can't access (defense-in-depth re-checks at validation time).
 
 ### 5.2 Build-time executors
 
@@ -123,8 +126,9 @@ Tier filter is server-side in `studio_plan_service._filter_tools_for_tier(tools,
 |---|---|---|
 | `assemble_audio` | ASSEMBLE_AUDIO | lifts `reels_audio_edit_service.py` (single ffmpeg `filter_complex`) |
 | `transcribe_words` | ASSEMBLE_WORDS | render-worker `/transcribe-jobs` on the stitched audio |
-| `build_timeline` | ASSEMBLE_TIMELINE | SOURCE_CLIP entry per segment + HTML entry per overlay |
-| `compose_overlays` | COMPOSE_HTML | per-overlay HTML using shared `edit_overlays/` templates |
+| `build_timeline` | ASSEMBLE_TIMELINE | SOURCE_CLIP/IMAGE_STILL entry per segment; tags `entry_meta.order_index` + emits `meta.segment_windows` |
+| `compose_html` | COMPOSE_HTML | **P6a wired** — appends title/text overlay entries (z 500–8999, bright-on-transparent) resolved from `segment_windows`; reads `overlays.operations`+`manual_operations` by param shape |
+| `assemble_words` | ASSEMBLE_WORDS | **P6b wired** — if captions enabled, fetches transcripts + `studio_words_track.build_words_track` → `words.json` → `s3_urls.words`. Best-effort (never fails the build) |
 | `upload_artifacts` | UPLOAD | S3 PUT under `ai-studio/{build_id}/*` |
 | `handoff` | HANDOFF | flips build → AWAITING_EDIT; FE polls and routes to editor |
 
@@ -210,8 +214,24 @@ Migration: `app/migrations/add_ai_studio_tables.sql` (source of truth); Flyway c
   - **Verification**: frame service unit-tested (ordered insert, update, reorder, delete, cross-tenant 404); design-lint clean; 0 real type errors. Render path is shape-verified against the reels precedent but needs staging (ffmpeg + worker).
   - **Known nit**: the editor's Back button routes studio builds to `/vim/dashboard?videoId=<buildId>` (a non-existent production view); harmless, fix in a polish pass to route to `/vim/studio/$projectId`.
 
+- **P6a (2026-06-08)** — Overlays wizard step (titles + text), studio-native renderers, COMPOSE_HTML executor:
+  - **Pre-P6 fixes** (folded in): `wizard_confirm` persists `model_dump(mode="json")` not `exclude_none=True` (was silently stripping explicitly-null overlay params → build saw a different dict than the user confirmed); render idempotency via a process-local `_ACTIVE_RENDER_BUILDS` guard + `RenderAlreadyInProgress`→409 (no duplicate worker jobs on double-click); `update_on_render` MERGES `extra_metadata` (was full-replace → wiped `entry_count`/build name); `arrange_sequence` image still-duration takes an explicit `still_duration_s` and only derives from a range when BOTH `t_start`+`t_end` are present (a bare `t_end` no longer becomes an N-second still); `BuildStep.STAGE_LABELS` now lists all stages incl. `COMPOSE_HTML` (was clamping the checklist to "un-started" mid-build).
+  - **`edit_overlays/`** (studio-native, NOT extracted from reels — the audit showed reels' caption builder is reel-time/layout coupled; sharing would be high-friction + risk the shipped reels pipeline). `titles.py` (`render_title_html`: center/lower title + optional subtitle), `text_overlays.py` (`render_text_overlay_html`: top/center/bottom/lower_third × plain/bold/highlight), `_render_common.py` (escape + full-canvas transparent wrapper + bright palette). All return bright-on-transparent HTML so the worker's brightness mask keeps the text over SOURCE_CLIP footage.
+  - **Tools**: `propose_titles` + `propose_text_overlays` (LLM, `step='overlays'`, `min_tier='premium'`). Anchor by `segment_idx` (index into the arrangement order). `_build_validation_ctx` now derives `segment_count` (from `extract_order(prior_steps.arrangement)`) so validators clamp `segment_idx`; `_STEP_INTENT['overlays']` directs the LLM. No router/plan-service structural change — the generic wizard handled it.
+  - **Timeline builder**: tags each entry `entry_meta.order_index` and emits `meta.segment_windows[]` (order_index → composed `[inTime,exitTime]`, spanning a video segment's surviving sub-clips after cuts).
+  - **`COMPOSE_HTML` executor + orchestrator stage**: inserted between ASSEMBLE_TIMELINE (now 0–40) and UPLOAD (now 60–95); resolves each overlay's `segment_idx` → window, clamps timing, renders HTML, appends z-banded overlay entries (text 500+, title 1500+), drops unresolvable overlays; bumps `meta.total_duration` defensively. Reads `overlays.operations`+`manual_operations` by PARAM SHAPE (`params.titles`/`params.overlays`) so FE `manual_overlay` ops compose without a registered tool.
+  - **Frontend**: `OverlaysStep.tsx` (plans on entry; reviewable accept/edit/remove list grouped by Title/Text with per-row segment + placement/position selects; refine-with-prompt box; manual adder; confirm rebuilds accepted-only ops + a single `manual_overlay`). Segments derived from the cached confirmed arrangement (`getStudioProject`, warm after the arrangement confirm). `CreatePage` wires cuts → overlays → build; `studio-api.ts` adds `TitleItem`/`TextOverlayItem` FE-internal shapes.
+  - **Verification**: backend functional test passes (timeline `segment_windows`/`order_index`; renderers transparent+bright+escaped; tool tier-gating + clamp + OOR-drop; COMPOSE_HTML end-to-end incl. cut-split windows, manual-by-shape, unresolvable-drop, z-banding). FE design-lint clean (0 errors on new files), `tsc --noEmit` exit 0. **Caption + render-worker compositing (luma-key) need staging verification** (no ffmpeg/worker in dev).
+
+- **P6b (2026-06-08)** — Overlays captions (words track + render wiring):
+  - **`studio_words_track.py`** (pure, unit-tested) — `flatten_words` (transcript → ordered `{word,start,end}`) + `build_words_track(entries, words_by_handle)`: iterates the built SOURCE_CLIP entries and remaps each source word `w` to output time `inTime + (w - source_start)`, clamped into the entry window. Words inside a removed cut span never appear in any surviving sub-segment (auto-dropped); a word straddling a cut boundary is clamped to the surviving part. Output is the flat `[{word,start,end}]` array the editor (`loadCaptionWords`) + worker (`--captions-words`) both consume. Exact alignment because it drives off the real timeline entries.
+  - **`propose_captions` tool** (deterministic, `step='overlays'`, `min_tier='free'`) — proposes `{enabled, preset}` from the project's `caption_preset` preference (`detect_ctx.caption_preset`, threaded in `_plan_inputs`). For FREE tier the overlays step is now non-empty (captions only, no LLM); premium+ gets captions + titles + text.
+  - **`ASSEMBLE_WORDS` build stage** (`studio_executors/assemble_words.py`) — gated on captions enabled in the plan; re-validates refs (`source_asset_refs` now on `BuildContext`), fetches raw video contexts (`build_asset_manifest_with_raw`), builds + uploads `ai-studio/{build_id}/words.json` → `s3_urls.words` + `extra_metadata.caption_word_count`. **Best-effort** — a transcript fetch hiccup logs and ships the build without captions, never FAILS it. Stage inserted ASSEMBLE_TIMELINE(0–35) → COMPOSE_HTML(35–55) → **ASSEMBLE_WORDS(55–80)** → UPLOAD(80–95) → HANDOFF.
+  - **Render + editor wiring** — `studio_render_service` passes `words_url=s3_urls.words` to `RenderService.submit` (worker renders captions only when words_url present AND `show_captions`); ProjectDetailPage's editor deep-link passes `wordsUrl=s3_urls.words` so captions preview in the editor.
+  - **Frontend** — `OverlaysStep` gains a Captions card (enable toggle + preset selector, prefilled from the proposed config); confirm always includes a `propose_captions` op; `BuildStep.STAGE_LABELS` adds ASSEMBLE_WORDS ("Building captions").
+  - **Verification**: words-track unit test passes (remap, cut-boundary clamp, removed-gap drop, ordering); `propose_captions` tier/detect/validate verified; orchestrator pipeline ordered + bands contiguous 0–100; FE design-lint clean + `tsc --noEmit` exit 0. **Caption rendering (worker `--captions-words`) needs staging** (no worker in dev).
+
 ### Pending (in plan order)
-- **P6** — OverlaysStep + `propose_captions` + `propose_titles` + `propose_text_overlays` + `COMPOSE_HTML` + extract shared renderers into `app/services/edit_overlays/`
 - **P7** — AudioStep + `propose_bgm` + `propose_sfx` + `propose_transitions` + `face_track_reframe` integration
 - **P8** — `detect_off_topic` (LLM, ultra+) + `propose_motion_graphics` + `propose_image_overlays` + `change_aspect`
 - **P9** — Build versioning UI polish + "Publish" + per-build editor session preservation tests
@@ -223,7 +243,13 @@ Migration: `app/migrations/add_ai_studio_tables.sql` (source of truth); Flyway c
 
 - **`UpdateProjectRequest` can't CLEAR a field** — `update_fields` repo method skips None per the reels precedent ("None means leave alone"). User who wants to remove their stored prompt has no API path. Workaround: send empty string and let the server normalize. Planned: introduce an `UNSET` sentinel pattern in a small follow-up; needs to land across reels too for consistency.
 - **No `unarchive()` repo method** — soft-delete is one-way. Workaround: admin SQL `UPDATE ai_studio_projects SET status='DRAFT', archived_at=NULL WHERE id=...`. Planned: add when a real undo flow lands in the FE.
-- **`DELETE /builds/{id}` clears `published_build_id`** silently via FK SET NULL. UI must check + warn before deleting the published build. Planned: enforce a 409 from the application layer if the target is the project's published build, requiring an explicit `?force=true`.
+- **`DELETE /builds/{id}` on the published build** — MITIGATED (2026-06-08 audit): `delete_build` already returns 409 `build_is_published` when the target is the project's published build (`studio_projects.py:824`). The FK `ON DELETE SET NULL` remains only as a safety net for admin hard-deletes. The `?force=true` escape hatch was never implemented.
+- **Overlay luma-key constraint (P6a; ⚠ staging-verify)** — over a SOURCE_CLIP the render worker keeps only BRIGHT overlay pixels (brightness mask). Studio overlay renderers use bright-on-transparent text so titles/text composite correctly, but a DARK drop-shadow / semi-transparent backing bar would be keyed out in the final MP4 (it shows only in the editor preview and over IMAGE_STILL entries). Cause: `_composite_source_clips` luma-keys the rendered HTML frame over footage. Workaround: keep overlay content bright (no dark backings). Planned: verify legibility on staging; if needed, add a bright outline/scrim variant. **Editor preview ≠ final render for dark overlay elements over footage.**
+- **Titles are overlay-over-footage, not inserted full-screen cards (P6a)** — `propose_titles` anchors a title to a segment's START and overlays it (z-layered) on the footage; it does NOT insert a separate full-screen title card between clips (which would reflow the base timeline). The design-plan's `after_segment_idx` card-insert variant is deferred. Workaround: place a title on the first segment for an intro. Planned: a card-insert overlay kind if needed.
+- **Captions words track is built at BUILD time, gated on the confirmed config (P6b)** — `ASSEMBLE_WORDS` only runs (and `s3_urls.words` only exists) when `propose_captions.enabled` was true at build. So toggling captions ON in the EDITOR after a no-captions build has no words to show; re-build with captions enabled. Cause: avoiding a transcript fetch on every build. Planned: lazy words-track build on first editor caption-enable.
+- **No per-shot caption suppression / `caption_style` yet (P6b)** — captions render across the whole timeline; they are not auto-suppressed under a title/text overlay, and per-shot `entry_meta.caption_style` (hide/position) isn't emitted. Cause: scope. Workaround: position overlays where they don't clash (titles center, captions bottom). Planned: compute suppression ranges from overlay windows in `assemble_words`.
+- **Caption transcript fetch is best-effort (P6b)** — if `ASSEMBLE_WORDS` can't fetch/parse a transcript it logs and ships the build WITHOUT captions (no words track) rather than failing. A build can therefore silently have captions-enabled-in-plan but no `s3_urls.words`. Check `extra_metadata.caption_word_count` to confirm captions landed.
+- **Render idempotency is process-local (P6a)** — the `_ACTIVE_RENDER_BUILDS` in-flight guard prevents duplicate renders within one ai_service process (single-pod today, same assumption as `RunStateAggregator`). A multi-pod move needs a DB/Redis lock. A render that FAILS still flips the build to `FAILED` (pre-existing; an AWAITING_EDIT build can't currently be re-rendered after a render failure — tracked for the render-hardening slice, F24).
 
 ---
 
@@ -250,26 +276,36 @@ services/
 ├── studio_timeline_builder.py                               ← P4 (plan → {meta, entries})
 ├── studio_orchestrator.py                                   ← P4 (async build runner)
 ├── studio_frame_service.py                                  ← P5 (S3 timeline add/update/delete/reorder)
-├── studio_render_service.py                                 ← P5 (silent audio + worker submit + poll)
+├── studio_render_service.py                                 ← P5 (worker submit + poll); P6a idempotency; P6b words_url
+├── studio_words_track.py                                    ← P6b (pure: remap clip words → composed timeline)
 ├── studio_executors/
-│   ├── build_timeline.py                                    ← P4 (ASSEMBLE_TIMELINE)
+│   ├── build_timeline.py                                    ← P4 (ASSEMBLE_TIMELINE; P6a order_index + segment_windows)
+│   ├── compose_html.py                                      ← P6a (COMPOSE_HTML → overlay entries)
+│   ├── assemble_words.py                                    ← P6b (ASSEMBLE_WORDS → words.json, gated on captions)
 │   └── upload_artifacts.py                                  ← P4 (UPLOAD → S3)
-└── studio_tools/
-    ├── __init__.py                                           ← P2 registry; P3 added detect() support
-    ├── pick_segments.py                                      ← P2
-    ├── arrange_sequence.py                                   ← P2
-    ├── detect_silences.py                                    ← P3
-    └── detect_fillers.py                                     ← P3
+├── studio_tools/
+│   ├── __init__.py                                           ← P2 registry; P3 detect(); P6a/b register propose_*
+│   ├── pick_segments.py                                      ← P2
+│   ├── arrange_sequence.py                                   ← P2 (P6a: explicit image still_duration_s)
+│   ├── detect_silences.py                                    ← P3
+│   ├── detect_fillers.py                                     ← P3
+│   ├── propose_titles.py                                     ← P6a (LLM, overlays, premium+)
+│   ├── propose_text_overlays.py                              ← P6a (LLM, overlays, premium+)
+│   └── propose_captions.py                                   ← P6b (deterministic config, overlays, free+)
+└── edit_overlays/                                            ← P6a (studio-native renderers; NOT extracted from reels)
+    ├── __init__.py
+    ├── _render_common.py                                    ← escape + transparent wrapper + bright palette
+    ├── titles.py                                            ← render_title_html
+    └── text_overlays.py                                     ← render_text_overlay_html
 migrations/
 └── add_ai_studio_tables.sql                                  ← P0 (source of truth)
 ```
 
-Pending (P6+):
+Pending (P7+):
 ```
 services/
-├── studio_tools/ (more)                                      ← P6/7/8 — propose_* tools
-├── studio_executors/ (more)                                  ← P6 — COMPOSE_HTML for overlays
-└── edit_overlays/                                            ← P6 — extracted from reels (shared)
+├── studio_tools/ (more)                                      ← P7/8 — bgm/sfx/transitions/motion_graphics
+└── studio_executors/ (more)                                  ← P7 — ASSEMBLE_AUDIO (bgm/sfx mix)
 ```
 
 ### Flyway (`admin_core_service/.../db/migration/`)
@@ -291,10 +327,11 @@ features/vimotion/studio/
 ├── hooks/useWizardStep.ts                                   ← P2 (plan/refine/confirm)
 ├── create/ArrangementStep.tsx                               ← P2
 ├── create/CutsStep.tsx                                      ← P3
-├── create/BuildStep.tsx                                     ← P4
+├── create/BuildStep.tsx                                     ← P4 (P6a: COMPOSE_HTML in STAGE_LABELS)
 ├── hooks/useStudioBuild.ts                                  ← P4 (create + status poll)
 ├── detail/ProjectDetailPage.tsx                             ← P5 BuildRow (Edit/Render/Publish/MP4)
-└── create/{Overlays,Audio}Step.tsx                          ← P6/7 pending
+├── create/OverlaysStep.tsx                                  ← P6a (titles + text; accept/edit/refine/manual)
+└── create/AudioStep.tsx                                     ← P7 pending
 
 Shared editor (modified, P5): `components/ai-video-editor/stores/video-editor-store.ts` (`EditorKind += 'studio'`; `saveChanges` studio frameBase) + `routes/vim/edit/$videoId/index.tsx` (`kind=studio` in validateSearch).
 routes/vim/studio/
@@ -456,6 +493,24 @@ P5 couplings:
 - **Silent narration** — Studio render generates a silent MP3 because the worker requires `audio_url`; real audio is the source clips' own (browser-captured from un-muted `<video>`). If you ever mute source clips in the builder, the rendered MP4 goes silent.
 - **Render is poll-based** — `studio_render_service` polls `RenderService.check_status` (no `/render-callback` endpoint), then `AiStudioBuildRepository.update_on_render(video_url)`. Matches reels finalize. The build flips RENDERED with `s3_urls.video` set.
 
+P6a couplings:
+- **Overlay tool names** — `propose_titles` / `propose_text_overlays` / `manual_overlay` round-trip on the SAME strings across three sites: BE `register_tool` (`studio_tools/propose_*.py`), FE `OverlaysStep.doConfirm` op groupings, and the `compose_html` executor reader. The executor reads overlays by PARAM SHAPE (`params.titles` / `params.overlays`), NOT tool name — that's why FE `manual_overlay` ops compose without a registered tool. Don't special-case tool names in `compose_html`.
+- **Overlay param schema** — `{titles:[{segment_idx,title,subtitle?,duration_s,placement}]}` and `{overlays:[{segment_idx,text,t_offset_s,dur_s,position,style}]}` appear in four places: the tool `params_doc` (LLM-facing), the tool `validate`, the FE `TitleItem`/`TextOverlayItem` + `OverlaysStep`, and the `compose_html` defensive parser. The confirmed ops are NOT re-validated server-side, so `compose_html` parses defensively (coerce, clamp, drop) — keep it tolerant.
+- **`segment_idx` ↔ `segment_windows` ↔ `order_index`** — `segment_idx` indexes the arrangement order (`extract_order`). `studio_timeline_builder` tags each entry `entry_meta.order_index` and emits `meta.segment_windows[]` (order_index → composed `[inTime,exitTime]`); `compose_html` resolves `segment_idx` against `segment_windows`; the validator's `segment_count` (from `_build_validation_ctx`) is `len(extract_order(arrangement))`. All four derive from the SAME ordered list — a change to `extract_order` ripples to all.
+- **`COMPOSE_HTML` stage** — declared in `studio_orchestrator` (constant + `STAGE_PIPELINE` band + `STAGE_HANDLERS` slot + `register_all_stages` import) and must match the FE `BuildStep.STAGE_LABELS` id. The `BuildStage` Literal (schemas) + the TS `BuildStage` union already include `COMPOSE_HTML`; `build_stage` SQL is free-form VARCHAR (no migration). Stage bands were re-banded (ASSEMBLE_TIMELINE 0–40, COMPOSE_HTML 40–60).
+- **z-band convention** — overlay entries use the editor's overlay band (`video-editor-store.ts:278-279`: base 0–499, overlay 500–8999, ui ≥9000). `compose_html` emits text at 500+, titles at 1500+, capped 7999 (below the 8000+ caption band reserved for P6b). The ONLY layering field is `z` (a number) — never emit `layer`/`zIndex`/`z-index`.
+- **Overlay entry omits dead fields** — overlay entries carry `id`/`shot_type`(≠SOURCE_CLIP)/`inTime`/`exitTime`/`z`/`html`/`entry_meta` and OMIT `htmlStartX/Y/EndX/Y` (ignored by editor+player), `opacity` (renderer-computed crossfade), `audio*`, `html_model`. Background MUST be transparent/black (luma-key — see §9).
+- **Confirm persistence is lossless** — `wizard_confirm` uses `model_dump(mode="json")` (NOT `exclude_none=True`). Overlay params may legitimately omit/null optional keys; the persisted `confirmed_plan[step]` must equal what the user confirmed. Don't re-introduce None-pruning.
+- **Segment labels (FE)** — `OverlaysStep` derives the segment list from `project.confirmed_plan.arrangement` via `getStudioProject`, keyed `['studio-project', instituteId, projectId]` — the SAME cache `useWizardStep.confirm` warms. If that cache key changes, the labels go blank (falls back to "Segment N").
+
+P6b couplings:
+- **words.json shape** — a flat `[{word, start, end}]` array in master-timeline seconds, produced by `studio_words_track`, consumed by the editor (`video-editor-store.loadCaptionWords`, which adds `meta.audio_start_at` — 0 for Studio, no narration) and the worker (`--captions-words`). Three readers; one shape. Studio words are already in master coords (no narration offset) — don't add one.
+- **`s3_urls.words` flows to FOUR places** — written by `assemble_words`; read by `studio_render_service` (`words_url` → `RenderService.submit`), by ProjectDetailPage's editor deep-link (`wordsUrl`), and (transitively) by the editor + worker. Renaming the `words` key touches all of them.
+- **Captions-enabled gate** — `propose_captions.params.enabled` is the single source of truth: set in `OverlaysStep` (confirm always includes a `propose_captions` op), read by `assemble_words._captions_enabled` (scans `overlays.operations`+`manual_operations` by tool name). The render's `show_captions` is a SEPARATE render-dialog knob — both must be true for captions to appear.
+- **`caption_preset` literal set** — `hormozi|karaoke|pop|clean|none` lives in `propose_captions._PRESETS`, the schema `CaptionPreset` Literal, the FE `CaptionPreset` type + `CAPTION_PRESETS`, and `ProjectPreferences.caption_preset`. Adding a preset touches all four.
+- **`ASSEMBLE_WORDS` stage** — `studio_orchestrator` (constant + band + handler slot + `register_all_stages` import) ⇄ FE `BuildStep.STAGE_LABELS`. The `BuildStage` Literal/TS union already include `ASSEMBLE_WORDS`. It needs `BuildContext.source_asset_refs` (populated in `create_build`) to fetch transcripts.
+- **Words drive off the BUILT timeline** — `build_words_track` reads each SOURCE_CLIP entry's `source_start`/`source_end`/`inTime`/`exitTime`/`entry_meta.handle`. If the timeline builder changes that entry shape (P5 casing couplings), the words remap silently mis-aligns. Same casing contract as §11 P5.
+
 ---
 
 ## 12. Verification
@@ -482,5 +537,58 @@ curl -X POST "$BASE/external/studio/v1/projects" \
   -d '{"source_asset_refs":[{"asset_id":"x","handle":"v1","kind":"video"}]}'
 # Expect: HTTP 501 + {"error":"not_implemented","endpoint":"POST /projects",...}
 ```
+
+### P6a verification (overlays)
+
+Backend functional test (no ffmpeg/worker needed — pure logic), run from `ai_service/`:
+```python
+# Stub the heavy DB module, then exercise the chain end-to-end:
+#   1. studio_timeline_builder.build_timeline → asserts meta.segment_windows
+#      (incl. a video segment split by a cut → one window spanning both subclips)
+#      + every entry carries entry_meta.order_index.
+#   2. edit_overlays renderers → transparent wrapper, bright color, html-escaped
+#      user text, no htmlStartX baked in.
+#   3. studio_tools: propose_titles/propose_text_overlays registered
+#      (step='overlays', min_tier='premium'); tools_for_step('overlays','free')==∅,
+#      'premium' has both; validators drop out-of-range segment_idx + empty text,
+#      clamp duration, raise when all-invalid.
+#   4. compose_html._compose_html_stage on a built timeline → overlay entries
+#      appended with z in band, timing clamped into the segment window, manual
+#      ops composed by shape, unresolvable segment_idx dropped, no SOURCE_CLIP
+#      fields on overlays.
+# All assertions pass (2026-06-08).
+```
+
+FE: `node ../scripts/design-lint.mjs src/features/vimotion/studio/create/OverlaysStep.tsx …` → 0 errors; `pnpm run typecheck` → exit 0.
+
+Walk (staging, real LLM + worker):
+1. Create project (≥1 video) → arrangement → cuts → **overlays**. `POST /wizard/overlays/plan` returns `{step:'overlays', operations:[propose_titles|propose_text_overlays…]}` (premium tier) or `[]` (free — overlay tools tier-filtered out).
+2. Accept/edit/refine, add a manual title, Confirm → read back `confirmed_plan.overlays` and assert an explicitly-null param key survives (F3 regression guard).
+3. Build → BuildStep shows COMPOSE_HTML reached; the built `time_based_frame.json` has TITLE/TEXT_OVERLAY entries with `z` in 500–8999, no `htmlStartX`, transparent bg, `entry_meta.order_index`.
+4. Open in editor — overlay entries are individually selectable/editable. **Render to MP4 + confirm the title composites OVER the footage (bright text on top, footage not masked away) — luma-key, staging-only.**
+
+### P6b verification (captions)
+
+Backend functional test (pure, no worker), from `ai_service/`:
+```python
+# studio_words_track: a transcript with hello/world/straddle/cut/bye over a
+# timeline that keeps source 0-4 (inTime 0) and 6-12 (inTime 4) — i.e. a cut
+# removed 4-6. Asserts: hello@0-1, world@1-2, straddle clamped to 3.5-4.0,
+# 'cut' DROPPED (inside the removed gap), bye remapped to 8-9, track ordered.
+# propose_captions: overlays/free/deterministic; tools_for_step('overlays','free')
+# == [propose_captions]; detect(karaoke|none|∅) → enabled/preset as expected;
+# validate coerces a bad preset → clean. Orchestrator: STAGE_PIPELINE ==
+# [ASSEMBLE_TIMELINE, COMPOSE_HTML, ASSEMBLE_WORDS, UPLOAD, HANDOFF], bands
+# contiguous 0..100, ASSEMBLE_WORDS handler slot present, BuildContext.source_asset_refs.
+# All assertions pass (2026-06-08).
+```
+
+FE: design-lint clean on OverlaysStep/BuildStep/ProjectDetailPage; `pnpm run typecheck` → exit 0.
+
+Walk (staging, real worker):
+1. Overlays step → enable Captions, pick a preset → Confirm. `confirmed_plan.overlays` has a `propose_captions` op with `enabled:true`.
+2. Build → BuildStep shows "Building captions" reached; the build's `s3_urls.words` is set and `extra_metadata.caption_word_count > 0`. Fetch `words.json` → flat `[{word,start,end}]`, times within `[0, meta.total_duration]`, monotonic, NO words inside cut gaps.
+3. Open in editor → captions preview (karaoke pills on the scrubber). **Render with show_captions → confirm captions burn into the MP4, aligned to the spoken audio (staging-only — worker).**
+4. Free-tier institute: overlays step offers ONLY captions (no titles/text); building with captions on still produces a words track.
 
 Subsequent phases will append their own verification stanzas.

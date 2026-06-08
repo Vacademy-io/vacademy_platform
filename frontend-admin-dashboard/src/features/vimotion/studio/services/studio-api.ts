@@ -163,6 +163,32 @@ export interface ConfirmStepRequest {
     confirmed: ConfirmedStepPlan;
 }
 
+// ── Overlays step (P6) — FE-internal param shapes ──────────────────────────
+// The wire types stay generic (OperationSpec.params is Record<string, unknown>);
+// these mirror what the propose_titles / propose_text_overlays tools validate
+// and what the COMPOSE_HTML executor reads. `segment_idx` indexes the confirmed
+// arrangement order. Keep in sync with app/services/studio_tools/propose_*.py.
+export type TitlePlacement = 'center' | 'lower';
+export type TextOverlayPosition = 'top' | 'center' | 'bottom' | 'lower_third';
+export type TextOverlayStyle = 'plain' | 'bold' | 'highlight';
+
+export interface TitleItem {
+    segment_idx: number;
+    title: string;
+    subtitle?: string | null;
+    duration_s?: number;
+    placement?: TitlePlacement;
+}
+
+export interface TextOverlayItem {
+    segment_idx: number;
+    text: string;
+    t_offset_s?: number;
+    dur_s?: number;
+    position?: TextOverlayPosition;
+    style?: TextOverlayStyle;
+}
+
 // ---------------------------------------------------------------------------
 // Builds + project responses
 // ---------------------------------------------------------------------------

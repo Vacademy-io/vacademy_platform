@@ -227,7 +227,8 @@ function BuildRow({
         setBusy('open');
         try {
             const full = await getStudioBuild(apiKey, build.id);
-            const timelineUrl = (full.s3_urls as Record<string, string>)?.timeline;
+            const s3 = (full.s3_urls as Record<string, string>) ?? {};
+            const timelineUrl = s3.timeline;
             if (!timelineUrl) {
                 toast.error('This build has no timeline yet.');
                 return;
@@ -241,7 +242,9 @@ function BuildRow({
                     apiKey,
                     orientation,
                     audioUrl: undefined,
-                    wordsUrl: undefined,
+                    // P6b: captions words track (present when captions were
+                    // enabled at build) → editor previews them.
+                    wordsUrl: s3.words ?? undefined,
                     avatarUrl: undefined,
                     focusTime: undefined,
                 },

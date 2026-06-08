@@ -49,7 +49,12 @@ _STEP_INTENT = {
         "target duration as a soft goal."
     ),
     "cuts": "Identify spans to trim (silences, fillers, off-topic).",
-    "overlays": "Propose titles, captions, and graphic overlays.",
+    "overlays": (
+        "Add titles and short on-screen text callouts over chosen segments to "
+        "improve clarity and retention. Reference each segment by its 0-based "
+        "segment_idx in the confirmed arrangement order (see prior_steps). Keep "
+        "text short and punchy; prefer a few high-impact overlays over many."
+    ),
     "audio": "Propose background music, sound effects, and transitions.",
 }
 
@@ -180,7 +185,7 @@ class StudioPlanService:
             logger.info(f"[studio-plan] no tools for step={step} tier={tier}")
             return StepPlanResult(step=step, operations=[], notes="No tools available for this step.")
 
-        ctx = _build_validation_ctx(manifest)
+        ctx = _build_validation_ctx(manifest, prior_steps)
         det_specs = [s for s in specs if s.is_deterministic]
         llm_specs = [s for s in specs if not s.is_deterministic]
 
@@ -403,8 +408,19 @@ def _deterministic_notes(step: str, det_ops: List[Dict[str, Any]]) -> Optional[s
     return "Found " + ", ".join(counts) + " — review and confirm what to cut."
 
 
-def _build_validation_ctx(manifest: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Build the shared context every tool validator receives."""
+def _build_validation_ctx(
+    manifest: List[Dict[str, Any]],
+    prior_steps: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build the shared context every tool validator receives.
+
+    `segment_count` (the number of items in the confirmed arrangement order)
+    lets overlay-step validators clamp a `segment_idx`. It's the length of the
+    SAME ordered list the timeline builder iterates (extract_order), so a
+    segment_idx in [0, segment_count) maps 1:1 to a build segment_window. 0
+    when no arrangement is confirmed yet (overlay tools then accept any
+    non-negative idx; COMPOSE_HTML drops ones with no resolvable window).
+    """
     video_handles = set()
     image_handles = set()
     all_handles = set()
@@ -419,11 +435,21 @@ def _build_validation_ctx(manifest: List[Dict[str, Any]]) -> Dict[str, Any]:
             durations[h] = a.get("duration_s")
         else:
             image_handles.add(h)
+
+    segment_count = 0
+    if prior_steps:
+        try:
+            from .studio_timeline_builder import extract_order
+            segment_count = len(extract_order((prior_steps or {}).get("arrangement")))
+        except Exception:  # never let ctx-building take down a plan
+            segment_count = 0
+
     return {
         "video_handles": video_handles,
         "image_handles": image_handles,
         "all_handles": all_handles,
         "durations": durations,
+        "segment_count": segment_count,
     }
 
 

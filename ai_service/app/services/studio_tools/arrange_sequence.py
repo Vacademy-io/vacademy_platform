@@ -27,7 +27,9 @@ _SUMMARY = "Put the kept segments (and any image stills) in final playback order
 _PARAMS_DOC = (
     '{ "order": [ { "handle": "v1", "t_start": <sec>, "t_end": <sec>, '
     '"crossfade_s": <0-2, optional> } ] } — list order = playback order; '
-    "images may omit t_start/t_end (shown as a still); crossfade_s optional."
+    'images may omit t_start/t_end (shown as a still) and may set '
+    '"still_duration_s": <0.5-15> to control how long the still holds; '
+    "crossfade_s optional."
 )
 
 _MAX_CROSSFADE_S = 2.0
@@ -69,12 +71,22 @@ def _validate(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
             entry["t_start"] = round(t_start, 2)
             entry["t_end"] = round(t_end, 2)
         else:
-            # Optional explicit still-duration for an image card.
-            try:
-                if item.get("t_end") is not None:
-                    entry["still_duration_s"] = max(0.5, min(15.0, float(item["t_end"]) - float(item.get("t_start", 0))))
-            except (TypeError, ValueError):
-                pass
+            # Optional explicit still-duration for an image card. Prefer an
+            # explicit `still_duration_s`; otherwise derive from a range ONLY
+            # when BOTH t_start and t_end are present — never from a bare t_end
+            # (a bare t_end is a placement hint, not a duration; defaulting
+            # t_start to 0 would turn "image at 8s" into an 8-second still).
+            sd = item.get("still_duration_s")
+            if sd is None and item.get("t_start") is not None and item.get("t_end") is not None:
+                try:
+                    sd = float(item["t_end"]) - float(item["t_start"])
+                except (TypeError, ValueError):
+                    sd = None
+            if sd is not None:
+                try:
+                    entry["still_duration_s"] = max(0.5, min(15.0, float(sd)))
+                except (TypeError, ValueError):
+                    pass
 
         cf = item.get("crossfade_s")
         if isinstance(cf, (int, float)):

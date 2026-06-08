@@ -21,6 +21,7 @@ import { WizardShell, type WizardStepId } from './WizardShell';
 import { IngestStep } from './IngestStep';
 import { ArrangementStep } from './ArrangementStep';
 import { CutsStep } from './CutsStep';
+import { OverlaysStep } from './OverlaysStep';
 import { BuildStep } from './BuildStep';
 
 export function CreatePage() {
@@ -117,8 +118,17 @@ export function CreatePage() {
                     instituteId={instituteId}
                     projectId={projectId}
                     videoHandles={videoHandles}
-                    /* P4: overlays + audio steps (P6/P7) aren't built yet, so
-                       cuts advances straight to build. They'll slot in here. */
+                    onConfirmed={() => setStep('overlays')}
+                />
+            )}
+
+            {step === 'overlays' && projectId && (
+                <OverlaysStep
+                    apiKey={apiKey.data ?? ''}
+                    instituteId={instituteId}
+                    projectId={projectId}
+                    /* P7: audio step isn't built yet, so overlays advances
+                       straight to build. Audio slots in here when it lands. */
                     onConfirmed={() => setStep('build')}
                 />
             )}
@@ -134,6 +144,7 @@ export function CreatePage() {
             {step !== 'ingest' &&
                 step !== 'arrangement' &&
                 step !== 'cuts' &&
+                step !== 'overlays' &&
                 step !== 'build' && (
                     <UpcomingStepPlaceholder
                         step={step}

@@ -26,8 +26,14 @@ interface BuildStepProps {
     projectId: string;
 }
 
+// Canonical build-stage order. Must match studio_orchestrator.STAGE_PIPELINE —
+// COMPOSE_HTML (P6) runs between ASSEMBLE_TIMELINE and UPLOAD. A stage missing
+// here makes `findIndex` return -1, which clamps the whole checklist to
+// "un-started" mid-build, so keep this list complete + ordered.
 const STAGE_LABELS: Array<{ id: BuildStage; label: string }> = [
     { id: 'ASSEMBLE_TIMELINE', label: 'Assembling timeline' },
+    { id: 'COMPOSE_HTML', label: 'Adding overlays' },
+    { id: 'ASSEMBLE_WORDS', label: 'Building captions' },
     { id: 'UPLOAD', label: 'Saving' },
     { id: 'HANDOFF', label: 'Finishing up' },
 ];

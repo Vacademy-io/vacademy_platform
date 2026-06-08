@@ -125,3 +125,8 @@ from . import pick_segments as _pick_segments  # noqa: E402,F401
 from . import arrange_sequence as _arrange_sequence  # noqa: E402,F401
 from . import detect_silences as _detect_silences  # noqa: E402,F401
 from . import detect_fillers as _detect_fillers  # noqa: E402,F401
+# P6 — Overlays step. Titles/text are LLM (premium+); captions are
+# deterministic config (free+, words track built at build time).
+from . import propose_titles as _propose_titles  # noqa: E402,F401
+from . import propose_text_overlays as _propose_text_overlays  # noqa: E402,F401
+from . import propose_captions as _propose_captions  # noqa: E402,F401

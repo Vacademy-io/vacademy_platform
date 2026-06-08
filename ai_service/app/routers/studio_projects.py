@@ -266,6 +266,9 @@ async def _plan_inputs(
         ),
         "min_silence_s": studio_cut_detectors.min_silence_for(preferences),
         "fillers_aggressive": studio_cut_detectors.fillers_aggressive(preferences),
+        # P6b: propose_captions proposes its default config from the project's
+        # caption preset (overlays step; harmless/unused for other steps).
+        "caption_preset": (preferences or {}).get("caption_preset"),
     }
     return manifest, detect_ctx
 
@@ -574,7 +577,12 @@ async def wizard_confirm(
     repo.patch_confirmed_step(
         project_id=project_id,
         step=step,
-        step_plan=body.confirmed.model_dump(exclude_none=True),
+        # mode="json" (NOT exclude_none): operation `params` are arbitrary
+        # tool-specific dicts and MUST round-trip verbatim. exclude_none=True
+        # recurses into params and silently drops explicitly-null values (e.g.
+        # an overlay's color=null = "inherit"), so the build executor would see
+        # a different dict than the user confirmed. Persist losslessly.
+        step_plan=body.confirmed.model_dump(mode="json"),
     )
     # Advancing the wizard marks the project as planning-in-progress.
     if project.status in ("DRAFT", "PLANNING"):
@@ -730,6 +738,7 @@ async def create_build(
         source_urls=source_urls,
         aspect=aspect,
         fps=fps,
+        source_asset_refs=project.source_asset_refs or [],  # P6b: ASSEMBLE_WORDS fetches transcripts
     ))
     return _build_response(build, None)
 
@@ -940,7 +949,10 @@ async def render_build(
     build's audio is the source clips' intrinsic audio (browser-captured); a
     silent master narration is generated to satisfy the worker's required
     audio_url. Returns the worker job_id immediately."""
-    from ..services.studio_render_service import submit_studio_render
+    from ..services.studio_render_service import (
+        RenderAlreadyInProgress,
+        submit_studio_render,
+    )
     build_repo = AiStudioBuildRepository()
     repo = AiStudioProjectRepository()
     build, _ = _load_build_or_404(build_repo, repo, build_id, institute_id)
@@ -951,6 +963,8 @@ async def render_build(
         })
     try:
         job_id = await submit_studio_render(build, body)
+    except RenderAlreadyInProgress as e:
+        raise HTTPException(status_code=409, detail={"error": "render_in_progress", "message": str(e)})
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail={"error": "render_unavailable", "message": str(e)})
     return StudioRenderResponse(job_id=job_id, status="submitted")

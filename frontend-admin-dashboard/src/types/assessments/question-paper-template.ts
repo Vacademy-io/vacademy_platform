@@ -117,6 +117,7 @@ export interface QuestionResponse {
     parent_rich_text: TextContent | null;
     status: string;
     can_skip: boolean;
+    subject_tags?: string[];
     errors: string[];
     warnings: string[];
 }

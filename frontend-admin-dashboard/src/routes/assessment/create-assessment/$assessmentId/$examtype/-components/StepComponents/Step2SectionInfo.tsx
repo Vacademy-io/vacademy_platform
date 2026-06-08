@@ -72,6 +72,8 @@ import { MainViewQuillEditor } from '@/components/quill/MainViewQuillEditor';
 import TipTapEditor from '@/components/tiptap/TipTapEditor';
 import { Sparkle, Spinner } from 'phosphor-react';
 import { toast } from 'sonner';
+import { MyQuestion } from '@/types/assessments/question-paper-form';
+import QuestionSelectorDialog from '@/routes/assessment/question-papers/-components/QuestionSelectorDialog';
 
 type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 
@@ -223,6 +225,38 @@ export const Step2SectionInfo = ({
     const { instituteDetails } = useInstituteDetailsStore();
     const { savedAssessmentId } = useSavedAssessmentStore();
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const [selectorQuestions, setSelectorQuestions] = useState<MyQuestion[]>([]);
+
+    const handleManualSelectionReady = (questions: MyQuestion[]) => {
+        setSelectorQuestions(questions);
+        setSelectorOpen(true);
+    };
+
+    const handleSelectorConfirm = (selected: MyQuestion[]) => {
+        form.setValue(
+            `section.${index}.adaptive_marking_for_each_question`,
+            selected.map((question) => ({
+                questionId: question.questionId,
+                questionName: question.questionName,
+                questionType: question.questionType,
+                questionMark: question.questionMark,
+                questionPenalty: question.questionPenalty,
+                ...(question.questionType === 'MCQM' && {
+                    correctOptionIdsCnt: question?.multipleChoiceOptions?.filter(
+                        (item) => item.isSelected
+                    ).length,
+                }),
+                questionDuration: {
+                    hrs: question.questionDuration.hrs,
+                    min: question.questionDuration.min,
+                },
+            }))
+        );
+        form.trigger(`section.${index}.adaptive_marking_for_each_question`);
+        setSelectorOpen(false);
+        setSelectorQuestions([]);
+    };
     const { data: assessmentDetails, isLoading } = useSuspenseQuery(
         getAssessmentDetails({
             assessmentId: assessmentId !== 'defaultId' ? assessmentId : savedAssessmentId,
@@ -744,7 +778,7 @@ export const Step2SectionInfo = ({
                                     <X className="text-neutral-600" />
                                 </DialogClose>
                             </div>
-                            <div className="h-full w-screen overflow-y-auto p-8">
+                            <div className="h-full w-full overflow-y-auto p-8">
                                 <QuestionPapersTabs
                                     isAssessment={true}
                                     index={index}
@@ -752,10 +786,24 @@ export const Step2SectionInfo = ({
                                     currentQuestionIndex={currentQuestionIndex}
                                     setCurrentQuestionIndex={setCurrentQuestionIndex}
                                     examType={examtype}
+                                    onManualSelectionReady={handleManualSelectionReady}
                                 />
                             </div>
                         </DialogContent>
                     </Dialog>
+                    {/* Standalone selector dialog — rendered outside the paper-list dialog so it stays mounted */}
+                    <QuestionSelectorDialog
+                        open={selectorOpen}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                setSelectorOpen(false);
+                                setSelectorQuestions([]);
+                            }
+                        }}
+                        questions={selectorQuestions}
+                        paperId=""
+                        onConfirm={handleSelectorConfirm}
+                    />
                     <div className="relative overflow-hidden rounded-xl">
                         <Step2GenerateQuestionsFromAI form={form} index={index} />
                         <BorderBeam
@@ -841,6 +889,7 @@ export const Step2SectionInfo = ({
                         )}
                     />
                 </div>
+
                 {watch(`testDuration.questionWiseDuration`) && examtype !== 'SURVEY' && (
                     <div className="flex w-96 items-center justify-between text-sm font-thin">
                         <h1 className="font-normal">

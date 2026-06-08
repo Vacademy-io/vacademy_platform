@@ -54,10 +54,10 @@ export const AssessmentGlobalLevelReleaseResultAssessment = () => {
     };
     return (
         <Dialog open={releaseResultDialog} onOpenChange={setReleaseResultDialog}>
-            <DialogTrigger>
+            <DialogTrigger asChild>
                 <MyButton
                     type="button"
-                    scale="large"
+                    scale="small"
                     buttonType="secondary"
                     className="font-medium"
                 >

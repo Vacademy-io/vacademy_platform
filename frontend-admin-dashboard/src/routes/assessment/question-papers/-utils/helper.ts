@@ -227,6 +227,7 @@ export function transformQuestionPaperDataAI(data: MyQuestionPaperFormInterface)
                 options, // Use the mapped options
                 parent_rich_text,
                 options_json,
+                subject_tags: question.tags ?? [], // Manual subject/topic tags
                 errors: [], // Assuming no errors are provided
                 warnings: [], // Assuming no warnings are provided
             };
@@ -416,6 +417,7 @@ export function transformQuestionPaperData(data: MyQuestionPaperFormInterface) {
                 options, // Use the mapped options
                 parent_rich_text,
                 options_json,
+                subject_tags: question.tags ?? [], // Manual subject/topic tags (also pre-filled from "Tags:" marker)
                 errors: [], // Assuming no errors are provided
                 warnings: [], // Assuming no warnings are provided
             };
@@ -525,6 +527,7 @@ export function convertQuestionsDataToResponse(questions: MyQuestion[], key: str
             },
             default_question_time_mins: null,
             options,
+            subject_tags: question.tags ?? [], // Preserve/update subject tags on edit
             errors: [],
             warnings: [],
         };
@@ -693,6 +696,7 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
             status: item.status,
             canSkip: item.can_skip,
             codingConfig,
+            tags: item.subject_tags ?? [], // Subject tags: marker-pre-filled on parse, saved tags on edit/read-back
         };
 
         if (item.question_type === 'MCQS') {

@@ -3,6 +3,7 @@ package vacademy.io.assessment_service.features.question_bank.manager;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import jakarta.persistence.EntityNotFoundException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,19 +25,20 @@ import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes
 import vacademy.io.assessment_service.features.question_core.repository.OptionRepository;
 import vacademy.io.assessment_service.features.question_core.repository.QuestionRepository;
 import vacademy.io.assessment_service.features.rich_text.entity.AssessmentRichTextData;
-import vacademy.io.assessment_service.features.tags.entities.EntityTag;
-import vacademy.io.assessment_service.features.tags.entities.EntityTagsId;
 import vacademy.io.assessment_service.features.tags.entities.repository.EntityTagCommunityRepository;
 import vacademy.io.assessment_service.features.tags.entities.repository.TagCommunityRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static vacademy.io.assessment_service.features.assessment.enums.AssessmentSetStatusEnum.DELETED;
 
+@Slf4j
 @Component
 public class AddQuestionPaperFromImportManager {
 
@@ -79,7 +81,7 @@ public class AddQuestionPaperFromImportManager {
         questions = questionRepository.saveAll(questions);
         options = optionRepository.saveAll(options);
 
-        addQuestionEntityTags(questions, questionRequestBody.getQuestions());
+        addQuestionEntityTags(questions, questionRequestBody.getQuestions(), questionRequestBody.getInstituteId());
 
         List<String> savedQuestionIds = questions.stream().map(Question::getId).toList();
 
@@ -96,7 +98,7 @@ public class AddQuestionPaperFromImportManager {
         if(questionRequestBody.getTags() != null){
             for (String tag : questionRequestBody.getTags()) {
                 String tagId = UUID.randomUUID().toString();
-                String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, tag.toLowerCase());
+                String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, tag.toLowerCase(), questionRequestBody.getInstituteId());
                 addEntityTags("QUESTION_PAPER", questionPaper.getId(), existingOrNewTagId, "TAGS");
             }
         }
@@ -256,7 +258,7 @@ public class AddQuestionPaperFromImportManager {
 
         List<String> savedQuestionIds = savedQuestions.stream().map(Question::getId).toList();
         questionPaperRepository.bulkInsertQuestionsToQuestionPaper(questionPaper.get().getId(), savedQuestionIds);
-        addQuestionEntityTags(savedQuestions, questionRequestBody.getAddedQuestions());
+        addQuestionEntityTags(savedQuestions, questionRequestBody.getAddedQuestions(), questionRequestBody.getInstituteId());
 
         newQuestions = new ArrayList<>();
         newOptions = new ArrayList<>();
@@ -277,7 +279,7 @@ public class AddQuestionPaperFromImportManager {
 
         var savedUpdatedQuestions = questionRepository.saveAll(newQuestions);
         optionRepository.saveAll(newOptions);
-        addQuestionEntityTags(savedUpdatedQuestions, questionRequestBody.getUpdatedQuestions());
+        addQuestionEntityTags(savedUpdatedQuestions, questionRequestBody.getUpdatedQuestions(), questionRequestBody.getInstituteId());
 
         newQuestions = new ArrayList<>();
         newOptions = new ArrayList<>();
@@ -503,35 +505,58 @@ public class AddQuestionPaperFromImportManager {
         question.setExplanationTextData(AssessmentRichTextData.fromDTO(questionRequest.getExplanationText()));
     }
 
-    private void addQuestionEntityTags(List<Question> questions, List<QuestionDTO> questionRequests) {
+    private void addQuestionEntityTags(List<Question> questions, List<QuestionDTO> questionRequests, String instituteId) {
 
-        try {
-            for (int i = 0; i < questions.size(); i++) {
-                Question question = questions.get(i);
-                QuestionDTO questionRequest = questionRequests.get(i);
-                for (int j = 0; j < questionRequest.getAiTags().size(); j++) {
-                    String tagId = UUID.randomUUID().toString();
-                    String existingOrNewTagId = tagCommunityRepository.insertTagIfNotExists(tagId, questionRequest.getAiTags().get(j).toLowerCase());
-                    addEntityTags("QUESTION", question.getId(), existingOrNewTagId, "TAGS");
-                }
-
-                for (int j = 0; j < questionRequest.getAiTopicsIds().size(); j++) {
-                    addEntityTags("QUESTION", question.getId(), questionRequest.getAiTopicsIds().get(j), "TOPIC");
-                }
+        // Replace-on-save: clear existing SUBJECT links for these questions so removals in the UI
+        // are respected (no-op for brand-new questions). AI 'TAGS'/'TOPIC' links are left intact.
+        List<String> questionIds = questions.stream().map(Question::getId).toList();
+        if (!questionIds.isEmpty()) {
+            try {
+                entityTagCommunityRepository.deleteSubjectTagsForQuestions(questionIds);
+            } catch (Exception e) {
+                log.warn("Failed to clear existing subject tags for {} questions: {}", questionIds.size(), e.getMessage());
             }
-        } catch (Exception e) {
+        }
 
+        // Resolve each distinct tag name to a tag id only once per save (a paper with N questions
+        // sharing a handful of subjects would otherwise run N upsert queries instead of a few).
+        Map<String, String> tagIdByName = new HashMap<>();
+
+        for (int i = 0; i < questions.size(); i++) {
+            Question question = questions.get(i);
+            QuestionDTO questionRequest = questionRequests.get(i);
+
+            // Manual subject/topic tags entered on upload (or pre-filled from the HTML "Tags:" marker).
+            for (String subjectTag : questionRequest.getSubjectTags()) {
+                if (subjectTag == null || subjectTag.isBlank()) continue;
+                String existingOrNewTagId = resolveTagId(tagIdByName, subjectTag.trim().toLowerCase(), instituteId);
+                addEntityTags("QUESTION", question.getId(), existingOrNewTagId, "SUBJECT");
+            }
+
+            for (int j = 0; j < questionRequest.getAiTags().size(); j++) {
+                String existingOrNewTagId = resolveTagId(tagIdByName, questionRequest.getAiTags().get(j).toLowerCase(), instituteId);
+                addEntityTags("QUESTION", question.getId(), existingOrNewTagId, "TAGS");
+            }
+
+            for (int j = 0; j < questionRequest.getAiTopicsIds().size(); j++) {
+                addEntityTags("QUESTION", question.getId(), questionRequest.getAiTopicsIds().get(j), "TOPIC");
+            }
         }
     }
 
-    private void addEntityTags(String entityName, String entityId, String tagId, String tagSource) {
-        EntityTag entityTag = new EntityTag();
-        entityTag.setId(new EntityTagsId(entityId, entityName, tagId));
-        entityTag.setTagSource(tagSource);
-        try {
-            entityTagCommunityRepository.save(entityTag);
-        } catch (Exception e) {
+    // Upsert a tag once per distinct (lowercased) name, caching the resolved id for the rest of the save.
+    private String resolveTagId(Map<String, String> cache, String tagName, String instituteId) {
+        return cache.computeIfAbsent(tagName,
+                name -> tagCommunityRepository.insertTagIfNotExists(UUID.randomUUID().toString(), name, instituteId));
+    }
 
+    private void addEntityTags(String entityName, String entityId, String tagId, String tagSource) {
+        // Tagging is auxiliary to question creation: log and continue on failure, never silently swallow,
+        // and never abort the whole paper save because one tag could not be linked.
+        try {
+            entityTagCommunityRepository.insertIgnoreConflict(entityId, entityName, tagId, tagSource);
+        } catch (Exception e) {
+            log.warn("Failed to link tag {} (source {}) to {} {}: {}", tagId, tagSource, entityName, entityId, e.getMessage());
         }
     }
 

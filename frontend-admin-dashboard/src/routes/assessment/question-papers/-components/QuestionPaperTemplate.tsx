@@ -11,8 +11,16 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { PPTComponentFactory } from './QuestionPaperTemplatesTypes/PPTComponentFactory';
 import { MainViewComponentFactory } from './QuestionPaperTemplatesTypes/MainViewComponentFactory';
 import { QuestionPaperTemplateProps } from '@/types/assessments/question-paper-template';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { getQuestionPaperById, updateQuestionPaper } from '../-utils/question-paper-services';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+    getQuestionPaperById,
+    getQuestionTagsQuery,
+    updateQuestionPaper,
+} from '../-utils/question-paper-services';
+import { SubjectTagInput } from './SubjectTagInput';
+import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+import { MyButton } from '@/components/design-system/button';
 import {
     getIdByLevelName,
     getIdBySubjectName,
@@ -69,6 +77,38 @@ export function QuestionPaperTemplate({
 
     watch(`questions.${currentQuestionIndex}`);
     watch(`questions.${currentQuestionIndex}.questionType`);
+    watch(`questions.${currentQuestionIndex}.tags`);
+
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const tokenData = getTokenDecodedData(accessToken);
+    const INSTITUTE_ID = tokenData && Object.keys(tokenData.authorities)[0];
+    const { data: questionTags } = useQuery(getQuestionTagsQuery(INSTITUTE_ID));
+    const tagSuggestions = (questionTags ?? []).map((tag) => tag.tag_name);
+
+    // Copy the current question's tags onto every question (case-insensitive merge).
+    const applyCurrentTagsToAll = () => {
+        const currentTags: string[] = getValues(`questions.${currentQuestionIndex}.tags`) || [];
+        if (currentTags.length === 0) {
+            toast.error('Add at least one tag to this question first');
+            return;
+        }
+        const allQuestions = getValues('questions') || [];
+        allQuestions.forEach((_, idx) => {
+            const existing: string[] = getValues(`questions.${idx}.tags`) || [];
+            const seen = new Set(existing.map((t) => t.toLowerCase()));
+            const merged = [...existing];
+            currentTags.forEach((t) => {
+                if (!seen.has(t.toLowerCase())) {
+                    seen.add(t.toLowerCase());
+                    merged.push(t);
+                }
+            });
+            setValue(`questions.${idx}.tags`, merged, { shouldDirty: true });
+        });
+        toast.success(
+            `Applied ${currentTags.length} tag(s) to all ${allQuestions.length} questions`
+        );
+    };
 
     // UseFieldArray to manage questions array
     const { fields, append, move } = useFieldArray({
@@ -508,22 +548,56 @@ export function QuestionPaperTemplate({
                                     <h1>No Question Exists.</h1>
                                 </div>
                             ) : (
-                                <MainViewComponentFactory
-                                    key={currentQuestionIndex}
-                                    type={
-                                        getValues(
-                                            `questions.${currentQuestionIndex}.questionType`
-                                        ) as QuestionType
-                                    }
-                                    props={{
-                                        form: form,
-                                        currentQuestionIndex: currentQuestionIndex,
-                                        setCurrentQuestionIndex: setCurrentQuestionIndex,
-                                        className:
-                                            'dialog-height overflow-auto ml-6 flex w-full flex-col gap-6 pr-6 pt-4',
-                                        examType: examType,
-                                    }}
-                                />
+                                <div className="ml-6 flex w-full flex-col gap-3 pr-6 pt-4">
+                                    <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span className="text-subtitle font-semibold text-neutral-600">
+                                                Subject / topic tags
+                                            </span>
+                                            <MyButton
+                                                type="button"
+                                                buttonType="secondary"
+                                                scale="small"
+                                                layoutVariant="default"
+                                                className="h-8"
+                                                onClick={applyCurrentTagsToAll}
+                                            >
+                                                Apply to all questions
+                                            </MyButton>
+                                        </div>
+                                        <SubjectTagInput
+                                            value={
+                                                getValues(
+                                                    `questions.${currentQuestionIndex}.tags`
+                                                ) || []
+                                            }
+                                            onChange={(tags) =>
+                                                setValue(
+                                                    `questions.${currentQuestionIndex}.tags`,
+                                                    tags,
+                                                    { shouldDirty: true }
+                                                )
+                                            }
+                                            suggestions={tagSuggestions}
+                                        />
+                                    </div>
+                                    <MainViewComponentFactory
+                                        key={currentQuestionIndex}
+                                        type={
+                                            getValues(
+                                                `questions.${currentQuestionIndex}.questionType`
+                                            ) as QuestionType
+                                        }
+                                        props={{
+                                            form: form,
+                                            currentQuestionIndex: currentQuestionIndex,
+                                            setCurrentQuestionIndex: setCurrentQuestionIndex,
+                                            className:
+                                                'dialog-height overflow-auto flex w-full flex-col gap-6',
+                                            examType: examType,
+                                        }}
+                                    />
+                                </div>
                             )}
                         </div>
                     </div>

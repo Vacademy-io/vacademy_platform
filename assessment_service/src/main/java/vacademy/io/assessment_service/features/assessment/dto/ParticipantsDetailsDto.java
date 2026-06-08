@@ -32,4 +32,6 @@ public interface ParticipantsDetailsDto {
 
     Date getLastReportReleaseDate();
 
+    String getUserEmail();
+
 }

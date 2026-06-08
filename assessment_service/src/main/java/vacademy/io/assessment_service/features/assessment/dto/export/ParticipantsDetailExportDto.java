@@ -6,9 +6,12 @@ import java.util.Date;
 
 @Builder
 public class ParticipantsDetailExportDto {
-    private String studentName;
+    private String name;
+    private String email;
+    private Double marksObtained;
+    private Double totalMarks;
+    private String percentage;
+    private Integer rank;
+    private String duration;
     private Date attemptDate;
-    private Date endTime;
-    private Long duration;
-    private Double score;
 }

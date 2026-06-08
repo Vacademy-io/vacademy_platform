@@ -82,8 +82,9 @@ export function OrgChartCanvas({ instituteId }: Props) {
             if (selectedTeamId !== null) setSelectedTeamId(null);
             return;
         }
-        if (!selectedTeamId || !teams.some((t) => t.id === selectedTeamId)) {
-            setSelectedTeamId(teams[0].id);
+        const firstTeam = teams[0];
+        if (firstTeam && (!selectedTeamId || !teams.some((t) => t.id === selectedTeamId))) {
+            setSelectedTeamId(firstTeam.id);
         }
     }, [teamsQuery.data, selectedTeamId]);
 

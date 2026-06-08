@@ -1,5 +1,5 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_INSTITUTE_USERS } from '@/constants/urls';
+import { GET_INSTITUTE_USERS, GET_USER_ROLES_COUNT } from '@/constants/urls';
 
 export interface InstituteUser {
     id: string;
@@ -10,18 +10,39 @@ export interface InstituteUser {
     roles?: string[];
 }
 
+interface RoleCount {
+    role_name: string;
+    user_count: number;
+}
+
 /**
- * Fetch every non-student member of the institute. Used by the Org Chart
- * "Add member" dialog. The auth_service filter is OR-additive on roles, so
- * we pass every supported non-student role explicitly.
+ * Fetch every non-student member of the institute, including users assigned
+ * to custom roles. Two-step because auth_service's users-of-status filter
+ * is OR-additive on roles — passing a fixed allow-list misses custom roles
+ * the admin may have created. We:
+ *   1. Discover the institute's actual role list via /user-roles-count.
+ *   2. Request users for every role except STUDENT in one call.
+ *
+ * If the institute has no roles registered yet (fresh institute) we fall
+ * back to an empty result rather than fetching every student.
  */
 export async function fetchEligibleOrgUsers(instituteId: string): Promise<InstituteUser[]> {
+    const rolesResponse = await authenticatedAxiosInstance.get<RoleCount[]>(
+        GET_USER_ROLES_COUNT,
+        { params: { instituteId } }
+    );
+    const nonStudentRoles = (rolesResponse.data ?? [])
+        .map((r) => r.role_name)
+        .filter((name): name is string => !!name && name !== 'STUDENT');
+
+    if (nonStudentRoles.length === 0) return [];
+
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: GET_INSTITUTE_USERS,
         params: { instituteId, pageNumber: 0, pageSize: 500 },
         data: {
-            roles: ['ADMIN', 'TEACHER', 'COUNSELLOR', 'MARKETER', 'EVALUATOR'],
+            roles: nonStudentRoles,
             status: ['ACTIVE'],
         },
     });

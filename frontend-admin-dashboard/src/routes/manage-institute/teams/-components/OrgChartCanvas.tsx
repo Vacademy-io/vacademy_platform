@@ -1,19 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-    Plus,
-    Trash,
-    PencilSimple,
-    UsersThree,
-    User,
-    ArrowLineUp,
-    X,
-    Info,
-} from '@phosphor-icons/react';
+import ReactFlow, {
+    Background,
+    Controls,
+    MarkerType,
+    MiniMap,
+    ReactFlowProvider,
+    addEdge,
+    useEdgesState,
+    useNodesState,
+    type Connection,
+    type Edge,
+    type EdgeChange,
+    type Node,
+    type NodeTypes,
+    type OnConnectStartParams,
+    type ReactFlowInstance,
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { Plus, Trash, PencilSimple, UsersThree, User, Info, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import {
+    addTeamMember,
     createTeam,
     deleteTeam,
     fetchTeamChart,
@@ -26,36 +36,59 @@ import {
 } from '../-services/org-team-services';
 import { fetchEligibleOrgUsers, type InstituteUser } from '../-services/institute-users-service';
 import { AddPersonDialog } from './AddPersonDialog';
-import './org-chart-tree.css';
+import { EditPersonDialog } from './EditPersonDialog';
+import PersonFlowNode, { type PersonNodeData } from './PersonFlowNode';
+import { layoutTopDown } from './org-chart-layout';
 
 interface Props {
     instituteId: string;
 }
 
 const HINT_DISMISSED_KEY = 'org-chart-hint-dismissed';
+const SIDEBAR_DRAG_MIME = 'application/x-vacademy-org-user';
+
+const nodeTypes: NodeTypes = { person: PersonFlowNode };
+const defaultEdgeOptions = {
+    type: 'smoothstep' as const,
+    markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 },
+    style: { strokeWidth: 1.5 },
+};
 
 /**
  * Org Chart tab. Hybrid model:
- *   - flat list of teams (no sub-teams)
+ *   - flat list of teams (no sub-teams), selected via the top dropdown
  *   - inside each team, a user-to-user reporting tree via parent_user_id
  *
- * Single-page UI: team picker at top, drag-drop tree below. Designed to be
- * usable by non-technical admins — plain-English copy, generous tap
- * targets, dismissible help banner, drop zones only during drag, and
- * confirmation dialogs that explain what's going to happen.
+ * The canvas is a react-flow surface. Each person is a card with a top
+ * (target) and bottom (source) handle. Users connect bottom→top to set
+ * "reports to". Dropping a user from the left sidebar onto an empty area
+ * adds them as a root; dropping onto a card adds them as that card's
+ * report. Cards stay where they're placed; first paint uses dagre to
+ * auto-arrange top-down.
  */
 export function OrgChartCanvas({ instituteId }: Props) {
+    return (
+        <ReactFlowProvider>
+            <Canvas instituteId={instituteId} />
+        </ReactFlowProvider>
+    );
+}
+
+function Canvas({ instituteId }: Props) {
     const queryClient = useQueryClient();
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const [addOpen, setAddOpen] = useState(false);
+    const [editingNode, setEditingNode] = useState<OrgChartNode | null>(null);
     const [newTeamOpen, setNewTeamOpen] = useState(false);
     const [renameOpen, setRenameOpen] = useState(false);
     const [hintDismissed, setHintDismissed] = useState(false);
+    const [sidebarSearch, setSidebarSearch] = useState('');
 
-    // Drag state.
-    const [dragMappingId, setDragMappingId] = useState<string | null>(null);
-    const [dragOverMappingId, setDragOverMappingId] = useState<string | null>(null);
-    const [dragOverRoot, setDragOverRoot] = useState(false);
+    // React-flow state.
+    const [nodes, setNodes, onNodesChange] = useNodesState<PersonNodeData>([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+    const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
 
     useEffect(() => {
         setHintDismissed(localStorage.getItem(HINT_DISMISSED_KEY) === '1');
@@ -74,8 +107,6 @@ export function OrgChartCanvas({ instituteId }: Props) {
         staleTime: 60_000,
     });
 
-    // Default-select the first team once loaded; auto-rotate if the
-    // currently-selected team disappears (e.g. after Delete team).
     useEffect(() => {
         const teams = teamsQuery.data ?? [];
         if (teams.length === 0) {
@@ -102,19 +133,23 @@ export function OrgChartCanvas({ instituteId }: Props) {
 
     const selectedTeam = (teamsQuery.data ?? []).find((t) => t.id === selectedTeamId) ?? null;
 
-    // Users already in the current team — exclude from the Add Person picker
-    // (one membership per (team, user)).
-    const placedUserIdsInTeam = useMemo(() => {
-        const ids = new Set<string>();
+    // Flat lookup of every member in the current team (chart -> flat).
+    const peopleByUserId = useMemo(() => {
+        const out = new Map<string, OrgChartNode>();
         const walk = (n: OrgChartNode) => {
-            ids.add(n.user_id);
+            out.set(n.user_id, n);
             n.children?.forEach(walk);
         };
         (chartQuery.data ?? []).forEach(walk);
-        return ids;
+        return out;
     }, [chartQuery.data]);
 
-    // For the Reports-to picker in Add Person and for cycle previews.
+    const placedUserIdsInTeam = useMemo(
+        () => new Set(peopleByUserId.keys()),
+        [peopleByUserId]
+    );
+
+    // For the EditPersonDialog's "Reports to" picker.
     const peopleInTeam = useMemo(() => {
         const out: { mappingId: string; userId: string; name: string; depth: number }[] = [];
         const walk = (n: OrgChartNode, depth: number) => {
@@ -134,7 +169,13 @@ export function OrgChartCanvas({ instituteId }: Props) {
     // ── Mutations ────────────────────────────────────────────────
 
     const moveMutation = useMutation({
-        mutationFn: ({ mappingId, parentUserId }: { mappingId: string; parentUserId: string | null }) =>
+        mutationFn: ({
+            mappingId,
+            parentUserId,
+        }: {
+            mappingId: string;
+            parentUserId: string | null;
+        }) =>
             updateTeamMember(selectedTeamId!, mappingId, {
                 change_parent: true,
                 parent_user_id: parentUserId,
@@ -149,6 +190,34 @@ export function OrgChartCanvas({ instituteId }: Props) {
         onError: (e) => {
             const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
             toast.error(msg ?? 'Could not move this person');
+            queryClient.invalidateQueries({ queryKey: ['org-team-chart', selectedTeamId] });
+        },
+    });
+
+    const addMutation = useMutation({
+        mutationFn: ({
+            userId,
+            parentUserId,
+        }: {
+            userId: string;
+            parentUserId: string | null;
+        }) =>
+            addTeamMember(selectedTeamId!, {
+                user_id: userId,
+                parent_user_id: parentUserId,
+            }),
+        onSuccess: (_data, vars) => {
+            queryClient.invalidateQueries({ queryKey: ['org-team-chart', selectedTeamId] });
+            queryClient.invalidateQueries({ queryKey: ['org-teams', instituteId] });
+            const addedName = userById.get(vars.userId)?.full_name ?? 'this person';
+            const target = vars.parentUserId
+                ? userById.get(vars.parentUserId)?.full_name ?? 'their manager'
+                : 'top of team';
+            toast.success(`Added ${addedName} under ${target}`);
+        },
+        onError: (e) => {
+            const msg = (e as { response?: { data?: { ex?: string } } })?.response?.data?.ex;
+            toast.error(msg ?? 'Could not add this person');
         },
     });
 
@@ -171,32 +240,186 @@ export function OrgChartCanvas({ instituteId }: Props) {
         onError: () => toast.error('Could not delete this team'),
     });
 
-    // ── Drop handlers ────────────────────────────────────────────
+    // ── Callbacks closing over latest mutation handles ───────────
+    // These MUST be stable identities; otherwise the data-sync useEffect
+    // below re-runs every render and rebuilds rfNodes with fresh dagre
+    // positions, fighting react-flow's internal state and making just-added
+    // cards flicker and vanish. Refs hold the latest values; the callbacks
+    // are created once.
 
-    function handleDropOnPerson(targetUserId: string) {
-        if (!dragMappingId) return;
-        const dragged = peopleInTeam.find((p) => p.mappingId === dragMappingId);
-        if (!dragged) return;
-        if (dragged.userId === targetUserId) {
-            // Dropped on self: no-op.
-            resetDrag();
+    const ctxRef = useRef({
+        userById,
+        selectedTeamName: selectedTeam?.name ?? 'this team',
+        removeMutate: removeMutation.mutate,
+    });
+    ctxRef.current = {
+        userById,
+        selectedTeamName: selectedTeam?.name ?? 'this team',
+        removeMutate: removeMutation.mutate,
+    };
+
+    const handleEdit = useCallback((n: OrgChartNode) => setEditingNode(n), []);
+    const handleRemove = useCallback((n: OrgChartNode) => {
+        const { userById: ub, selectedTeamName, removeMutate } = ctxRef.current;
+        const u = ub.get(n.user_id);
+        const name = u?.full_name || 'this person';
+        if (
+            window.confirm(
+                `Remove ${name} from ${selectedTeamName}? Their memberships in other teams are not affected.`
+            )
+        ) {
+            removeMutate(n.mapping_id);
+        }
+    }, []);
+
+    // ── Sync chart data → react-flow nodes + edges ───────────────
+
+    useEffect(() => {
+        const chart = chartQuery.data;
+        if (!chart || chart.length === 0) {
+            setNodes([]);
+            setEdges([]);
             return;
         }
-        moveMutation.mutate({ mappingId: dragMappingId, parentUserId: targetUserId });
-        resetDrag();
-    }
+        const allNodes: OrgChartNode[] = [];
+        const walk = (n: OrgChartNode) => {
+            allNodes.push(n);
+            n.children?.forEach(walk);
+        };
+        chart.forEach(walk);
 
-    function handleDropOnRoot() {
-        if (!dragMappingId) return;
-        moveMutation.mutate({ mappingId: dragMappingId, parentUserId: null });
-        resetDrag();
-    }
+        const rfNodes: Node<PersonNodeData>[] = allNodes.map((n) => ({
+            id: n.mapping_id,
+            type: 'person',
+            position: { x: 0, y: 0 },
+            data: {
+                node: n,
+                user: userById.get(n.user_id),
+                onEdit: handleEdit,
+                onRemove: handleRemove,
+            },
+        }));
 
-    function resetDrag() {
-        setDragMappingId(null);
-        setDragOverMappingId(null);
-        setDragOverRoot(false);
-    }
+        const mappingByUserId = new Map<string, string>();
+        allNodes.forEach((n) => mappingByUserId.set(n.user_id, n.mapping_id));
+
+        const rfEdges: Edge[] = [];
+        for (const n of allNodes) {
+            if (!n.parent_user_id) continue;
+            const sourceMappingId = mappingByUserId.get(n.parent_user_id);
+            if (!sourceMappingId) continue;
+            rfEdges.push({
+                id: `e:${sourceMappingId}->${n.mapping_id}`,
+                source: sourceMappingId,
+                target: n.mapping_id,
+                ...defaultEdgeOptions,
+            });
+        }
+
+        setNodes(layoutTopDown(rfNodes, rfEdges));
+        setEdges(rfEdges);
+        // rfInstance can be null on the very first sync (before onInit). The
+        // separate fit-view effect below handles that case.
+    }, [chartQuery.data, userById, handleEdit, handleRemove, setNodes, setEdges]);
+
+    // Fit the viewport whenever the node count goes from 0 → N (first paint
+    // for this team) or whenever the team changes. Without this, the first
+    // add after an empty team would leave the viewport on a position that
+    // doesn't contain the new card.
+    useEffect(() => {
+        if (!rfInstance) return;
+        if (nodes.length === 0) return;
+        // Two frames: one for react-flow to commit the new nodes, one for
+        // it to measure them so fitView lands accurately.
+        const id = requestAnimationFrame(() => {
+            requestAnimationFrame(() =>
+                rfInstance.fitView({ padding: 0.15, duration: 200 })
+            );
+        });
+        return () => cancelAnimationFrame(id);
+    }, [rfInstance, nodes.length, selectedTeamId]);
+
+    // ── React-flow event handlers ────────────────────────────────
+
+    // Connect: bottom-of-A → top-of-B means "B reports to A".
+    const onConnect = useCallback(
+        (conn: Connection) => {
+            if (!conn.source || !conn.target || conn.source === conn.target) return;
+            const sourceNode = nodes.find((n) => n.id === conn.source);
+            const targetNode = nodes.find((n) => n.id === conn.target);
+            if (!sourceNode || !targetNode) return;
+            const newParentUserId = sourceNode.data.node.user_id;
+            moveMutation.mutate({ mappingId: conn.target, parentUserId: newParentUserId });
+            // Optimistic: show the edge while the mutation is in flight; the
+            // chart refetch on success or error will rewrite it from truth.
+            setEdges((eds) => addEdge({ ...conn, ...defaultEdgeOptions }, eds));
+        },
+        [nodes, moveMutation, setEdges]
+    );
+
+    // Connection start on the SOURCE handle, dragged into empty space:
+    // react-flow's "connect to nothing" fires onConnectEnd with no target.
+    // We use it to surface a hint, but no mutation runs (no clear semantic).
+    const connectStartRef = useRef<OnConnectStartParams | null>(null);
+    const onConnectStart = useCallback(
+        (_e: unknown, params: OnConnectStartParams) => {
+            connectStartRef.current = params;
+        },
+        []
+    );
+    const onConnectEnd = useCallback(() => {
+        connectStartRef.current = null;
+    }, []);
+
+    // Edges removed = "person no longer reports to X". Set parent to null.
+    const onEdgesChangeIntercept = useCallback(
+        (changes: EdgeChange[]) => {
+            const removals = changes.filter((c) => c.type === 'remove') as Array<{
+                type: 'remove';
+                id: string;
+            }>;
+            if (removals.length > 0) {
+                for (const r of removals) {
+                    const edge = edges.find((e) => e.id === r.id);
+                    if (edge?.target) {
+                        moveMutation.mutate({
+                            mappingId: edge.target,
+                            parentUserId: null,
+                        });
+                    }
+                }
+            }
+            onEdgesChange(changes);
+        },
+        [edges, moveMutation, onEdgesChange]
+    );
+
+    // Sidebar drop: figure out where the user landed and dispatch.
+    const onDrop = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            const userId = event.dataTransfer.getData(SIDEBAR_DRAG_MIME);
+            if (!userId || !rfInstance) return;
+            if (placedUserIdsInTeam.has(userId)) {
+                toast.error('This person is already in this team');
+                return;
+            }
+            // Find which (if any) react-flow node is under the cursor.
+            const target = event.target as HTMLElement | null;
+            const nodeEl = target?.closest('.react-flow__node');
+            const targetMappingId = nodeEl?.getAttribute('data-id') ?? null;
+            const parentUserId = targetMappingId
+                ? nodes.find((n) => n.id === targetMappingId)?.data.node.user_id ?? null
+                : null;
+            addMutation.mutate({ userId, parentUserId });
+        },
+        [rfInstance, placedUserIdsInTeam, nodes, addMutation]
+    );
+
+    const onDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+    }, []);
 
     const isTeamLoading = teamsQuery.isLoading;
     const teams = teamsQuery.data ?? [];
@@ -286,8 +509,10 @@ export function OrgChartCanvas({ instituteId }: Props) {
                 <div className="flex items-start gap-2 border-b border-info-100 bg-primary-50 px-3 py-2 text-subtitle text-primary-800">
                     <Info size={16} className="mt-0.5 shrink-0 text-primary-600" />
                     <div className="flex-1">
-                        Drag a person card onto another card to change who they report to. Drop onto the
-                        “Top of team” zone (visible while dragging) to remove their manager.
+                        Drag a user from the left list onto an empty area to add them to the team, or
+                        drop them on a card to add them as that person’s report. Drag from the bottom
+                        dot of a card to the top dot of another to set reports-to. Click an arrow and
+                        press Backspace to remove the link (they become a root).
                     </div>
                     <button
                         type="button"
@@ -303,73 +528,79 @@ export function OrgChartCanvas({ instituteId }: Props) {
                 </div>
             )}
 
-            {/* ── Top-of-team drop zone (only while dragging) ───── */}
-            {dragMappingId && (
-                <div
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragOverRoot(true);
-                    }}
-                    onDragLeave={() => setDragOverRoot(false)}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        handleDropOnRoot();
-                    }}
-                    className={cn(
-                        'mx-3 mt-3 flex items-center justify-center gap-2 rounded-md border-2 border-dashed py-3 text-subtitle transition-colors',
-                        dragOverRoot
-                            ? 'border-primary-500 bg-primary-50 text-primary-700'
-                            : 'border-neutral-300 text-neutral-500'
-                    )}
-                >
-                    <ArrowLineUp size={16} />
-                    Drop here to make this person top of {selectedTeam?.name ?? 'the team'} (no manager)
-                </div>
-            )}
-
-            {/* ── Canvas ─────────────────────────────────────────── */}
-            <div className="min-h-0 flex-1 overflow-auto bg-neutral-50 p-6">
-                {chartQuery.isLoading ? (
-                    <div className="text-subtitle text-neutral-500">Loading {selectedTeam?.name}…</div>
-                ) : chartQuery.isError ? (
-                    <div className="text-subtitle text-danger-600">
-                        Could not load this team. Try refreshing.
-                    </div>
-                ) : (chartQuery.data ?? []).length === 0 ? (
-                    <EmptyTeam
-                        teamName={selectedTeam?.name ?? 'this team'}
-                        onAdd={() => setAddOpen(true)}
+            {/* ── Two-pane body: sidebar + react-flow canvas ─────── */}
+            <div className="flex min-h-0 flex-1">
+                {selectedTeamId && (
+                    <UserSidebar
+                        users={usersQuery.data ?? []}
+                        placedUserIdsInTeam={placedUserIdsInTeam}
+                        search={sidebarSearch}
+                        onSearchChange={setSidebarSearch}
+                        isLoading={usersQuery.isLoading}
                     />
-                ) : (
-                    <div className="org-tree mx-auto">
-                        <ul>
-                            {chartQuery.data!.map((node) => (
-                                <PersonNode
-                                    key={node.mapping_id}
-                                    node={node}
-                                    userById={userById}
-                                    dragMappingId={dragMappingId}
-                                    dragOverMappingId={dragOverMappingId}
-                                    onDragStart={setDragMappingId}
-                                    onDragEnd={resetDrag}
-                                    onDragOverNode={setDragOverMappingId}
-                                    onDropOnNode={handleDropOnPerson}
-                                    onRemove={(m) => {
-                                        const u = userById.get(m.user_id);
-                                        const name = u?.full_name || 'this person';
-                                        if (
-                                            window.confirm(
-                                                `Remove ${name} from ${selectedTeam?.name}? Their memberships in other teams are not affected.`
-                                            )
-                                        ) {
-                                            removeMutation.mutate(m.mapping_id);
-                                        }
-                                    }}
-                                />
-                            ))}
-                        </ul>
-                    </div>
                 )}
+
+                <div
+                    ref={flowWrapperRef}
+                    className="relative min-h-0 flex-1 bg-neutral-50"
+                    onDrop={onDrop}
+                    onDragOver={onDragOver}
+                >
+                    {/* Always mount ReactFlow once a team is selected so it
+                        doesn't lose its viewport state across the
+                        empty → first-add transition. Overlays sit on top
+                        when loading / errored / empty. */}
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChangeIntercept}
+                        onConnect={onConnect}
+                        onConnectStart={onConnectStart}
+                        onConnectEnd={onConnectEnd}
+                        nodeTypes={nodeTypes}
+                        defaultEdgeOptions={defaultEdgeOptions}
+                        onInit={setRfInstance}
+                        fitView
+                        fitViewOptions={{ padding: 0.15 }}
+                        deleteKeyCode={['Backspace', 'Delete']}
+                        connectionRadius={28}
+                        proOptions={{ hideAttribution: true }}
+                    >
+                        <Background gap={20} size={1} />
+                        <Controls showInteractive={false} />
+                        <MiniMap
+                            pannable
+                            zoomable
+                            ariaLabel="Org chart minimap"
+                            nodeColor="hsl(var(--primary-400))"
+                            nodeStrokeColor="hsl(var(--primary-600))"
+                            maskColor="hsl(var(--neutral-200) / 0.6)"
+                            className="!bottom-3 !right-3 rounded-md border border-neutral-200 shadow-sm"
+                        />
+                    </ReactFlow>
+
+                    {chartQuery.isLoading && (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-neutral-50/80 text-subtitle text-neutral-500">
+                            Loading {selectedTeam?.name}…
+                        </div>
+                    )}
+                    {chartQuery.isError && (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-subtitle text-danger-600">
+                            Could not load this team. Try refreshing.
+                        </div>
+                    )}
+                    {!chartQuery.isLoading &&
+                        !chartQuery.isError &&
+                        (chartQuery.data ?? []).length === 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-neutral-50/80">
+                                <EmptyTeam
+                                    teamName={selectedTeam?.name ?? 'this team'}
+                                    onAdd={() => setAddOpen(true)}
+                                />
+                            </div>
+                        )}
+                </div>
             </div>
 
             {/* ── Dialogs ────────────────────────────────────────── */}
@@ -408,159 +639,130 @@ export function OrgChartCanvas({ instituteId }: Props) {
                     }}
                 />
             )}
-        </div>
-    );
-}
-
-// ─── Person node + card ─────────────────────────────────────────
-
-function PersonNode({
-    node,
-    userById,
-    dragMappingId,
-    dragOverMappingId,
-    onDragStart,
-    onDragEnd,
-    onDragOverNode,
-    onDropOnNode,
-    onRemove,
-}: {
-    node: OrgChartNode;
-    userById: Map<string, InstituteUser>;
-    dragMappingId: string | null;
-    dragOverMappingId: string | null;
-    onDragStart: (mappingId: string) => void;
-    onDragEnd: () => void;
-    onDragOverNode: (mappingId: string | null) => void;
-    onDropOnNode: (userId: string) => void;
-    onRemove: (node: OrgChartNode) => void;
-}) {
-    const hasChildren = (node.children?.length ?? 0) > 0;
-    return (
-        <li>
-            <PersonCard
-                node={node}
-                user={userById.get(node.user_id)}
-                dragging={dragMappingId === node.mapping_id}
-                dragOver={dragOverMappingId === node.mapping_id}
-                onDragStart={() => onDragStart(node.mapping_id)}
-                onDragEnd={onDragEnd}
-                onDragOverNode={() => onDragOverNode(node.mapping_id)}
-                onDragLeaveNode={() => onDragOverNode(null)}
-                onDropOnNode={() => onDropOnNode(node.user_id)}
-                onRemove={() => onRemove(node)}
-            />
-            {hasChildren && (
-                <ul>
-                    {node.children.map((c) => (
-                        <PersonNode
-                            key={c.mapping_id}
-                            node={c}
-                            userById={userById}
-                            dragMappingId={dragMappingId}
-                            dragOverMappingId={dragOverMappingId}
-                            onDragStart={onDragStart}
-                            onDragEnd={onDragEnd}
-                            onDragOverNode={onDragOverNode}
-                            onDropOnNode={onDropOnNode}
-                            onRemove={onRemove}
-                        />
-                    ))}
-                </ul>
-            )}
-        </li>
-    );
-}
-
-function PersonCard({
-    node,
-    user,
-    dragging,
-    dragOver,
-    onDragStart,
-    onDragEnd,
-    onDragOverNode,
-    onDragLeaveNode,
-    onDropOnNode,
-    onRemove,
-}: {
-    node: OrgChartNode;
-    user: InstituteUser | undefined;
-    dragging: boolean;
-    dragOver: boolean;
-    onDragStart: () => void;
-    onDragEnd: () => void;
-    onDragOverNode: () => void;
-    onDragLeaveNode: () => void;
-    onDropOnNode: () => void;
-    onRemove: () => void;
-}) {
-    const name = user?.full_name || `User ${node.user_id.slice(0, 6)}`;
-    const systemRole = (user?.roles ?? []).find((r) => r) ?? null;
-
-    return (
-        <div
-            draggable
-            onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', node.mapping_id);
-                onDragStart();
-            }}
-            onDragEnd={onDragEnd}
-            onDragOver={(e) => {
-                e.preventDefault();
-                onDragOverNode();
-            }}
-            onDragLeave={onDragLeaveNode}
-            onDrop={(e) => {
-                e.preventDefault();
-                onDropOnNode();
-            }}
-            className={cn(
-                'group inline-flex w-60 cursor-grab flex-col overflow-hidden rounded-xl border bg-white text-left shadow-sm transition-all active:cursor-grabbing',
-                dragging && 'opacity-50',
-                dragOver && 'border-primary-500 ring-2 ring-primary-200',
-                !dragOver &&
-                    !dragging &&
-                    'border-neutral-200 hover:border-primary-200 hover:shadow-md'
-            )}
-        >
-            <div className="h-1 bg-primary-500" />
-            <div className="flex items-start gap-2.5 px-3 py-2.5">
-                <Avatar name={name} />
-                <div className="min-w-0 flex-1 leading-tight">
-                    <div className="truncate text-body font-semibold text-neutral-900">{name}</div>
-                    {node.role_label && (
-                        <div className="mt-0.5 truncate text-caption italic text-neutral-700">
-                            {node.role_label}
-                        </div>
-                    )}
-                    {(systemRole || user?.email) && (
-                        <div className="mt-0.5 truncate text-caption text-neutral-500">
-                            {systemRole ?? user?.email}
-                        </div>
-                    )}
-                </div>
-                <button
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onRemove();
+            {selectedTeamId && editingNode && (
+                <EditPersonDialog
+                    open={!!editingNode}
+                    onOpenChange={(o) => {
+                        if (!o) setEditingNode(null);
                     }}
-                    className="rounded p-1 text-neutral-400 opacity-0 transition-opacity hover:bg-danger-50 hover:text-danger-600 group-hover:opacity-100"
-                    title="Remove from this team"
-                    aria-label="Remove from this team"
-                    draggable={false}
-                    onDragStart={(e) => e.stopPropagation()}
-                >
-                    <Trash size={14} />
-                </button>
-            </div>
+                    teamId={selectedTeamId}
+                    node={editingNode}
+                    name={
+                        userById.get(editingNode.user_id)?.full_name ||
+                        `User ${editingNode.user_id.slice(0, 6)}`
+                    }
+                    peopleInTeam={peopleInTeam}
+                    onSaved={() => {
+                        queryClient.invalidateQueries({ queryKey: ['org-team-chart', selectedTeamId] });
+                    }}
+                />
+            )}
         </div>
     );
 }
 
-function Avatar({ name }: { name: string }) {
+// ─── Left sidebar of all institute users (drag source) ─────────
+
+function UserSidebar({
+    users,
+    placedUserIdsInTeam,
+    search,
+    onSearchChange,
+    isLoading,
+}: {
+    users: InstituteUser[];
+    placedUserIdsInTeam: Set<string>;
+    search: string;
+    onSearchChange: (s: string) => void;
+    isLoading: boolean;
+}) {
+    const q = search.trim().toLowerCase();
+    const filtered = q
+        ? users.filter(
+              (u) =>
+                  u.full_name.toLowerCase().includes(q) ||
+                  (u.email ?? '').toLowerCase().includes(q)
+          )
+        : users;
+
+    return (
+        <aside className="flex w-72 shrink-0 flex-col border-r border-neutral-200 bg-white">
+            <div className="border-b border-neutral-100 p-3">
+                <div className="mb-2 text-caption font-medium text-neutral-500">
+                    Institute users
+                </div>
+                <input
+                    className="w-full rounded-md border border-neutral-300 px-3 py-1.5 text-body"
+                    placeholder="Search by name or email…"
+                    value={search}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                />
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto">
+                {isLoading ? (
+                    <div className="p-4 text-caption text-neutral-500">Loading users…</div>
+                ) : filtered.length === 0 ? (
+                    <div className="p-4 text-caption text-neutral-500">
+                        {users.length === 0
+                            ? 'No users in this institute yet.'
+                            : 'No one matches that search.'}
+                    </div>
+                ) : (
+                    <ul className="divide-y divide-neutral-100">
+                        {filtered.map((u) => {
+                            const alreadyInTeam = placedUserIdsInTeam.has(u.id);
+                            return (
+                                <li
+                                    key={u.id}
+                                    draggable={!alreadyInTeam}
+                                    onDragStart={(e) => {
+                                        if (alreadyInTeam) {
+                                            e.preventDefault();
+                                            return;
+                                        }
+                                        e.dataTransfer.effectAllowed = 'copy';
+                                        e.dataTransfer.setData(SIDEBAR_DRAG_MIME, u.id);
+                                        // Also set text/plain so browsers
+                                        // that demand it (Firefox) initiate.
+                                        e.dataTransfer.setData('text/plain', u.id);
+                                    }}
+                                    className={cn(
+                                        'flex items-center gap-2 px-3 py-2',
+                                        alreadyInTeam
+                                            ? 'cursor-not-allowed opacity-50'
+                                            : 'cursor-grab hover:bg-primary-50 active:cursor-grabbing'
+                                    )}
+                                    title={
+                                        alreadyInTeam
+                                            ? 'Already in this team'
+                                            : 'Drag onto the canvas to add to this team'
+                                    }
+                                >
+                                    <SidebarAvatar name={u.full_name} />
+                                    <div className="min-w-0 flex-1 leading-tight">
+                                        <div className="truncate text-body font-medium text-neutral-900">
+                                            {u.full_name || 'Unnamed'}
+                                        </div>
+                                        <div className="truncate text-caption text-neutral-500">
+                                            {u.email ?? (u.roles ?? [])[0] ?? ''}
+                                        </div>
+                                    </div>
+                                    {alreadyInTeam && (
+                                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-neutral-500">
+                                            in team
+                                        </span>
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </div>
+        </aside>
+    );
+}
+
+function SidebarAvatar({ name }: { name: string }) {
     const initial = (name || '?').trim().slice(0, 1).toUpperCase();
     return (
         <div
@@ -600,7 +802,8 @@ function EmptyTeam({ teamName, onAdd }: { teamName: string; onAdd: () => void })
             </div>
             <h2 className="text-h3 font-medium text-neutral-900">{teamName} is empty</h2>
             <p className="text-subtitle text-neutral-500">
-                Add the first person, then add more and arrange who reports to whom by dragging cards.
+                Drag someone from the left, or add the first person, then connect cards to set who
+                reports to whom.
             </p>
             <MyButton buttonType="primary" onClick={onAdd}>
                 + Add the first person
@@ -653,24 +856,26 @@ function NewTeamDialog({
 
     if (!open) return null;
     return (
-        <Modal title="New team" subtitle="Teams are flat — there are no sub-teams in this design." onClose={() => onOpenChange(false)}>
-            <label className="mb-1 block text-caption font-medium text-neutral-700">Team name</label>
-            <input
-                autoFocus
-                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-body"
-                placeholder='e.g. "Sales", "Counselling", "Engineering"'
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-            />
-            <ModalFooter>
+        <Modal title="New team" onClose={() => onOpenChange(false)}>
+            <div className="space-y-3">
+                <label className="block text-caption font-medium text-neutral-700">Team name</label>
+                <input
+                    autoFocus
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-body"
+                    placeholder="e.g. Sales, Counselling, Engineering"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={120}
+                />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
                 <MyButton buttonType="secondary" onClick={() => onOpenChange(false)} disable={submitting}>
                     Cancel
                 </MyButton>
                 <MyButton buttonType="primary" onClick={handleCreate} disable={submitting}>
                     {submitting ? 'Creating…' : 'Create team'}
                 </MyButton>
-            </ModalFooter>
+            </div>
         </Modal>
     );
 }
@@ -698,13 +903,13 @@ function RenameTeamDialog({
 
     async function handleSave() {
         if (!name.trim()) {
-            toast.error('Team needs a name');
+            toast.error('Give the team a name');
             return;
         }
         setSubmitting(true);
         try {
             await updateTeam(team.id, { name: name.trim() });
-            toast.success('Team renamed');
+            toast.success('Renamed');
             onRenamed();
             onOpenChange(false);
         } catch (e) {
@@ -717,55 +922,62 @@ function RenameTeamDialog({
 
     if (!open) return null;
     return (
-        <Modal title={`Rename ${team.name}`} onClose={() => onOpenChange(false)}>
-            <label className="mb-1 block text-caption font-medium text-neutral-700">New name</label>
-            <input
-                autoFocus
-                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-body"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-            />
-            <ModalFooter>
+        <Modal title={`Rename "${team.name}"`} onClose={() => onOpenChange(false)}>
+            <div className="space-y-3">
+                <label className="block text-caption font-medium text-neutral-700">Team name</label>
+                <input
+                    autoFocus
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-body"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    maxLength={120}
+                />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
                 <MyButton buttonType="secondary" onClick={() => onOpenChange(false)} disable={submitting}>
                     Cancel
                 </MyButton>
                 <MyButton buttonType="primary" onClick={handleSave} disable={submitting}>
                     {submitting ? 'Saving…' : 'Save'}
                 </MyButton>
-            </ModalFooter>
+            </div>
         </Modal>
     );
 }
 
 function Modal({
     title,
-    subtitle,
     onClose,
     children,
 }: {
     title: string;
-    subtitle?: string;
     onClose: () => void;
     children: React.ReactNode;
 }) {
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4"
             onClick={onClose}
         >
             <div
-                className="w-full max-w-md rounded-lg bg-white p-4 shadow-xl"
+                className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
             >
-                <h3 className="text-h3 font-medium text-neutral-900">{title}</h3>
-                {subtitle && <p className="mb-3 text-subtitle text-neutral-500">{subtitle}</p>}
+                <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-h3 font-medium text-neutral-900">{title}</h3>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                        aria-label="Close"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
                 {children}
             </div>
         </div>
     );
-}
-
-function ModalFooter({ children }: { children: React.ReactNode }) {
-    return <div className="mt-4 flex justify-end gap-2">{children}</div>;
 }

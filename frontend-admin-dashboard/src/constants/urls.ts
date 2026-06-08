@@ -975,8 +975,13 @@ export const COUPON_VALIDATE = `${BASE_URL}/admin-core-service/open/v1/coupon/va
 // V12 migration created the tables; V13 added parent_user_id on the
 // mapping table. Same person can be in multiple teams with different
 // managers in each.
+//
+// Points at auth_service directly — org-team data lives there and the
+// admin_core proxy added no orchestration, just hops + bugs (510, PATCH).
+// HMAC-internal endpoints stay at /auth-service/internal/organization-team
+// for service-to-service scope queries.
 // =============================================================================
-export const ORG_TEAM_BASE = `${BASE_URL}/admin-core-service/v1/organization-team`;
+export const ORG_TEAM_BASE = `${BASE_URL}/auth-service/v1/organization-team`;
 export const ORG_TEAM_BY_ID = (teamId: string) => `${ORG_TEAM_BASE}/${teamId}`;
 export const ORG_TEAM_LIST = (instituteId: string) =>
     `${ORG_TEAM_BASE}?instituteId=${instituteId}`;

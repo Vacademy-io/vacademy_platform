@@ -202,6 +202,7 @@ const QuestionSelectorDialog: React.FC<QuestionSelectorDialogProps> = ({
                         >
                             {virtualizer.getVirtualItems().map((virtualRow) => {
                                 const question = filtered[virtualRow.index];
+                                if (!question) return null;
                                 const id = question.questionId ?? `q-${virtualRow.index}`;
                                 const isChecked =
                                     !!question.questionId && checked.has(question.questionId);

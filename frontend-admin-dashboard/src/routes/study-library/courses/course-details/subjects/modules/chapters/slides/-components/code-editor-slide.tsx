@@ -9,6 +9,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
+import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 import {
     Code,
     Play,
@@ -63,6 +64,9 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
 }) => {
     const editorRef = useRef<unknown>(null);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    // Per-role enforcement: hide the code download for roles an admin has blocked.
+    const { canDownload } = useSlideDownloadAccess();
+    const allowCodeDownload = canDownload('DOCUMENT_CODE');
     const [output, setOutput] = useState<string>('');
     const [isRunning, setIsRunning] = useState(false);
     const [waitingForInput, setWaitingForInput] = useState(false);
@@ -564,10 +568,12 @@ export const CodeEditorSlide: React.FC<CodeEditorSlideProps> = ({
                                     Copy Code
                                 </DropdownMenuItem>
 
-                                <DropdownMenuItem onClick={handleDownloadCode}>
-                                    <Download className="mr-2 size-4" />
-                                    Download Code
-                                </DropdownMenuItem>
+                                {allowCodeDownload && (
+                                    <DropdownMenuItem onClick={handleDownloadCode}>
+                                        <Download className="mr-2 size-4" />
+                                        Download Code
+                                    </DropdownMenuItem>
+                                )}
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>

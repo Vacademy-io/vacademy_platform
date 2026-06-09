@@ -40,10 +40,12 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerHeight, setContainerHeight] = useState<string | undefined>(undefined);
 
-  // Whether this user's role is allowed to download the PDF (admin-configured
-  // per role; defaults to today's behavior — the toolbar Download stays hidden).
+  // Whether this user's role is allowed to download / print the PDF
+  // (admin-configured per role; defaults to today's behavior — Download and
+  // Print stay hidden for learners).
   const { canDownload } = useSlideDownloadPermission();
   const allowDownload = canDownload(SlideDownloadTypeKey.DOCUMENT_PDF);
+  const allowPrint = canDownload(SlideDownloadTypeKey.DOCUMENT_PDF_PRINT);
 
   // Platform check
   const isIOS = Capacitor.getPlatform() === 'ios';
@@ -60,15 +62,20 @@ export const PdfViewerComponent = forwardRef<PdfViewerComponentRef, {
   const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
     ...slot,
     Open: () => <></>,
-    Print: () => <></>,
     SwitchSelectionModeMenuItem: () => <></>,
-    // Download is shown only when the institute allows this role to download
-    // PDFs; otherwise the toolbar Download + menu entry are hidden.
+    // Download / Print are shown only when the institute allows this role to
+    // download / print PDFs; otherwise those toolbar entries are hidden.
     ...(allowDownload
       ? {}
       : {
           Download: () => <></>,
           DownloadMenuItem: () => <></>,
+        }),
+    ...(allowPrint
+      ? {}
+      : {
+          Print: () => <></>,
+          PrintMenuItem: () => <></>,
         }),
   });
   

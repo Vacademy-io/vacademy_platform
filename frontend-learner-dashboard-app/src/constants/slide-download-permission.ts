@@ -29,6 +29,7 @@ export const normalizeRoleKey = (role: string | null | undefined): string => {
 /** Slide-type keys the learner components pass into the resolver. */
 export const SlideDownloadTypeKey = {
   DOCUMENT_PDF: "DOCUMENT_PDF",
+  DOCUMENT_PDF_PRINT: "DOCUMENT_PDF_PRINT",
   DOCUMENT_DOC: "DOCUMENT_DOC",
   DOCUMENT_PRESENTATION: "DOCUMENT_PRESENTATION",
   DOCUMENT_CODE: "DOCUMENT_CODE",
@@ -42,6 +43,7 @@ export const SlideDownloadTypeKey = {
 
 export const ADMIN_DEFAULT_DOWNLOAD: Record<string, boolean> = {
   DOCUMENT_PDF: true,
+  DOCUMENT_PDF_PRINT: true,
   DOCUMENT_DOC: true,
   DOCUMENT_PRESENTATION: true,
   DOCUMENT_CODE: true,
@@ -55,9 +57,10 @@ export const ADMIN_DEFAULT_DOWNLOAD: Record<string, boolean> = {
 
 // Mirrors what a learner / other consuming role can download in the learner app
 // today, so an absent setting keeps current behavior (e.g. the PDF toolbar
-// already hides Download → false).
+// already hides Download/Print → false).
 export const LEARNER_DEFAULT_DOWNLOAD: Record<string, boolean> = {
   DOCUMENT_PDF: false,
+  DOCUMENT_PDF_PRINT: false,
   DOCUMENT_DOC: false,
   DOCUMENT_PRESENTATION: false,
   DOCUMENT_CODE: true,
@@ -91,8 +94,10 @@ export interface SlideDownloadPermissionData {
 
 /**
  * Decide whether the current user may download a given slide type.
- * Permissive union across held roles; unconfigured cells use the role-aware
- * default. With no roles, falls back to the learner default.
+ * Deny-wins across held roles (allowed only if EVERY held role allows it), so
+ * turning a role off reliably blocks users who also hold another role.
+ * Unconfigured cells use the role-aware default. With no roles, falls back to
+ * the learner default.
  */
 export const canDownloadSlideType = (
   data: SlideDownloadPermissionData | null | undefined,
@@ -104,7 +109,7 @@ export const canDownloadSlideType = (
     return LEARNER_DEFAULT_DOWNLOAD[typeKey] ?? true;
   }
   const roleMap = data?.slideTypes?.[typeKey]?.roles;
-  return canonicalRoles.some(
+  return canonicalRoles.every(
     (role) => roleMap?.[role] ?? defaultDownloadFor(role, typeKey)
   );
 };

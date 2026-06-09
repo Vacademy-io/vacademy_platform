@@ -50,7 +50,8 @@ export interface SlideTypeOption {
  * split into sub-types because each has a different download mechanism.
  */
 export const SLIDE_TYPE_OPTIONS: SlideTypeOption[] = [
-    { key: 'DOCUMENT_PDF', label: 'PDF' },
+    { key: 'DOCUMENT_PDF', label: 'PDF — Download' },
+    { key: 'DOCUMENT_PDF_PRINT', label: 'PDF — Print' },
     { key: 'DOCUMENT_CODE', label: 'Code' },
     { key: 'ASSIGNMENT', label: 'Assignment' },
     { key: 'VIDEO', label: 'Video' },
@@ -69,6 +70,7 @@ export const SLIDE_TYPE_OPTIONS: SlideTypeOption[] = [
  */
 export const ADMIN_DEFAULT_DOWNLOAD: Record<string, boolean> = {
     DOCUMENT_PDF: true,
+    DOCUMENT_PDF_PRINT: true,
     DOCUMENT_DOC: true,
     DOCUMENT_PRESENTATION: true,
     DOCUMENT_CODE: true,
@@ -82,6 +84,7 @@ export const ADMIN_DEFAULT_DOWNLOAD: Record<string, boolean> = {
 
 export const LEARNER_DEFAULT_DOWNLOAD: Record<string, boolean> = {
     DOCUMENT_PDF: false,
+    DOCUMENT_PDF_PRINT: false,
     DOCUMENT_DOC: false,
     DOCUMENT_PRESENTATION: false,
     DOCUMENT_CODE: true,
@@ -120,12 +123,13 @@ export const EMPTY_SLIDE_DOWNLOAD_DATA: SlideDownloadPermissionData = {
 };
 
 /**
- * Decide whether the current user may download a given slide type.
+ * Decide whether the current user may download a given slide type (learner app).
  *
- * Permissive union across the roles the user holds: download is allowed if ANY
- * held role allows it. A role's effective flag is its stored value, or the
- * role-aware default when unconfigured. With no roles, falls back to the
- * learner default (i.e. today's learner behavior).
+ * Deny-wins across the roles the user holds: download is allowed only if EVERY
+ * held role allows it, so turning a role off reliably blocks users who also hold
+ * other roles (e.g. a teacher who is also a student). A role's effective flag is
+ * its stored value, or the role-aware default when unconfigured. With no roles,
+ * falls back to the learner default (i.e. today's learner behavior).
  *
  * @param data       parsed setting data (or null when unset)
  * @param typeKey    one of SLIDE_TYPE_OPTIONS[].key
@@ -141,7 +145,28 @@ export const canDownloadSlideType = (
         return LEARNER_DEFAULT_DOWNLOAD[typeKey] ?? true;
     }
     const roleMap = data?.slideTypes?.[typeKey]?.roles;
-    return canonicalRoles.some(
+    return canonicalRoles.every(
         (role) => roleMap?.[role] ?? defaultDownloadFor(role, typeKey)
     );
+};
+
+/**
+ * Decide whether the current user may download/print in the ADMIN authoring app.
+ *
+ * Default-allow, deny-on-explicit-false: in the authoring app everyone can
+ * download today, so we only block a user when one of their held roles is
+ * EXPLICITLY turned off for that type. Deny-wins across roles. This preserves
+ * admins' (and unconfigured roles') existing access while letting an admin
+ * block, say, teachers.
+ */
+export const canRoleDownloadInAdmin = (
+    data: SlideDownloadPermissionData | null | undefined,
+    typeKey: string,
+    roleNames: string[] | null | undefined
+): boolean => {
+    const canonicalRoles = (roleNames ?? []).map(normalizeRoleKey).filter(Boolean);
+    if (canonicalRoles.length === 0) return true;
+    const roleMap = data?.slideTypes?.[typeKey]?.roles;
+    if (!roleMap) return true;
+    return canonicalRoles.every((role) => roleMap[role] !== false);
 };

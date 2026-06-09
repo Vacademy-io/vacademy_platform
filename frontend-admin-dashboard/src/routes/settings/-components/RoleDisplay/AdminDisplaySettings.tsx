@@ -45,6 +45,7 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import AudienceAccessCard from './AudienceAccessCard';
 import SlideDownloadCard from './SlideDownloadCard';
+import SlideContentProtectionCard from './SlideContentProtectionCard';
 import {
     SettingsSectionsLayout,
     type SettingsSectionGroup,
@@ -2174,6 +2175,8 @@ export default function AdminDisplaySettings() {
             <AudienceAccessCard roleName="ADMIN" roleLabel="Admin" />
 
             <SlideDownloadCard roleKey="ADMIN" roleLabel="admins" />
+
+            <SlideContentProtectionCard roleKey="ADMIN" roleLabel="admins" />
             </section>
             </SettingsSectionsLayout>
 

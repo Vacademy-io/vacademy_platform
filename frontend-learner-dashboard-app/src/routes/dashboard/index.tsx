@@ -1028,7 +1028,7 @@ export function DashboardComponent() {
                       !liveSessions?.upcoming_sessions?.length && (
                         <div className="text-center py-8">
                           <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-                            <Video
+                            <VideoCamera
                               size={20}
                               className="text-muted-foreground"
                             />

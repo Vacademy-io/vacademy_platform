@@ -90,9 +90,13 @@ public class WorkbenchActivityRepository {
             "         'timeline_event'::text AS source_table, " +
             // Normalize the human action_type to one of the canonical labels the UI knows.
             "         CASE " +
-            "           WHEN te.action_type LIKE 'Counselor%' AND te.metadata_json::jsonb ? 'reassigned_from' " +
+            // jsonb ? 'key' is the PG key-exists operator but JDBC eats the
+            // '?'. The "->> 'key' IS NOT NULL" form means the same thing and
+            // contains no ambiguous '?'. (See sales-dashboard reassignment
+            // series for the matching rewrite.)
+            "           WHEN te.action_type LIKE 'Counselor%' AND (te.metadata_json::jsonb ->> 'reassigned_from') IS NOT NULL " +
             "                AND (te.metadata_json::jsonb ->> 'reassigned_from') = ? THEN 'LEAD_TRANSFERRED_OUT' " +
-            "           WHEN te.action_type LIKE 'Counselor%' AND te.metadata_json::jsonb ? 'counselor_id' " +
+            "           WHEN te.action_type LIKE 'Counselor%' AND (te.metadata_json::jsonb ->> 'counselor_id') IS NOT NULL " +
             "                AND (te.metadata_json::jsonb ->> 'counselor_id') = ? THEN 'LEAD_TRANSFERRED_IN' " +
             "           WHEN te.action_type ILIKE '%status%' THEN 'STATUS_CHANGED' " +
             "           WHEN te.action_type ILIKE '%note%' THEN 'NOTE_ADDED' " +

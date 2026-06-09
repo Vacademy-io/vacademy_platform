@@ -37,8 +37,8 @@ public class SalesDashboardService {
     // KPI band
     // ────────────────────────────────────────────────────────────────
 
-    public KpiDTO kpi(String instituteId, String teamId, Timestamp from, Timestamp to) {
-        List<String> users = scopedUsers(instituteId, teamId);
+    public KpiDTO kpi(String instituteId, String teamId, Timestamp from, Timestamp to, String callerUserId) {
+        List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         String userClause = userScopeClause(users);
         Object[] argsBase = new Object[]{instituteId};
 
@@ -90,8 +90,8 @@ public class SalesDashboardService {
     // ────────────────────────────────────────────────────────────────
 
     public List<FunnelStageDTO> conversionFunnel(String instituteId, String teamId,
-                                                 Timestamp from, Timestamp to) {
-        List<String> users = scopedUsers(instituteId, teamId);
+                                                 Timestamp from, Timestamp to, String callerUserId) {
+        List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         String userClause = userScopeClause(users, "ulp.assigned_counselor_id");
         // Pipeline stages from lead_status; counts come from the latest status
         // each lead is currently in (via user_lead_profile.conversion_status
@@ -131,19 +131,124 @@ public class SalesDashboardService {
     }
 
     // ────────────────────────────────────────────────────────────────
+    // Conversion by source
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Where conversions are coming from. Per source_type (the audience_response
+     * tag — META / GOOGLE / ORGANIC / etc.) we count both inbound lead volume
+     * and the converted subset, so the UI can render a conversion-rate %.
+     *
+     * Scoped via the same caller/team rules as the funnel — see {@link #scopedUsers}.
+     */
+    public List<SourceConversionDTO> conversionBySource(String instituteId, String teamId,
+                                                        Timestamp from, Timestamp to,
+                                                        String callerUserId, String counsellorUserId) {
+        // counsellorUserId is the "scope to this single person" override —
+        // used by the counsellors detail drawer. RBAC still applies (caller
+        // can only narrow within their own descendant set), so we intersect
+        // the override against the caller's scope.
+        List<String> users = counsellorUserId != null && !counsellorUserId.isBlank()
+                ? narrowToCounsellor(instituteId, callerUserId, counsellorUserId)
+                : scopedUsers(instituteId, teamId, callerUserId);
+        String userClause = userScopeClause(users, "ulp.assigned_counselor_id");
+        String dateClause = andDateRange("ulp.created_at", from, to);
+
+        String sql = "SELECT COALESCE(ar.source_type, 'unknown') AS source, " +
+                "       COUNT(DISTINCT ulp.id) AS leads, " +
+                "       COUNT(DISTINCT CASE WHEN ulp.conversion_status = 'CONVERTED' THEN ulp.id END) AS conversions " +
+                "FROM user_lead_profile ulp " +
+                "LEFT JOIN audience_response ar ON ar.user_id = ulp.user_id " +
+                "WHERE ulp.institute_id = ? " +
+                dateClause +
+                userClause +
+                "GROUP BY COALESCE(ar.source_type, 'unknown') " +
+                "ORDER BY leads DESC";
+
+        List<Object> args = new ArrayList<>();
+        args.add(instituteId);
+        if (from != null) args.add(from);
+        if (to != null) args.add(to);
+        args.addAll(users);
+
+        return jdbc.query(sql, (rs, rowNum) -> {
+            long leads = rs.getLong("leads");
+            long conv = rs.getLong("conversions");
+            double rate = leads > 0 ? Math.round(1000.0 * conv / leads) / 10.0 : 0.0;
+            return SourceConversionDTO.builder()
+                    .source(rs.getString("source"))
+                    .leads(leads)
+                    .conversions(conv)
+                    .conversionRate(rate)
+                    .build();
+        }, args.toArray());
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Calls per day
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Daily count of calls placed by the in-scope counsellors. Reuses
+     * {@link TimeSeriesPointDTO} (date + primary count) since the shape is
+     * identical to the reassignment-volume widget.
+     *
+     * Use case: the CSO wants to see how many calls a counsellor (or their
+     * team) made in a day — drives the "how active is my team" widget.
+     */
+    public List<TimeSeriesPointDTO> callsPerDay(String instituteId, String teamId,
+                                                Timestamp from, Timestamp to,
+                                                String callerUserId, String counsellorUserId) {
+        // See conversionBySource — same RBAC-intersected single-user narrow.
+        List<String> users = counsellorUserId != null && !counsellorUserId.isBlank()
+                ? narrowToCounsellor(instituteId, callerUserId, counsellorUserId)
+                : scopedUsers(instituteId, teamId, callerUserId);
+        String userClause = userScopeClause(users, "tcl.counsellor_user_id");
+        String dateClause = andDateRange("tcl.start_time", from, to);
+
+        String sql = "SELECT DATE(tcl.start_time) AS day, COUNT(*) AS n " +
+                "FROM telephony_call_log tcl " +
+                "WHERE tcl.institute_id = ? " +
+                "  AND tcl.start_time IS NOT NULL " +
+                dateClause +
+                userClause +
+                "GROUP BY DATE(tcl.start_time) " +
+                "ORDER BY day";
+
+        List<Object> args = new ArrayList<>();
+        args.add(instituteId);
+        if (from != null) args.add(from);
+        if (to != null) args.add(to);
+        args.addAll(users);
+
+        return jdbc.query(sql,
+                (rs, rowNum) -> TimeSeriesPointDTO.builder()
+                        .date(rs.getDate("day").toLocalDate())
+                        .primary(rs.getLong("n"))
+                        .build(),
+                args.toArray());
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // Reassignment volume (daily series)
     // ────────────────────────────────────────────────────────────────
 
     public List<TimeSeriesPointDTO> reassignmentSeries(String instituteId, Timestamp from, Timestamp to) {
         // Counts only OUT events to avoid double-counting (the pair (OUT, IN)
         // we write per transfer would otherwise show 2x).
+        //
+        // NOTE: PostgreSQL's jsonb "?" key-exists operator collides with
+        // JDBC's "?" parameter placeholder — Spring JdbcTemplate counts
+        // every ? as a bind variable and the prepared statement explodes.
+        // We use the equivalent `->> 'key' IS NOT NULL` form instead, which
+        // is just as cheap and contains no ambiguous ?.
         return jdbc.query(
                 "SELECT DATE(te.created_at) AS day, COUNT(*) AS n " +
                 "FROM timeline_event te " +
                 "WHERE te.action_type = 'Counselor reassigned' " +
                 "  AND te.created_at >= ? AND te.created_at < ? " +
-                "  AND te.metadata_json::jsonb ? 'reassigned_from' " +
-                "  AND te.metadata_json::jsonb ? 'trigger' " +
+                "  AND (te.metadata_json::jsonb ->> 'reassigned_from') IS NOT NULL " +
+                "  AND (te.metadata_json::jsonb ->> 'trigger') IS NOT NULL " +
                 "GROUP BY DATE(te.created_at) " +
                 "ORDER BY day",
                 (rs, rowNum) -> TimeSeriesPointDTO.builder()
@@ -157,8 +262,8 @@ public class SalesDashboardService {
     // Followups (upcoming + missed)
     // ────────────────────────────────────────────────────────────────
 
-    public List<FollowupRowDTO> upcomingFollowups(String instituteId, String teamId, int hoursAhead, int limit) {
-        List<String> users = scopedUsers(instituteId, teamId);
+    public List<FollowupRowDTO> upcomingFollowups(String instituteId, String teamId, int hoursAhead, int limit, String callerUserId) {
+        List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         String userClause = userScopeClause(users, "lf.created_by");
         return jdbc.query(
                 "SELECT lf.id AS followup_id, " +
@@ -183,8 +288,8 @@ public class SalesDashboardService {
                 argsForFollowups(instituteId, hoursAhead, users, limit));
     }
 
-    public List<FollowupRowDTO> missedFollowups(String instituteId, String teamId, int limit) {
-        List<String> users = scopedUsers(instituteId, teamId);
+    public List<FollowupRowDTO> missedFollowups(String instituteId, String teamId, int limit, String callerUserId) {
+        List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         String userClause = userScopeClause(users, "lf.created_by");
         return jdbc.query(
                 "SELECT lf.id AS followup_id, " +
@@ -213,8 +318,8 @@ public class SalesDashboardService {
     // ────────────────────────────────────────────────────────────────
 
     public List<TimeSeriesPointDTO> newVsExisting(String instituteId, String teamId,
-                                                  Timestamp from, Timestamp to) {
-        List<String> users = scopedUsers(instituteId, teamId);
+                                                  Timestamp from, Timestamp to, String callerUserId) {
+        List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         // "new" = lead created within [from, to). "existing" = lead created
         // before from but had any activity (timeline_event) within [from, to).
         String userClause = userScopeClause(users, "ulp.assigned_counselor_id");
@@ -377,23 +482,51 @@ public class SalesDashboardService {
      * Resolve the user-id whitelist the dashboard should count against.
      *
      * Priority:
-     *   1. Explicit {@code teamId} → that team's members only (caller-driven
-     *      narrowing for managers who pick a specific team).
-     *   2. Default → users in every team under the institute's configured
-     *      leads_team_id. This is the "sales dashboard only shows sales
-     *      counsellors" guarantee — without it the funnel/KPIs would silently
-     *      count every active user in the institute.
-     *   3. Leads team not configured → empty list, which {@link #userScopeClause}
-     *      translates to "no scope filter" (institute-wide fallback so the
-     *      page still renders something while the admin is mid-setup).
+     *   1. Explicit {@code teamId} → that team's members only (manager picks
+     *      a specific team to drill into).
+     *   2. Default → caller's user-to-user descendants in the leads subtree
+     *      (RBAC). A team head sees their entire downstream; a manager sees
+     *      their reports; a leaf counsellor sees only themselves. Without
+     *      this, the funnel/KPIs would silently count every counsellor in
+     *      the institute regardless of who's logged in.
+     *   3. Leads team not configured AND caller has no scope → empty list,
+     *      which {@link #userScopeClause} translates to "no scope filter"
+     *      (the page still renders during admin setup).
      */
-    private List<String> scopedUsers(String instituteId, String teamId) {
+    private List<String> scopedUsers(String instituteId, String teamId, String callerUserId) {
         if (teamId != null && !teamId.isBlank()) {
             return scopeService.usersInTeams(java.util.List.of(teamId));
+        }
+        if (callerUserId != null && !callerUserId.isBlank()) {
+            List<String> scope = scopeService.descendantUserIdsForCaller(instituteId, callerUserId);
+            if (!scope.isEmpty()) return scope;
         }
         List<String> teamIds = scopeService.allTeamIdsUnderLeadsRoot(instituteId);
         if (teamIds.isEmpty()) return Collections.emptyList();
         return scopeService.usersInTeams(teamIds);
+    }
+
+    /** Back-compat overload for paths that don't carry caller context (e.g. scheduled aggregations). */
+    private List<String> scopedUsers(String instituteId, String teamId) {
+        return scopedUsers(instituteId, teamId, null);
+    }
+
+    /**
+     * "Scope to this single counsellor" override used by the per-counsellor
+     * widgets in the detail drawer. Falls back to the caller's full scope
+     * if the requested counsellor is outside the caller's RBAC subtree —
+     * silently denying the narrow rather than throwing keeps the widget
+     * graceful when a manager picks someone they shouldn't see anyway.
+     */
+    private List<String> narrowToCounsellor(String instituteId, String callerUserId, String counsellorUserId) {
+        if (callerUserId != null && !callerUserId.isBlank()) {
+            Set<String> allowed = new HashSet<>(
+                    scopeService.descendantUserIdsForCaller(instituteId, callerUserId));
+            if (!allowed.isEmpty() && !allowed.contains(counsellorUserId)) {
+                return Collections.emptyList();
+            }
+        }
+        return List.of(counsellorUserId);
     }
 
     private String userScopeClause(List<String> users) {

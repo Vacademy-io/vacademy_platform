@@ -1,6 +1,8 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
+    SALES_DASHBOARD_CALLS_PER_DAY,
     SALES_DASHBOARD_CAMPAIGN_CARDS,
+    SALES_DASHBOARD_CONVERSION_BY_SOURCE,
     SALES_DASHBOARD_FUNNEL,
     SALES_DASHBOARD_INSIGHTS,
     SALES_DASHBOARD_KPI,
@@ -125,6 +127,39 @@ export async function fetchCampaignCards(
 export async function fetchInsights(instituteId: string, teamId?: string) {
     const { data } = await authenticatedAxiosInstance.get<InsightItem[]>(
         SALES_DASHBOARD_INSIGHTS(instituteId, teamId)
+    );
+    return data;
+}
+
+export interface SourceConversion {
+    source: string;
+    leads: number;
+    conversions: number;
+    conversion_rate: number;
+}
+
+export async function fetchConversionBySource(
+    instituteId: string,
+    teamId?: string,
+    counsellorUserId?: string,
+    from?: number,
+    to?: number
+) {
+    const { data } = await authenticatedAxiosInstance.get<SourceConversion[]>(
+        SALES_DASHBOARD_CONVERSION_BY_SOURCE(instituteId, teamId, counsellorUserId, from, to)
+    );
+    return data;
+}
+
+export async function fetchCallsPerDay(
+    instituteId: string,
+    teamId?: string,
+    counsellorUserId?: string,
+    from?: number,
+    to?: number
+) {
+    const { data } = await authenticatedAxiosInstance.get<TimeSeriesPoint[]>(
+        SALES_DASHBOARD_CALLS_PER_DAY(instituteId, teamId, counsellorUserId, from, to)
     );
     return data;
 }

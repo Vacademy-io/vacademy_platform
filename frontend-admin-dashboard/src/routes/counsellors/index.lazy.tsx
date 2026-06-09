@@ -15,11 +15,14 @@ import {
     ChatCircleText,
     ArrowsClockwise,
     Crown,
+    ChartLineUp,
 } from '@phosphor-icons/react';
 import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
 import { ReassignDialog } from './-components/ReassignDialog';
 import { FeatureDisabledNotice } from './-components/FeatureDisabledNotice';
+import { ConversionBySourceWidget } from '@/routes/sales-dashboard/-components/ConversionBySourceWidget';
+import { CallsPerDayWidget } from '@/routes/sales-dashboard/-components/CallsPerDayWidget';
 import { CounsellorRatingBadge } from '@/components/counsellor/CounsellorRatingBadge';
 import { useCounsellorRatingBatch } from '@/components/counsellor/useCounsellorRating';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
@@ -39,7 +42,7 @@ export const Route = createLazyFileRoute('/counsellors/')({
     component: RouteComponent,
 });
 
-type DetailTab = 'leads' | 'activity';
+type DetailTab = 'leads' | 'activity' | 'performance';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
 function isCounsellorsPageEnabled(): boolean {
@@ -521,6 +524,9 @@ function DetailDrawer({
                         <TabsTrigger value="activity">
                             <ArrowsClockwise size={14} className="mr-1.5" /> Activity
                         </TabsTrigger>
+                        <TabsTrigger value="performance">
+                            <ChartLineUp size={14} className="mr-1.5" /> Performance
+                        </TabsTrigger>
                     </TabsList>
                     <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
                         {tab === 'leads' && (
@@ -535,6 +541,18 @@ function DetailDrawer({
                                 instituteId={instituteId}
                                 counsellorUserId={counsellor.user_id}
                             />
+                        )}
+                        {tab === 'performance' && (
+                            <div className="space-y-4">
+                                <ConversionBySourceWidget
+                                    instituteId={instituteId}
+                                    counsellorUserId={counsellor.user_id}
+                                />
+                                <CallsPerDayWidget
+                                    instituteId={instituteId}
+                                    counsellorUserId={counsellor.user_id}
+                                />
+                            </div>
                         )}
                     </div>
                 </Tabs>

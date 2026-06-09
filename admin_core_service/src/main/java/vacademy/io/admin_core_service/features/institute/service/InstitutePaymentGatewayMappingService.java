@@ -11,7 +11,6 @@ import vacademy.io.admin_core_service.features.institute.repository.InstitutePay
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
 
-import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -200,9 +199,7 @@ public class InstitutePaymentGatewayMappingService {
         mapping.setVendor(vendor);
         mapping.setPaymentGatewaySpecificData(toJson(incoming));
         mapping.setStatus(resolveStatus(request.getStatus(), StatusEnum.ACTIVE.name()));
-        String now = Instant.now().toString();
-        mapping.setCreatedAt(now);
-        mapping.setUpdatedAt(now);
+        // createdAt/updatedAt are populated automatically via @CreationTimestamp/@UpdateTimestamp
 
         return toMaskedDto(institutePaymentGatewayMappingRepository.save(mapping));
     }
@@ -235,7 +232,7 @@ public class InstitutePaymentGatewayMappingService {
         if (request != null && request.getStatus() != null && !request.getStatus().isBlank()) {
             mapping.setStatus(resolveStatus(request.getStatus(), mapping.getStatus()));
         }
-        mapping.setUpdatedAt(Instant.now().toString());
+        // updatedAt is refreshed automatically via @UpdateTimestamp
 
         return toMaskedDto(institutePaymentGatewayMappingRepository.save(mapping));
     }
@@ -249,7 +246,7 @@ public class InstitutePaymentGatewayMappingService {
         }
 
         mapping.setStatus(StatusEnum.INACTIVE.name());
-        mapping.setUpdatedAt(Instant.now().toString());
+        // updatedAt is refreshed automatically via @UpdateTimestamp
         institutePaymentGatewayMappingRepository.save(mapping);
     }
 
@@ -270,8 +267,8 @@ public class InstitutePaymentGatewayMappingService {
                 .vendor(mapping.getVendor())
                 .instituteId(mapping.getInstituteId())
                 .status(mapping.getStatus())
-                .createdAt(mapping.getCreatedAt())
-                .updatedAt(mapping.getUpdatedAt())
+                .createdAt(mapping.getCreatedAt() == null ? null : mapping.getCreatedAt().toString())
+                .updatedAt(mapping.getUpdatedAt() == null ? null : mapping.getUpdatedAt().toString())
                 .paymentGatewaySpecificData(masked)
                 .build();
     }

@@ -46,12 +46,21 @@ public class WorkbenchLeadRepository {
         // assigned_at is derived from timeline_event — see compute service.
         // Same LATERAL pattern keeps the resolution rule consistent across
         // every reader.
+        //
+        // NOTE: admin_core_service and auth_service own SEPARATE Postgres
+        // databases on stage/prod — admin_core CANNOT see the `users` table
+        // via SQL. Lead name / email / phone are hydrated by the caller
+        // through AuthService.getUsersFromAuthServiceByUserIds, batched once
+        // per response. Same fix is applied to every workbench query.
+        //
+        // type_id for USER_LEAD_PROFILE timeline events is user_lead_profile
+        // .user_id (TimelineEventService writes the enum NAME as action_type
+        // — 'COUNSELOR_ASSIGNED' — and callers pass user_id as typeId). The
+        // earlier join on `te.type_id = ulp.id` matched nothing, so
+        // assigned_at was always NULL.
         final String sql =
             "SELECT ulp.id AS lead_id, " +
             "       ulp.user_id AS user_id, " +
-            "       u.full_name AS lead_name, " +
-            "       u.email AS lead_email, " +
-            "       u.mobile_number AS lead_phone, " +
             "       ulp.conversion_status AS conversion_status, " +
             "       ls.label AS lead_status_label, " +
             "       ulp.lead_tier AS lead_tier, " +
@@ -63,7 +72,6 @@ public class WorkbenchLeadRepository {
             "       latest_ar.campaign_name AS campaign_name, " +
             "       latest_ar.source_type AS source_type " +
             "FROM user_lead_profile ulp " +
-            "LEFT JOIN users u ON u.id = ulp.user_id " +
             "LEFT JOIN lead_status ls ON ls.id = (" +
             "    SELECT ar2.lead_status_id FROM audience_response ar2 " +
             "    WHERE ar2.user_id = ulp.user_id AND ar2.lead_status_id IS NOT NULL " +
@@ -71,8 +79,9 @@ public class WorkbenchLeadRepository {
             "LEFT JOIN LATERAL ( " +
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
-            "    WHERE te.type_id = ulp.id " +
-            "      AND te.action_type IN ('Counselor assigned', 'Counselor reassigned') " +
+            "    WHERE te.type = 'USER_LEAD_PROFILE' " +
+            "      AND te.type_id = ulp.user_id " +
+            "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "LEFT JOIN LATERAL (" +
             "    SELECT a.campaign_name AS campaign_name, ar.source_type AS source_type " +
@@ -91,9 +100,7 @@ public class WorkbenchLeadRepository {
         return jdbc.query(sql, (rs, rowNum) -> WorkbenchLeadDTO.builder()
                 .leadId(rs.getString("lead_id"))
                 .userId(rs.getString("user_id"))
-                .leadName(rs.getString("lead_name"))
-                .leadEmail(rs.getString("lead_email"))
-                .leadPhone(rs.getString("lead_phone"))
+                // Name/email/phone hydrated by caller via AuthService.
                 .conversionStatus(rs.getString("conversion_status"))
                 .leadStatusLabel(rs.getString("lead_status_label"))
                 .leadTier(rs.getString("lead_tier"))
@@ -145,12 +152,14 @@ public class WorkbenchLeadRepository {
                                                              String counsellorUserId,
                                                              int offset,
                                                              int limit) {
+        // Same separate-DB constraint as findLeadsForCounsellors — no JOIN
+        // to users. Caller hydrates lead name / email / phone via AuthService.
+        // type_id on USER_LEAD_PROFILE timeline events is user_id, and
+        // action_type stores the enum NAME ('COUNSELOR_ASSIGNED'), not the
+        // human title.
         final String sql =
             "SELECT ulp.id AS lead_id, " +
             "       ulp.user_id AS user_id, " +
-            "       u.full_name AS lead_name, " +
-            "       u.email AS lead_email, " +
-            "       u.mobile_number AS lead_phone, " +
             "       ulp.conversion_status AS conversion_status, " +
             "       ls.label AS lead_status_label, " +
             "       ulp.lead_tier AS lead_tier, " +
@@ -162,7 +171,6 @@ public class WorkbenchLeadRepository {
             "       NULL::text AS campaign_name, " +
             "       NULL::text AS source_type " +
             "FROM user_lead_profile ulp " +
-            "LEFT JOIN users u ON u.id = ulp.user_id " +
             "LEFT JOIN lead_status ls ON ls.id = (" +
             "    SELECT ar2.lead_status_id FROM audience_response ar2 " +
             "    WHERE ar2.user_id = ulp.user_id AND ar2.lead_status_id IS NOT NULL " +
@@ -170,8 +178,9 @@ public class WorkbenchLeadRepository {
             "LEFT JOIN LATERAL ( " +
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
-            "    WHERE te.type_id = ulp.id " +
-            "      AND te.action_type IN ('Counselor assigned', 'Counselor reassigned') " +
+            "    WHERE te.type = 'USER_LEAD_PROFILE' " +
+            "      AND te.type_id = ulp.user_id " +
+            "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "WHERE ulp.institute_id = ? " +
             "  AND ulp.assigned_counselor_id = ? " +
@@ -182,9 +191,7 @@ public class WorkbenchLeadRepository {
         return jdbc.query(sql, (rs, rowNum) -> WorkbenchLeadDTO.builder()
                 .leadId(rs.getString("lead_id"))
                 .userId(rs.getString("user_id"))
-                .leadName(rs.getString("lead_name"))
-                .leadEmail(rs.getString("lead_email"))
-                .leadPhone(rs.getString("lead_phone"))
+                // Name/email/phone hydrated by caller via AuthService.
                 .conversionStatus(rs.getString("conversion_status"))
                 .leadStatusLabel(rs.getString("lead_status_label"))
                 .leadTier(rs.getString("lead_tier"))

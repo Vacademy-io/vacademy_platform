@@ -60,7 +60,8 @@ public class CounsellorWorkbenchService {
         // their whole downstream; a leaf member gets only their own leads.
         List<String> users = scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId());
         if (users.isEmpty()) return Collections.emptyList();
-        return leadRepo.findLeadsForCounsellors(instituteId, users, conversionStatus, page * size, size);
+        return hydrateLeadIdentities(
+                leadRepo.findLeadsForCounsellors(instituteId, users, conversionStatus, page * size, size));
     }
 
     /**
@@ -70,9 +71,49 @@ public class CounsellorWorkbenchService {
      */
     public List<WorkbenchLeadDTO> leadsForCounsellor(String instituteId, String counsellorUserId,
                                                      String conversionStatus, int page, int size) {
-        return leadRepo.findLeadsForCounsellors(
+        return hydrateLeadIdentities(leadRepo.findLeadsForCounsellors(
                 instituteId, Collections.singletonList(counsellorUserId),
-                conversionStatus, page * size, size);
+                conversionStatus, page * size, size));
+    }
+
+    /**
+     * Lead identity (name / email / phone) lives in auth_service's `users`
+     * table. Admin-core and auth-service run on separate Postgres databases
+     * on stage/prod, so admin-core CANNOT join to `users` directly — the SQL
+     * fails with "relation users does not exist". Same cross-service
+     * hydration pattern as AudienceService.mapResponsesToLeadDetails: one
+     * batch HTTP call per response page, then attach name/email/phone in
+     * the service layer.
+     */
+    private List<WorkbenchLeadDTO> hydrateLeadIdentities(List<WorkbenchLeadDTO> leads) {
+        if (leads == null || leads.isEmpty()) return leads;
+        List<String> userIds = leads.stream()
+                .map(WorkbenchLeadDTO::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (userIds.isEmpty()) return leads;
+        Map<String, UserDTO> userById;
+        try {
+            userById = authService.getUsersFromAuthServiceByUserIds(userIds).stream()
+                    .filter(Objects::nonNull)
+                    .filter(u -> u.getId() != null)
+                    .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
+        } catch (Exception e) {
+            // Auth-service degradation must NOT 500 the workbench. Log and
+            // return the rows with name/email/phone left null — the UI
+            // already renders a user_id fallback for missing names.
+            log.warn("Lead identity hydration failed: {}", e.getMessage());
+            return leads;
+        }
+        for (WorkbenchLeadDTO lead : leads) {
+            UserDTO u = userById.get(lead.getUserId());
+            if (u == null) continue;
+            lead.setLeadName(u.getFullName());
+            lead.setLeadEmail(u.getEmail());
+            lead.setLeadPhone(u.getMobileNumber());
+        }
+        return leads;
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -208,7 +249,8 @@ public class CounsellorWorkbenchService {
             // hard-coded conversion_status = 'LEAD' didn't match the bulk of
             // real data where the column is NULL until the first status
             // change, so the reassign dialog never opened.
-            openLeads = leadRepo.findOpenLeadsForCounsellor(instituteId, userId, 0, 200);
+            openLeads = hydrateLeadIdentities(
+                    leadRepo.findOpenLeadsForCounsellor(instituteId, userId, 0, 200));
         }
         return StatusChangeResponseDTO.builder()
                 .userId(userId)

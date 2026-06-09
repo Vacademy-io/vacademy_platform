@@ -17,6 +17,8 @@ import java.sql.Timestamp;
 public class FollowupRowDTO {
     private String followupId;
     private String leadId;
+    /** Lead's auth-service user_id — drives the leadName hydration. */
+    private String leadUserId;
     private String leadName;
     private String counsellorUserId;
     private String counsellorName;

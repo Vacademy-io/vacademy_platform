@@ -25,6 +25,7 @@ import { SplitScreenVideoSlide } from "./split-screen-video-slide";
 import { useDoubtSidebarStore } from "@/stores/study-library/doubt-sidebar-store";
 import QuizViewer from "./quiz-viewer";
 import { Slide, AIVideoData } from "@/hooks/study-library/use-slides";
+import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
 import { AIVideoPlayer } from "@/components/ai-video-player";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { ConcentrationSettings } from "@/types/student-display-settings";
@@ -59,6 +60,37 @@ export const SlideMaterial = () => {
       })
       .catch((err) => console.error("Failed to load display settings for concentration:", err));
   }, []);
+
+  // Slide content protection (institute setting): while viewing a slide, block
+  // right-click and the common DevTools / view-source shortcuts. Best-effort
+  // deterrent only — DevTools can still be opened from the browser menu.
+  // Bypassed entirely with `?access=dev` (see useSlideContentProtection).
+  const { protectionEnabled } = useSlideContentProtection();
+  useEffect(() => {
+    if (!protectionEnabled) return;
+    const blockContextMenu = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      const key = e.key;
+      const isF12 = key === "F12";
+      // Ctrl/Cmd + U → view source
+      const isViewSource = (e.ctrlKey || e.metaKey) && (key === "u" || key === "U");
+      // Ctrl/Cmd + Shift + I/J/C → DevTools / inspector / console
+      const isDevTools =
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        ["i", "I", "j", "J", "c", "C"].includes(key);
+      if (isF12 || isViewSource || isDevTools) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("contextmenu", blockContextMenu);
+    document.addEventListener("keydown", blockKeys, true);
+    return () => {
+      document.removeEventListener("contextmenu", blockContextMenu);
+      document.removeEventListener("keydown", blockKeys, true);
+    };
+  }, [protectionEnabled]);
 
   const playerRef = useRef<HTMLVideoElement | null>(null);
 

@@ -17,6 +17,8 @@ import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime"
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
 import { ConcentrationSettings } from "@/types/student-display-settings";
 import { DEFAULT_STUDENT_DISPLAY_SETTINGS } from "@/constants/display-settings/student-defaults";
+import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
+import { SlideDownloadTypeKey } from "@/constants/slide-download-permission";
 
 import {
     ArrowsOut,
@@ -61,6 +63,10 @@ interface CustomVideoPlayerProps {
 const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
     ({ videoUrl, sourceType = "URL", onTimeUpdate, questions = [], concentrationSettings }, ref) => {
         const { activeItem } = useContentStore();
+        // Whether this user's role is allowed to download the video. Defaults to
+        // false (today's behavior — native download is suppressed).
+        const { canDownload } = useSlideDownloadPermission();
+        const allowVideoDownload = canDownload(SlideDownloadTypeKey.VIDEO);
         // Select only the addActivity function to avoid re-renders due to trackingData updates
         const addActivity = useTrackingStore((state) => state.addActivity);
         const activityId = useRef(uuidv4());
@@ -1936,7 +1942,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                             onPause={handleVideoPause}
                             playsInline
                             preload="auto"
-                            controlsList="nodownload"
+                            controlsList={allowVideoDownload ? undefined : "nodownload"}
                             crossOrigin="anonymous"
                         >
                             <source src={actualVideoUrl} type="video/mp4" />

@@ -22,9 +22,7 @@ import { InsightsStrip } from './-components/InsightsStrip';
 // places, no need for a duplicate component.
 import { FeatureDisabledNotice } from '@/routes/counsellors/-components/FeatureDisabledNotice';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 export const Route = createLazyFileRoute('/sales-dashboard/')({
     component: RouteComponent,
@@ -69,11 +67,9 @@ function parseDateInput(value: string, endOfDay: boolean): number | null {
  * counts → React crash).
  */
 function isSalesDashboardEnabled(): boolean {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const viewerRoles = getUserRoles(accessToken);
-    const isAdmin = viewerRoles.includes('ADMIN');
-    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-    const ds = getDisplaySettingsFromCache(roleKey);
+    // Must resolve through getActiveRoleDisplaySettingsKey so custom-role users
+    // read the toggle from their own role's settings, not the teacher default.
+    const ds = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
     // Toggled from Display Settings → CRM → Leads sub-tabs (same place as
     // Lead List / Recent Leads / Follow-ups). Off by default per
     // SUB_ITEMS_HIDDEN_BY_DEFAULT in admin-defaults.

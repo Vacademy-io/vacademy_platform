@@ -28,9 +28,7 @@ import { CallsPerDayWidget } from '@/routes/sales-dashboard/-components/CallsPer
 import { CounsellorRatingBadge } from '@/components/counsellor/CounsellorRatingBadge';
 import { useCounsellorRatingBatch } from '@/components/counsellor/useCounsellorRating';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
-import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import {
     fetchCounsellorLeads,
     fetchMyTeam,
@@ -51,11 +49,9 @@ type ViewMode = 'cards' | 'list';
 const VIEW_MODE_KEY = 'counsellors-view-mode';
 
 function isCounsellorsPageEnabled(): boolean {
-    const accessToken = getTokenFromCookie(TokenKey.accessToken);
-    const viewerRoles = getUserRoles(accessToken);
-    const isAdmin = viewerRoles.includes('ADMIN');
-    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-    const ds = getDisplaySettingsFromCache(roleKey);
+    // Must resolve through getActiveRoleDisplaySettingsKey so custom-role users
+    // read the toggle from their own role's settings, not the teacher default.
+    const ds = getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey());
     // Toggled from Display Settings → CRM → Leads sub-tabs, same place as
     // Lead List / Recent Leads / Follow-ups. Off by default per
     // SUB_ITEMS_HIDDEN_BY_DEFAULT in admin-defaults.

@@ -118,6 +118,26 @@ public class CounsellorScopeService {
      * widens the scope explicitly. The caller's own user_id is always in
      * the returned set so a leaf counsellor still sees their own data.
      */
+    /**
+     * Does the caller have any team membership inside the institute's
+     * configured leads subtree? Used as the gate for the CRM-Leads RBAC
+     * scoping: only callers who are actually in the leads team should be
+     * narrowed to their descendants — admins / others stay institute-wide.
+     */
+    public boolean isCallerInLeadsSubtree(String instituteId, String callerUserId) {
+        if (callerUserId == null || callerUserId.isBlank()) return false;
+        Set<String> leadsTeamIds = new HashSet<>(allTeamIdsUnderLeadsRoot(instituteId));
+        if (leadsTeamIds.isEmpty()) return false;
+        try {
+            return orgTeamClient.mappingsForUser(callerUserId).stream()
+                    .anyMatch(m -> m.getTeamId() != null && leadsTeamIds.contains(m.getTeamId()));
+        } catch (Exception e) {
+            log.warn("isCallerInLeadsSubtree: mappingsForUser({}) failed: {}",
+                    callerUserId, e.getMessage());
+            return false;
+        }
+    }
+
     public List<String> descendantUserIdsForCaller(String instituteId, String callerUserId) {
         if (callerUserId == null || callerUserId.isBlank()) return Collections.emptyList();
 

@@ -1,31 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "3c5690f2-4c14-4f9e-979e-fd585e86e5be-whatsapp_image_2026-05-08_at_10.58.05_am 2.jpg",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
-      "filename" : "3c5690f2-4c14-4f9e-979e-fd585e86e5be-whatsapp_image_2026-05-08_at_10.58.05_am.jpg",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "tinted"
-        }
-      ],
-      "filename" : "3c5690f2-4c14-4f9e-979e-fd585e86e5be-whatsapp_image_2026-05-08_at_10.58.05_am 1.jpg",
+      "filename" : "edzumo.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

@@ -12,14 +12,15 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 
 /**
- * Per-counsellor cached rating. Persisted inside the institute_setting JSON
- * under LEAD_SETTING.workbench.counsellor_ratings.{userId}, so this DTO is
- * also the on-disk shape — Jackson serializes it directly via
- * {@code ObjectMapper.valueToTree(...)} / {@code treeToValue(...)} inside
- * LeadWorkbenchSettingService.
+ * Per-counsellor cached rating, transport shape (controller responses + the
+ * compute service's intermediate state). The on-disk row lives in the
+ * {@code counsellor_rating} table since V327; this DTO is the
+ * application-layer view, mapped via
+ * {@code LeadWorkbenchSettingService.entityToDTO} on read and absorbed back
+ * into the entity on upsert.
  *
- * Null-component fields are dropped on write so STATIC entries stay small
- * (no junk conversion_ratio_score / velocity_score).
+ * Null-component fields are dropped from the wire (JSON) so STATIC entries
+ * stay small (no junk conversion_ratio_score / velocity_score).
  */
 @Data
 @NoArgsConstructor

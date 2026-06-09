@@ -9,19 +9,35 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.counsellor_rating.dto.RatingDTO;
+import vacademy.io.admin_core_service.features.counsellor_rating.entity.CounsellorRating;
+import vacademy.io.admin_core_service.features.counsellor_rating.repository.CounsellorRatingRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * Per-institute counsellor workbench + rating configuration. Lives inside the
- * existing institute_setting JSON under LEAD_SETTING → workbench, so we do
- * not pay for new tables to hold a single row per institute.
+ * Per-institute counsellor workbench config + per-counsellor rating reads.
  *
- * <h3>JSON shape under LEAD_SETTING.data</h3>
+ * <h3>Storage split</h3>
+ * <ul>
+ *   <li><b>Strategy CONFIG</b> (one row per institute, rarely written) lives
+ *       inside the existing {@code institute.setting_json} blob under
+ *       {@code LEAD_SETTING → data → workbench → rating}. JSON is appropriate
+ *       here — one row per institute, naturally colocated with the rest of
+ *       the per-institute lead config (SLA, scoring weights, leads_team_id).</li>
+ *   <li><b>Per-counsellor SCORES</b> (one row per (institute, counsellor),
+ *       written by the nightly recompute + admin manual_override edits)
+ *       live in the {@code counsellor_rating} table (V327). Atomic per-row
+ *       upserts replace what was previously a read-mutate-write of the
+ *       institute-wide blob — that pattern raced on concurrent recomputes
+ *       and lost manual_override edits.</li>
+ * </ul>
+ *
+ * <h3>JSON shape under LEAD_SETTING.data (config only — scores moved out in V327)</h3>
  * <pre>
  * {
  *   "workbench": {
@@ -40,11 +56,6 @@ import java.util.*;
  *   }
  * }
  * </pre>
- *
- * Reads return {@link WorkbenchConfig} (defaults applied for missing fields);
- * writes upsert into the JSON blob. The institute_setting JSON is already the
- * single source of truth for all lead-related config (LEAD_SETTING, SLA,
- * scoring weights), so workbench fields slot in naturally.
  */
 @Slf4j
 @Service
@@ -55,6 +66,7 @@ public class LeadWorkbenchSettingService {
 
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
+    private final CounsellorRatingRepository counsellorRatingRepository;
 
     // ────────────────────────────────────────────────────────────────
     // Read
@@ -149,11 +161,10 @@ public class LeadWorkbenchSettingService {
     }
 
     // ────────────────────────────────────────────────────────────────
-    // Per-counsellor ratings cache — stored inside the same JSON, keyed
-    // by counsellor user_id. Replaces what used to be a dedicated
-    // counsellor_rating table. Strategy config lives under
-    // workbench.rating; per-counsellor scores live under
-    // workbench.counsellor_ratings.{userId}.
+    // Per-counsellor ratings — backed by the `counsellor_rating` table
+    // since V327. Strategy config still lives in the JSON blob above; only
+    // per-counsellor SCORES were moved out. See class javadoc + the V327
+    // migration for the rationale.
     // ────────────────────────────────────────────────────────────────
 
     /**
@@ -162,14 +173,9 @@ public class LeadWorkbenchSettingService {
      * default zeros.
      */
     public Optional<RatingDTO> getCounsellorRating(String instituteId, String counsellorUserId) {
-        Institute institute = getInstitute(instituteId);
-        JsonNode workbench = locateWorkbenchNode(institute.getSetting());
-        if (workbench == null || workbench.isMissingNode() || workbench.isNull()) return Optional.empty();
-        JsonNode ratings = workbench.path("counsellor_ratings");
-        if (!ratings.isObject()) return Optional.empty();
-        JsonNode entry = ratings.get(counsellorUserId);
-        if (entry == null || !entry.isObject()) return Optional.empty();
-        return Optional.ofNullable(nodeToRatingDTO(entry, instituteId, counsellorUserId));
+        return counsellorRatingRepository
+                .findByInstituteIdAndCounsellorUserId(instituteId, counsellorUserId)
+                .map(this::entityToDTO);
     }
 
     /**
@@ -178,74 +184,82 @@ public class LeadWorkbenchSettingService {
      * ratings have been written yet (fresh institute).
      */
     public Map<String, RatingDTO> getAllCounsellorRatings(String instituteId) {
-        Institute institute = getInstitute(instituteId);
-        JsonNode workbench = locateWorkbenchNode(institute.getSetting());
-        if (workbench == null || workbench.isMissingNode() || workbench.isNull()) return Collections.emptyMap();
-        JsonNode ratings = workbench.path("counsellor_ratings");
-        if (!ratings.isObject()) return Collections.emptyMap();
-        Map<String, RatingDTO> out = new HashMap<>();
-        ratings.fields().forEachRemaining(e -> {
-            RatingDTO dto = nodeToRatingDTO(e.getValue(), instituteId, e.getKey());
-            if (dto != null) out.put(e.getKey(), dto);
-        });
-        return out;
+        return counsellorRatingRepository.findByInstituteId(instituteId).stream()
+                .collect(Collectors.toMap(
+                        CounsellorRating::getCounsellorUserId,
+                        this::entityToDTO,
+                        (a, b) -> a));
     }
 
     /**
      * Read several counsellor ratings at once. Returns only existing
      * entries; callers that want default-zero fallbacks should layer that
-     * on top.
+     * on top. One indexed SQL query per call (replaces the old
+     * read-whole-blob-then-filter pattern).
      */
     public Map<String, RatingDTO> getCounsellorRatingsBatch(String instituteId,
                                                             Collection<String> counsellorUserIds) {
         if (counsellorUserIds == null || counsellorUserIds.isEmpty()) return Collections.emptyMap();
-        Map<String, RatingDTO> all = getAllCounsellorRatings(instituteId);
-        Map<String, RatingDTO> out = new HashMap<>();
-        for (String uid : counsellorUserIds) {
-            RatingDTO r = all.get(uid);
-            if (r != null) out.put(uid, r);
-        }
-        return out;
+        return counsellorRatingRepository
+                .findByInstituteIdAndCounsellorUserIdIn(instituteId, counsellorUserIds).stream()
+                .collect(Collectors.toMap(
+                        CounsellorRating::getCounsellorUserId,
+                        this::entityToDTO,
+                        (a, b) -> a));
     }
 
     /**
-     * Write/replace one counsellor's cached rating inside the JSON. Caller
-     * is responsible for filling the snapshot (strategy_type, score,
+     * Write/replace one counsellor's cached rating. Per-row upsert — atomic
+     * regardless of how many counsellors are being recomputed concurrently.
+     * Caller is responsible for filling the snapshot (strategy_type, score,
      * components, last_computed_at, manual_override).
      */
     @Transactional
     public RatingDTO upsertCounsellorRating(String instituteId, String counsellorUserId, RatingDTO dto) {
         if (dto == null) throw new VacademyException("rating payload is required");
-        Institute institute = getInstitute(instituteId);
-        ObjectNode root = mutableRoot(institute.getSetting());
-        ObjectNode workbench = ensureWorkbenchNode(root);
-        ObjectNode ratings = workbench.has("counsellor_ratings") && workbench.get("counsellor_ratings").isObject()
-                ? (ObjectNode) workbench.get("counsellor_ratings")
-                : workbench.putObject("counsellor_ratings");
 
-        // Stamp the identity fields so the entry round-trips correctly.
-        dto.setInstituteId(instituteId);
-        dto.setCounsellorUserId(counsellorUserId);
-        ratings.set(counsellorUserId, objectMapper.valueToTree(dto));
+        CounsellorRating row = counsellorRatingRepository
+                .findByInstituteIdAndCounsellorUserId(instituteId, counsellorUserId)
+                .orElseGet(() -> CounsellorRating.builder()
+                        .instituteId(instituteId)
+                        .counsellorUserId(counsellorUserId)
+                        .build());
 
-        persist(institute, root);
-        return dto;
+        // Strategy type is the only NOT NULL business field; if the caller
+        // forgot to set it (older callers seeded from getCounsellorRating
+        // for a never-rated counsellor), fall back to the current row's
+        // value, or STRATEGY_BASED as a last resort.
+        String strategyType = dto.getStrategyType() != null
+                ? dto.getStrategyType()
+                : (row.getStrategyType() != null ? row.getStrategyType() : "STRATEGY_BASED");
+
+        row.setStrategyType(strategyType);
+        row.setScore(dto.getScore());
+        row.setConversionRatioScore(dto.getConversionRatioScore());
+        row.setVelocityScore(dto.getVelocityScore());
+        row.setSampleSize(dto.getSampleSize());
+        row.setManualOverride(dto.getManualOverride());
+        row.setLastComputedAt(dto.getLastComputedAt());
+
+        CounsellorRating saved = counsellorRatingRepository.save(row);
+
+        // Round-trip what we persisted so the caller sees the canonical
+        // values (including ids) without a second SELECT.
+        return entityToDTO(saved);
     }
 
-    /** Reverse of {@link #upsertCounsellorRating} — translate a JSON entry into the DTO. */
-    private RatingDTO nodeToRatingDTO(JsonNode entry, String instituteId, String counsellorUserId) {
-        try {
-            RatingDTO dto = objectMapper.treeToValue(entry, RatingDTO.class);
-            if (dto == null) return null;
-            // Re-stamp the keys even if the JSON happens to be missing them
-            // (defensive — older entries may not carry redundant ids).
-            dto.setInstituteId(instituteId);
-            dto.setCounsellorUserId(counsellorUserId);
-            return dto;
-        } catch (Exception e) {
-            log.warn("Bad counsellor_rating JSON entry for {}: {}", counsellorUserId, e.getMessage());
-            return null;
-        }
+    private RatingDTO entityToDTO(CounsellorRating r) {
+        return RatingDTO.builder()
+                .instituteId(r.getInstituteId())
+                .counsellorUserId(r.getCounsellorUserId())
+                .strategyType(r.getStrategyType())
+                .score(r.getScore())
+                .conversionRatioScore(r.getConversionRatioScore())
+                .velocityScore(r.getVelocityScore())
+                .sampleSize(r.getSampleSize())
+                .manualOverride(r.getManualOverride())
+                .lastComputedAt(r.getLastComputedAt())
+                .build();
     }
 
     // ────────────────────────────────────────────────────────────────

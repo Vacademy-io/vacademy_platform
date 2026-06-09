@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
@@ -23,6 +23,7 @@ import { CounsellorLeadsTab } from './-components/CounsellorLeadsTab';
 import { CounsellorActivityTab } from './-components/CounsellorActivityTab';
 import { ReassignDialog } from './-components/ReassignDialog';
 import { FeatureDisabledNotice } from './-components/FeatureDisabledNotice';
+import { MyPagination } from '@/components/design-system/pagination';
 import { ConversionBySourceWidget } from '@/routes/sales-dashboard/-components/ConversionBySourceWidget';
 import { CallsPerDayWidget } from '@/routes/sales-dashboard/-components/CallsPerDayWidget';
 import { CounsellorRatingBadge } from '@/components/counsellor/CounsellorRatingBadge';
@@ -81,7 +82,9 @@ function WorkbenchPage() {
         setNavHeading('Counsellors');
     }, [setNavHeading]);
 
-    // UI state.
+    // UI state. Search + statusFilter feed the server query so the page
+    // count stays meaningful (no "page 2 of 5 with zero results").
+    const [searchInput, setSearchInput] = useState('');
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -92,7 +95,17 @@ function WorkbenchPage() {
         setViewMode(next);
         localStorage.setItem(VIEW_MODE_KEY, next);
     }
-    const [openCounsellorId, setOpenCounsellorId] = useState<string | null>(null);
+    // Debounce so we don't fire a server request on every keystroke.
+    useEffect(() => {
+        const t = setTimeout(() => setSearch(searchInput), 300);
+        return () => clearTimeout(t);
+    }, [searchInput]);
+
+    // Open-drawer state holds the FULL counsellor object — not just the id —
+    // because the displayed list is now server-paginated, so a `find` against
+    // the current page would lose the drawer if the manager paginated away
+    // (or if a status flip caused the row to drop out of the active filter).
+    const [openCounsellor, setOpenCounsellor] = useState<WorkbenchCounsellor | null>(null);
     const [detailTab, setDetailTab] = useState<DetailTab>('leads');
     const [reassignOpen, setReassignOpen] = useState(false);
     const [reassignLeads, setReassignLeads] = useState<WorkbenchLead[]>([]);
@@ -113,38 +126,59 @@ function WorkbenchPage() {
         queryFn: () => fetchMyTeam(instituteId!),
     });
 
+    // Page size adapts to the current view: a 12-cell grid (3×4 / 4×3) for
+    // cards, 20 rows for the list. Page state resets to 0 when the inputs
+    // that re-shape the page count change.
+    const pageSize = viewMode === 'cards' ? 12 : 20;
+    const [page, setPage] = useState(0);
+    useEffect(() => {
+        setPage(0);
+    }, [search, statusFilter, viewMode]);
+
     const counsellorsQuery = useQuery({
-        queryKey: ['workbench-counsellors', instituteId, teamQuery.data?.team_id],
+        queryKey: [
+            'workbench-counsellors',
+            instituteId,
+            teamQuery.data?.team_id,
+            search,
+            statusFilter,
+            page,
+            pageSize,
+        ],
         enabled: !!instituteId && !!teamQuery.data?.team_id,
-        queryFn: () => fetchTeamCounsellors(instituteId!, teamQuery.data!.team_id),
+        queryFn: () =>
+            fetchTeamCounsellors(instituteId!, teamQuery.data!.team_id, {
+                search,
+                status: statusFilter,
+                page,
+                size: pageSize,
+            }),
+        placeholderData: (prev) => prev,
     });
 
-    // Warm the rating cache for every counsellor at once so the badges
-    // resolve without N round-trips.
+    // Candidates for the reassign dialog's target dropdown need the WHOLE
+    // team subtree, not just the current page. Separate query so the display
+    // list can paginate while reassign still picks across everyone. Cached
+    // by react-query so we don't re-fetch on every row click.
+    const candidatesQuery = useQuery({
+        queryKey: ['workbench-counsellors-candidates', instituteId, teamQuery.data?.team_id],
+        enabled: !!instituteId && !!teamQuery.data?.team_id,
+        queryFn: () =>
+            fetchTeamCounsellors(instituteId!, teamQuery.data!.team_id, {
+                size: 500,
+            }),
+    });
+
+    const counsellors = counsellorsQuery.data?.content ?? [];
+    const totalCounsellors = counsellorsQuery.data?.totalElements ?? 0;
+    const totalPages = Math.max(1, counsellorsQuery.data?.totalPages ?? 1);
+    const candidates = candidatesQuery.data?.content ?? [];
+
+    // Warm the rating cache only for the visible page — full-list warming
+    // would scale poorly once the roster grows past a few pages.
     useCounsellorRatingBatch(
         instituteId,
-        counsellorsQuery.data?.map((c) => c.user_id)
-    );
-
-    const counsellors = counsellorsQuery.data ?? [];
-
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        return counsellors.filter((c) => {
-            if (statusFilter === 'active' && !c.is_active) return false;
-            if (statusFilter === 'inactive' && c.is_active) return false;
-            if (!q) return true;
-            return (
-                (c.full_name ?? '').toLowerCase().includes(q) ||
-                (c.email ?? '').toLowerCase().includes(q) ||
-                (c.role_label ?? '').toLowerCase().includes(q)
-            );
-        });
-    }, [counsellors, search, statusFilter]);
-
-    const openCounsellor = useMemo(
-        () => counsellors.find((c) => c.user_id === openCounsellorId) ?? null,
-        [counsellors, openCounsellorId]
+        counsellors.map((c) => c.user_id)
     );
 
     // ACTIVE direction: legacy direct flip — no leads to move, no dialog
@@ -174,10 +208,14 @@ function WorkbenchPage() {
         if (!instituteId) return;
         setPendingMarkInactiveId(userId);
         try {
+            // Reassign-first needs ALL open leads (so each gets routed in one
+            // batch). Bumping size to 500 is the existing safety cap — beyond
+            // that we'd want a multi-page accumulator; flag if a counsellor
+            // routinely sits on more than ~500 open leads.
             const leads = await fetchCounsellorLeads(instituteId, userId, 'OPEN', 0, 500);
             setReassignFromUserId(userId);
             setReassignFromName(displayName);
-            setReassignLeads(leads ?? []);
+            setReassignLeads(leads?.content ?? []);
             setReassignMarkInactive(true);
             setReassignOpen(true);
         } catch (e) {
@@ -233,8 +271,12 @@ function WorkbenchPage() {
         );
     }
 
-    const activeCount = counsellors.filter((c) => c.is_active).length;
-    const totalOpenLeads = counsellors.reduce((sum, c) => sum + c.open_leads_count, 0);
+    // Stat chips count over ALL counsellors, not just the current page.
+    // Fall back to current page values until the all-candidates query
+    // resolves, so the chips don't flash zeros on first load.
+    const statSource = candidates.length > 0 ? candidates : counsellors;
+    const activeCount = statSource.filter((c) => c.is_active).length;
+    const totalOpenLeads = statSource.reduce((sum, c) => sum + c.open_leads_count, 0);
 
     return (
         <LayoutContainer>
@@ -252,7 +294,11 @@ function WorkbenchPage() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <StatChip icon={UsersThree} label="Counsellors" value={counsellors.length} />
+                    <StatChip
+                        icon={UsersThree}
+                        label="Counsellors"
+                        value={totalCounsellors}
+                    />
                     <StatChip icon={Crown} label="Active" value={activeCount} tone="success" />
                     <StatChip
                         icon={ChatCircleText}
@@ -273,8 +319,8 @@ function WorkbenchPage() {
                     <input
                         className="w-full rounded-md border border-neutral-300 py-2 pl-9 pr-3 text-body"
                         placeholder="Search by name or email…"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
                     />
                 </div>
                 <div className="flex overflow-hidden rounded-md border border-neutral-300">
@@ -335,15 +381,15 @@ function WorkbenchPage() {
                 <div className="rounded-md border border-neutral-200 bg-white p-8 text-center text-subtitle text-neutral-500">
                     Loading counsellors…
                 </div>
-            ) : filtered.length === 0 ? (
+            ) : counsellors.length === 0 ? (
                 <div className="rounded-md border border-neutral-200 bg-white p-8 text-center text-subtitle text-neutral-500">
-                    {counsellors.length === 0
+                    {totalCounsellors === 0 && !search && statusFilter === 'all'
                         ? 'No counsellors in this team yet. Add them under Manage Institute → Teams → Org Chart.'
                         : 'No one matches your filters.'}
                 </div>
             ) : viewMode === 'list' ? (
                 <CounsellorTable
-                    counsellors={filtered}
+                    counsellors={counsellors}
                     instituteId={instituteId}
                     statusPendingId={
                         pendingMarkInactiveId ??
@@ -352,8 +398,11 @@ function WorkbenchPage() {
                             : null)
                     }
                     onOpen={(uid) => {
-                        setOpenCounsellorId(uid);
-                        setDetailTab('leads');
+                        const c = counsellors.find((x) => x.user_id === uid);
+                        if (c) {
+                            setOpenCounsellor(c);
+                            setDetailTab('leads');
+                        }
                     }}
                     onToggleStatus={(uid, isActive) => {
                         const c = counsellors.find((x) => x.user_id === uid);
@@ -363,13 +412,13 @@ function WorkbenchPage() {
                 />
             ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {filtered.map((c) => (
+                    {counsellors.map((c) => (
                         <CounsellorCard
                             key={c.user_id}
                             counsellor={c}
                             instituteId={instituteId}
                             onOpen={() => {
-                                setOpenCounsellorId(c.user_id);
+                                setOpenCounsellor(c);
                                 setDetailTab('leads');
                             }}
                             onToggleStatus={() =>
@@ -385,10 +434,25 @@ function WorkbenchPage() {
                 </div>
             )}
 
+            {totalCounsellors > pageSize && (
+                <div className="mt-4 flex items-center justify-between">
+                    <span className="text-caption text-neutral-500">
+                        Showing {page * pageSize + 1}–
+                        {Math.min((page + 1) * pageSize, totalCounsellors)} of {totalCounsellors}
+                        {counsellorsQuery.isFetching ? ' · loading…' : ''}
+                    </span>
+                    <MyPagination
+                        currentPage={page + 1}
+                        totalPages={totalPages}
+                        onPageChange={(p) => setPage(p - 1)}
+                    />
+                </div>
+            )}
+
             {/* ── Detail slide-over panel (Radix Sheet, portaled) ── */}
             <DetailDrawer
                 open={!!openCounsellor}
-                onOpenChange={(o) => !o && setOpenCounsellorId(null)}
+                onOpenChange={(o) => !o && setOpenCounsellor(null)}
                 counsellor={openCounsellor}
                 tab={detailTab}
                 onTabChange={setDetailTab}
@@ -403,7 +467,7 @@ function WorkbenchPage() {
                 fromUserId={reassignFromUserId}
                 fromUserName={reassignFromName}
                 openLeads={reassignLeads}
-                candidates={counsellorsQuery.data ?? []}
+                candidates={candidates}
                 markInactive={reassignMarkInactive}
                 onComplete={handleReassignComplete}
             />

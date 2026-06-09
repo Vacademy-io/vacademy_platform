@@ -71,8 +71,9 @@ public class CounsellorWorkbenchController {
     @GetMapping("/team/{teamId}/counsellors")
     public ResponseEntity<List<WorkbenchCounsellorDTO>> listCounsellors(
             @PathVariable String teamId,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(workbenchService.listCounsellorsForTeam(instituteId, teamId));
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(workbenchService.listCounsellorsForTeam(instituteId, teamId, user));
     }
 
     /**

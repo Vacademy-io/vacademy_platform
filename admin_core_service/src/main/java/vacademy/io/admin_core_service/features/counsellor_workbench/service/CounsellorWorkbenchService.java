@@ -56,8 +56,9 @@ public class CounsellorWorkbenchService {
 
     public List<WorkbenchLeadDTO> myLeads(String instituteId, CustomUserDetails caller,
                                           String conversionStatus, int page, int size) {
-        WorkbenchTeamDTO scope = scopeService.resolveHomeScope(instituteId, caller.getUserId());
-        List<String> users = scopeService.usersInTeams(scope.getDescendantTeamIds());
+        // RBAC: caller + descendants via parent_user_id. A team head gets
+        // their whole downstream; a leaf member gets only their own leads.
+        List<String> users = scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId());
         if (users.isEmpty()) return Collections.emptyList();
         return leadRepo.findLeadsForCounsellors(instituteId, users, conversionStatus, page * size, size);
     }
@@ -79,11 +80,14 @@ public class CounsellorWorkbenchService {
     // ────────────────────────────────────────────────────────────────
 
     /**
-     * Build the workbench left-rail roster for a team subtree.
-     * Active flag is derived from the existing counselor_pool memberships:
-     * a counsellor is "active" iff they have at least one ACTIVE pool row.
+     * Build the workbench roster for a team subtree, intersected with the
+     * caller's RBAC scope (their user-to-user descendants). A team head
+     * sees their whole downstream; a manager sees their reports; a leaf
+     * counsellor sees only themselves. Pass {@code caller=null} to bypass
+     * the RBAC filter (admin / scheduled-job paths).
      */
-    public List<WorkbenchCounsellorDTO> listCounsellorsForTeam(String instituteId, String teamId) {
+    public List<WorkbenchCounsellorDTO> listCounsellorsForTeam(String instituteId, String teamId,
+                                                               CustomUserDetails caller) {
         // Resolve the team subtree once via auth_service. When teamId is
         // omitted, fall back to "everything under the institute's leads root".
         List<OrgTeamDTO> subtree = (teamId != null && !teamId.isBlank())
@@ -98,6 +102,16 @@ public class CounsellorWorkbenchService {
         // (most-recent) team mapping for display purposes.
         List<String> userIds = orgTeamClient.usersInTeams(new ArrayList<>(teamNameById.keySet()));
         if (userIds.isEmpty()) return Collections.emptyList();
+
+        // RBAC: intersect with the caller's descendants so a manager doesn't
+        // see peers / siblings outside their reporting line. Caller=null is
+        // the unfiltered admin path.
+        if (caller != null) {
+            Set<String> allowed = new HashSet<>(
+                    scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
+            userIds = userIds.stream().filter(allowed::contains).toList();
+            if (userIds.isEmpty()) return Collections.emptyList();
+        }
 
         // Resolve names in one batch.
         Map<String, UserDTO> userById = new HashMap<>();

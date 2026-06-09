@@ -15,6 +15,8 @@ import {
     ReassignmentVolumeWidget,
 } from './-components/TimeSeriesWidgets';
 import { CampaignCardsRow } from './-components/CampaignCardsRow';
+import { ConversionBySourceWidget } from './-components/ConversionBySourceWidget';
+import { CallsPerDayWidget } from './-components/CallsPerDayWidget';
 import { InsightsStrip } from './-components/InsightsStrip';
 // Reuse the disabled-notice from the counsellors route — same UX in both
 // places, no need for a duplicate component.
@@ -145,6 +147,22 @@ function SalesDashboardPage() {
                     />
                     <ReassignmentVolumeWidget
                         instituteId={instituteId}
+                        from={range.from}
+                        to={range.to}
+                    />
+                </div>
+
+                {/* Row 5: Source conversion + daily calls */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <ConversionBySourceWidget
+                        instituteId={instituteId}
+                        teamId={teamId}
+                        from={range.from}
+                        to={range.to}
+                    />
+                    <CallsPerDayWidget
+                        instituteId={instituteId}
+                        teamId={teamId}
                         from={range.from}
                         to={range.to}
                     />

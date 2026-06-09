@@ -1122,6 +1122,32 @@ export const SALES_DASHBOARD_CAMPAIGN_CARDS = (
     instituteId: string,
     period: 'DAY' | 'WEEK' | 'MONTH' = 'WEEK'
 ) => `${SALES_DASHBOARD_BASE}/campaign-cards?${buildSdQS(instituteId, { period })}`;
+export const SALES_DASHBOARD_CONVERSION_BY_SOURCE = (
+    instituteId: string,
+    teamId?: string,
+    counsellorUserId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/conversion-by-source?${buildSdQS(instituteId, {
+        team_id: teamId,
+        counsellor_user_id: counsellorUserId,
+        from: fromMillis,
+        to: toMillis,
+    })}`;
+export const SALES_DASHBOARD_CALLS_PER_DAY = (
+    instituteId: string,
+    teamId?: string,
+    counsellorUserId?: string,
+    fromMillis?: number,
+    toMillis?: number
+) =>
+    `${SALES_DASHBOARD_BASE}/calls-per-day?${buildSdQS(instituteId, {
+        team_id: teamId,
+        counsellor_user_id: counsellorUserId,
+        from: fromMillis,
+        to: toMillis,
+    })}`;
 export const SALES_DASHBOARD_LEADERBOARD = (
     instituteId: string,
     teamId?: string,

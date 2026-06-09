@@ -101,4 +101,57 @@ public class CounsellorScopeService {
         if (leadsRootId == null) return Collections.emptyList();
         return orgTeamClient.getSubtreeIncludingSelf(leadsRootId);
     }
+
+    /**
+     * RBAC scope for the workbench / sales dashboard. Returns the caller's
+     * user_id plus every user that reports up to them through
+     * {@code parent_user_id} chains inside any team under the institute's
+     * configured leads root.
+     *
+     * <p>Concretely: a team head (parent_user_id = null inside the team)
+     * gets the whole team's downstream; a mid-level manager gets themselves
+     * + direct reports + their reports; a leaf member gets only themselves.
+     *
+     * <p>This is the canonical "what data can this caller see" answer —
+     * every endpoint that filters by counsellor user_id should run requests
+     * through here unless the caller has an admin-level permission that
+     * widens the scope explicitly. The caller's own user_id is always in
+     * the returned set so a leaf counsellor still sees their own data.
+     */
+    public List<String> descendantUserIdsForCaller(String instituteId, String callerUserId) {
+        if (callerUserId == null || callerUserId.isBlank()) return Collections.emptyList();
+
+        Set<String> leadsTeamIds = new HashSet<>(allTeamIdsUnderLeadsRoot(instituteId));
+        // Caller might not be in any leads-team yet — that's fine, they still
+        // see themselves (and may have leads assigned without team membership).
+        Set<String> out = new HashSet<>();
+        out.add(callerUserId);
+
+        List<TeamMemberDTO> callerMappings;
+        try {
+            callerMappings = orgTeamClient.mappingsForUser(callerUserId);
+        } catch (Exception e) {
+            log.warn("descendantUserIdsForCaller: mappingsForUser({}) failed: {}",
+                    callerUserId, e.getMessage());
+            return new ArrayList<>(out);
+        }
+
+        for (TeamMemberDTO m : callerMappings) {
+            if (m.getTeamId() == null || m.getMappingId() == null) continue;
+            // Only walk through teams under the configured leads root, so a
+            // caller who happens to be in an unrelated team (e.g. Finance)
+            // doesn't accidentally see their Finance reports' leads.
+            if (!leadsTeamIds.isEmpty() && !leadsTeamIds.contains(m.getTeamId())) continue;
+            try {
+                List<TeamMemberDTO> descendants = orgTeamClient.getDescendants(m.getTeamId(), m.getMappingId());
+                for (TeamMemberDTO d : descendants) {
+                    if (d.getUserId() != null) out.add(d.getUserId());
+                }
+            } catch (Exception e) {
+                log.warn("descendantUserIdsForCaller: getDescendants({}, {}) failed: {}",
+                        m.getTeamId(), m.getMappingId(), e.getMessage());
+            }
+        }
+        return new ArrayList<>(out);
+    }
 }

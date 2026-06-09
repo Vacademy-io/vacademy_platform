@@ -4,10 +4,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.counsellor_rating.dto.LeaderboardEntryDTO;
 import vacademy.io.admin_core_service.features.counsellor_rating.service.CounsellorRatingService;
 import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
 import vacademy.io.admin_core_service.features.sales_dashboard.dto.*;
+import vacademy.io.common.auth.dto.UserDTO;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -32,6 +34,7 @@ public class SalesDashboardService {
     private final JdbcTemplate jdbc;
     private final CounsellorScopeService scopeService;
     private final CounsellorRatingService ratingService;
+    private final AuthService authService;
 
     // ────────────────────────────────────────────────────────────────
     // KPI band
@@ -278,18 +281,20 @@ public class SalesDashboardService {
     public List<FollowupRowDTO> upcomingFollowups(String instituteId, String teamId, int hoursAhead, int limit, String callerUserId) {
         List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         String userClause = userScopeClause(users, "lf.created_by");
-        return jdbc.query(
+        // No JOIN to users — admin_core and auth_service own separate
+        // databases on stage/prod. We project ar.user_id as lead_user_id and
+        // hydrate name/full_name in the service layer via AuthService, same
+        // pattern as AudienceService.mapResponsesToLeadDetails.
+        List<FollowupRowDTO> rows = jdbc.query(
                 "SELECT lf.id AS followup_id, " +
                 "       ulp.id AS lead_id, " +
-                "       u.full_name AS lead_name, " +
+                "       ar.user_id AS lead_user_id, " +
                 "       lf.created_by AS counsellor_id, " +
-                "       (SELECT full_name FROM users WHERE id = lf.created_by) AS counsellor_name, " +
                 "       lf.schedule_time, lf.status, lf.content, " +
                 "       EXTRACT(EPOCH FROM (lf.schedule_time - NOW())) / 60 AS minutes_until_due " +
                 "FROM lead_followup lf " +
                 "JOIN audience_response ar ON ar.id = lf.audience_response_id " +
                 "LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = lf.institute_id " +
-                "LEFT JOIN users u ON u.id = ar.user_id " +
                 "WHERE lf.institute_id = ? " +
                 "  AND lf.is_closed = false " +
                 "  AND lf.status = 'PENDING' " +
@@ -302,23 +307,22 @@ public class SalesDashboardService {
                 "LIMIT ?",
                 (rs, rowNum) -> followupFromRow(rs),
                 argsForFollowups(instituteId, hoursAhead, users, limit));
+        return hydrateFollowupNames(rows);
     }
 
     public List<FollowupRowDTO> missedFollowups(String instituteId, String teamId, int limit, String callerUserId) {
         List<String> users = scopedUsers(instituteId, teamId, callerUserId);
         String userClause = userScopeClause(users, "lf.created_by");
-        return jdbc.query(
+        List<FollowupRowDTO> rows = jdbc.query(
                 "SELECT lf.id AS followup_id, " +
                 "       ulp.id AS lead_id, " +
-                "       u.full_name AS lead_name, " +
+                "       ar.user_id AS lead_user_id, " +
                 "       lf.created_by AS counsellor_id, " +
-                "       (SELECT full_name FROM users WHERE id = lf.created_by) AS counsellor_name, " +
                 "       lf.schedule_time, lf.status, lf.content, " +
                 "       EXTRACT(EPOCH FROM (lf.schedule_time - NOW())) / 60 AS minutes_until_due " +
                 "FROM lead_followup lf " +
                 "JOIN audience_response ar ON ar.id = lf.audience_response_id " +
                 "LEFT JOIN user_lead_profile ulp ON ulp.user_id = ar.user_id AND ulp.institute_id = lf.institute_id " +
-                "LEFT JOIN users u ON u.id = ar.user_id " +
                 "WHERE lf.institute_id = ? " +
                 "  AND lf.is_closed = false " +
                 "  AND (lf.status = 'OVERDUE' OR (lf.status = 'PENDING' AND lf.schedule_time < NOW())) " +
@@ -327,6 +331,7 @@ public class SalesDashboardService {
                 "LIMIT ?",
                 (rs, rowNum) -> followupFromRow(rs),
                 argsForMissed(instituteId, users, limit));
+        return hydrateFollowupNames(rows);
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -626,17 +631,54 @@ public class SalesDashboardService {
     }
 
     private FollowupRowDTO followupFromRow(java.sql.ResultSet rs) throws java.sql.SQLException {
+        // leadName + counsellorName are filled in by hydrateFollowupNames
+        // after a single auth-service batch call. leadUserId is the key.
         return FollowupRowDTO.builder()
                 .followupId(rs.getString("followup_id"))
                 .leadId(rs.getString("lead_id"))
-                .leadName(rs.getString("lead_name"))
+                .leadUserId(rs.getString("lead_user_id"))
                 .counsellorUserId(rs.getString("counsellor_id"))
-                .counsellorName(rs.getString("counsellor_name"))
                 .scheduleTime(rs.getTimestamp("schedule_time"))
                 .status(rs.getString("status"))
                 .content(rs.getString("content"))
                 .minutesUntilDue(getNullableLong(rs, "minutes_until_due"))
                 .build();
+    }
+
+    /**
+     * Batch-hydrate lead and counsellor display names via auth-service.
+     * admin_core and auth_service own separate Postgres databases on
+     * stage/prod, so admin_core CANNOT join to `users` directly — same
+     * cross-service pattern as AudienceService.mapResponsesToLeadDetails.
+     * One HTTP call per page; an auth-service failure leaves names null
+     * rather than 500ing the widget.
+     */
+    private List<FollowupRowDTO> hydrateFollowupNames(List<FollowupRowDTO> rows) {
+        if (rows == null || rows.isEmpty()) return rows;
+        Set<String> userIds = new HashSet<>();
+        for (FollowupRowDTO r : rows) {
+            if (r.getLeadUserId() != null) userIds.add(r.getLeadUserId());
+            if (r.getCounsellorUserId() != null) userIds.add(r.getCounsellorUserId());
+        }
+        if (userIds.isEmpty()) return rows;
+        Map<String, UserDTO> userById;
+        try {
+            userById = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds)).stream()
+                    .filter(Objects::nonNull)
+                    .filter(u -> u.getId() != null)
+                    .collect(java.util.stream.Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
+        } catch (Exception e) {
+            log.warn("Followup name hydration failed: {}", e.getMessage());
+            return rows;
+        }
+        for (FollowupRowDTO r : rows) {
+            UserDTO lead = r.getLeadUserId() != null ? userById.get(r.getLeadUserId()) : null;
+            UserDTO counsellor = r.getCounsellorUserId() != null
+                    ? userById.get(r.getCounsellorUserId()) : null;
+            if (lead != null) r.setLeadName(lead.getFullName());
+            if (counsellor != null) r.setCounsellorName(counsellor.getFullName());
+        }
+        return rows;
     }
 
     private static Long getNullableLong(java.sql.ResultSet rs, String col) throws java.sql.SQLException {

@@ -2,6 +2,10 @@ package vacademy.io.admin_core_service.features.counsellor_workbench.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
@@ -13,10 +17,8 @@ import vacademy.io.admin_core_service.features.counsellor_workbench.dto.Workbenc
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.WorkbenchTeamDTO;
 import vacademy.io.admin_core_service.features.counsellor_workbench.repository.WorkbenchActivityRepository;
 import vacademy.io.admin_core_service.features.counsellor_workbench.repository.WorkbenchLeadRepository;
-import vacademy.io.admin_core_service.features.counselor_pool.dto.CounselorPoolMembershipDTO;
 import vacademy.io.admin_core_service.features.counselor_pool.entity.CounselorPoolMember;
 import vacademy.io.admin_core_service.features.counselor_pool.repository.CounselorPoolMemberRepository;
-import vacademy.io.admin_core_service.features.counselor_pool.service.CounselorPoolService;
 import vacademy.io.admin_core_service.features.counsellor_rating.dto.RatingDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.organization.OrgTeamDTO;
@@ -41,7 +43,6 @@ public class CounsellorWorkbenchService {
     private final WorkbenchLeadRepository leadRepo;
     private final WorkbenchActivityRepository activityRepo;
     private final OrganizationTeamAuthClient orgTeamClient;
-    private final CounselorPoolService counselorPoolService;
     private final CounselorPoolMemberRepository counselorPoolMemberRepository;
     private final LeadWorkbenchSettingService settingService;
     private final AuthService authService;
@@ -54,14 +55,19 @@ public class CounsellorWorkbenchService {
         return scopeService.resolveHomeScope(instituteId, caller.getUserId());
     }
 
-    public List<WorkbenchLeadDTO> myLeads(String instituteId, CustomUserDetails caller,
+    public Page<WorkbenchLeadDTO> myLeads(String instituteId, CustomUserDetails caller,
                                           String conversionStatus, int page, int size) {
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
         // RBAC: caller + descendants via parent_user_id. A team head gets
         // their whole downstream; a leaf member gets only their own leads.
         List<String> users = scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId());
-        if (users.isEmpty()) return Collections.emptyList();
-        return hydrateLeadIdentities(
-                leadRepo.findLeadsForCounsellors(instituteId, users, conversionStatus, page * size, size));
+        if (users.isEmpty()) return Page.empty(pageable);
+        long total = leadRepo.countLeadsForCounsellors(instituteId, users, conversionStatus);
+        if (total == 0) return new PageImpl<>(List.of(), pageable, 0);
+        List<WorkbenchLeadDTO> content = hydrateLeadIdentities(
+                leadRepo.findLeadsForCounsellors(instituteId, users, conversionStatus,
+                        (int) pageable.getOffset(), pageable.getPageSize()));
+        return new PageImpl<>(content, pageable, total);
     }
 
     /**
@@ -69,11 +75,16 @@ public class CounsellorWorkbenchService {
      * variant is auth-scoped to the caller; this one accepts an explicit
      * user_id so a CSO can drill into anyone in the team subtree.
      */
-    public List<WorkbenchLeadDTO> leadsForCounsellor(String instituteId, String counsellorUserId,
+    public Page<WorkbenchLeadDTO> leadsForCounsellor(String instituteId, String counsellorUserId,
                                                      String conversionStatus, int page, int size) {
-        return hydrateLeadIdentities(leadRepo.findLeadsForCounsellors(
-                instituteId, Collections.singletonList(counsellorUserId),
-                conversionStatus, page * size, size));
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
+        List<String> ids = Collections.singletonList(counsellorUserId);
+        long total = leadRepo.countLeadsForCounsellors(instituteId, ids, conversionStatus);
+        if (total == 0) return new PageImpl<>(List.of(), pageable, 0);
+        List<WorkbenchLeadDTO> content = hydrateLeadIdentities(leadRepo.findLeadsForCounsellors(
+                instituteId, ids, conversionStatus,
+                (int) pageable.getOffset(), pageable.getPageSize()));
+        return new PageImpl<>(content, pageable, total);
     }
 
     /**
@@ -126,15 +137,25 @@ public class CounsellorWorkbenchService {
      * sees their whole downstream; a manager sees their reports; a leaf
      * counsellor sees only themselves. Pass {@code caller=null} to bypass
      * the RBAC filter (admin / scheduled-job paths).
+     *
+     * Server-side paginated. Search and status filters are applied to the
+     * resolved user set before slicing so the page count stays meaningful
+     * (no "page 2 of 5 is empty" UX). Per-row aggregations (team mapping,
+     * open-lead count) only run for the visible slice, keeping the cost
+     * roughly proportional to `size`, not the team's total counsellor count.
      */
-    public List<WorkbenchCounsellorDTO> listCounsellorsForTeam(String instituteId, String teamId,
+    public Page<WorkbenchCounsellorDTO> listCounsellorsForTeam(String instituteId, String teamId,
+                                                               String search, String statusFilter,
+                                                               int page, int size,
                                                                CustomUserDetails caller) {
+        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
+
         // Resolve the team subtree once via auth_service. When teamId is
         // omitted, fall back to "everything under the institute's leads root".
         List<OrgTeamDTO> subtree = (teamId != null && !teamId.isBlank())
                 ? orgTeamClient.getSubtreeIncludingSelf(teamId)
                 : scopeService.leadsRootSubtree(instituteId);
-        if (subtree.isEmpty()) return Collections.emptyList();
+        if (subtree.isEmpty()) return Page.empty(pageable);
         Map<String, String> teamNameById = subtree.stream()
                 .collect(Collectors.toMap(OrgTeamDTO::getId, OrgTeamDTO::getName, (a, b) -> a));
 
@@ -142,7 +163,7 @@ public class CounsellorWorkbenchService {
         // returns DISTINCT user ids; we walk per-user to recover their primary
         // (most-recent) team mapping for display purposes.
         List<String> userIds = orgTeamClient.usersInTeams(new ArrayList<>(teamNameById.keySet()));
-        if (userIds.isEmpty()) return Collections.emptyList();
+        if (userIds.isEmpty()) return Page.empty(pageable);
 
         // RBAC: intersect with the caller's descendants so a manager doesn't
         // see peers / siblings outside their reporting line. Root admins have
@@ -153,10 +174,11 @@ public class CounsellorWorkbenchService {
             Set<String> allowed = new HashSet<>(
                     scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
             userIds = userIds.stream().filter(allowed::contains).toList();
-            if (userIds.isEmpty()) return Collections.emptyList();
+            if (userIds.isEmpty()) return Page.empty(pageable);
         }
 
-        // Resolve names in one batch.
+        // Resolve names in one batch — needed BEFORE filtering so search can
+        // match against name/email.
         Map<String, UserDTO> userById = new HashMap<>();
         try {
             for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(userIds))) {
@@ -166,26 +188,64 @@ public class CounsellorWorkbenchService {
             log.warn("Auth-service name lookup failed for {} ids: {}", userIds.size(), e.getMessage());
         }
 
-        // Resolve ratings from the same institute_setting JSON that holds
-        // the strategy config. One read returns every rated counsellor;
-        // unrated ones are surfaced as nulls below.
-        Map<String, RatingDTO> ratingById = settingService.getCounsellorRatingsBatch(instituteId, userIds);
+        // "Active" in the workbench = has ANY ACTIVE row across all their
+        // pool memberships. One batched query for all counsellors instead of
+        // N calls to listActiveMembershipsForCounselor (which also applied
+        // an allMatch-per-pool rollup intended for the "mark inactive" UI,
+        // and falsely demoted counsellors who were paused on just one
+        // audience to fully inactive here).
+        Set<String> activeCounsellorIds = new HashSet<>(
+                counselorPoolMemberRepository.findCounselorsWithAnyActiveMembership(instituteId, userIds));
 
-        List<WorkbenchCounsellorDTO> out = new ArrayList<>(userIds.size());
-        for (String uid : userIds) {
+        // Apply filters BEFORE pagination. Search matches full_name OR email,
+        // case-insensitive substring. Status filter matches the boolean
+        // is_active derived above.
+        String searchLower = (search != null && !search.isBlank()) ? search.toLowerCase(Locale.ROOT).trim() : null;
+        boolean wantActive = "active".equalsIgnoreCase(statusFilter);
+        boolean wantInactive = "inactive".equalsIgnoreCase(statusFilter);
+        List<String> filteredIds = userIds.stream()
+                .filter(uid -> {
+                    if (wantActive && !activeCounsellorIds.contains(uid)) return false;
+                    if (wantInactive && activeCounsellorIds.contains(uid)) return false;
+                    if (searchLower == null) return true;
+                    UserDTO u = userById.get(uid);
+                    if (u == null) return false;
+                    String name = u.getFullName() != null ? u.getFullName().toLowerCase(Locale.ROOT) : "";
+                    String email = u.getEmail() != null ? u.getEmail().toLowerCase(Locale.ROOT) : "";
+                    return name.contains(searchLower) || email.contains(searchLower);
+                })
+                // Stable sort by name (then user_id) so pagination is consistent
+                // across page navigations on the same filter snapshot.
+                .sorted(Comparator
+                        .<String, String>comparing(uid -> {
+                            UserDTO u = userById.get(uid);
+                            return u != null && u.getFullName() != null
+                                    ? u.getFullName().toLowerCase(Locale.ROOT)
+                                    : "~"; // unnamed users sink to the bottom
+                        })
+                        .thenComparing(uid -> uid))
+                .toList();
+
+        long total = filteredIds.size();
+        int from = Math.min((int) pageable.getOffset(), filteredIds.size());
+        int to = Math.min(from + pageable.getPageSize(), filteredIds.size());
+        List<String> pageIds = filteredIds.subList(from, to);
+        if (pageIds.isEmpty()) return new PageImpl<>(List.of(), pageable, total);
+
+        // Per-row aggregations only for the visible slice — keeps the cost of
+        // a typical page proportional to `size`, not the whole roster.
+        Map<String, RatingDTO> ratingById = settingService.getCounsellorRatingsBatch(instituteId, pageIds);
+
+        List<WorkbenchCounsellorDTO> content = new ArrayList<>(pageIds.size());
+        for (String uid : pageIds) {
             UserDTO u = userById.get(uid);
             RatingDTO r = ratingById.get(uid);
-            // Pick this user's first mapping within the subtree for display
-            // (team name + role label). Cheap: one HMAC call per user.
             TeamMemberDTO primary = orgTeamClient.mappingsForUser(uid).stream()
                     .filter(m -> teamNameById.containsKey(m.getTeamId()))
                     .findFirst().orElse(null);
-            // "Active" rolls up to ANY active pool membership in this institute.
-            boolean isActive = counselorPoolService
-                    .listActiveMembershipsForCounselor(instituteId, uid).stream()
-                    .anyMatch(this::isPoolActive);
+            boolean isActive = activeCounsellorIds.contains(uid);
             long openLeads = leadRepo.countOpenLeadsForCounsellor(instituteId, uid);
-            out.add(WorkbenchCounsellorDTO.builder()
+            content.add(WorkbenchCounsellorDTO.builder()
                     .userId(uid)
                     .fullName(u != null ? u.getFullName() : null)
                     .email(u != null ? u.getEmail() : null)
@@ -198,11 +258,7 @@ public class CounsellorWorkbenchService {
                     .ratingStrategyType(r != null ? r.getStrategyType() : null)
                     .build());
         }
-        return out;
-    }
-
-    private boolean isPoolActive(CounselorPoolMembershipDTO m) {
-        return m.getStatus() != null && m.getStatus().equalsIgnoreCase("ACTIVE");
+        return new PageImpl<>(content, pageable, total);
     }
 
     // ────────────────────────────────────────────────────────────────

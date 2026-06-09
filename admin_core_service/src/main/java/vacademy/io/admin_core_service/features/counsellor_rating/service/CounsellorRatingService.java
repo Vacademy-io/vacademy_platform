@@ -19,11 +19,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Reads + manual-override writes for counsellor ratings. Both the strategy
- * config and the per-counsellor cached scores live inside the
- * institute_setting JSON via {@link LeadWorkbenchSettingService} — there is
- * no separate rating table. Default zero entries are layered on top for
- * unrated counsellors so badges always render with a valid score.
+ * Reads + manual-override writes for counsellor ratings. Per-counsellor
+ * cached scores live in the {@code counsellor_rating} table since V327
+ * (accessed via {@link LeadWorkbenchSettingService}). Strategy config
+ * remains in the institute_setting JSON blob. Default zero entries are
+ * layered on top here for unrated counsellors so badges always render with
+ * a valid score.
  */
 @Slf4j
 @Service
@@ -74,9 +75,12 @@ public class CounsellorRatingService {
         }
         final Collection<String> scope = userScope;
 
-        // Sort in-memory: settings JSON has no index so we hold the whole
-        // map per institute. Fine while counsellor counts are <500 per
-        // institute — switch to a proper table if that ever changes.
+        // Sort in-memory because the team-scope filter would otherwise
+        // require an ORDER BY through a multi-row IN clause. The table has
+        // ix_counsellor_rating_leaderboard for the unfiltered top-N case;
+        // a follow-up could push the institute-wide leaderboard down to a
+        // proper indexed query, falling back to in-memory only for the
+        // team-scoped variant.
         List<RatingDTO> sorted = all.values().stream()
                 .filter(r -> scope == null || scope.contains(r.getCounsellorUserId()))
                 .filter(r -> r.getScore() != null)

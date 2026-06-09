@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.counsellor_workbench.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.counsellor_workbench.dto.*;
@@ -55,7 +56,7 @@ public class CounsellorWorkbenchController {
     }
 
     @GetMapping("/me/leads")
-    public ResponseEntity<List<WorkbenchLeadDTO>> myLeads(
+    public ResponseEntity<Page<WorkbenchLeadDTO>> myLeads(
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "page", defaultValue = "0") int page,
@@ -69,11 +70,16 @@ public class CounsellorWorkbenchController {
     // ────────────────────────────────────────────────────────────────
 
     @GetMapping("/team/{teamId}/counsellors")
-    public ResponseEntity<List<WorkbenchCounsellorDTO>> listCounsellors(
+    public ResponseEntity<Page<WorkbenchCounsellorDTO>> listCounsellors(
             @PathVariable String teamId,
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestAttribute("user") CustomUserDetails user) {
-        return ResponseEntity.ok(workbenchService.listCounsellorsForTeam(instituteId, teamId, user));
+        return ResponseEntity.ok(workbenchService.listCounsellorsForTeam(
+                instituteId, teamId, search, status, page, size, user));
     }
 
     /**
@@ -83,7 +89,7 @@ public class CounsellorWorkbenchController {
      * another counsellor's leads.
      */
     @GetMapping("/counsellors/{userId}/leads")
-    public ResponseEntity<List<WorkbenchLeadDTO>> counsellorLeads(
+    public ResponseEntity<Page<WorkbenchLeadDTO>> counsellorLeads(
             @PathVariable String userId,
             @RequestParam("instituteId") String instituteId,
             @RequestParam(value = "status", required = false) String status,

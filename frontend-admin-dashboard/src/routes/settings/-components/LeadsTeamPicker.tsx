@@ -131,12 +131,15 @@ export function LeadsTeamPicker() {
  */
 function TeamMembersList({ instituteId, teamId }: { instituteId: string; teamId: string }) {
     const counsellorsQuery = useQuery({
-        queryKey: ['workbench-counsellors', instituteId, teamId],
+        queryKey: ['workbench-counsellors-team-picker', instituteId, teamId],
         enabled: !!instituteId && !!teamId,
-        queryFn: () => fetchTeamCounsellors(instituteId, teamId),
+        // Settings view wants the WHOLE roster (no per-page pagination).
+        // The workbench list endpoint now paginates by default; size=500
+        // covers any team we currently support.
+        queryFn: () => fetchTeamCounsellors(instituteId, teamId, { size: 500 }),
     });
 
-    const counsellors = counsellorsQuery.data ?? [];
+    const counsellors = counsellorsQuery.data?.content ?? [];
 
     return (
         <div className="rounded-lg border border-neutral-200 bg-white p-4">

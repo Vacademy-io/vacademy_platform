@@ -16,11 +16,13 @@ import java.sql.Timestamp;
 import java.util.List;
 
 /**
- * Computes counsellor rating scores and persists them inside
- * {@code institute_setting.LEAD_SETTING.workbench.counsellor_ratings} via
- * {@link LeadWorkbenchSettingService}. There is no separate rating table —
- * scores are written into the same JSON blob that carries the strategy
- * config, keeping one source of truth per institute.
+ * Computes counsellor rating scores and persists them into the
+ * {@code counsellor_rating} table (since V327) via
+ * {@link LeadWorkbenchSettingService}. Strategy CONFIG still lives in the
+ * {@code institute_setting.LEAD_SETTING.workbench.rating} JSON blob;
+ * per-counsellor SCORES were moved out so the nightly recompute can do
+ * atomic per-row upserts instead of read-mutate-write of the whole
+ * institute blob.
  *
  * <h3>assigned_at is derived, not stored</h3>
  * Earlier designs stored an {@code assigned_at} column on

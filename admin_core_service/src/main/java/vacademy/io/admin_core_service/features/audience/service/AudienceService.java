@@ -115,6 +115,14 @@ public class AudienceService {
     @Autowired
     private WorkflowTriggerService workflowTriggerService;
 
+    /** Resolves leads_team_id and (when present) gates the CRM-Leads RBAC narrowing. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.counsellor_workbench.service.LeadWorkbenchSettingService workbenchSettingService;
+
+    /** Resolves caller + user-to-user descendants in the leads team. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
+
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
@@ -1742,9 +1750,42 @@ public class AudienceService {
         EffectiveAccess access = audienceRoleAccessService.resolveForCaller(
                 user, filterDTO.getInstituteId());
 
-        if (access.getMode() == Mode.COUNSELOR && user != null && user.getUserId() != null) {
-            // Force-scope: ignore whatever assignedCounselorId the request body
-            // sent — counselors only see leads they're linked to.
+        // RBAC narrowing for the CRM Leads tab. When the institute has
+        // configured a leads_team_id AND the caller is in that subtree, we
+        // restrict the visible leads to the caller's user-to-user
+        // descendants (themselves + everyone reporting up to them through
+        // parent_user_id). A team head sees their whole downstream; a
+        // mid-level manager sees their reports; a leaf member sees only
+        // their own leads. Computed as a CSV that the native query plugs
+        // into a `STRING_TO_ARRAY(...) = ANY` predicate alongside the
+        // single-id filter — so a manager can still drill into a specific
+        // report by sending assignedCounselorId.
+        String assignedCounselorIdsCsv = null;
+        boolean rbacApplied = false;
+        if (user != null && user.getUserId() != null
+                && filterDTO.getInstituteId() != null
+                && !filterDTO.getInstituteId().isBlank()) {
+            String instituteId = filterDTO.getInstituteId();
+            if (workbenchSettingService.getLeadsTeamId(instituteId).isPresent()
+                    && counsellorScopeService.isCallerInLeadsSubtree(instituteId, user.getUserId())) {
+                List<String> scope = counsellorScopeService
+                        .descendantUserIdsForCaller(instituteId, user.getUserId());
+                if (!scope.isEmpty()) {
+                    assignedCounselorIdsCsv = String.join(",", scope);
+                    rbacApplied = true;
+                }
+            }
+        }
+
+        if (access.getMode() == Mode.COUNSELOR && user != null && user.getUserId() != null
+                && !rbacApplied) {
+            // Force-scope: ignore whatever assignedCounselorId the request
+            // body sent — counselors with no leads-team mapping only see
+            // leads they're directly linked to.
+            //
+            // When RBAC applied above, we let the broader subtree filter
+            // win (a manager in the leads team should see their reports'
+            // leads, not just their own).
             filterDTO.setAssignedCounselorId(user.getUserId());
         }
 
@@ -1817,6 +1858,7 @@ public class AudienceService {
                     searchUserIdsCsv,
                     filterDTO.getLeadTier(),
                     filterDTO.getAssignedCounselorId(),
+                    assignedCounselorIdsCsv,
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
                     filterDTO.getSlaFilter(),
@@ -1844,6 +1886,7 @@ public class AudienceService {
                 filterDTO.getMaxLeadScore(),
                 filterDTO.getLeadTier(),
                 filterDTO.getAssignedCounselorId(),
+                assignedCounselorIdsCsv,
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldFiltersJson,

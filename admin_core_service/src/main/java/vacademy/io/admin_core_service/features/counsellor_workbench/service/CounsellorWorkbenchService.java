@@ -145,9 +145,11 @@ public class CounsellorWorkbenchService {
         if (userIds.isEmpty()) return Collections.emptyList();
 
         // RBAC: intersect with the caller's descendants so a manager doesn't
-        // see peers / siblings outside their reporting line. Caller=null is
-        // the unfiltered admin path.
-        if (caller != null) {
+        // see peers / siblings outside their reporting line. Root admins have
+        // no team mappings (so the descendant set would collapse to {self}
+        // and wipe the whole list); they get the unfiltered view, same as
+        // the caller=null admin path.
+        if (caller != null && !caller.isRootUser()) {
             Set<String> allowed = new HashSet<>(
                     scopeService.descendantUserIdsForCaller(instituteId, caller.getUserId()));
             userIds = userIds.stream().filter(allowed::contains).toList();

@@ -7,6 +7,7 @@ import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import { pageNavigationPlugin } from '@react-pdf-viewer/page-navigation';
 import { useMediaNavigationStore } from '../-stores/media-navigation-store';
 import { toast } from 'sonner';
+import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 
 // Style imports
 import '@react-pdf-viewer/core/lib/styles/index.css';
@@ -25,9 +26,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
     const pageNavigationPluginInstance = pageNavigationPlugin();
     const { jumpToPage } = pageNavigationPluginInstance;
 
+    // Per-role enforcement: hide Download/Print for roles an admin has blocked
+    // (admins keep them by default).
+    const { canDownload } = useSlideDownloadAccess();
+    const allowDownload = canDownload('DOCUMENT_PDF');
+    const allowPrint = canDownload('DOCUMENT_PDF_PRINT');
+
     const transform: TransformToolbarSlot = (slot: ToolbarSlot) => ({
         ...slot,
         Open: () => <></>,
+        ...(allowDownload ? {} : { Download: () => <></>, DownloadMenuItem: () => <></> }),
+        ...(allowPrint ? {} : { Print: () => <></>, PrintMenuItem: () => <></> }),
     });
 
     const renderToolbar = (Toolbar: (props: ToolbarProps) => React.ReactElement) => (

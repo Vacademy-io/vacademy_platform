@@ -678,7 +678,7 @@ export default function StudentDisplaySettings(): JSX.Element {
 
             <SlideDownloadCard roleKey="LEARNER" roleLabel="learners" />
 
-            <SlideContentProtectionCard />
+            <SlideContentProtectionCard roleKey="LEARNER" roleLabel="learners" />
             </section>
 
             <section id="grp-learning" className="space-y-6">
